@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getAddresses } from "@/lib/firestore";
+import { auth } from "@/lib/firebase";
 
 export default function NewRequestPage() {
   const [items, setItems] = useState([
@@ -11,9 +13,70 @@ export default function NewRequestPage() {
     },
   ]);
 
+  const [addresses, setAddresses] = useState<any[]>([]);
+  const [selectedAddress, setSelectedAddress] = useState("");
+  const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (!user) return;
+
+      const data = await getAddresses(user.uid);
+      setAddresses(data);
+
+      if (data.length > 0) {
+        setSelectedAddress(data[0].id);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const addItem = () => {
+    setItems([
+      ...items,
+      {
+        name: "",
+        url: "",
+        quantity: 1,
+      },
+    ]);
+  };
+
+  const removeItem = (index: number) => {
+    setItems(items.filter((_, i) => i !== index));
+  };
+
+  const updateItem = (
+    index: number,
+    field: string,
+    value: string | number
+  ) => {
+    const updated = [...items];
+
+    updated[index] = {
+      ...updated[index],
+      [field]: value,
+    };
+
+    setItems(updated);
+  };
+
+  const submitRequest = () => {
+    console.log({
+      items,
+      selectedAddress,
+      notes,
+    });
+
+    alert(
+      "Request submission to Firestore will be connected next."
+    );
+  };
+
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <h1 className="text-4xl font-bold mb-2 text-white">
+    <div className="p-8 max-w-6xl mx-auto">
+      <h1 className="text-4xl font-bold text-white mb-2">
         Create Request
       </h1>
 
@@ -23,7 +86,7 @@ export default function NewRequestPage() {
 
       {/* Items */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8">
-        <h2 className="text-2xl font-semibold mb-6">
+        <h2 className="text-2xl font-semibold text-white mb-6">
           Items
         </h2>
 
@@ -32,7 +95,7 @@ export default function NewRequestPage() {
             key={index}
             className="border border-slate-800 rounded-xl p-4 mb-4"
           >
-            <h3 className="font-semibold mb-4">
+            <h3 className="font-semibold text-white mb-4">
               Item {index + 1}
             </h3>
 
@@ -40,44 +103,48 @@ export default function NewRequestPage() {
               <input
                 placeholder="Product Name"
                 value={item.name}
-                onChange={(e) => {
-                  const updated = [...items];
-                  updated[index].name = e.target.value;
-                  setItems(updated);
-                }}
-                className="bg-slate-950 border border-slate-700 rounded-lg p-3"
+                onChange={(e) =>
+                  updateItem(
+                    index,
+                    "name",
+                    e.target.value
+                  )
+                }
+                className="bg-slate-950 border border-slate-700 rounded-lg p-3 text-white"
               />
 
               <input
                 placeholder="Product URL"
                 value={item.url}
-                onChange={(e) => {
-                  const updated = [...items];
-                  updated[index].url = e.target.value;
-                  setItems(updated);
-                }}
-                className="bg-slate-950 border border-slate-700 rounded-lg p-3"
+                onChange={(e) =>
+                  updateItem(
+                    index,
+                    "url",
+                    e.target.value
+                  )
+                }
+                className="bg-slate-950 border border-slate-700 rounded-lg p-3 text-white"
               />
 
               <input
                 type="number"
                 min="1"
                 value={item.quantity}
-                onChange={(e) => {
-                  const updated = [...items];
-                  updated[index].quantity = Number(e.target.value);
-                  setItems(updated);
-                }}
-                className="bg-slate-950 border border-slate-700 rounded-lg p-3"
+                onChange={(e) =>
+                  updateItem(
+                    index,
+                    "quantity",
+                    Number(e.target.value)
+                  )
+                }
+                className="bg-slate-950 border border-slate-700 rounded-lg p-3 text-white"
               />
             </div>
 
             {items.length > 1 && (
               <button
-                onClick={() =>
-                  setItems(items.filter((_, i) => i !== index))
-                }
-                className="text-red-400 mt-4 hover:text-red-300"
+                onClick={() => removeItem(index)}
+                className="text-red-400 hover:text-red-300 mt-4"
               >
                 Remove Item
               </button>
@@ -86,58 +153,73 @@ export default function NewRequestPage() {
         ))}
 
         <button
-          onClick={() =>
-            setItems([
-              ...items,
-              {
-                name: "",
-                url: "",
-                quantity: 1,
-              },
-            ])
-          }
-          className="mt-6 text-purple-400 hover:text-purple-300"
+          onClick={addItem}
+          className="text-purple-400 hover:text-purple-300 mt-4"
         >
           + Add Another Item
         </button>
       </div>
 
-      {/* Delivery Address */}
+      {/* Address */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8">
-        <h2 className="text-2xl font-semibold mb-6">
+        <h2 className="text-2xl font-semibold text-white mb-6">
           Delivery Address
         </h2>
 
-        <select className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 mb-4">
-          <option>Select Saved Address</option>
-          <option>John Doe - Germany</option>
-        </select>
-
-        <button className="text-purple-400 hover:text-purple-300">
-          + Add New Address
-        </button>
+        {addresses.length === 0 ? (
+          <div className="text-slate-400">
+            No saved addresses found.
+          </div>
+        ) : (
+          <select
+            value={selectedAddress}
+            onChange={(e) =>
+              setSelectedAddress(e.target.value)
+            }
+            className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white"
+          >
+            {addresses.map((address) => (
+              <option
+                key={address.id}
+                value={address.id}
+              >
+                {address.firstName}{" "}
+                {address.lastName} -{" "}
+                {address.country}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
-      {/* Additional Notes */}
+      {/* Notes */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8">
-        <h2 className="text-2xl font-semibold mb-6">
+        <h2 className="text-2xl font-semibold text-white mb-6">
           Additional Notes
         </h2>
 
         <textarea
           rows={5}
+          value={notes}
+          onChange={(e) =>
+            setNotes(e.target.value)
+          }
           placeholder="Optional notes for ShipIN..."
-          className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3"
+          className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white"
         />
       </div>
 
       {/* Notice */}
       <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-8 text-amber-300">
-        Requests are automatically locked after submission.
-        Any modifications require contacting ShipIN support.
+        Requests are automatically locked after
+        submission. Any modifications require
+        contacting ShipIN support.
       </div>
 
-      <button className="bg-purple-600 hover:bg-purple-700 px-8 py-4 rounded-xl font-semibold transition">
+      <button
+        onClick={submitRequest}
+        className="bg-purple-600 hover:bg-purple-700 px-8 py-4 rounded-xl font-semibold transition"
+      >
         Submit Request
       </button>
     </div>
