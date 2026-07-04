@@ -1,3 +1,4 @@
+import Link from "next/link";
 export default function Home() {
   return (
     <main className="min-h-screen bg-slate-950 text-white flex flex-col">
@@ -6,9 +7,12 @@ export default function Home() {
         <h1 className="text-3xl font-bold text-purple-400">ShipIN</h1>
 
         <div className="space-x-6">
-          <button className="text-slate-300 hover:text-white transition">
-            Login
-          </button>
+          <Link
+            href="/login"
+            className="text-slate-300 hover:text-white transition"
+          >
+           Login
+          </Link>
 
           <button className="bg-purple-600 hover:bg-purple-700 px-5 py-2 rounded-lg transition">
             Get Started
