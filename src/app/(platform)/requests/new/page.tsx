@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAddresses } from "@/lib/firestore";
 import { auth } from "@/lib/firebase";
+import {
+  getAddresses,
+  addRequest,
+} from "@/lib/firestore";
 
 export default function NewRequestPage() {
   const [items, setItems] = useState([
@@ -22,6 +25,7 @@ export default function NewRequestPage() {
       if (!user) return;
 
       const data = await getAddresses(user.uid);
+
       setAddresses(data);
 
       if (data.length > 0) {
@@ -62,16 +66,52 @@ export default function NewRequestPage() {
     setItems(updated);
   };
 
-  const submitRequest = () => {
-    console.log({
-      items,
-      selectedAddress,
-      notes,
-    });
+  const submitRequest = async () => {
+    const user = auth.currentUser;
 
-    alert(
-      "Request submission to Firestore will be connected next."
-    );
+    if (!user) {
+      alert("Please login again.");
+      return;
+    }
+
+    if (items.some((item) => !item.name || !item.url)) {
+      alert("Please complete all item details.");
+      return;
+    }
+
+    if (!selectedAddress) {
+      alert("Please select an address.");
+      return;
+    }
+
+    try {
+      // --- UPDATED METHOD CALL WITH USER IDENTITY METADATA ---
+      await addRequest(
+        {
+          items,
+          addressId: selectedAddress,
+          notes,
+          email: user.email,
+          customerName: user.displayName || "Customer",
+        },
+        user.uid
+      );
+
+      alert("Request submitted successfully!");
+
+      setItems([
+        {
+          name: "",
+          url: "",
+          quantity: 1,
+        },
+      ]);
+
+      setNotes("");
+    } catch (error) {
+      console.error(error);
+      alert("Failed to submit request.");
+    }
   };
 
   return (
@@ -134,7 +174,7 @@ export default function NewRequestPage() {
                   updateItem(
                     index,
                     "quantity",
-                    Number(e.target.value)
+                    number(e.target.value)
                   )
                 }
                 className="bg-slate-950 border border-slate-700 rounded-lg p-3 text-white"
@@ -183,8 +223,7 @@ export default function NewRequestPage() {
                 key={address.id}
                 value={address.id}
               >
-                {address.firstName}{" "}
-                {address.lastName} -{" "}
+                {address.firstName} {address.lastName} -{" "}
                 {address.country}
               </option>
             ))}

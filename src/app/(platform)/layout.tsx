@@ -1,10 +1,54 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { auth } from "@/lib/firebase";
+import { subscribeToNotifications } from "@/lib/firestore";
 
 export default function PlatformLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    let unsubscribeNotifications: (() => void) | undefined;
+
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (!user) {
+        if (unsubscribeNotifications) {
+          unsubscribeNotifications();
+        }
+        setUnreadCount(0);
+        return;
+      }
+
+      unsubscribeNotifications = subscribeToNotifications(
+        user.uid,
+        (notifications) => {
+          const unread = notifications.filter((n: any) => !n.read).length;
+
+          console.log(
+            "Notifications:",
+            notifications.length,
+            "Unread:",
+            unread
+          );
+
+          setUnreadCount(unread);
+        }
+      );
+    });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeNotifications) {
+        unsubscribeNotifications();
+      }
+    };
+  }, []);
+
   return (
     <main className="min-h-screen bg-slate-950 text-white flex">
       {/* Sidebar */}
@@ -22,10 +66,17 @@ export default function PlatformLayout({
           </Link>
 
           <Link
+            href="/requests"
+            className="block text-slate-300 hover:text-white transition"
+          >
+            My Requests
+          </Link>
+
+          <Link
             href="/requests/new"
             className="block text-slate-300 hover:text-white transition"
           >
-            New Request
+            Create Request
           </Link>
 
           <Link
@@ -36,10 +87,16 @@ export default function PlatformLayout({
           </Link>
 
           <Link
-            href="/support"
-            className="block text-slate-300 hover:text-white transition"
+            href="/notifications"
+            className="flex items-center justify-between text-slate-300 hover:text-white transition"
           >
-            Support
+            <span>Notifications</span>
+            {/* Restored to conditional rendering */}
+            {unreadCount > 0 && (
+              <span className="bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded-full min-w-[24px] text-center">
+                {unreadCount}
+              </span>
+            )}
           </Link>
 
           <Link
