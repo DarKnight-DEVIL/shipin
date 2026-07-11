@@ -1,29 +1,29 @@
-export const statusLabels: Record<string, string> = {
-  submitted: "Request Received",
+import { REQUEST_STATUS } from "./requestStatus";
 
-  review: "Reviewing Products",
+export const statusLabels = {
+  [REQUEST_STATUS.submitted]: "Submitted",
 
-  payment: "Quote Ready",
+  [REQUEST_STATUS.review]: "Quote Ready",
 
-  awaiting_payment: "Awaiting Payment",
+  [REQUEST_STATUS.awaiting_payment]: "Awaiting Payment",
 
-  paid: "Payment Confirmed",
+  [REQUEST_STATUS.paid]: "Payment Received",
 
-  purchased: "Items Purchased",
+  [REQUEST_STATUS.purchased]: "Purchased",
 
-  warehouse_received:
-    "Arrived at ShipIN Warehouse",
+  [REQUEST_STATUS.warehouse_received]: "Warehouse Received",
 
-  packed: "Preparing Shipment",
+  [REQUEST_STATUS.ready_for_international_shipping]:
+    "Ready For International Shipment",
 
-  shipped: "In Transit",
+  [REQUEST_STATUS.packed]: "Packed",
 
-  out_for_delivery:
-    "Out for Delivery",
+  [REQUEST_STATUS.shipped]: "Shipped",
 
-  delivered:
-    "Delivered Successfully",
+  [REQUEST_STATUS.out_for_delivery]:
+    "Out For Delivery",
 
-  changes_requested:
-    "Changes Requested",
-};
+  [REQUEST_STATUS.delivered]: "Delivered",
+
+  [REQUEST_STATUS.refunded]: "Refunded",
+} as const;

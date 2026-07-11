@@ -1,39 +1,52 @@
-export const REQUEST_WORKFLOW = [
-  "submitted",
-  "review",
-  "payment",
-  "paid",
-  "purchased",
-  "warehouse_received",
-  "packed",
-  "shipped",
-  "out_for_delivery",
-  "delivered",
+import {
+  REQUEST_STATUS,
+  type RequestStatus,
+} from "@/lib/requestStatus";
+
+export const REQUEST_WORKFLOW: RequestStatus[] = [
+  REQUEST_STATUS.submitted,
+  REQUEST_STATUS.review,
+  REQUEST_STATUS.awaiting_payment,
+  REQUEST_STATUS.paid,
+  REQUEST_STATUS.purchased,
+  REQUEST_STATUS.warehouse_received,
+  REQUEST_STATUS.ready_for_international_shipping,
+  REQUEST_STATUS.packed,
+  REQUEST_STATUS.shipped,
+  REQUEST_STATUS.out_for_delivery,
+  REQUEST_STATUS.delivered,
 ];
-export const REQUEST_STATUS_LABELS: Record<
-  string,
+
+export const REQUEST_WORKFLOW_LABELS: Record<
+  RequestStatus,
   string
 > = {
-  submitted: "Submitted",
-  review: "Review",
+  [REQUEST_STATUS.submitted]: "Submitted",
 
-  payment: "Quote Ready",
+  [REQUEST_STATUS.review]: "Quote Ready",
 
-  paid: "Paid",
+  [REQUEST_STATUS.awaiting_payment]:
+    "Awaiting Payment",
 
-  purchased: "Purchased",
+  [REQUEST_STATUS.paid]: "Paid",
 
-  warehouse_received:
-    "Warehouse",
+  [REQUEST_STATUS.purchased]:
+    "Purchased",
 
-  packed: "Packed",
+  [REQUEST_STATUS.warehouse_received]:
+    "Warehouse Received",
 
-  shipped: "Shipped",
+  [REQUEST_STATUS.ready_for_international_shipping]:
+    "Ready For International Shipment",
 
-  out_for_delivery:
-    "Out for Delivery",
+  [REQUEST_STATUS.packed]: "Packed",
 
-  delivered: "Delivered",
+  [REQUEST_STATUS.shipped]: "Shipped",
 
-  refunded: "Refunded",
+  [REQUEST_STATUS.out_for_delivery]:
+    "Out For Delivery",
+
+  [REQUEST_STATUS.delivered]: "Delivered",
+
+  [REQUEST_STATUS.refunded]: "Refunded",
 };

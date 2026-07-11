@@ -1,21 +1,33 @@
 "use client";
 
-import {
-  REQUEST_WORKFLOW,
-  REQUEST_STATUS_LABELS,
-} from "@/constants/requestWorkflow";
+import { statusLabels } from "@/lib/statusLabels";
+import type { RequestStatus } from "@/lib/requestStatus";
+import { REQUEST_STATUS } from "@/lib/requestStatus";
+
+const REQUEST_WORKFLOW: RequestStatus[] = [
+  REQUEST_STATUS.submitted,
+  REQUEST_STATUS.review,
+  REQUEST_STATUS.awaiting_payment,
+  REQUEST_STATUS.paid,
+  REQUEST_STATUS.purchased,
+  REQUEST_STATUS.warehouse_received,
+  REQUEST_STATUS.ready_for_international_shipping,
+  REQUEST_STATUS.packed,
+  REQUEST_STATUS.shipped,
+  REQUEST_STATUS.out_for_delivery,
+  REQUEST_STATUS.delivered,
+];
 
 interface Props {
-  currentStatus: string;
+  currentStatus: RequestStatus;
 }
 
 export default function Stepper({
   currentStatus,
 }: Props) {
-  const currentIndex =
-    REQUEST_WORKFLOW.indexOf(
-      currentStatus
-    );
+  const currentIndex = REQUEST_WORKFLOW.indexOf(
+    currentStatus
+  );
 
   return (
     <div className="space-y-3">
@@ -62,7 +74,7 @@ export default function Stepper({
               >
 
                 {
-                  REQUEST_STATUS_LABELS[
+                  statusLabels[
                     status
                   ]
                 }

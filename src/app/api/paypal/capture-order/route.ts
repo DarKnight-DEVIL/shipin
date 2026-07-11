@@ -1,41 +1,44 @@
 import { NextResponse } from "next/server";
 
-async function getAccessToken() {
-  const auth = Buffer.from(
-    `${process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`
-  ).toString("base64");
+import {
+  getPayPalAccessToken,
+  PAYPAL_BASE,
+} from "@/lib/paypal";
 
-  const response = await fetch(
-    "https://api-m.sandbox.paypal.com/v1/oauth2/token",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: "grant_type=client_credentials",
-    }
-  );
-
-  const data = await response.json();
-
-  if (!data.access_token) {
-    throw new Error(
-      `Failed to get access token: ${JSON.stringify(data)}`
-    );
-  }
-
-  return data.access_token;
-}
+import {
+  createNotification,
+  getRequestById,
+  markRequestPaid,
+} from "@/lib/firestore";
 
 export async function POST(req: Request) {
   try {
-    const { orderID } = await req.json();
+    const {
+      requestId,
+      orderID,
+    } = await req.json();
 
-    if (!orderID) {
+    const token =
+      await getPayPalAccessToken();
+
+    const response = await fetch(
+      `${PAYPAL_BASE}/v2/checkout/orders/${orderID}/capture`,
+      {
+        method: "POST",
+
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const result = await response.json();
+
+    if (result.status !== "COMPLETED") {
       return NextResponse.json(
         {
-          error: "Missing order ID",
+          error: "Payment not completed.",
         },
         {
           status: 400,
@@ -43,28 +46,48 @@ export async function POST(req: Request) {
       );
     }
 
-    const accessToken = await getAccessToken();
+    const request =
+      await getRequestById(requestId);
 
-    const response = await fetch(
-      `https://api-m.sandbox.paypal.com/v2/checkout/orders/${orderID}/capture`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
+    if (!request) {
+      return NextResponse.json(
+        {
+          error: "Request not found.",
         },
-      }
+        {
+          status: 404,
+        }
+      );
+    }
+
+    await markRequestPaid(requestId, {
+      orderId: orderID,
+      captureId:
+        result.purchase_units?.[0]?.payments
+          ?.captures?.[0]?.id,
+      amount:
+        request.quote?.breakdown.grandTotal ??
+        0,
+    });
+
+    await createNotification(
+      request.userId,
+      request.id,
+      "Payment Received",
+      "We've received your payment and will begin purchasing your products.",
+      "payment"
     );
 
-    const data = await response.json();
-
-    return NextResponse.json(data);
+    return NextResponse.json({
+      success: true,
+    });
   } catch (error) {
     console.error(error);
 
     return NextResponse.json(
       {
-        error: "Failed to capture payment",
+        error:
+          "Unable to capture payment.",
       },
       {
         status: 500,

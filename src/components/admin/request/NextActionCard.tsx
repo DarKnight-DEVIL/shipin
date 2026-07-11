@@ -23,7 +23,7 @@ export default function NextActionCard({
       button: "Create Quote",
     },
 
-    payment: {
+    review: {
       title:
         "Waiting for customer payment",
     },

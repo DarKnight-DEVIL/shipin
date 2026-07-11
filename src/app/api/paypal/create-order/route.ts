@@ -1,63 +1,51 @@
 import { NextResponse } from "next/server";
 
-async function getAccessToken() {
-  const auth = Buffer.from(
-    `${process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`
-  ).toString("base64");
+import {
+  getPayPalAccessToken,
+  PAYPAL_BASE,
+} from "@/lib/paypal";
 
-  const response = await fetch(
-    "https://api-m.sandbox.paypal.com/v1/oauth2/token",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: "grant_type=client_credentials",
-    }
-  );
-
-  const data = await response.json();
-
-  if (!data.access_token) {
-    throw new Error(
-      `Failed to get access token: ${JSON.stringify(data)}`
-    );
-  }
-
-  return data.access_token;
-}
+import { getRequestById } from "@/lib/firestore";
 
 export async function POST(req: Request) {
   try {
-    const { amount } = await req.json();
+    const { requestId } = await req.json();
 
-    const numericAmount = Number(amount);
+    const request = await getRequestById(requestId);
 
-    if (!amount || isNaN(numericAmount) || numericAmount <= 0) {
+    if (!request?.quote) {
       return NextResponse.json(
-        { error: `Invalid amount received: ${amount}` },
-        { status: 400 }
+        { error: "Quote not found." },
+        { status: 404 }
       );
     }
 
-    const accessToken = await getAccessToken();
+    const token =
+      await getPayPalAccessToken();
 
     const response = await fetch(
-      "https://api-m.sandbox.paypal.com/v2/checkout/orders",
+      `${PAYPAL_BASE}/v2/checkout/orders`,
       {
         method: "POST",
+
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
+
         body: JSON.stringify({
           intent: "CAPTURE",
+
           purchase_units: [
             {
+              reference_id: requestId,
+
               amount: {
                 currency_code: "USD",
-                value: numericAmount.toFixed(2),
+                value:
+                  request.quote.breakdown.grandTotal.toFixed(
+                    2
+                  ),
               },
             },
           ],
@@ -65,23 +53,17 @@ export async function POST(req: Request) {
       }
     );
 
-    const data = await response.json();
+    const order = await response.json();
 
-    if (!response.ok || !data.id) {
-      console.error("PayPal create-order failed:", data);
-      return NextResponse.json(
-        { error: "PayPal order creation failed", details: data },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(data);
+    return NextResponse.json({
+      id: order.id,
+    });
   } catch (error) {
     console.error(error);
 
     return NextResponse.json(
       {
-        error: "Failed to create PayPal order",
+        error: "Unable to create PayPal order.",
       },
       {
         status: 500,

@@ -6,10 +6,11 @@ import { auth } from "@/lib/firebase";
 import { subscribeToRequests } from "@/lib/firestore";
 import { statusLabels } from "@/lib/statusLabels";
 import { statusColors } from "@/lib/statusColors";
+import type { Request } from "@/types/request";
 
 // Banner status themes dictionary mapping
 const cardMessage: Record<string, { text: string; style: string }> = {
-  payment: {
+  review: {
     text: "Quote Available • Click to review",
     style: "bg-green-500/10 border-green-500/20 text-green-300",
   },
@@ -40,7 +41,7 @@ const cardMessage: Record<string, { text: string; style: string }> = {
 };
 
 export default function RequestsPage() {
-  const [requests, setRequests] = useState<any[]>([]);
+  const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -57,10 +58,13 @@ export default function RequestsPage() {
         return;
       }
 
-      unsubscribeRequests = subscribeToRequests(user.uid, (data) => {
-        setRequests(data);
-        setLoading(false);
-      });
+      unsubscribeRequests = subscribeToRequests(
+        user.uid,
+        (data: Request[]) => {
+          setRequests(data);
+          setLoading(false);
+        }
+      );
     });
 
     return () => {
@@ -159,10 +163,13 @@ export default function RequestsPage() {
                   )}
 
                   {/* Notes Element */}
-                  {request.notes && (
+                  {/* Note: request object does not have .notes directly according to target schema, keeping placeholder safely as typed if necessary */}
+                  {(request as any).notes && (
                     <div className="mt-6 p-4 bg-slate-950 rounded-xl">
                       <h3 className="font-semibold text-white mb-2">Notes</h3>
-                      <p className="text-slate-400">{request.notes}</p>
+                      <p className="text-slate-400">
+                         {(request as any).notes}
+                      </p>
                     </div>
                   )}
                 </div>

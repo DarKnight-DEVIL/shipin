@@ -1,6 +1,6 @@
 "use client";
 
-import { Request } from "@/types/request";
+import type { Request } from "@/types/request";
 
 import Section from "@/components/ui/Section";
 import InfoCard from "@/components/ui/InfoCard";
@@ -42,8 +42,8 @@ export default function OverviewPanel({
           <InfoCard
             title="Quote"
             value={
-              request.quote
-                ? `$${request.quote.grandTotal.toFixed(2)}`
+              request.quote?.breakdown.grandTotal
+                ? `$${request.quote.breakdown.grandTotal.toFixed(2)}`
                 : "Pending"
             }
           />
@@ -73,6 +73,41 @@ export default function OverviewPanel({
           />
 
         </div>
+
+        {/* Customer Selected Services */}
+        <Section
+          title="Customer Preferences"
+          subtitle="Selections made during request creation"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            <InfoCard
+              title="Inspection"
+              value={
+                request.serviceSelections?.inspection === "none"
+                  ? "No Inspection"
+                  : request.serviceSelections?.inspection === "standard"
+                  ? "Standard Inspection"
+                  : "Detailed Inspection"
+              }
+            />
+
+            <InfoCard
+              title="Shipping Preference"
+              value={
+                request.serviceSelections?.shippingPreference === "auto"
+                  ? "Auto Ship"
+
+                  : request.serviceSelections?.shippingPreference ===
+                    "approval"
+                  ? "Wait For Approval"
+
+                  : "Hold Package"
+              }
+            />
+
+          </div>
+        </Section>
 
         <div className="mt-8">
           <NextActionCard

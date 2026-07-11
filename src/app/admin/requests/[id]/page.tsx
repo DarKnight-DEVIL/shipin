@@ -14,6 +14,7 @@ import QuotePanel from "@/components/admin/request/panels/QuotePanel";
 import ShipmentPanel from "@/components/admin/request/panels/ShipmentPanel";
 import SupportPanel from "@/components/admin/request/panels/SupportPanel";
 import TimelinePanel from "@/components/admin/request/panels/TimelinePanel";
+import WarehousePanel from "@/components/admin/request/panels/WarehousePanel";
 
 export default function AdminRequestPage() {
   const { id } = useParams();
@@ -63,6 +64,10 @@ export default function AdminRequestPage() {
 
       {activeTab === "Quote" && (
         <QuotePanel request={request} />
+      )}
+
+      {activeTab === "Warehouse" && (
+        <WarehousePanel request={request} />
       )}
 
       {activeTab === "Shipment" && (

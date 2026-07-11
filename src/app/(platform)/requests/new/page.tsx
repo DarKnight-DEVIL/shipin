@@ -1,11 +1,8 @@
 "use client";
-
+import AdditionalServices from "@/components/request/AdditionalServices";
 import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
-import {
-  getAddresses,
-  addRequest,
-} from "@/lib/firestore";
+import { getAddresses, addRequest } from "@/lib/firestore";
 
 export default function NewRequestPage() {
   const [items, setItems] = useState([
@@ -20,12 +17,15 @@ export default function NewRequestPage() {
   const [selectedAddress, setSelectedAddress] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Additional Services states
+  const [inspection, setInspection] = useState<"none" | "standard" | "detailed">("standard");
+  const [shippingPreference, setShippingPreference] = useState<"auto" | "approval" | "hold">("approval");
+
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (!user) return;
 
       const data = await getAddresses(user.uid);
-
       setAddresses(data);
 
       if (data.length > 0) {
@@ -51,18 +51,12 @@ export default function NewRequestPage() {
     setItems(items.filter((_, i) => i !== index));
   };
 
-  const updateItem = (
-    index: number,
-    field: string,
-    value: string | number
-  ) => {
+  const updateItem = (index: number, field: string, value: string | number) => {
     const updated = [...items];
-
     updated[index] = {
       ...updated[index],
       [field]: value,
     };
-
     setItems(updated);
   };
 
@@ -85,11 +79,14 @@ export default function NewRequestPage() {
     }
 
     try {
-      // --- UPDATED METHOD CALL WITH USER IDENTITY METADATA ---
       await addRequest(
         {
           items,
           addressId: selectedAddress,
+          serviceSelections: {
+            inspection,
+            shippingPreference,
+          },
           notes,
           email: user.email,
           customerName: user.displayName || "Customer",
@@ -106,8 +103,9 @@ export default function NewRequestPage() {
           quantity: 1,
         },
       ]);
-
       setNotes("");
+      setInspection("standard");
+      setShippingPreference("approval");
     } catch (error) {
       console.error(error);
       alert("Failed to submit request.");
@@ -116,9 +114,7 @@ export default function NewRequestPage() {
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
-      <h1 className="text-4xl font-bold text-white mb-2">
-        Create Request
-      </h1>
+      <h1 className="text-4xl font-bold text-white mb-2">Create Request</h1>
 
       <p className="text-slate-400 mb-8">
         Submit products you'd like ShipIN to purchase and forward to you.
@@ -126,43 +122,24 @@ export default function NewRequestPage() {
 
       {/* Items */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8">
-        <h2 className="text-2xl font-semibold text-white mb-6">
-          Items
-        </h2>
+        <h2 className="text-2xl font-semibold text-white mb-6">Items</h2>
 
         {items.map((item, index) => (
-          <div
-            key={index}
-            className="border border-slate-800 rounded-xl p-4 mb-4"
-          >
-            <h3 className="font-semibold text-white mb-4">
-              Item {index + 1}
-            </h3>
+          <div key={index} className="border border-slate-800 rounded-xl p-4 mb-4">
+            <h3 className="font-semibold text-white mb-4">Item {index + 1}</h3>
 
             <div className="grid md:grid-cols-3 gap-4">
               <input
                 placeholder="Product Name"
                 value={item.name}
-                onChange={(e) =>
-                  updateItem(
-                    index,
-                    "name",
-                    e.target.value
-                  )
-                }
+                onChange={(e) => updateItem(index, "name", e.target.value)}
                 className="bg-slate-950 border border-slate-700 rounded-lg p-3 text-white"
               />
 
               <input
                 placeholder="Product URL"
                 value={item.url}
-                onChange={(e) =>
-                  updateItem(
-                    index,
-                    "url",
-                    e.target.value
-                  )
-                }
+                onChange={(e) => updateItem(index, "url", e.target.value)}
                 className="bg-slate-950 border border-slate-700 rounded-lg p-3 text-white"
               />
 
@@ -170,13 +147,7 @@ export default function NewRequestPage() {
                 type="number"
                 min="1"
                 value={item.quantity}
-                onChange={(e) =>
-                  updateItem(
-                    index,
-                    "quantity",
-                    number(e.target.value)
-                  )
-                }
+                onChange={(e) => updateItem(index, "quantity", Number(e.target.value) || 0)}
                 className="bg-slate-950 border border-slate-700 rounded-lg p-3 text-white"
               />
             </div>
@@ -202,47 +173,43 @@ export default function NewRequestPage() {
 
       {/* Address */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8">
-        <h2 className="text-2xl font-semibold text-white mb-6">
-          Delivery Address
-        </h2>
+        <h2 className="text-2xl font-semibold text-white mb-6">Delivery Address</h2>
 
         {addresses.length === 0 ? (
-          <div className="text-slate-400">
-            No saved addresses found.
-          </div>
+          <div className="text-slate-400">No saved addresses found.</div>
         ) : (
           <select
             value={selectedAddress}
-            onChange={(e) =>
-              setSelectedAddress(e.target.value)
-            }
+            onChange={(e) => setSelectedAddress(e.target.value)}
             className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white"
           >
             {addresses.map((address) => (
-              <option
-                key={address.id}
-                value={address.id}
-              >
-                {address.firstName} {address.lastName} -{" "}
-                {address.country}
+              <option key={address.id} value={address.id}>
+                {address.firstName} {address.lastName} - {address.country}
               </option>
             ))}
           </select>
         )}
       </div>
 
+      {/* Additional Services */}
+      <div className="mb-8">
+        <AdditionalServices
+          inspection={inspection}
+          shipping={shippingPreference}
+          onInspectionChange={setInspection}
+          onShippingChange={setShippingPreference}
+        />
+      </div>
+
       {/* Notes */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8">
-        <h2 className="text-2xl font-semibold text-white mb-6">
-          Additional Notes
-        </h2>
+        <h2 className="text-2xl font-semibold text-white mb-6">Additional Notes</h2>
 
         <textarea
           rows={5}
           value={notes}
-          onChange={(e) =>
-            setNotes(e.target.value)
-          }
+          onChange={(e) => setNotes(e.target.value)}
           placeholder="Optional notes for ShipIN..."
           className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white"
         />
@@ -250,9 +217,7 @@ export default function NewRequestPage() {
 
       {/* Notice */}
       <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-8 text-amber-300">
-        Requests are automatically locked after
-        submission. Any modifications require
-        contacting ShipIN support.
+        Requests are automatically locked after submission. Any modifications require contacting ShipIN support.
       </div>
 
       <button

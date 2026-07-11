@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import StatusBadge from "./StatusBadge";
+import StatusBadge from "@/components/ui/StatusBadge";
 
 interface Props {
   request: any;

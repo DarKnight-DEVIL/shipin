@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
 import { PayPalButtons } from "@paypal/react-paypal-js";
 
-import { db, auth } from "@/lib/firebase";
-import { markRequestPaid, createNotification } from "@/lib/firestore";
+import { db } from "@/lib/firebase";
+import { getRequestById } from "@/lib/firestore";
+import type { Request } from "@/types/request";
 
 export default function PaymentPage() {
   const params = useParams();
@@ -14,7 +15,7 @@ export default function PaymentPage() {
 
   const requestId = params.id as string;
 
-  const [request, setRequest] = useState<any>(null);
+  const [request, setRequest] = useState<Request | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPaypal, setShowPaypal] = useState(false);
 
@@ -23,15 +24,8 @@ export default function PaymentPage() {
 
     const loadRequest = async () => {
       try {
-        const requestRef = doc(db, "requests", requestId);
-        const snapshot = await getDoc(requestRef);
-
-        if (snapshot.exists()) {
-          const data = {
-            id: snapshot.id,
-            ...snapshot.data(),
-          };
-
+        const data = await getRequestById(requestId);
+        if (data) {
           setRequest(data);
 
           if (data.status === "awaiting_payment") {
@@ -86,7 +80,7 @@ export default function PaymentPage() {
     );
   }
 
-  const showAcceptQuote = request.status === "payment";
+  const showAcceptQuote = request.status === "review";
   const showCompletePayment =
     request.status === "awaiting_payment" && !showPaypal;
 
@@ -108,14 +102,14 @@ export default function PaymentPage() {
           <div className="flex justify-between text-slate-300">
             <span>Products Total</span>
             <span>
-              ${request.quote?.productsTotal?.toFixed(2) || "0.00"}
+              ${request.quote?.breakdown.productsTotal?.toFixed(2) || "0.00"}
             </span>
           </div>
 
           <div className="flex justify-between text-slate-300">
             <span>Domestic Shipping</span>
             <span>
-              ${request.quote?.domesticShipping?.toFixed(2) || "0.00"}
+              ${request.quote?.breakdown.domesticShipping?.toFixed(2) || "0.00"}
             </span>
           </div>
 
@@ -123,20 +117,15 @@ export default function PaymentPage() {
             <span>International Shipping</span>
             <span>
               $
-              {request.quote?.internationalShipping?.toFixed(2) ||
+              {request.quote?.breakdown.internationalShipping?.toFixed(2) ||
                 "0.00"}
             </span>
           </div>
 
           <div className="flex justify-between text-slate-300">
-            <span>Customs</span>
-            <span>${request.quote?.customs?.toFixed(2) || "0.00"}</span>
-          </div>
-
-          <div className="flex justify-between text-slate-300">
             <span>ShipIN Fee</span>
             <span>
-              ${request.quote?.serviceFee?.toFixed(2) || "0.00"}
+              ${request.quote?.breakdown.serviceFee?.toFixed(2) || "0.00"}
             </span>
           </div>
 
@@ -144,7 +133,7 @@ export default function PaymentPage() {
             <div className="flex justify-between text-3xl font-bold text-green-400">
               <span>Grand Total</span>
               <span>
-                ${request.quote?.grandTotal?.toFixed(2) || "0.00"}
+                ${request.quote?.breakdown.grandTotal?.toFixed(2) || "0.00"}
               </span>
             </div>
           </div>
@@ -161,10 +150,14 @@ export default function PaymentPage() {
                     status: "awaiting_payment",
                   });
 
-                  setRequest((prev: any) => ({
-                    ...prev,
-                    status: "awaiting_payment",
-                  }));
+                  setRequest((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          status: "awaiting_payment",
+                        }
+                      : prev
+                  );
                 } else {
                   setShowPaypal(true);
                 }
@@ -191,7 +184,7 @@ export default function PaymentPage() {
                         "Content-Type": "application/json",
                       },
                       body: JSON.stringify({
-                        amount: request.quote.grandTotal,
+                        amount: request.quote?.breakdown.grandTotal,
                       }),
                     }
                   );
@@ -221,6 +214,7 @@ export default function PaymentPage() {
                           "Content-Type": "application/json",
                         },
                         body: JSON.stringify({
+                          requestId,
                           orderID: data.orderID,
                         }),
                       }
@@ -234,43 +228,14 @@ export default function PaymentPage() {
                     alert(captureData.status);
 
                     if (captureData.status === "COMPLETED") {
-                      await markRequestPaid(requestId, {
-                        orderId: captureData.id,
-                        captureId:
-                          captureData?.purchase_units?.[0]?.payments
-                            ?.captures?.[0]?.id,
-                        amount: request.quote.grandTotal,
-                      });
-
-                      await createNotification(
-                        request.userId,
-                        requestId,
-                        "Payment Received",
-                        "We've successfully received your payment and will begin purchasing your items shortly.",
-                        "payment"
+                      setRequest((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              status: "paid",
+                            }
+                          : prev
                       );
-
-                      const customerEmail =
-                        request.email || auth.currentUser?.email;
-
-                      if (customerEmail) {
-                        await fetch("/api/send-payment-email", {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                          },
-                          body: JSON.stringify({
-                            email: customerEmail,
-                            requestId,
-                            amount: request.quote.grandTotal,
-                          }),
-                        });
-                      }
-
-                      setRequest((prev: any) => ({
-                        ...prev,
-                        status: "paid",
-                      }));
 
                       alert("Payment successful!");
                     } else {

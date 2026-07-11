@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import RequestCard from "@/components/admin/RequestCard";
+import type { Request } from "@/types/request";
 
 export default function AdminRequestsPage() {
-  const [requests, setRequests] = useState<any[]>([]);
+  const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,7 +17,7 @@ export default function AdminRequestsPage() {
         const data = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
-        }));
+        })) as Request[];
         setRequests(data);
       } catch (error) {
         console.error(error);

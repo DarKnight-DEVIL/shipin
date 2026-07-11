@@ -11,9 +11,11 @@ import {
   doc,
   onSnapshot,
   Timestamp,
+  arrayUnion,
 } from "firebase/firestore";
 
 import { db } from "./firebase";
+import type { Request, Quote } from "@/types/request";
 
 /* =========================================
    ADDRESSES
@@ -55,10 +57,30 @@ export const addRequest = async (
   userId: string
 ) => {
   await addDoc(collection(db, "requests"), {
-    ...requestData,
     userId,
+
+    customerName: requestData.customerName,
+    email: requestData.email,
+
+    items: requestData.items,
+    addressId: requestData.addressId,
+    notes: requestData.notes,
+
+    serviceSelections: {
+      inspection:
+        requestData.serviceSelections?.inspection ??
+        "standard",
+
+      shippingPreference:
+        requestData.serviceSelections
+          ?.shippingPreference ??
+        "approval",
+    },
+
     status: "submitted",
+
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
 };
 
@@ -80,7 +102,7 @@ export const getRequests = async (
 
 export const getRequestById = async (
   requestId: string
-) => {
+): Promise<Request | null> => {
   const snapshot = await getDoc(
     doc(db, "requests", requestId)
   );
@@ -92,7 +114,7 @@ export const getRequestById = async (
   return {
     id: snapshot.id,
     ...snapshot.data(),
-  };
+  } as Request;
 };
 
 export const updateRequestStatus = async (
@@ -117,23 +139,7 @@ export const updateRequestStatus = async (
 
 export const saveDetailedQuote = async (
   requestId: string,
-  quote: {
-    items: {
-      name: string;
-      quantity: number;
-      unitPrice: number;
-      subtotal: number;
-      url?: string;
-    }[];
-
-    domesticShipping: number;
-    internationalShipping: number;
-    customs: number;
-    serviceFee: number;
-
-    productsTotal: number;
-    grandTotal: number;
-  }
+  quote: Quote
 ) => {
   const requestRef = doc(
     db,
@@ -141,13 +147,34 @@ export const saveDetailedQuote = async (
     requestId
   );
 
+  // Read the current document data to see if a quote already exists
+  const snapshot = await getDoc(requestRef);
+  const existingData = snapshot.exists() ? snapshot.data() : null;
+  const existingQuote = existingData?.quote;
+
   await updateDoc(requestRef, {
-    quote,
+    quote: {
+      version: 1,
+      items: quote.items,
+      
+      breakdown: {
+        productsTotal: quote.breakdown.productsTotal,
+        domesticShipping: quote.breakdown.domesticShipping,
+        internationalShipping: quote.breakdown.internationalShipping,
+        serviceFee: quote.breakdown.serviceFee,
+        grandTotal: quote.breakdown.grandTotal,
+      },
+
+      serviceFeeRule: quote.serviceFeeRule,
+      
+      // Keep original timestamp if updating, otherwise set fresh
+      createdAt: existingQuote?.createdAt || serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    
     status: "payment",
-    quoteCreatedAt:
-      serverTimestamp(),
-    updatedAt:
-      serverTimestamp(),
+    quoteCreatedAt: existingQuote?.quoteCreatedAt || serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
 };
 
@@ -565,3 +592,113 @@ export const subscribeToSupportMessages = (
     );
   });
 };
+
+/* =========================================
+   WAREHOUSE PROCESSING
+========================================= */
+
+export async function saveWarehouseMeasurements(
+  requestId: string,
+  data: {
+    weight: number;
+    length: number;
+    width: number;
+    height: number;
+  }
+) {
+  await updateDoc(doc(db, "requests", requestId), {
+    "warehouse.weight": data.weight,
+    "warehouse.length": data.length,
+    "warehouse.width": data.width,
+    "warehouse.height": data.height,
+
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function updateWarehouseChecklist(
+  requestId: string,
+  checklist: {
+    packageReceived?: boolean;
+    inspectionCompleted?: boolean;
+    photosUploaded?: boolean;
+    measured?: boolean;
+    readyForShipment?: boolean;
+  }
+) {
+  const updates: Record<string, any> = {};
+
+  Object.entries(checklist).forEach(([key, value]) => {
+    updates[`warehouse.checklist.${key}`] = value;
+  });
+
+  updates.updatedAt = serverTimestamp();
+
+  await updateDoc(
+    doc(db, "requests", requestId),
+    updates
+  );
+}
+
+export async function saveInspectionPhoto(
+  requestId: string,
+  photo: {
+    id: string;
+    url: string;
+    caption?: string;
+  }
+) {
+  await updateDoc(doc(db, "requests", requestId), {
+    "warehouse.inspectionPhotos": arrayUnion({
+      ...photo,
+      uploadedAt: serverTimestamp(),
+    }),
+
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function approveInternationalShipment(
+  requestId: string
+) {
+  await updateDoc(
+    doc(db, "requests", requestId),
+    {
+      status: "ready_for_international_shipping",
+
+      approvedAt: serverTimestamp(),
+
+      updatedAt: serverTimestamp(),
+    }
+  );
+}
+
+export async function startStorageTimer(
+  requestId: string
+) {
+  const now = Timestamp.now();
+
+  const freeUntil = Timestamp.fromMillis(
+    now.toMillis() +
+      48 * 60 * 60 * 1000
+  );
+
+  await updateDoc(
+    doc(db, "requests", requestId),
+    {
+      storage: {
+        startedAt: now,
+
+        freeUntil,
+
+        dailyFine: 3,
+
+        accumulatedFine: 0,
+
+        active: true,
+      },
+
+      updatedAt: serverTimestamp(),
+    }
+  );
+}

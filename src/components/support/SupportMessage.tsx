@@ -1,7 +1,9 @@
-import { SupportMessage } from "@/types/support";
+import type {
+  SupportMessage as SupportMessageType,
+} from "@/types/support";
 
 interface Props {
-  message: SupportMessage;
+  message: SupportMessageType;
 }
 
 export default function SupportMessage({

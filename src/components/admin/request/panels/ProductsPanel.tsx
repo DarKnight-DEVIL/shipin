@@ -1,7 +1,6 @@
 "use client";
 
-import { Request } from "@/types/request";
-
+import type { Request } from "@/types/request";
 import Section from "@/components/ui/Section";
 import ProductCard from "../ProductCard";
 
@@ -12,24 +11,30 @@ interface Props {
 export default function ProductsPanel({
   request,
 }: Props) {
+  const items = request.items || [];
+  console.log(request.items);
   return (
     <Section
       title="Products"
-      subtitle={`${request.items.length} item(s) in this request`}
+      subtitle={`${items.length} product${
+        items.length !== 1 ? "s" : ""
+      }`}
     >
-      {request.items.length === 0 ? (
-        <p className="text-slate-400">
-          No products found.
-        </p>
+      {items.length === 0 ? (
+        <div className="text-slate-400">
+          No products in this request.
+        </div>
       ) : (
         <div className="space-y-6">
-          {request.items.map((item, index) => (
-            <ProductCard
-              key={index}
-              item={item}
-              editable
-            />
-          ))}
+          {items.map(
+            (item, index) => (
+              <ProductCard
+                key={index}
+                item={item}
+                editable
+              />
+            )
+          )}
         </div>
       )}
     </Section>

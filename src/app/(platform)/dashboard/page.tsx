@@ -9,7 +9,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState({
     submitted: 0,
     review: 0,
-    payment: 0,
+    quoteReady: 0,
     shipped: 0,
   });
 
@@ -33,8 +33,8 @@ export default function DashboardPage() {
           (r: any) => r.status === "review"
         ).length,
 
-        payment: requests.filter(
-          (r: any) => r.status === "payment"
+        quoteReady: requests.filter(
+          (r: any) => r.status === "review"
         ).length,
 
         shipped: requests.filter(
@@ -90,7 +90,7 @@ export default function DashboardPage() {
           </h2>
 
           <p className="text-4xl font-bold mt-2 text-white">
-            {stats.payment}
+            {stats.quoteReady}
           </p>
         </div>
 

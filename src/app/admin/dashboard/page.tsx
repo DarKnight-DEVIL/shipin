@@ -9,7 +9,7 @@ export default function AdminDashboardPage() {
     total: 0,
     submitted: 0,
     review: 0,
-    payment: 0,
+    quoteReady: 0,
     shipped: 0,
   });
 
@@ -38,8 +38,8 @@ export default function AdminDashboardPage() {
             (r: any) => r.status === "review"
           ).length,
 
-          payment: requests.filter(
-            (r: any) => r.status === "payment"
+          quoteReady: requests.filter(
+            (r: any) => r.status === "review"
           ).length,
 
           shipped: requests.filter(
@@ -93,9 +93,9 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
-          <h2 className="text-slate-400">Awaiting Payment</h2>
+          <h2 className="text-slate-400">Quotes Ready</h2>
           <p className="text-4xl font-bold mt-2 text-white">
-            {stats.payment}
+            {stats.quoteReady}
           </p>
         </div>
 

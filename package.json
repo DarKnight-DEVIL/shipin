@@ -9,8 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@paypal/paypal-server-sdk": "^2.4.0",
-    "@paypal/react-paypal-js": "^10.1.1",
+    "@paypal/react-paypal-js": "^10.1.2",
+    "@react-pdf/renderer": "^4.5.1",
     "firebase": "^12.15.0",
     "lucide-react": "^1.23.0",
     "next": "16.2.10",
@@ -23,6 +23,7 @@
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.1",
+    "@types/paypal__checkout-server-sdk": "^1.0.8",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
