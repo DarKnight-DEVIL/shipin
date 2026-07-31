@@ -14,14 +14,14 @@ export default function SectionCard({
   children,
 }: Props) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-white">
+        <h2 className="text-2xl font-bold text-slate-950 dark:text-white">
           {title}
         </h2>
 
         {subtitle && (
-          <p className="text-slate-400 mt-2">
+          <p className="mt-2 text-slate-600 dark:text-slate-400">
             {subtitle}
           </p>
         )}

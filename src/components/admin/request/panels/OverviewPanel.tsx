@@ -42,8 +42,8 @@ export default function OverviewPanel({
           <InfoCard
             title="Quote"
             value={
-              request.quote?.breakdown.grandTotal
-                ? `$${request.quote.breakdown.grandTotal.toFixed(2)}`
+              typeof request.quote?.breakdown?.grandTotal === "number"
+                ? `$${request.quote.breakdown?.grandTotal.toFixed(2)}`
                 : "Pending"
             }
           />
@@ -111,6 +111,7 @@ export default function OverviewPanel({
 
         <div className="mt-8">
           <NextActionCard
+            requestId={request.id}
             status={request.status}
           />
         </div>

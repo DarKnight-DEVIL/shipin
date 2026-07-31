@@ -9,8 +9,8 @@ import ActionButton from "@/components/ui/ActionButton";
 import InvoicePreview from "@/components/invoice/InvoicePreview";
 import InvoicePDF from "@/components/invoice/InvoicePDF";
 
-import { saveDetailedQuote } from "@/lib/firestore";
-import { calculateServiceFee } from "@/utils/calculateServiceFee";
+import { calculateServiceFeeFromConfig } from "@/lib/quoteCalculator";
+import { buildInvoiceSummary } from "@/components/invoice/InvoiceSummary";
 
 interface Props {
   request: Request;
@@ -18,6 +18,9 @@ interface Props {
 
 export default function QuotePanel({ request }: Props) {
   const items = request.items || [];
+
+  // Initialize the central invoice summary structure
+  const invoice = buildInvoiceSummary(request);
 
   // Track if a quote already exists for editing/updating
   const existingQuote = request.quote;
@@ -41,10 +44,10 @@ export default function QuotePanel({ request }: Props) {
     "approval";
 
   const [domesticShipping, setDomesticShipping] = useState(
-    existingQuote?.breakdown.domesticShipping ?? 0
+    existingQuote?.breakdown?.domesticShipping ?? 0
   );
   const [internationalShipping, setInternationalShipping] = useState(
-    existingQuote?.breakdown.internationalShipping ?? 0
+    existingQuote?.breakdown?.internationalShipping ?? 0
   );
   
   const [saving, setSaving] = useState(false);
@@ -55,11 +58,10 @@ export default function QuotePanel({ request }: Props) {
     0
   );
 
-  const {
-    fee: serviceFee,
-    manualQuote,
-    rule,
-  } = calculateServiceFee(productsTotal);
+  // Global Config Driven Service Fee calculation reference
+  const serviceFee = calculateServiceFeeFromConfig(
+    request.serviceSelections
+  );
 
   // Step 2: Calculate inspectionFee and holdFee after totals are set
   const inspectionFee =
@@ -71,31 +73,18 @@ export default function QuotePanel({ request }: Props) {
       ? 5
       : 0;
 
-  // Step 3: Updated grandTotal calculation
+  // Step 3 & 4: Safe explicit typecast formatting grandTotal calculation
   const grandTotal =
-    productsTotal +
-    domesticShipping +
-    internationalShipping +
-    serviceFee +
-    inspectionFee +
-    holdFee;
+    Number(productsTotal) +
+    Number(domesticShipping) +
+    Number(internationalShipping) +
+    Number(serviceFee) +
+    Number(inspectionFee) +
+    Number(holdFee);
 
   async function downloadInvoice() {
     const blob = await pdf(
-      <InvoicePDF
-        invoice={{
-          id: request.id,
-          items: products.map((item) => ({
-            ...item,
-            subtotal: item.quantity * (item.unitPrice || 0),
-          })),
-          productsTotal,
-          domesticShipping,
-          internationalShipping,
-          serviceFee,
-          grandTotal,
-        }}
-      />
+      <InvoicePDF invoice={invoice} />
     ).toBlob();
 
     const url = URL.createObjectURL(blob);
@@ -110,15 +99,17 @@ export default function QuotePanel({ request }: Props) {
     setSaving(true);
 
     try {
-      await saveDetailedQuote(request.id, {
+      const quote = {
         version: 1,
 
         items: products.map((item: any) => ({
           ...item,
-          subtotal: item.quantity * (item.unitPrice || 0),
+
+          subtotal:
+            item.quantity *
+            (item.unitPrice || 0),
         })),
 
-        // Step 4: Include extra fees in the saved database breakdown
         breakdown: {
           productsTotal,
           domesticShipping,
@@ -129,16 +120,66 @@ export default function QuotePanel({ request }: Props) {
           grandTotal,
         },
 
-        serviceFeeRule: rule,
-      });
+        createdAt: new Date(),
 
-      alert("Quote saved successfully!");
+        expiresAt: new Date(
+          Date.now() +
+            24 * 60 * 60 * 1000
+        ),
+
+        acceptedAt: null,
+
+        regeneratedCount: 0,
+
+        expired: false,
+      };
+
+      const response = await fetch(
+        `/api/requests/${request.id}/quote`,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            quote,
+          }),
+        }
+      );
+
+      const data =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            "Failed to save quote."
+        );
+      }
+
+      alert(
+        "Quote saved successfully!"
+      );
     } catch (error) {
-      console.error(error);
-      alert("Failed to save quote.");
-    }
+      console.error(
+        "Save quote failed:",
+        error
+      );
 
-    setSaving(false);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to save quote."
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -217,6 +258,33 @@ export default function QuotePanel({ request }: Props) {
               label="Products Total"
               value={productsTotal}
             />
+            
+            {/* Step 5: Inline Custom Selection Structural Elements added */}
+            <div className="flex justify-between text-slate-400 text-sm">
+              <span>Sidebar - Inspection</span>
+              <span>
+                $
+                {request.serviceSelections?.inspection === "detailed"
+                  ? 5
+                  : 0}
+              </span>
+            </div>
+
+            <div className="flex justify-between text-slate-400 text-sm">
+              <span>Hold Package</span>
+              <span>
+                $
+                {request.serviceSelections?.shippingPreference === "hold"
+                  ? 5
+                  : 0}
+              </span>
+            </div>
+
+            <div className="flex justify-between font-semibold text-white">
+              <span>Service Fees</span>
+              <span>${serviceFee}</span>
+            </div>
+
             <SummaryRow
               label="Domestic Shipping"
               value={domesticShipping}
@@ -225,12 +293,7 @@ export default function QuotePanel({ request }: Props) {
               label="International Shipping"
               value={internationalShipping}
             />
-            <SummaryRow
-              label={`Service Fee (${rule})`}
-              value={serviceFee}
-            />
 
-            {/* Step 5: Render additional fee breakdown elements dynamically before Grand Total */}
             {inspectionFee > 0 && (
               <SummaryRow
                 label="Detailed Inspection"
@@ -261,39 +324,26 @@ export default function QuotePanel({ request }: Props) {
           <div className="flex gap-3 mt-8">
             <ActionButton
               loading={saving}
-              disabled={manualQuote}
               onClick={saveQuote}
               className="flex-1"
             >
-              {manualQuote ? "Manual Quote Required" : "💾 Save"}
+              {request.quote?.regenerationRequested
+                ? "Generate New Quote"
+                : "Save Quote"}
             </ActionButton>
 
             <ActionButton
               variant="secondary"
-              disabled={manualQuote}
               onClick={downloadInvoice}
               className="flex-1"
             >
-              {manualQuote ? "Unavailable" : "📄 Download Invoice"}
+              📄 Download Invoice
             </ActionButton>
           </div>
         </div>
 
         {/* RIGHT */}
-        <InvoicePreview
-          invoice={{
-            id: request.id.slice(0, 8),
-            items: products.map((item) => ({
-              ...item,
-              subtotal: item.quantity * (item.unitPrice || 0),
-            })),
-            productsTotal,
-            domesticShipping,
-            internationalShipping,
-            serviceFee,
-            grandTotal,
-          }}
-        />
+        <InvoicePreview invoice={invoice} />
 
       </div>
     </Section>

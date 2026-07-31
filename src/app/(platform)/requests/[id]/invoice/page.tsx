@@ -10,6 +10,10 @@ import InvoicePreview from "@/components/invoice/InvoicePreview";
 import PayPalCheckout from "@/components/payment/PayPalCheckout";
 import ApprovalCard from "@/components/request/ApprovalCard";
 
+import {
+  buildInvoiceSummary,
+} from "@/components/invoice/InvoiceSummary";
+
 export default function InvoicePage() {
   const { id } = useParams();
 
@@ -39,6 +43,9 @@ export default function InvoicePage() {
     );
   }
 
+  // Generate the unified invoice summary layout object
+  const invoice = buildInvoiceSummary(request);
+
   // Step 1: Extract service selections safely after loading the request
   const inspection =
     request.serviceSelections?.inspection ?? "standard";
@@ -55,13 +62,7 @@ export default function InvoicePage() {
     <div className="max-w-6xl mx-auto p-8 space-y-8">
 
       <InvoicePreview
-        invoice={{
-          id: request.id.slice(0, 8),
-          ...request.quote,
-          email: request.email,
-          customerName: request.name,
-          requestId: request.id,
-        }}
+        invoice={invoice}
       />
 
       {/* Step 4: Add a heading if any extra fees apply */}

@@ -4,25 +4,46 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, updateDoc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+
 import SupportCenter from "@/components/support/SupportCenter";
 import { canCreateSupportTicket } from "@/lib/support";
+
 import RequestHeader from "@/components/request/RequestHeader";
 import RequestTimeline from "@/components/request/RequestTimeline";
-import TrackingCard from "@/components/request/TrackingCard";
 import ProductsCard from "@/components/request/ProductsCard";
 import QuoteCard from "@/components/request/QuoteCard";
 import PaymentCard from "@/components/request/PaymentCard";
+import AddItemRequest from "@/components/request/AddItemRequest";
+import AdditionalItemPaymentsCard from "@/components/request/AdditionalItemPaymentsCard";
+
+import QuoteCountdown from "@/components/request/QuoteCountdown";
+import { isQuoteExpired } from "@/lib/quoteExpiry";
+
 import type { Request } from "@/types/request";
 
 export default function RequestDetailsPage() {
   const params = useParams();
   const router = useRouter();
+
   const requestId = params.id as string;
 
   const [request, setRequest] = useState<Request | null>(null);
   const [loading, setLoading] = useState(true);
   const [approving, setApproving] = useState(false);
 
+  /*
+   * LIVE FIRESTORE LISTENER
+   *
+   * This means we do NOT need to reload the page
+   * after an additional-item payment.
+   *
+   * When the PayPal capture API updates Firestore:
+   *
+   * awaiting_payment → paid
+   *
+   * onSnapshot receives the updated request
+   * automatically and React re-renders the page.
+   */
   useEffect(() => {
     if (!requestId) return;
 
@@ -42,7 +63,7 @@ export default function RequestDetailsPage() {
         setLoading(false);
       },
       (error) => {
-        console.error(error);
+        console.error("Request snapshot error:", error);
         setLoading(false);
       }
     );
@@ -50,6 +71,9 @@ export default function RequestDetailsPage() {
     return () => unsubscribe();
   }, [requestId]);
 
+  /*
+   * MAIN QUOTE APPROVAL
+   */
   const handleApproveQuote = async () => {
     if (!requestId) return;
 
@@ -75,43 +99,120 @@ export default function RequestDetailsPage() {
     }
   };
 
+  /*
+   * LOADING
+   */
   if (loading) {
-    return <div className="p-8 text-white">Loading request...</div>;
+    return <div className="p-8 text-slate-700 dark:text-slate-300">Loading request...</div>;
   }
 
+  /*
+   * REQUEST NOT FOUND
+   */
   if (!request) {
-    return <div className="p-8 text-white">Request not found.</div>;
+    return <div className="p-8 text-slate-700 dark:text-slate-300">Request not found.</div>;
   }
+
+  /*
+   * QUOTE EXPIRATION
+   */
+  const quoteExpired = isQuoteExpired(request.quote?.expiresAt);
 
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-8">
-      
-      {/* Upgraded Native Modular Header */}
+      {/* REQUEST HEADER */}
       <RequestHeader request={request} />
 
-      {/* Integrated Modular Request Timeline Component */}
-      <RequestTimeline status={request.status} />
-
-      {/* Integrated Modular Tracking Card Component */}
-      <TrackingCard tracking={request.tracking} />
-
-      {/* Integrated Modular Products Card Component */}
-      <ProductsCard
-        items={request.items || []}
-        quote={request.quote}
+      {/* REQUEST TIMELINE */}
+      <RequestTimeline 
+        status={request.status}
+        history={request.statusHistory}
+        orderChange={request.orderChange}
       />
 
-      {/* Integrated Modular Quote Breakdown Card Component */}
-      <QuoteCard quote={request.quote} />
+      {/* SHIPMENT TRACKING */}
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
+          Shipment
+        </h2>
 
-      {/* Integrated Modular Payment Actions Card Component */}
+        {request.tracking?.internalTrackingId ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
+            <p className="text-sm text-slate-400">ShipIN Tracking ID</p>
+            <p className="mt-1 text-lg font-semibold text-slate-950 dark:text-white">
+              {request.tracking.internalTrackingId}
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Use this tracking ID to track your shipment on ShipIN.
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Your shipment has not been dispatched yet.
+          </p>
+        )}
+      </section>
+
+      {/* ORIGINAL PRODUCTS */}
+      <ProductsCard request={request} />
+
+      {/* ADD ITEM REQUEST */}
+      <AddItemRequest request={request} />
+
+      {/* ADDITIONAL ITEM PAYMENTS */}
+      <AdditionalItemPaymentsCard
+        requestId={request.id}
+        additionalItemRequests={request.additionalItemRequests || []}
+      />
+
+      {/* MAIN QUOTE */}
+      <QuoteCard request={request} />
+
+      {/* QUOTE COUNTDOWN */}
+      {request.quote?.expiresAt && request.status === "review" && (
+        <QuoteCountdown expiresAt={request.quote.expiresAt} />
+      )}
+
+      {/* MAIN PAYMENT ACTIONS */}
       <PaymentCard
         request={request}
         onApproveQuote={handleApproveQuote}
         approving={approving}
       />
 
-      {/* Support Module */}
+      {/* QUOTE EXPIRED BANNER */}
+      {quoteExpired &&
+        (request.status === "review" || request.status === "awaiting_payment") && (
+          <div className="mt-6 bg-red-500/10 border border-red-500/20 rounded-xl p-5">
+            <h2 className="text-red-400 font-semibold">Quote Expired</h2>
+            <p className="mt-2 text-slate-600 dark:text-slate-400">
+              This quote has expired and can no longer be used for payment.
+              Please request a new quote.
+            </p>
+          </div>
+        )}
+
+      {/* INSPECTION PHOTOS */}
+      {request.warehouse?.inspectionPhotos &&
+        request.warehouse.inspectionPhotos.length > 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
+            <h2 className="mb-5 text-xl font-semibold text-slate-950 dark:text-white">
+              Inspection Photos
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {request.warehouse.inspectionPhotos.map((photo) => (
+                <img
+                  key={photo}
+                  src={photo}
+                  alt="Inspection"
+                  className="rounded-xl border border-slate-200 dark:border-slate-700 w-full object-cover aspect-video"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+      {/* SUPPORT */}
       <SupportCenter
         requestId={request.id}
         customerId={request.userId}

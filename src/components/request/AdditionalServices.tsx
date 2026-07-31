@@ -31,7 +31,7 @@ export default function AdditionalServices({
       <div className="space-y-8">
 
         <div>
-          <h3 className="text-xl font-semibold text-white mb-4">
+          <h3 className="mb-4 text-xl font-semibold text-slate-950 dark:text-white">
             📦 Inspection
           </h3>
 
@@ -83,7 +83,7 @@ export default function AdditionalServices({
         </div>
 
         <div>
-          <h3 className="text-xl font-semibold text-white mb-4">
+          <h3 className="mb-4 text-xl font-semibold text-slate-950 dark:text-white">
             🚚 Shipping Preference
           </h3>
 

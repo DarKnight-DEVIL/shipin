@@ -1,103 +1,216 @@
 "use client";
 
+import { useState } from "react";
+import {
+  doc,
+  serverTimestamp,
+  updateDoc,
+} from "firebase/firestore";
+
+import { db } from "@/lib/firebase";
 import ActionButton from "@/components/ui/ActionButton";
+import type { RequestStatus } from "@/lib/requestStatus";
 
 interface Props {
-  status: string;
+  requestId: string;
+  status: RequestStatus;
+}
+
+interface ActionConfig {
+  title: string;
+  button?: string;
+  nextStatus?: RequestStatus;
 }
 
 export default function NextActionCard({
+  requestId,
   status,
 }: Props) {
+  const [updating, setUpdating] =
+    useState(false);
 
-  const actions: Record<
-    string,
-    {
-      title: string;
-      button?: string;
-    }
+  /*
+   * ADMIN WORKFLOW
+   *
+   * IMPORTANT:
+   * Payment-controlled statuses are NOT
+   * manually advanced from this component.
+   */
+  const actions: Partial<
+    Record<RequestStatus, ActionConfig>
   > = {
-
     submitted: {
       title: "Generate Quote",
-      button: "Create Quote",
     },
 
     review: {
       title:
-        "Waiting for customer payment",
+        "Waiting for customer to accept the quote.",
+    },
+
+    awaiting_payment: {
+      title:
+        "Waiting for customer payment. This status will update automatically after successful payment.",
     },
 
     paid: {
       title: "Purchase Items",
       button: "Mark Purchased",
+      nextStatus: "purchased",
     },
 
     purchased: {
       title:
-        "Waiting for warehouse arrival",
+        "Waiting for the purchased items to arrive at the warehouse.",
     },
 
     warehouse_received: {
-      title: "Pack Shipment",
+      title: "Prepare and pack the shipment.",
       button: "Mark Packed",
+      nextStatus: "packed",
+    },
+
+    ready_for_international_shipping: {
+      title:
+        "Package is ready for international shipping.",
+      button: "Mark Packed",
+      nextStatus: "packed",
     },
 
     packed: {
-      title: "Create Shipment",
-      button: "Create Shipment",
+      title:
+        "Create the shipment and add tracking information.",
     },
 
     shipped: {
       title:
-        "Waiting for delivery",
+        "Shipment is in transit. Waiting for delivery.",
+    },
+
+    out_for_delivery: {
+      title:
+        "Shipment is out for delivery.",
     },
 
     delivered: {
       title:
-        "Support Window Active",
+        "Shipment delivered. Support window is active.",
     },
 
     refunded: {
-      title:
-        "Request Completed",
+      title: "Request refunded.",
     },
-
   };
 
-  const action =
-    actions[status];
+  const action = actions[status];
+
+  async function handleNextAction() {
+    if (
+      !action?.nextStatus ||
+      updating
+    ) {
+      return;
+    }
+
+    /*
+     * Extra protection:
+     *
+     * Never allow this button to manually
+     * change awaiting_payment → paid.
+     *
+     * The PayPal capture API owns that
+     * transition.
+     */
+    if (
+      status === "awaiting_payment"
+    ) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Change request status from "${status}" to "${action.nextStatus}"?`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setUpdating(true);
+
+      const requestRef = doc(
+        db,
+        "requests",
+        requestId
+      );
+
+      await updateDoc(
+        requestRef,
+        {
+          status:
+            action.nextStatus,
+
+          /*
+           * Record when this status
+           * was reached.
+           */
+          [`statusHistory.${action.nextStatus}`]:
+            serverTimestamp(),
+
+          updatedAt:
+            serverTimestamp(),
+        }
+      );
+
+      /*
+       * No reload needed.
+       *
+       * Your admin page should receive
+       * the Firestore update through
+       * its live listener.
+       */
+    } catch (error) {
+      console.error(
+        "Failed to update request status:",
+        error
+      );
+
+      alert(
+        "Unable to update the request status."
+      );
+    } finally {
+      setUpdating(false);
+    }
+  }
 
   return (
-
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
 
       <h2 className="text-xl font-bold text-white">
-
         Next Action
-
       </h2>
 
       <p className="text-slate-400 mt-4">
-
-        {action?.title}
-
+        {action?.title ??
+          "No action available for this status."}
       </p>
 
-      {action?.button && (
-
-        <ActionButton
-          className="mt-6 w-full"
-        >
-
-          {action.button}
-
-        </ActionButton>
-
-      )}
+      {action?.button &&
+        action.nextStatus && (
+          <ActionButton
+            className="mt-6 w-full"
+            onClick={
+              handleNextAction
+            }
+            loading={
+              updating
+            }
+          >
+            {action.button}
+          </ActionButton>
+        )}
 
     </div>
-
   );
-
 }

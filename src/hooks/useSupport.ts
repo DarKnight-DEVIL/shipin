@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 
 import {
   createSupportTicket,
-  sendSupportMessage,
   resolveSupportTicket,
   subscribeToSupportMessages,
   subscribeToSupportTickets,
@@ -88,7 +87,36 @@ export default function useSupport(requestId: string, isAdmin: boolean = false) 
     },
 
     sendMessage: async (data: any) => {
-      return await sendSupportMessage(data);
+      const response = await fetch(
+        `/api/support/${data.ticketId}/message`,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+          },
+
+          body: JSON.stringify({
+            sender: data.sender,
+            message: data.message,
+          }),
+        }
+      );
+
+      const result =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.error ||
+            "Unable to send support message."
+        );
+      }
+
+      return result;
     },
 
     resolveTicket: resolveSupportTicket,

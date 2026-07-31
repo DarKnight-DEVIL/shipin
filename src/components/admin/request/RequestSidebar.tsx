@@ -8,6 +8,7 @@ import {
   Truck,
   MessageSquare,
   Clock3,
+  Boxes,
 } from "lucide-react";
 
 interface Props {
@@ -43,6 +44,11 @@ const sections = [
     icon: Truck,
   },
   {
+    key: "Consolidation",
+    label: "Consolidation",
+    icon: Boxes,
+  },
+  {
     key: "Support",
     label: "Support",
     icon: MessageSquare,
@@ -61,6 +67,19 @@ export default function RequestSidebar({
 }: Props) {
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+
+      {request.quote?.regenerationRequested && (
+        <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <p className="font-semibold text-amber-400">
+            ⚠ Customer requested a new quote
+          </p>
+
+          <p className="text-sm text-slate-400 mt-2">
+            The previous quote expired. Generate and save a
+            new quote to restart the 24-hour timer.
+          </p>
+        </div>
+      )}
 
       <div className="mb-6 border-b border-slate-800 pb-4">
         <p className="text-xs text-slate-500 uppercase">

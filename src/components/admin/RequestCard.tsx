@@ -59,8 +59,8 @@ export default function RequestCard({
 
             <span className="text-green-400">
 
-              {request.quote
-                ? `$${request.quote.grandTotal.toFixed(2)}`
+              {typeof request.quote?.breakdown?.grandTotal === "number"
+                ? `$${request.quote.breakdown?.grandTotal.toFixed(2)}`
                 : "Pending"}
 
             </span>

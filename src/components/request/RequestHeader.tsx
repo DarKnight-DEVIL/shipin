@@ -7,27 +7,39 @@ interface Props {
   request: Request;
 }
 
-export default function RequestHeader({ request }: Props) {
+export default function RequestHeader({
+  request,
+}: Props) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-      <div className="flex justify-between items-start">
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-white">
-            Request #{request.id.slice(0, 6)}
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            Purchase Request
+          </p>
+
+          <h1 className="text-4xl font-bold text-slate-950 dark:text-white">
+            Request #
+            {request.id
+              .slice(0, 6)
+              .toUpperCase()}
           </h1>
 
-          <p className="text-slate-400 mt-2">
+          <p className="mt-2 text-slate-600 dark:text-slate-400">
             {request.email}
           </p>
 
-          <p className="text-slate-500 text-sm mt-1">
+          <p className="mt-1 text-sm text-slate-500">
             Submitted on{" "}
-            {request.createdAt?.toDate?.().toLocaleDateString() || "N/A"}
+            {request.createdAt
+              ?.toDate?.()
+              .toLocaleDateString()}
           </p>
         </div>
 
-        {/* Explicitly fallback or typecast if StatusBadge variant doesn't strictly match the union */}
-        <StatusBadge status={request.status as any} />
+        <StatusBadge
+          status={request.status}
+        />
       </div>
     </div>
   );

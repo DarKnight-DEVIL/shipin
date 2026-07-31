@@ -11,7 +11,7 @@ export default function ReplyBox({
   value,
   onChange,
   onSend,
-  disabled,
+  disabled = false,
 }: Props) {
   return (
     <div className="space-y-3">
@@ -23,7 +23,7 @@ export default function ReplyBox({
           onChange(e.target.value)
         }
         rows={4}
-        className="w-full bg-slate-950 border border-slate-700 rounded-xl p-4"
+        className="w-full resize-none rounded-xl border border-slate-300 bg-white p-4 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-600 dark:disabled:bg-slate-900 dark:disabled:text-slate-500"
         placeholder={
           disabled
             ? "Conversation closed."
@@ -33,12 +33,15 @@ export default function ReplyBox({
 
       {!disabled && (
         <button
+          type="button"
           onClick={onSend}
-          className="bg-purple-600 hover:bg-purple-700 px-5 py-2 rounded-xl"
+          disabled={!value.trim()}
+          className="rounded-xl bg-purple-600 px-5 py-2 font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Send
         </button>
       )}
+
     </div>
   );
 }

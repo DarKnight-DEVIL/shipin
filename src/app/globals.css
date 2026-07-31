@@ -1,8 +1,19 @@
 @import "tailwindcss";
 
+/*
+ * Make Tailwind's dark: utilities respond
+ * to the .dark class added by next-themes.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 @theme inline {
@@ -12,15 +23,41 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ========================================
+   PHONE NUMBER INPUT
+======================================== */
+
+.shipin-phone-input .PhoneInputInput {
+  background: transparent;
+  color: inherit;
+  border: none;
+  outline: none;
+  min-width: 0;
+}
+
+.shipin-phone-input .PhoneInputInput::placeholder {
+  color: #94a3b8;
+}
+
+.dark .shipin-phone-input .PhoneInputInput::placeholder {
+  color: #475569;
+}
+
+.shipin-phone-input .PhoneInputCountry {
+  margin-right: 0.75rem;
+}
+
+.shipin-phone-input .PhoneInputCountrySelect {
+  color: inherit;
+}
+
+.shipin-phone-input .PhoneInputCountrySelectArrow {
+  color: currentColor;
+  opacity: 0.6;
 }

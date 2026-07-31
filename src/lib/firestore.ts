@@ -8,14 +8,23 @@ import {
   orderBy,
   serverTimestamp,
   updateDoc,
+  deleteDoc,
   doc,
   onSnapshot,
   Timestamp,
   arrayUnion,
+  writeBatch,
 } from "firebase/firestore";
 
 import { db } from "./firebase";
 import type { Request, Quote } from "@/types/request";
+// Fix 1: Added explicit type import for Address
+import type { Address } from "@/types/address";
+import type { Carrier } from "@/types/carrier";
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  type NotificationPreferences,
+} from "@/types/notificationPreferences";
 
 /* =========================================
    ADDRESSES
@@ -32,9 +41,10 @@ export const addAddress = async (
   });
 };
 
+// Fix 2: Replaced getAddresses with strongly-typed map implementation
 export const getAddresses = async (
   userId: string
-) => {
+): Promise<Address[]> => {
   const q = query(
     collection(db, "addresses"),
     where("userId", "==", userId)
@@ -42,10 +52,13 @@ export const getAddresses = async (
 
   const snapshot = await getDocs(q);
 
-  return snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  }));
+  return snapshot.docs.map(
+    (doc) =>
+      ({
+        id: doc.id,
+        ...(doc.data() as Omit<Address, "id">),
+      }) as Address
+  );
 };
 
 /* =========================================
@@ -63,7 +76,10 @@ export const addRequest = async (
     email: requestData.email,
 
     items: requestData.items,
-    addressId: requestData.addressId,
+    
+    // Updated: addressId deleted, shippingAddress object field added instead
+    shippingAddress: requestData.shippingAddress,
+    
     notes: requestData.notes,
 
     serviceSelections: {
@@ -86,7 +102,7 @@ export const addRequest = async (
 
 export const getRequests = async (
   userId: string
-) => {
+): Promise<Request[]> => {
   const q = query(
     collection(db, "requests"),
     where("userId", "==", userId)
@@ -94,10 +110,10 @@ export const getRequests = async (
 
   const snapshot = await getDocs(q);
 
-  return snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  }));
+  return snapshot.docs.map((document) => ({
+    id: document.id,
+    ...document.data(),
+  })) as Request[];
 };
 
 export const getRequestById = async (
@@ -151,31 +167,54 @@ export const saveDetailedQuote = async (
   const snapshot = await getDoc(requestRef);
   const existingData = snapshot.exists() ? snapshot.data() : null;
   const existingQuote = existingData?.quote;
+  const userId = existingData?.userId;
 
   await updateDoc(requestRef, {
     quote: {
-      version: 1,
+      version: existingQuote?.version
+        ? existingQuote.version + 1
+        : 1,
+
       items: quote.items,
       
       breakdown: {
-        productsTotal: quote.breakdown.productsTotal,
-        domesticShipping: quote.breakdown.domesticShipping,
-        internationalShipping: quote.breakdown.internationalShipping,
-        serviceFee: quote.breakdown.serviceFee,
-        grandTotal: quote.breakdown.grandTotal,
+        productsTotal: quote.breakdown?.productsTotal,
+        domesticShipping: quote.breakdown?.domesticShipping,
+        internationalShipping: quote.breakdown?.internationalShipping,
+        serviceFee: quote.breakdown?.serviceFee,
+        grandTotal: quote.breakdown?.grandTotal,
       },
 
       serviceFeeRule: quote.serviceFeeRule,
       
-      // Keep original timestamp if updating, otherwise set fresh
-      createdAt: existingQuote?.createdAt || serverTimestamp(),
+      createdAt:
+        existingQuote?.createdAt ??
+        serverTimestamp(),
+
       updatedAt: serverTimestamp(),
+
+      expiresAt: Timestamp.fromMillis(
+        Date.now() + 24 * 60 * 60 * 1000
+      ),
+
+      acceptedAt: null,
+
+      regenerationRequested: false,
+
+      regeneratedCount:
+        (existingQuote?.regeneratedCount ?? 0) + 1,
+
+      expired: false,
     },
     
-    status: "payment",
+    status: "review",
     quoteCreatedAt: existingQuote?.quoteCreatedAt || serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+
+  if (userId) {
+    await createNotification(userId, requestId, "Quote Ready", "Your quote has been generated.", "quote");
+  }
 };
 
 /* =========================================
@@ -196,6 +235,9 @@ export const markRequestPaid = async (
     requestId
   );
 
+  const snapshot = await getDoc(requestRef);
+  const userId = snapshot.exists() ? snapshot.data()?.userId : null;
+
   await updateDoc(requestRef, {
     status: "paid",
 
@@ -215,6 +257,10 @@ export const markRequestPaid = async (
     updatedAt:
       serverTimestamp(),
   });
+
+  if (userId) {
+    await createNotification(userId, requestId, "Payment Received", "Your payment has been successfully recorded.", "payment");
+  }
 };
 
 /* =========================================
@@ -224,10 +270,12 @@ export const markRequestPaid = async (
 export const saveShipmentDetails = async (
   requestId: string,
   shipment: {
-    carrier: string;
+    internalTrackingId: string;
+    carrier: Carrier;
     trackingNumber: string;
     estimatedDelivery: string;
     trackingUrl: string;
+    createdAt: Timestamp;
   }
 ) => {
   const requestRef = doc(
@@ -238,14 +286,23 @@ export const saveShipmentDetails = async (
 
   await updateDoc(requestRef, {
     tracking: {
+      internalTrackingId:
+        shipment.internalTrackingId,
+
       carrier:
         shipment.carrier,
+
       trackingNumber:
         shipment.trackingNumber,
+
       estimatedDelivery:
         shipment.estimatedDelivery,
+
       trackingUrl:
         shipment.trackingUrl,
+
+      createdAt:
+        shipment.createdAt,
     },
 
     updatedAt:
@@ -257,27 +314,30 @@ export const updateShipmentStatus = async (
   requestId: string,
   status: string
 ) => {
-  const requestRef = doc(
-    db,
-    "requests",
-    requestId
-  );
+  const requestRef = doc(db, "requests", requestId);
+  const snapshot = await getDoc(requestRef);
+  const userId = snapshot.exists() ? snapshot.data()?.userId : null;
 
-  const updateData: any = {
+  await updateDoc(requestRef, {
     status,
+
+    [`statusHistory.${status}`]:
+      serverTimestamp(),
+
     updatedAt: serverTimestamp(),
-  };
+  });
 
-  if (status === "delivered") {
-    updateData.deliveredAt =
-      serverTimestamp();
+  if (userId) {
+    if (status === "shipped") {
+      await createNotification(userId, requestId, "Package Shipped", "Your package has left the warehouse.", "shipping");
+    } else if (status === "delivered") {
+      await createNotification(userId, requestId, "Delivered", "Your package has been safely delivered.", "shipping");
+    }
   }
-
-  await updateDoc(requestRef, updateData);
 };
 
 /* =========================================
-   ADMIN FUNCTIONS
+   ADMIN FUNCTIONS & NOTIFICATIONS
 ========================================= */
 
 export const getAllRequests = async () => {
@@ -306,6 +366,77 @@ export const getRequestsByStatus = async (
     ...doc.data(),
   }));
 };
+
+/* =========================================
+   NOTIFICATION PREFERENCES
+========================================= */
+
+export async function getNotificationPreferences(
+  userId: string
+): Promise<NotificationPreferences> {
+  const userRef = doc(
+    db,
+    "users",
+    userId
+  );
+
+  const snapshot =
+    await getDoc(userRef);
+
+  if (!snapshot.exists()) {
+    return DEFAULT_NOTIFICATION_PREFERENCES;
+  }
+
+  const saved =
+    snapshot.data()
+      ?.preferences
+      ?.notifications;
+
+  if (!saved) {
+    return DEFAULT_NOTIFICATION_PREFERENCES;
+  }
+
+  /*
+   * Merge with defaults so future
+   * preference fields don't break
+   * existing users.
+   */
+  return {
+    channels: {
+      ...DEFAULT_NOTIFICATION_PREFERENCES.channels,
+      ...(saved.channels ?? {}),
+    },
+
+    whatsapp: {
+      ...DEFAULT_NOTIFICATION_PREFERENCES.whatsapp,
+      ...(saved.whatsapp ?? {}),
+    },
+
+    categories: {
+      ...DEFAULT_NOTIFICATION_PREFERENCES.categories,
+      ...(saved.categories ?? {}),
+    },
+  };
+}
+
+export async function saveNotificationPreferences(
+  userId: string,
+  preferences: NotificationPreferences
+) {
+  const userRef = doc(
+    db,
+    "users",
+    userId
+  );
+
+  await updateDoc(userRef, {
+    "preferences.notifications":
+      preferences,
+
+    preferencesUpdatedAt:
+      serverTimestamp(),
+  });
+}
 
 export const createNotification = async (
   userId: string,
@@ -357,6 +488,71 @@ export const markNotificationRead = async (
     read: true,
   });
 };
+
+/*
+ * Delete one notification
+ */
+export async function deleteNotification(
+  notificationId: string
+) {
+  await deleteDoc(
+    doc(db, "notifications", notificationId)
+  );
+}
+
+/*
+ * Mark all notifications as read for a user
+ */
+export async function markAllNotificationsRead(
+  userId: string
+) {
+  const snapshot = await getDocs(
+    collection(db, "notifications")
+  );
+
+  const batch = writeBatch(db);
+
+  snapshot.docs.forEach((notificationDoc) => {
+    const data = notificationDoc.data();
+
+    if (
+      data.userId === userId &&
+      data.read !== true
+    ) {
+      batch.update(notificationDoc.ref, {
+        read: true,
+      });
+    }
+  });
+
+  await batch.commit();
+}
+
+/*
+ * Delete all READ notifications for a user
+ */
+export async function clearReadNotifications(
+  userId: string
+) {
+  const snapshot = await getDocs(
+    collection(db, "notifications")
+  );
+
+  const batch = writeBatch(db);
+
+  snapshot.docs.forEach((notificationDoc) => {
+    const data = notificationDoc.data();
+
+    if (
+      data.userId === userId &&
+      data.read === true
+    ) {
+      batch.delete(notificationDoc.ref);
+    }
+  });
+
+  await batch.commit();
+}
 
 /* =========================================
    REALTIME LISTENERS
@@ -626,6 +822,10 @@ export async function updateWarehouseChecklist(
     readyForShipment?: boolean;
   }
 ) {
+  const requestRef = doc(db, "requests", requestId);
+  const snapshot = await getDoc(requestRef);
+  const userId = snapshot.exists() ? snapshot.data()?.userId : null;
+
   const updates: Record<string, any> = {};
 
   Object.entries(checklist).forEach(([key, value]) => {
@@ -635,9 +835,13 @@ export async function updateWarehouseChecklist(
   updates.updatedAt = serverTimestamp();
 
   await updateDoc(
-    doc(db, "requests", requestId),
+    requestRef,
     updates
   );
+
+  if (userId && checklist.packageReceived === true) {
+    await createNotification(userId, requestId, "Package Arrived", "Your package has been checked into our warehouse.", "warehouse");
+  }
 }
 
 export async function saveInspectionPhoto(
@@ -656,6 +860,30 @@ export async function saveInspectionPhoto(
 
     updatedAt: serverTimestamp(),
   });
+}
+
+export async function saveInspectionPhotos(
+  requestId: string,
+  photos: string[]
+) {
+  const requestRef = doc(db, "requests", requestId);
+  const snapshot = await getDoc(requestRef);
+  const userId = snapshot.exists() ? snapshot.data()?.userId : null;
+
+  await updateDoc(
+    requestRef,
+    {
+      warehouse: {
+        inspectionPhotos: photos,
+      },
+
+      updatedAt: serverTimestamp(),
+    }
+  );
+
+  if (userId) {
+    await createNotification(userId, requestId, "Inspection Complete", "Your warehouse inspection items and photos are available.", "warehouse");
+  }
 }
 
 export async function approveInternationalShipment(
@@ -701,4 +929,34 @@ export async function startStorageTimer(
       updatedAt: serverTimestamp(),
     }
   );
+}
+
+/* =========================================
+   SAVE WAREHOUSE INSPECTION
+========================================= */
+
+export async function saveWarehouseInspection(
+  requestId: string,
+  data: {
+    weight: number;
+    length: number;
+    width: number;
+    height: number;
+    condition: string;
+  }
+) {
+  const requestRef = doc(
+    db,
+    "requests",
+    requestId
+  );
+
+  await updateDoc(requestRef, {
+    "warehouse.weight": data.weight,
+    "warehouse.length": data.length,
+    "warehouse.width": data.width,
+    "warehouse.height": data.height,
+    "warehouse.condition": data.condition,
+    updatedAt: serverTimestamp(),
+  });
 }

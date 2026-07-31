@@ -1,37 +1,116 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
 import { auth } from "@/lib/firebase";
-import { addAddress, getAddresses } from "@/lib/firestore";
+import {
+  addAddress,
+  getAddresses,
+  updateAddress,
+} from "@/lib/addressBook";
+
+import AddressCard from "@/components/address/AddressCard";
+import AddressForm from "@/components/address/AddressForm";
+import Modal from "@/components/ui/Modal";
+
+import type { Address } from "@/types/address";
 
 export default function AddressesPage() {
-  const [addresses, setAddresses] = useState<any[]>([]);
-  const [showModal, setShowModal] = useState(false);
+  const [addresses, setAddresses] =
+    useState<Address[]>([]);
 
-  const [newAddress, setNewAddress] = useState({
-    country: "",
-    firstName: "",
-    lastName: "",
-    address1: "",
-    address2: "",
-    city: "",
-    state: "",
-    postalCode: "",
-    phone: "",
-  });
+  const [loading, setLoading] =
+    useState(true);
 
+  const [showModal, setShowModal] =
+    useState(false);
+
+  const [editingAddress, setEditingAddress] =
+    useState<Address | null>(null);
+
+  /*
+   * LOAD ADDRESSES
+   */
+  const loadAddresses =
+    useCallback(async () => {
+      const user = auth.currentUser;
+
+      if (!user) {
+        setAddresses([]);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const data =
+          await getAddresses(user.uid);
+
+        setAddresses(data);
+      } catch (error) {
+        console.error(
+          "Failed to load addresses:",
+          error
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []);
+
+  /*
+   * AUTH LISTENER
+   */
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
-      if (!user) return;
+    const unsubscribe =
+      auth.onAuthStateChanged(
+        async (user) => {
+          if (!user) {
+            setAddresses([]);
+            setLoading(false);
+            return;
+          }
 
-      const data = await getAddresses(user.uid);
-      setAddresses(data);
-    });
+          await loadAddresses();
+        }
+      );
 
     return () => unsubscribe();
-  }, []);
+  }, [loadAddresses]);
 
-  const saveAddress = async () => {
+  /*
+   * OPEN ADD MODAL
+   */
+  function openAddModal() {
+    setEditingAddress(null);
+    setShowModal(true);
+  }
+
+  /*
+   * OPEN EDIT MODAL
+   */
+  function openEditModal(
+    address: Address
+  ) {
+    setEditingAddress(address);
+    setShowModal(true);
+  }
+
+  /*
+   * CLOSE MODAL
+   */
+  function closeModal() {
+    setShowModal(false);
+    setEditingAddress(null);
+  }
+
+  /*
+   * SAVE ADDRESS
+   */
+  async function handleSaveAddress(
+    data: Omit<
+      Address,
+      "id" | "createdAt" | "updatedAt"
+    >
+  ) {
     const user = auth.currentUser;
 
     if (!user) {
@@ -39,126 +118,155 @@ export default function AddressesPage() {
       return;
     }
 
-    await addAddress(newAddress, user.uid);
+    try {
+      /*
+       * EDIT EXISTING ADDRESS
+       */
+      if (editingAddress) {
+        await updateAddress(
+          user.uid,
+          editingAddress.id,
+          data
+        );
+      }
 
-    const updated = await getAddresses(user.uid);
-    setAddresses(updated);
+      /*
+       * CREATE NEW ADDRESS
+       */
+      else {
+        await addAddress(
+          user.uid,
+          data
+        );
+      }
 
-    setNewAddress({
-      country: "",
-      firstName: "",
-      lastName: "",
-      address1: "",
-      address2: "",
-      city: "",
-      state: "",
-      postalCode: "",
-      phone: "",
-    });
+      await loadAddresses();
 
-    setShowModal(false);
-  };
+      closeModal();
+    } catch (error) {
+      console.error(
+        "Failed to save address:",
+        error
+      );
+
+      alert(
+        "Unable to save address. Please try again."
+      );
+    }
+  }
+
+  /*
+   * LOADING
+   */
+  if (loading) {
+    return (
+      <div className="p-8 text-slate-600 dark:text-slate-400">
+        Loading addresses...
+      </div>
+    );
+  }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-4xl font-bold text-white">
-          Addresses
-        </h1>
+    <div className="mx-auto max-w-6xl p-8">
+
+      {/* HEADER */}
+
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
+        <div>
+          <h1 className="text-4xl font-bold text-slate-950 dark:text-white">
+            Addresses
+          </h1>
+
+          <p className="mt-2 text-slate-600 dark:text-slate-400">
+            Manage your saved shipping addresses.
+          </p>
+        </div>
 
         <button
-          onClick={() => setShowModal(true)}
-          className="bg-purple-600 hover:bg-purple-700 px-5 py-3 rounded-xl font-semibold"
+          type="button"
+          onClick={openAddModal}
+          className="rounded-xl bg-purple-600 px-5 py-3 font-semibold text-white transition hover:bg-purple-700"
         >
           + Add Address
         </button>
+
       </div>
 
+      {/* EMPTY STATE */}
+
       {addresses.length === 0 ? (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center">
-          <h2 className="text-2xl font-semibold text-white mb-4">
-            No addresses found
+        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
+
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-purple-100 text-2xl dark:bg-purple-500/10">
+            📍
+          </div>
+
+          <h2 className="mb-2 text-2xl font-semibold text-slate-950 dark:text-white">
+            No addresses yet
           </h2>
 
-          <p className="text-slate-400">
-            Add your first address to continue.
+          <p className="mb-6 text-slate-600 dark:text-slate-400">
+            Add your first shipping address to use it when creating requests.
           </p>
+
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="rounded-xl bg-purple-600 px-6 py-3 font-semibold text-white transition hover:bg-purple-700"
+          >
+            Add Your First Address
+          </button>
+
         </div>
       ) : (
-        <div className="grid lg:grid-cols-2 gap-6">
-          {addresses.map((address) => (
-            <div
-              key={address.id}
-              className="bg-slate-900 border border-slate-800 rounded-2xl p-6"
-            >
-              <h2 className="text-xl font-semibold text-white mb-4">
-                {address.firstName} {address.lastName}
-              </h2>
 
-              <div className="text-slate-400 space-y-1">
-                <p>{address.address1}</p>
+        /* ADDRESS GRID */
 
-                {address.address2 && (
-                  <p>{address.address2}</p>
-                )}
+        <div className="grid gap-6 lg:grid-cols-2">
 
-                <p>
-                  {address.city}, {address.state}
-                </p>
+          {addresses.map(
+            (address) => (
+              <AddressCard
+                key={address.id}
+                address={address}
+                onEdit={openEditModal}
+                onRefresh={
+                  loadAddresses
+                }
+              />
+            )
+          )}
 
-                <p>{address.postalCode}</p>
-
-                <p>{address.country}</p>
-
-                <p>{address.phone}</p>
-              </div>
-            </div>
-          ))}
         </div>
       )}
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black/70 flex justify-center items-center p-4 z-50">
-          <div className="bg-slate-900 p-6 rounded-2xl w-full max-w-2xl border border-slate-800">
-            <h2 className="text-2xl font-bold text-white mb-6">
-              Add Address
-            </h2>
+      {/* ADD / EDIT MODAL */}
 
-            <div className="grid md:grid-cols-2 gap-4">
-              {Object.entries(newAddress).map(([key, value]) => (
-                <input
-                  key={key}
-                  placeholder={key}
-                  value={value}
-                  onChange={(e) =>
-                    setNewAddress({
-                      ...newAddress,
-                      [key]: e.target.value,
-                    })
-                  }
-                  className="bg-slate-950 border border-slate-700 rounded-lg p-3 text-white"
-                />
-              ))}
-            </div>
+      <Modal
+        open={showModal}
+        title={
+          editingAddress
+            ? "Edit Address"
+            : "Add Address"
+        }
+        onClose={closeModal}
+      >
+        <AddressForm
+          key={
+            editingAddress?.id ??
+            "new-address"
+          }
+          initialData={
+            editingAddress ??
+            undefined
+          }
+          onSubmit={
+            handleSaveAddress
+          }
+        />
+      </Modal>
 
-            <div className="flex justify-end gap-4 mt-8">
-              <button
-                onClick={() => setShowModal(false)}
-                className="border border-slate-700 px-6 py-3 rounded-xl"
-              >
-                Cancel
-              </button>
-
-              <button
-                onClick={saveAddress}
-                className="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-xl"
-              >
-                Save Address
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

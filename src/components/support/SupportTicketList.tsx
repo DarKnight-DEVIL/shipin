@@ -14,64 +14,78 @@ export default function SupportTicketList({
   onSelect,
 }: Props) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl">
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
 
-      <div className="p-6 border-b border-slate-800">
-
-        <h2 className="text-xl font-bold text-white">
+      {/* HEADER */}
+      <div className="border-b border-slate-200 p-6 dark:border-slate-800">
+        <h2 className="text-xl font-bold text-slate-950 dark:text-white">
           Support Tickets
         </h2>
-
       </div>
 
-      <div>
-
-        {tickets.length === 0 && (
-
-          <div className="p-6 text-slate-500">
-
+      {/* EMPTY STATE */}
+      {tickets.length === 0 && (
+        <div className="p-6">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             No tickets yet.
+          </p>
+        </div>
+      )}
 
-          </div>
+      {/* TICKET LIST */}
+      {tickets.map((ticket) => {
+        const selected =
+          selectedTicket === ticket.id;
 
-        )}
+        const resolved =
+          ticket.status === "resolved";
 
-        {tickets.map((ticket) => (
-
+        return (
           <button
             key={ticket.id}
+            type="button"
             onClick={() => onSelect(ticket)}
-            className={`w-full text-left p-5 border-b border-slate-800 hover:bg-slate-800 transition ${
-              selectedTicket === ticket.id
-                ? "bg-slate-800"
-                : ""
+            className={`w-full border-b border-slate-200 p-5 text-left transition last:border-b-0 dark:border-slate-800 ${
+              selected
+                ? "bg-purple-50 dark:bg-purple-500/10"
+                : "hover:bg-slate-50 dark:hover:bg-slate-800/70"
             }`}
           >
+            <div className="flex items-start justify-between gap-3">
 
-            <div className="font-semibold text-white">
+              <div className="min-w-0">
+                <div
+                  className={`truncate font-semibold ${
+                    selected
+                      ? "text-purple-700 dark:text-purple-300"
+                      : "text-slate-950 dark:text-white"
+                  }`}
+                >
+                  {ticket.subject}
+                </div>
 
-              {ticket.subject}
+                <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                  {ticket.category}
+                </div>
+              </div>
+
+              {/* STATUS */}
+              <span
+                className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                  resolved
+                    ? "border-green-500/20 bg-green-500/10 text-green-700 dark:text-green-400"
+                    : "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-400"
+                }`}
+              >
+                {resolved
+                  ? "Resolved"
+                  : "Open"}
+              </span>
 
             </div>
-
-            <div className="text-sm text-slate-400 mt-1">
-
-              {ticket.category}
-
-            </div>
-
-            <div className="text-xs text-slate-500 mt-2">
-
-              {ticket.status === "resolved"
-                 ? "Resolved"
-                 : "Open"}
-            </div>
-
           </button>
-
-        ))}
-
-      </div>
+        );
+      })}
 
     </div>
   );

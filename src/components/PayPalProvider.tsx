@@ -1,8 +1,6 @@
 "use client";
 
-import {
-  PayPalScriptProvider,
-} from "@paypal/react-paypal-js";
+import { PayPalScriptProvider } from "@paypal/react-paypal-js";
 
 export default function PayPalProvider({
   children,
@@ -12,10 +10,9 @@ export default function PayPalProvider({
   return (
     <PayPalScriptProvider
       options={{
-        clientId:
-          process.env
-            .NEXT_PUBLIC_PAYPAL_CLIENT_ID!,
+        clientId: process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID!,
         currency: "USD",
+        disableFunding: "card",
       }}
     >
       {children}

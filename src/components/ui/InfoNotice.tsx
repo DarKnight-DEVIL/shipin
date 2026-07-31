@@ -16,16 +16,16 @@ export default function InfoNotice({
 }: Props) {
   const styles = {
     info:
-      "bg-blue-500/10 border-blue-500/20 text-blue-300",
+      "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300",
 
     warning:
-      "bg-amber-500/10 border-amber-500/20 text-amber-300",
+      "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300",
 
     success:
-      "bg-green-500/10 border-green-500/20 text-green-300",
+      "border-green-500/20 bg-green-500/10 text-green-700 dark:text-green-300",
 
     error:
-      "bg-red-500/10 border-red-500/20 text-red-300",
+      "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300",
   };
 
   return (

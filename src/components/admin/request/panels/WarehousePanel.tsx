@@ -1,12 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 
 import type { Request } from "@/types/request";
+
 import Section from "@/components/ui/Section";
 import ActionButton from "@/components/ui/ActionButton";
-import { startStorageTimer } from "@/lib/firestore";
+
 import InspectionPhotos from "./InspectionPhotos";
+import InspectionPhotoGallery from "@/components/admin/request/InspectionPhotoGallery";
+
+import {
+  saveWarehouseInspection,
+  updateWarehouseChecklist,
+  startStorageTimer,
+} from "@/lib/firestore";
 
 interface Props {
   request: Request;
@@ -15,49 +26,351 @@ interface Props {
 export default function WarehousePanel({
   request,
 }: Props) {
-  const [weight, setWeight] = useState(
-    request.warehouse?.weight ?? ""
-  );
+  const warehouse =
+    request.warehouse;
 
-  const [length, setLength] = useState(
-    request.warehouse?.length ?? ""
-  );
+  const inspection =
+    request.serviceSelections
+      ?.inspection ?? "standard";
 
-  const [width, setWidth] = useState(
-    request.warehouse?.width ?? ""
-  );
+  const shippingPreference =
+    request.serviceSelections
+      ?.shippingPreference ??
+    "approval";
 
-  const [height, setHeight] = useState(
-    request.warehouse?.height ?? ""
-  );
-
-  const [condition, setCondition] =
+  const [weight, setWeight] =
     useState(
-      request.warehouse?.condition ??
-        "Good"
+      warehouse?.weight?.toString() ??
+        ""
     );
 
-  // Step 1: Initialize variables from user request configurations
-  const inspection =
-    request.serviceSelections?.inspection ?? "standard";
-  const shippingPreference =
-    request.serviceSelections?.shippingPreference ?? "approval";
+  const [length, setLength] =
+    useState(
+      warehouse?.length?.toString() ??
+        ""
+    );
 
-  const handlePhotoUploadTrigger = async () => {
-    if (shippingPreference === "approval") {
-      await startStorageTimer(request.id);
+  const [width, setWidth] =
+    useState(
+      warehouse?.width?.toString() ??
+        ""
+    );
+
+  const [height, setHeight] =
+    useState(
+      warehouse?.height?.toString() ??
+        ""
+    );
+
+  const [
+    condition,
+    setCondition,
+  ] = useState(
+    warehouse?.condition ?? "Good"
+  );
+
+  const [
+    checklist,
+    setChecklist,
+  ] = useState({
+    packageReceived:
+      warehouse?.checklist
+        ?.packageReceived ?? false,
+
+    inspectionCompleted:
+      warehouse?.checklist
+        ?.inspectionCompleted ??
+      false,
+
+    photosUploaded:
+      warehouse?.checklist
+        ?.photosUploaded ?? false,
+
+    measured:
+      warehouse?.checklist
+        ?.measured ?? false,
+
+    readyForShipment:
+      warehouse?.checklist
+        ?.readyForShipment ??
+      false,
+  });
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [
+    updatingChecklist,
+    setUpdatingChecklist,
+  ] = useState(false);
+
+  /*
+   * Sync when parent request
+   * gets refreshed.
+   */
+  useEffect(() => {
+    if (!request.warehouse) {
+      return;
     }
-  };
+
+    setChecklist({
+      packageReceived:
+        request.warehouse
+          .checklist
+          ?.packageReceived ??
+        false,
+
+      inspectionCompleted:
+        request.warehouse
+          .checklist
+          ?.inspectionCompleted ??
+        false,
+
+      photosUploaded:
+        request.warehouse
+          .checklist
+          ?.photosUploaded ??
+        false,
+
+      measured:
+        request.warehouse
+          .checklist
+          ?.measured ?? false,
+
+      readyForShipment:
+        request.warehouse
+          .checklist
+          ?.readyForShipment ??
+        false,
+    });
+  }, [request.warehouse]);
+
+  async function updateShipmentStatusServer(
+    status: string
+  ) {
+    const response = await fetch(
+      `/api/requests/${request.id}/shipment-status`,
+      {
+        method: "PATCH",
+
+        headers: {
+          "Content-Type": "application/json",
+        },
+
+        body: JSON.stringify({
+          status,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(
+        data.error ||
+          "Failed to update shipment status."
+      );
+    }
+  }
+
+  async function handleChecklistChange(
+    key:
+      | "packageReceived"
+      | "inspectionCompleted"
+      | "photosUploaded"
+      | "measured"
+      | "readyForShipment",
+    value: boolean
+  ) {
+    setUpdatingChecklist(true);
+
+    const previousValue =
+      checklist[key];
+
+    /*
+     * Optimistic UI update.
+     */
+    setChecklist((current) => ({
+      ...current,
+      [key]: value,
+    }));
+
+    try {
+      await updateWarehouseChecklist(
+        request.id,
+        {
+          [key]: value,
+        }
+      );
+
+      /*
+       * When package is received,
+       * move request into warehouse.
+       */
+      if (
+        key ===
+          "packageReceived" &&
+        value
+      ) {
+        await updateShipmentStatusServer(
+          "warehouse_received"
+        );
+      }
+
+      /*
+       * Start storage timer when
+       * inspection is complete and
+       * customer approval is required.
+       */
+      if (
+        key ===
+          "inspectionCompleted" &&
+        value &&
+        shippingPreference ===
+          "approval"
+      ) {
+        await startStorageTimer(
+          request.id
+        );
+      }
+
+      /*
+       * Ready for shipment moves
+       * workflow to packed.
+       */
+      if (
+        key ===
+          "readyForShipment" &&
+        value
+      ) {
+        await updateShipmentStatusServer(
+          "ready_for_international_shipping"
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Checklist update failed:",
+        error
+      );
+
+      /*
+       * Restore checkbox if
+       * Firestore failed.
+       */
+      setChecklist((current) => ({
+        ...current,
+        [key]: previousValue,
+      }));
+
+      alert(
+        "Failed to update warehouse checklist."
+      );
+    } finally {
+      setUpdatingChecklist(false);
+    }
+  }
+
+  async function handleSaveInspection() {
+    if (
+      !weight ||
+      !length ||
+      !width ||
+      !height
+    ) {
+      alert(
+        "Please enter all package measurements."
+      );
+
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      await saveWarehouseInspection(
+        request.id,
+        {
+          weight: Number(weight),
+          length: Number(length),
+          width: Number(width),
+          height: Number(height),
+          condition: condition || "Good",
+        }
+      );
+
+      await updateWarehouseChecklist(
+        request.id,
+        {
+          measured: true,
+
+          inspectionCompleted:
+            inspection === "none"
+              ? true
+              : checklist
+                  .inspectionCompleted,
+        }
+      );
+
+      setChecklist(
+        (current) => ({
+          ...current,
+          measured: true,
+
+          inspectionCompleted:
+            inspection === "none"
+              ? true
+              : current
+                  .inspectionCompleted,
+        })
+      );
+
+      alert(
+        "Warehouse inspection saved successfully."
+      );
+    } catch (error) {
+      console.error(
+        "Save inspection failed:",
+        error
+      );
+
+      alert(
+        "Failed to save warehouse inspection."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handlePhotoUploadSuccess() {
+    try {
+      await updateWarehouseChecklist(
+        request.id,
+        {
+          photosUploaded: true,
+        }
+      );
+
+      setChecklist(
+        (current) => ({
+          ...current,
+          photosUploaded: true,
+        })
+      );
+    } catch (error) {
+      console.error(
+        "Failed to update photo checklist:",
+        error
+      );
+    }
+  }
 
   return (
     <div className="space-y-6">
-      {/* Step 2: Customer Instructions Section */}
       <Section
         title="Customer Instructions"
         subtitle="Selected package handling preferences"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-5">
             <p className="text-sm text-slate-400 mb-2">
               Inspection
@@ -66,7 +379,8 @@ export default function WarehousePanel({
             <p className="text-lg font-semibold text-white">
               {inspection === "none"
                 ? "No Inspection"
-                : inspection === "standard"
+                : inspection ===
+                  "standard"
                 ? "Standard Inspection"
                 : "Detailed Inspection"}
             </p>
@@ -78,137 +392,200 @@ export default function WarehousePanel({
             </p>
 
             <p className="text-lg font-semibold text-white">
-              {shippingPreference === "auto"
+              {shippingPreference ===
+              "auto"
                 ? "Auto Ship"
-                : shippingPreference === "approval"
+                : shippingPreference ===
+                  "approval"
                 ? "Wait For Approval"
                 : "Hold Package"}
             </p>
           </div>
-
         </div>
       </Section>
 
-      {/* Step 3: Warehouse Actions Section */}
       <Section
         title="Warehouse Actions"
         subtitle="Required processing"
       >
         <div className="space-y-3">
-
           {inspection === "none" && (
             <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-4 text-green-300">
-              ✅ Keep the package sealed. Do not open it.
+              Keep the package sealed.
+              Do not open it.
             </div>
           )}
 
-          {inspection === "standard" && (
+          {inspection ===
+            "standard" && (
             <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-4 text-blue-300">
-              📦 Open package, verify the correct item, and inspect for visible damage.
+              Open package, verify
+              the correct item, and
+              inspect for visible
+              damage.
             </div>
           )}
 
-          {inspection === "detailed" && (
+          {inspection ===
+            "detailed" && (
             <div className="rounded-lg bg-purple-500/10 border border-purple-500/20 p-4 text-purple-300">
-              📷 Perform a detailed inspection, verify accessories, and upload multiple photos.
+              Perform a detailed
+              inspection, verify
+              accessories, and upload
+              multiple photos.
             </div>
           )}
 
-          {shippingPreference === "auto" && (
+          {shippingPreference ===
+            "auto" && (
             <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-4 text-emerald-300">
-              🚚 Ship internationally immediately after warehouse processing.
+              Ship internationally
+              immediately after
+              warehouse processing.
             </div>
           )}
 
-          {shippingPreference === "approval" && (
+          {shippingPreference ===
+            "approval" && (
             <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/20 p-4 text-yellow-300">
-              ⏳ Wait for customer approval after uploading inspection photos.
+              Wait for customer
+              approval before
+              international shipment.
             </div>
           )}
 
-          {shippingPreference === "hold" && (
+          {shippingPreference ===
+            "hold" && (
             <div className="rounded-lg bg-orange-500/10 border border-orange-500/20 p-4 text-orange-300">
-              📦 Hold package until the customer requests international shipment.
+              Hold package until the
+              customer requests
+              international shipment.
             </div>
           )}
-
         </div>
       </Section>
 
-      {/* Warehouse Checklist Section */}
       <Section
         title="Warehouse Checklist"
         subtitle="Processing progress"
       >
         <div className="space-y-4">
-
-          <label className="flex items-center gap-3 cursor-pointer text-slate-300">
-            <input
-              type="checkbox"
-              className="h-5 w-5 rounded bg-slate-900 border-slate-700 text-blue-500 accent-blue-500"
-            />
-            <span>Package received</span>
-          </label>
+          <ChecklistItem
+            label="Package received"
+            checked={
+              checklist.packageReceived
+            }
+            disabled={
+              updatingChecklist
+            }
+            onChange={(value) =>
+              handleChecklistChange(
+                "packageReceived",
+                value
+              )
+            }
+          />
 
           {inspection !== "none" && (
-            <label className="flex items-center gap-3 cursor-pointer text-slate-300">
-              <input
-                type="checkbox"
-                className="h-5 w-5 rounded bg-slate-900 border-slate-700 text-blue-500 accent-blue-500"
-                onChange={(e) => {
-                  if (e.target.checked) handlePhotoUploadTrigger();
-                }}
-              />
-              <span>Inspection completed</span>
-            </label>
+            <ChecklistItem
+              label="Inspection completed"
+              checked={
+                checklist.inspectionCompleted
+              }
+              disabled={
+                updatingChecklist
+              }
+              onChange={(value) =>
+                handleChecklistChange(
+                  "inspectionCompleted",
+                  value
+                )
+              }
+            />
           )}
 
-          {inspection === "detailed" && (
-            <label className="flex items-center gap-3 cursor-pointer text-slate-300">
-              <input
-                type="checkbox"
-                className="h-5 w-5 rounded bg-slate-900 border-slate-700 text-blue-500 accent-blue-500"
-                onChange={(e) => {
-                  if (e.target.checked) handlePhotoUploadTrigger();
-                }}
-              />
-              <span>Photos uploaded</span>
-            </label>
+          {inspection ===
+            "detailed" && (
+            <ChecklistItem
+              label="Photos uploaded"
+              checked={
+                checklist.photosUploaded
+              }
+              disabled={
+                updatingChecklist
+              }
+              onChange={(value) =>
+                handleChecklistChange(
+                  "photosUploaded",
+                  value
+                )
+              }
+            />
           )}
 
-          <label className="flex items-center gap-3 cursor-pointer text-slate-300">
-            <input
-              type="checkbox"
-              className="h-5 w-5 rounded bg-slate-900 border-slate-700 text-blue-500 accent-blue-500"
-            />
-            <span>Package measured</span>
-          </label>
+          <ChecklistItem
+            label="Package measured"
+            checked={
+              checklist.measured
+            }
+            disabled={
+              updatingChecklist
+            }
+            onChange={(value) =>
+              handleChecklistChange(
+                "measured",
+                value
+              )
+            }
+          />
 
-          <label className="flex items-center gap-3 cursor-pointer text-slate-300">
-            <input
-              type="checkbox"
-              className="h-5 w-5 rounded bg-slate-900 border-slate-700 text-blue-500 accent-blue-500"
-            />
-            <span>Ready for shipment</span>
-          </label>
-
+          <ChecklistItem
+            label="Ready for shipment"
+            checked={
+              checklist.readyForShipment
+            }
+            disabled={
+              updatingChecklist
+            }
+            onChange={(value) =>
+              handleChecklistChange(
+                "readyForShipment",
+                value
+              )
+            }
+          />
         </div>
       </Section>
 
       {inspection !== "none" && (
         <InspectionPhotos
           requestId={request.id}
-          onUploadSuccess={handlePhotoUploadTrigger}
+          onUploadSuccess={
+            handlePhotoUploadSuccess
+          }
         />
       )}
 
-      {/* Measurement Metrics Section Block */}
+      <Section
+        title="Uploaded Inspection Photos"
+        subtitle="Warehouse inspection evidence"
+      >
+        <InspectionPhotoGallery
+          photos={
+            request.warehouse
+              ?.photos ??
+            request.warehouse
+              ?.inspectionPhotos ??
+            []
+          }
+        />
+      </Section>
+
       <Section
         title="Warehouse Inspection"
         subtitle="Inspect package after arrival"
       >
         <div className="grid md:grid-cols-2 gap-5">
-
           <Input
             label="Weight (kg)"
             value={weight}
@@ -232,11 +609,9 @@ export default function WarehousePanel({
             value={height}
             onChange={setHeight}
           />
-
         </div>
 
         <div className="mt-6">
-
           <label className="block text-sm text-slate-400 mb-2">
             Package Condition
           </label>
@@ -244,46 +619,85 @@ export default function WarehousePanel({
           <select
             value={condition}
             onChange={(e) =>
-              setCondition(e.target.value)
+              setCondition(
+                e.target.value
+              )
             }
             className="w-full rounded-xl bg-slate-900 border border-slate-700 px-4 py-3 text-white"
           >
-            <option>Excellent</option>
-            <option>Good</option>
-            <option>Damaged</option>
-          </select>
+            <option>
+              Excellent
+            </option>
 
+            <option>Good</option>
+
+            <option>
+              Damaged
+            </option>
+          </select>
         </div>
 
         <div className="mt-8">
-
           <ActionButton
+            onClick={
+              handleSaveInspection
+            }
+            loading={saving}
             className="w-full"
           >
             Save Inspection
           </ActionButton>
-
         </div>
-
       </Section>
     </div>
   );
 }
 
-interface InputProps {
+function ChecklistItem({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
   label: string;
-  value: string | number;
-  onChange: (value: string) => void;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (
+    value: boolean
+  ) => void;
+}) {
+  return (
+    <label className="flex items-center gap-3 cursor-pointer text-slate-300">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) =>
+          onChange(
+            e.target.checked
+          )
+        }
+        className="h-5 w-5 rounded bg-slate-900 border-slate-700 accent-blue-500"
+      />
+
+      <span>{label}</span>
+    </label>
+  );
 }
 
 function Input({
   label,
   value,
   onChange,
-}: InputProps) {
+}: {
+  label: string;
+  value: string;
+  onChange: (
+    value: string
+  ) => void;
+}) {
   return (
     <div>
-
       <label className="block text-sm text-slate-400 mb-2">
         {label}
       </label>
@@ -291,11 +705,12 @@ function Input({
       <input
         value={value}
         onChange={(e) =>
-          onChange(e.target.value)
+          onChange(
+            e.target.value
+          )
         }
         className="w-full rounded-xl bg-slate-900 border border-slate-700 px-4 py-3 text-white"
       />
-
     </div>
   );
 }
