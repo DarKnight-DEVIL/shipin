@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { auth } from "@/lib/firebase";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 import {
   getNotifications,
@@ -25,6 +26,7 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   /*
    * LOAD NOTIFICATIONS
@@ -182,12 +184,6 @@ export default function NotificationsPage() {
 
     if (!hasRead) return;
 
-    const confirmed = window.confirm(
-      "Delete all read notifications?"
-    );
-
-    if (!confirmed) return;
-
     try {
       await clearReadNotifications(user.uid);
 
@@ -319,7 +315,7 @@ export default function NotificationsPage() {
               (notification) => notification.read
             ) && (
               <button
-                onClick={handleClearRead}
+                onClick={() => setShowDeleteConfirm(true)}
                 className="
                   rounded-xl border
                   border-slate-300 bg-white
@@ -617,6 +613,19 @@ export default function NotificationsPage() {
           ))
         )}
       </div>
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Delete Notifications"
+        message="Delete all read notifications? This action cannot be undone."
+        confirmText="Delete"
+        danger
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={async () => {
+          setShowDeleteConfirm(false);
+          await handleClearRead();
+        }}
+      />
     </div>
   );
 }

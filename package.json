@@ -11,11 +11,12 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1091.0",
     "@aws-sdk/s3-request-presigner": "^3.1091.0",
-    "@paypal/react-paypal-js": "10.1.2",
+    "@paypal/react-paypal-js": "^10.3.0",
     "@react-pdf/renderer": "^4.5.1",
     "country-state-city": "^3.2.1",
     "firebase": "^12.15.0",
     "firebase-admin": "^14.2.0",
+    "framer-motion": "^13.0.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.23.0",
     "next": "16.2.10",
@@ -26,7 +27,9 @@
     "react-phone-number-input": "^3.4.17",
     "react-select": "^5.10.2",
     "recharts": "^3.9.2",
-    "resend": "^6.17.1"
+    "resend": "^6.17.1",
+    "sonner": "^2.0.7",
+    "yet-another-react-lightbox": "^3.32.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

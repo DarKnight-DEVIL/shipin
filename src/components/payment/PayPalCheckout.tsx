@@ -2,17 +2,27 @@
 
 import {
   PayPalButtons,
-  PayPalScriptProvider,
 } from "@paypal/react-paypal-js";
+import { toast } from "sonner";
+
+import { paymentService } from "@/features/payment/services/paymentService";
 
 type PaymentType = "main" | "additional_item";
 
 interface Props {
   requestId: string;
+
   amount: number;
+
   paymentType?: PaymentType;
+
   additionalItemRequestId?: string;
-  onSuccess?: () => void;
+
+  onSuccess?: () => Promise<void> | void;
+
+  onError?: (error: unknown) => void;
+
+  disabled?: boolean;
 }
 
 export default function PayPalCheckout({
@@ -21,78 +31,85 @@ export default function PayPalCheckout({
   paymentType = "main",
   additionalItemRequestId,
   onSuccess,
+  onError,
+  disabled = false,
 }: Props) {
+  if (amount <= 0) {
+    return null;
+  }
+
   return (
-    <PayPalScriptProvider
-      options={{
-        clientId: process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID!,
-        currency: "USD",
-      }}
-    >
+    <div className="space-y-3">
+
       <PayPalButtons
+        disabled={disabled}
+        forceReRender={[amount]}
+        style={{
+          layout: "vertical",
+          color: "gold",
+          shape: "rect",
+          label: "paypal",
+          height: 50,
+          disableMaxWidth: true,
+        }}
+
         createOrder={async () => {
-          const res = await fetch("/api/paypal/create-order", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              requestId,
-              paymentType,
-              additionalItemRequestId,
-            }),
-          });
-
-          const data = await res.json();
-
-          if (!res.ok || !data.success || !data.orderId) {
-            throw new Error(
-              data.error || "Could not start PayPal checkout."
-            );
+          try {
+            const order =
+              await paymentService.createPayPalOrder(
+                requestId,
+                paymentType,
+                additionalItemRequestId
+              );
+            return order.id;
+          } catch (err) {
+            console.error(err);
+            throw err;
           }
-
-          return data.orderId;
         }}
 
         onApprove={async (data) => {
-          const res = await fetch("/api/paypal/capture-order", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          try {
+
+            await paymentService.capturePayPalOrder(
               requestId,
-              orderID: data.orderID,
+              data.orderID,
               paymentType,
-              additionalItemRequestId,
-            }),
-          });
-
-          const result = await res.json();
-
-          if (!res.ok || !result.success) {
-            throw new Error(
-              result.error || "Payment could not be completed."
+              additionalItemRequestId
             );
-          }
 
-          alert("Payment Successful!");
+            if (onSuccess) {
+              await onSuccess();
+            }
 
-          if (onSuccess) {
-            onSuccess();
-          } else {
-            location.reload();
+          } catch (err) {
+
+            console.error(err);
+
+            toast.error("Payment completed, but we couldn't finalize it.", {
+              description:
+                "Please refresh the page. If the issue persists, contact support.",
+            });
+
           }
         }}
 
         onError={(err) => {
-          console.error("PayPal checkout error:", err);
 
-          alert(
-            "PayPal payment failed. Please try again."
-          );
+          console.error(err);
+
+          if (onError) {
+            onError(err);
+          } else {
+            toast.error("Unable to process PayPal payment.", {
+              description:
+                "Please try again or choose another payment method.",
+            });
+          }
+
         }}
       />
 
-      <p className="mt-2 text-center text-xs text-slate-500">
-        Amount due: ${amount.toFixed(2)} USD
-      </p>
-    </PayPalScriptProvider>
+    </div>
   );
 }

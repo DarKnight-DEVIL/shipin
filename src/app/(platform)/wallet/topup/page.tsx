@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { PayPalButtons } from "@paypal/react-paypal-js";
-
+import { toast } from "sonner";
 export default function WalletTopupPage() {
   const [amount, setAmount] = useState(50);
 
@@ -76,7 +76,7 @@ export default function WalletTopupPage() {
               })
             });
 
-            alert("Wallet updated.");
+            toast.success("Wallet updated.");
 
             location.href="/wallet";
 

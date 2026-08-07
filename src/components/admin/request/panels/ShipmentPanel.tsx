@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Timestamp } from "firebase/firestore";
+import { toast } from "sonner";
 
 import type { Request } from "@/types/request";
 import { CARRIERS } from "@/types/carrier";
@@ -14,9 +15,7 @@ import ActionButton from "@/components/ui/ActionButton";
 import { generateTrackingId } from "@/lib/tracking";
 import { generateShippingLabel } from "@/lib/pdf/shippingLabel";
 
-import {
-  saveShipmentDetails,
-} from "@/lib/firestore";
+import { saveShipmentDetails } from "@/lib/firestore";
 
 interface Props {
   request: Request;
@@ -66,17 +65,14 @@ const nextStatusMap: Partial<
   },
 };
 
-const statusLabels: Partial<
-  Record<RequestStatus, string>
-> = {
+const statusLabels: Partial<Record<RequestStatus, string>> = {
   submitted: "Submitted",
   review: "Under Review",
   awaiting_payment: "Awaiting Payment",
   paid: "Paid",
   purchased: "Purchased",
   warehouse_received: "Warehouse Received",
-  ready_for_international_shipping:
-    "Ready For International Shipping",
+  ready_for_international_shipping: "Ready For International Shipping",
   packed: "Packed",
   shipped: "Shipped",
   out_for_delivery: "Out For Delivery",
@@ -84,9 +80,7 @@ const statusLabels: Partial<
   refunded: "Refunded",
 };
 
-export default function ShipmentPanel({
-  request,
-}: Props) {
+export default function ShipmentPanel({ request }: Props) {
   const tracking = request.tracking;
 
   /*
@@ -96,39 +90,25 @@ export default function ShipmentPanel({
    * This data must not be displayed
    * on the customer request page.
    */
-  const [carrier, setCarrier] =
-    useState<Carrier>(
-      tracking?.carrier ?? "India Post"
-    );
+  const [carrier, setCarrier] = useState<Carrier>(
+    tracking?.carrier ?? "India Post"
+  );
 
-  const [
-    trackingNumber,
-    setTrackingNumber,
-  ] = useState(
+  const [trackingNumber, setTrackingNumber] = useState(
     tracking?.trackingNumber ?? ""
   );
 
-  const [
-    estimatedDelivery,
-    setEstimatedDelivery,
-  ] = useState(
+  const [estimatedDelivery, setEstimatedDelivery] = useState(
     tracking?.estimatedDelivery ?? ""
   );
 
-  const [saving, setSaving] =
-    useState(false);
-
-  const [
-    updatingStatus,
-    setUpdatingStatus,
-  ] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   /*
    * Server helper to update shipment status via API route.
    */
-  async function updateShipmentStatusServer(
-    status: RequestStatus
-  ) {
+  async function updateShipmentStatusServer(status: RequestStatus) {
     const response = await fetch(
       `/api/requests/${request.id}/shipment-status`,
       {
@@ -147,10 +127,7 @@ export default function ShipmentPanel({
     const data = await response.json();
 
     if (!response.ok || !data.success) {
-      throw new Error(
-        data.error ||
-          "Failed to update shipment status."
-      );
+      throw new Error(data.error || "Failed to update shipment status.");
     }
   }
 
@@ -158,8 +135,7 @@ export default function ShipmentPanel({
    * Determine the next allowed
    * workflow action.
    */
-  const nextAction =
-    nextStatusMap[request.status];
+  const nextAction = nextStatusMap[request.status];
 
   /*
    * Move request to the next
@@ -173,26 +149,20 @@ export default function ShipmentPanel({
     setUpdatingStatus(true);
 
     try {
-      await updateShipmentStatusServer(
-        nextAction.status
-      );
+      await updateShipmentStatusServer(nextAction.status);
 
-      alert(
+      toast.success(
         `Request updated to: ${
-          statusLabels[
-            nextAction.status
-          ] ?? nextAction.status
+          statusLabels[nextAction.status] ?? nextAction.status
         }`
       );
     } catch (error) {
-      console.error(
-        "Failed to update request status:",
-        error
-      );
+      console.error("Failed to update request status:", error);
 
-      alert(
-        "Failed to update request status."
-      );
+      toast.error("Failed to update request status.", {
+        description:
+          error instanceof Error ? error.message : undefined,
+      });
     } finally {
       setUpdatingStatus(false);
     }
@@ -216,26 +186,19 @@ export default function ShipmentPanel({
       request.status !== "packed" &&
       request.status !== "shipped"
     ) {
-      alert(
+      toast.warning(
         "The package must be marked as Packed before creating the shipment."
       );
-
       return;
     }
 
     if (!carrier) {
-      alert(
-        "Please select a carrier."
-      );
-
+      toast.warning("Please select a carrier.");
       return;
     }
 
     if (!trackingNumber.trim()) {
-      alert(
-        "Please enter the carrier tracking number."
-      );
-
+      toast.warning("Please enter the carrier tracking number.");
       return;
     }
 
@@ -248,13 +211,10 @@ export default function ShipmentPanel({
        * Never generate another ID when
        * editing shipment details.
        */
-      let internalTrackingId =
-        request.tracking
-          ?.internalTrackingId;
+      let internalTrackingId = request.tracking?.internalTrackingId;
 
       if (!internalTrackingId) {
-        internalTrackingId =
-          await generateTrackingId();
+        internalTrackingId = await generateTrackingId();
       }
 
       /*
@@ -262,60 +222,49 @@ export default function ShipmentPanel({
        * creation timestamp.
        */
       const createdAt =
-        request.tracking?.createdAt ??
-        Timestamp.now();
+        request.tracking?.createdAt ?? Timestamp.now();
 
-      await saveShipmentDetails(
-        request.id,
-        {
-          internalTrackingId,
+      await saveShipmentDetails(request.id, {
+        internalTrackingId,
 
-          carrier,
+        carrier,
 
-          /*
-           * Private carrier tracking
-           * number.
-           */
-          trackingNumber:
-            trackingNumber.trim(),
+        /*
+         * Private carrier tracking
+         * number.
+         */
+        trackingNumber: trackingNumber.trim(),
 
-          estimatedDelivery,
+        estimatedDelivery,
 
-          /*
-           * We no longer use temporary
-           * carrier tracking URLs.
-           */
-          trackingUrl: "",
+        /*
+         * We no longer use temporary
+         * carrier tracking URLs.
+         */
+        trackingUrl: "",
 
-          createdAt,
-        }
-      );
+        createdAt,
+      });
 
       /*
        * Only move to shipped after
        * valid shipment information
        * has been saved.
        */
-      if (
-        request.status === "packed"
-      ) {
-        await updateShipmentStatusServer(
-          "shipped"
-        );
+      if (request.status === "packed") {
+        await updateShipmentStatusServer("shipped");
       }
 
-      alert(
-        `Shipment saved successfully.\n\nShipIN Tracking ID: ${internalTrackingId}`
-      );
+      toast.success("Shipment saved successfully.", {
+        description: `ShipIN Tracking ID: ${internalTrackingId}`,
+      });
     } catch (error) {
-      console.error(
-        "Error saving shipment:",
-        error
-      );
+      console.error("Error saving shipment:", error);
 
-      alert(
-        "Failed to save shipment."
-      );
+      toast.error("Failed to save shipment.", {
+        description:
+          error instanceof Error ? error.message : undefined,
+      });
     } finally {
       setSaving(false);
     }
@@ -332,18 +281,13 @@ export default function ShipmentPanel({
         subtitle="Manage the request through each shipment stage"
       >
         <div className="space-y-5">
-
           {/* Current Status */}
 
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-5">
-            <p className="text-sm text-slate-400">
-              Current Status
-            </p>
+            <p className="text-sm text-slate-400">Current Status</p>
 
             <p className="mt-2 text-xl font-semibold text-white">
-              {statusLabels[
-                request.status
-              ] ?? request.status}
+              {statusLabels[request.status] ?? request.status}
             </p>
           </div>
 
@@ -352,9 +296,7 @@ export default function ShipmentPanel({
           {nextAction && (
             <ActionButton
               loading={updatingStatus}
-              onClick={
-                handleNextStatus
-              }
+              onClick={handleNextStatus}
               className="w-full"
             >
               {nextAction.label}
@@ -363,44 +305,34 @@ export default function ShipmentPanel({
 
           {/* Warehouse Processing */}
 
-          {request.status ===
-            "warehouse_received" && (
+          {request.status === "warehouse_received" && (
             <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
               <p className="font-medium text-amber-300">
                 Warehouse processing required
               </p>
 
               <p className="mt-2 text-sm text-slate-400">
-                Complete the warehouse
-                inspection and mark the
-                package as ready for
-                shipment from the
-                Warehouse tab.
+                Complete the warehouse inspection and mark the package as
+                ready for shipment from the Warehouse tab.
               </p>
             </div>
           )}
 
           {/* Packed */}
 
-          {request.status ===
-            "packed" && (
+          {request.status === "packed" && (
             <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4">
-              <p className="font-medium text-blue-300">
-                Package is packed
-              </p>
+              <p className="font-medium text-blue-300">Package is packed</p>
 
               <p className="mt-2 text-sm text-slate-400">
-                Enter the carrier
-                information below and
-                save the shipment.
+                Enter the carrier information below and save the shipment.
               </p>
             </div>
           )}
 
           {/* Delivered */}
 
-          {request.status ===
-            "delivered" && (
+          {request.status === "delivered" && (
             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">
               <p className="font-medium text-emerald-300">
                 Shipment delivered
@@ -419,7 +351,6 @@ export default function ShipmentPanel({
         subtitle="Private carrier information for ShipIN administrators"
       >
         <div className="space-y-5">
-
           {/* Carrier */}
 
           <div>
@@ -429,24 +360,14 @@ export default function ShipmentPanel({
 
             <select
               value={carrier}
-              onChange={(e) =>
-                setCarrier(
-                  e.target
-                    .value as Carrier
-                )
-              }
+              onChange={(e) => setCarrier(e.target.value as Carrier)}
               className="w-full rounded-xl bg-slate-900 border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-blue-500"
             >
-              {CARRIERS.map(
-                (carrierName) => (
-                  <option
-                    key={carrierName}
-                    value={carrierName}
-                  >
-                    {carrierName}
-                  </option>
-                )
-              )}
+              {CARRIERS.map((carrierName) => (
+                <option key={carrierName} value={carrierName}>
+                  {carrierName}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -455,29 +376,20 @@ export default function ShipmentPanel({
           <Field
             label="Carrier Tracking Number (Private)"
             value={trackingNumber}
-            onChange={
-              setTrackingNumber
-            }
+            onChange={setTrackingNumber}
           />
 
           <p className="text-xs text-slate-500">
-            This tracking number is
-            for internal ShipIN use
-            only. Customers will not
-            see the carrier tracking
-            number.
+            This tracking number is for internal ShipIN use only. Customers will
+            not see the carrier tracking number.
           </p>
 
           {/* Estimated Delivery */}
 
           <Field
             label="Estimated Delivery"
-            value={
-              estimatedDelivery
-            }
-            onChange={
-              setEstimatedDelivery
-            }
+            value={estimatedDelivery}
+            onChange={setEstimatedDelivery}
           />
 
           {/* Save Shipment */}
@@ -487,8 +399,7 @@ export default function ShipmentPanel({
             loading={saving}
             onClick={saveShipment}
           >
-            {request.tracking
-              ?.internalTrackingId
+            {request.tracking?.internalTrackingId
               ? "Update Shipment"
               : "Create Shipment"}
           </ActionButton>
@@ -503,26 +414,17 @@ export default function ShipmentPanel({
         title="ShipIN Tracking"
         subtitle="Customer-facing tracking identity"
       >
-        {request.tracking
-          ?.internalTrackingId ? (
+        {request.tracking?.internalTrackingId ? (
           <div className="space-y-5">
-
             <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-5">
-              <p className="text-sm text-slate-400">
-                ShipIN Tracking ID
-              </p>
+              <p className="text-sm text-slate-400">ShipIN Tracking ID</p>
 
               <p className="mt-2 font-mono text-xl font-semibold text-blue-400">
-                {
-                  request.tracking
-                    .internalTrackingId
-                }
+                {request.tracking.internalTrackingId}
               </p>
 
               <p className="mt-3 text-xs text-slate-500">
-                This is the tracking
-                ID shown to the
-                customer.
+                This is the tracking ID shown to the customer.
               </p>
             </div>
 
@@ -530,32 +432,22 @@ export default function ShipmentPanel({
 
             <div className="rounded-xl border border-slate-700 bg-slate-900 p-5">
               <h3 className="font-semibold text-white mb-4">
-                Internal Carrier
-                Information
+                Internal Carrier Information
               </h3>
 
               <InfoRow
                 label="Carrier"
-                value={
-                  request.tracking
-                    .carrier
-                }
+                value={request.tracking.carrier}
               />
 
               <InfoRow
                 label="Carrier Tracking Number"
-                value={
-                  request.tracking
-                    .trackingNumber
-                }
+                value={request.tracking.trackingNumber}
               />
 
               <InfoRow
                 label="Estimated Delivery"
-                value={
-                  request.tracking
-                    .estimatedDelivery
-                }
+                value={request.tracking.estimatedDelivery}
               />
             </div>
 
@@ -563,11 +455,7 @@ export default function ShipmentPanel({
 
             <button
               type="button"
-              onClick={() =>
-                generateShippingLabel(
-                  request
-                )
-              }
+              onClick={() => generateShippingLabel(request)}
               className="w-full rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 transition active:scale-[0.98]"
             >
               Print Shipping Label
@@ -575,10 +463,8 @@ export default function ShipmentPanel({
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-slate-700 p-5 text-sm text-slate-400">
-            No ShipIN tracking ID has
-            been generated yet. It
-            will be generated when
-            the shipment is created.
+            No ShipIN tracking ID has been generated yet. It will be generated
+            when the shipment is created.
           </div>
         )}
       </Section>
@@ -597,23 +483,15 @@ function Field({
 }: {
   label: string;
   value: string;
-  onChange: (
-    value: string
-  ) => void;
+  onChange: (value: string) => void;
 }) {
   return (
     <div>
-      <label className="block text-sm text-slate-400 mb-2">
-        {label}
-      </label>
+      <label className="block text-sm text-slate-400 mb-2">{label}</label>
 
       <input
         value={value}
-        onChange={(e) =>
-          onChange(
-            e.target.value
-          )
-        }
+        onChange={(e) => onChange(e.target.value)}
         className="w-full rounded-xl bg-slate-900 border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-blue-500"
       />
     </div>
@@ -633,9 +511,7 @@ function InfoRow({
 }) {
   return (
     <div className="flex justify-between gap-4 border-b border-slate-800 py-3 last:border-b-0">
-      <span className="text-slate-400">
-        {label}
-      </span>
+      <span className="text-slate-400">{label}</span>
 
       <span className="text-right font-medium text-white">
         {value || "-"}

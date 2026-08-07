@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   doc,
   serverTimestamp,
@@ -9,6 +10,7 @@ import {
 
 import { db } from "@/lib/firebase";
 import ActionButton from "@/components/ui/ActionButton";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import type { RequestStatus } from "@/lib/requestStatus";
 
 interface Props {
@@ -26,8 +28,8 @@ export default function NextActionCard({
   requestId,
   status,
 }: Props) {
-  const [updating, setUpdating] =
-    useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   /*
    * ADMIN WORKFLOW
@@ -104,7 +106,7 @@ export default function NextActionCard({
 
   const action = actions[status];
 
-  async function handleNextAction() {
+  async function changeStatus() {
     if (
       !action?.nextStatus ||
       updating
@@ -124,15 +126,6 @@ export default function NextActionCard({
     if (
       status === "awaiting_payment"
     ) {
-      return;
-    }
-
-    const confirmed =
-      window.confirm(
-        `Change request status from "${status}" to "${action.nextStatus}"?`
-      );
-
-    if (!confirmed) {
       return;
     }
 
@@ -200,9 +193,7 @@ export default function NextActionCard({
         action.nextStatus && (
           <ActionButton
             className="mt-6 w-full"
-            onClick={
-              handleNextAction
-            }
+            onClick={() => setConfirmOpen(true)}
             loading={
               updating
             }
@@ -210,6 +201,20 @@ export default function NextActionCard({
             {action.button}
           </ActionButton>
         )}
+
+      {action && (
+        <ConfirmDialog
+          open={confirmOpen}
+          title="Change Request Status"
+          message={`Change request status from "${status}" to "${action.nextStatus}"?`}
+          confirmText="Update Status"
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={async () => {
+            setConfirmOpen(false);
+            await changeStatus();
+          }}
+        />
+      )}
 
     </div>
   );

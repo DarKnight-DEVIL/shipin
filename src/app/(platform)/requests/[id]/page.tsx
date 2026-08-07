@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, updateDoc, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase";
+import { toast } from "sonner";
+
+import Lightbox from "yet-another-react-lightbox";
+import "yet-another-react-lightbox/styles.css";
 
 import SupportCenter from "@/components/support/SupportCenter";
 import { canCreateSupportTicket } from "@/lib/support";
@@ -12,7 +16,7 @@ import RequestHeader from "@/components/request/RequestHeader";
 import RequestTimeline from "@/components/request/RequestTimeline";
 import ProductsCard from "@/components/request/ProductsCard";
 import QuoteCard from "@/components/request/QuoteCard";
-import PaymentCard from "@/components/request/PaymentCard";
+import RequestPaymentStatus from "@/components/request/RequestPaymentStatus";
 import AddItemRequest from "@/components/request/AddItemRequest";
 import AdditionalItemPaymentsCard from "@/components/request/AdditionalItemPaymentsCard";
 
@@ -30,6 +34,13 @@ export default function RequestDetailsPage() {
   const [request, setRequest] = useState<Request | null>(null);
   const [loading, setLoading] = useState(true);
   const [approving, setApproving] = useState(false);
+
+  // State for presigned inspection photo URLs
+  const [inspectionUrls, setInspectionUrls] = useState<string[]>([]);
+
+  // State for Lightbox viewer
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState(0);
 
   /*
    * LIVE FIRESTORE LISTENER
@@ -71,6 +82,56 @@ export default function RequestDetailsPage() {
     return () => unsubscribe();
   }, [requestId]);
 
+  // Fetch presigned URLs securely using Bearer ID Token authentication
+  useEffect(() => {
+    async function loadInspectionPhotos() {
+      if (!request?.warehouse?.inspectionPhotos?.length) {
+        setInspectionUrls([]);
+        return;
+      }
+
+
+      try {
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+          return;
+        }
+
+        const token = await currentUser.getIdToken();
+
+        const urls = await Promise.all(
+          request.warehouse.inspectionPhotos.map(async (key) => {
+
+            const res = await fetch("/api/r2/view", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ key }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+              console.error(data);
+              return "";
+            }
+
+            return data.url;
+          })
+        );
+
+        setInspectionUrls(urls.filter(Boolean));
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    loadInspectionPhotos();
+  }, [request]);
+
   /*
    * MAIN QUOTE APPROVAL
    */
@@ -89,11 +150,12 @@ export default function RequestDetailsPage() {
       router.push(`/payment/${requestId}`);
     } catch (error) {
       console.error(error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong approving the quote."
-      );
+      toast.error("Unable to approve quote.", {
+        description:
+          error instanceof Error
+            ? error.message
+            : undefined,
+      });
     } finally {
       setApproving(false);
     }
@@ -174,7 +236,7 @@ export default function RequestDetailsPage() {
       )}
 
       {/* MAIN PAYMENT ACTIONS */}
-      <PaymentCard
+      <RequestPaymentStatus
         request={request}
         onApproveQuote={handleApproveQuote}
         approving={approving}
@@ -193,24 +255,34 @@ export default function RequestDetailsPage() {
         )}
 
       {/* INSPECTION PHOTOS */}
-      {request.warehouse?.inspectionPhotos &&
-        request.warehouse.inspectionPhotos.length > 0 && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
-            <h2 className="mb-5 text-xl font-semibold text-slate-950 dark:text-white">
-              Inspection Photos
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {request.warehouse.inspectionPhotos.map((photo) => (
-                <img
-                  key={photo}
-                  src={photo}
-                  alt="Inspection"
-                  className="rounded-xl border border-slate-200 dark:border-slate-700 w-full object-cover aspect-video"
-                />
-              ))}
-            </div>
+      {inspectionUrls && inspectionUrls.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
+          <h2 className="mb-5 text-xl font-semibold text-slate-950 dark:text-white">
+            Inspection Photos
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {inspectionUrls.map((photo, index) => (
+              <img
+                key={photo}
+                src={photo}
+                alt="Inspection"
+                onClick={() => {
+                  setSelectedPhoto(index);
+                  setLightboxOpen(true);
+                }}
+                className="cursor-zoom-in rounded-xl border border-slate-700 aspect-video object-cover hover:scale-[1.02] transition"
+              />
+            ))}
           </div>
-        )}
+
+          <Lightbox
+            open={lightboxOpen}
+            close={() => setLightboxOpen(false)}
+            slides={inspectionUrls.map((url) => ({ src: url }))}
+            index={selectedPhoto}
+          />
+        </div>
+      )}
 
       {/* SUPPORT */}
       <SupportCenter

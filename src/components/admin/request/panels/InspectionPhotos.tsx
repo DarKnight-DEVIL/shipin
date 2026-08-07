@@ -5,6 +5,7 @@ import { saveInspectionPhotos } from "@/lib/firestore";
 import { auth } from "@/lib/firebase";
 import Section from "@/components/ui/Section";
 import ActionButton from "@/components/ui/ActionButton";
+import { toast } from "sonner";
 
 interface Props {
   requestId: string;
@@ -20,7 +21,7 @@ export default function InspectionPhotos({
 
   async function uploadPhotos() {
     if (files.length === 0) {
-      alert("Select photos first.");
+      toast.warning("Please select at least one photo.");
       return;
     }
 
@@ -72,7 +73,7 @@ export default function InspectionPhotos({
 
       setFiles([]);
 
-      alert("Inspection photos uploaded successfully.");
+      toast.success("Inspection photos uploaded successfully.");
 
       if (onUploadSuccess) {
         await onUploadSuccess();
@@ -80,11 +81,12 @@ export default function InspectionPhotos({
     } catch (error) {
       console.error("Inspection photo upload failed:", error);
 
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Unable to upload inspection photos."
-      );
+      toast.error("Unable to upload inspection photos.", {
+        description:
+          error instanceof Error
+            ? error.message
+            : undefined,
+      });
     } finally {
       setUploading(false);
     }

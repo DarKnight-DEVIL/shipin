@@ -166,11 +166,6 @@ export default function SupportCenter({
 
             setShowModal(false);
             setReply("");
-
-            console.log(
-              "Ticket created:",
-              ticketId
-            );
           } catch (error) {
             console.error(error);
 

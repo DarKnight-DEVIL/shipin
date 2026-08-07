@@ -24,6 +24,8 @@ export async function POST(
       await request.json();
 
     const quote = body.quote;
+    const quoteRegenerationRequested =
+      body.quoteRegenerationRequested;
 
     /*
      * Dates arrive from the client as ISO
@@ -96,8 +98,22 @@ export async function POST(
      * SAVE QUOTE
      */
     await requestRef.update({
-      quote: normalizedQuote,
+      quote: {
+        ...normalizedQuote,
+
+        expired: false,
+
+        regeneratedCount:
+          (requestData.quote?.regeneratedCount ?? 0) + 1,
+      },
+
       status: "review",
+
+      quoteRegenerationRequested:
+        quoteRegenerationRequested ?? false,
+
+      quoteRequestedAt: null,
+
       updatedAt: new Date(),
     });
 
@@ -124,11 +140,13 @@ export async function POST(
 
         requestId,
 
-        title:
-          "Quote Ready",
+        title: requestData.quoteRegenerationRequested
+          ? "Updated Quote Ready"
+          : "Quote Ready",
 
-        message:
-          "Your ShipIN quote is ready to review.",
+        message: requestData.quoteRegenerationRequested
+          ? "Your updated quotation is ready for review and payment."
+          : "Your ShipIN quote is ready to review.",
 
         type: "quote",
         category: "quote",

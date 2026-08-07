@@ -7,6 +7,7 @@ import {
   serverTimestamp,
   updateDoc,
 } from "firebase/firestore";
+import { toast } from "sonner";
 
 import { db } from "@/lib/firebase";
 import type { Request } from "@/types/request";
@@ -52,28 +53,28 @@ export default function AddItemRequest({
     e.preventDefault();
 
     if (isBlocked) {
-      alert(
+      toast.warning(
         "Additional items can only be requested before the shipment has been dispatched."
       );
       return;
     }
 
     if (!name.trim()) {
-      alert(
+      toast.warning(
         "Please enter the product name."
       );
       return;
     }
 
     if (!url.trim()) {
-      alert(
+      toast.warning(
         "Please enter the product URL."
       );
       return;
     }
 
     if (quantity < 1) {
-      alert(
+      toast.warning(
         "Quantity must be at least 1."
       );
       return;
@@ -180,7 +181,7 @@ export default function AddItemRequest({
       setQuantity(1);
       setOpen(false);
 
-      alert(
+      toast.success(
         "Your additional item request has been submitted for review."
       );
     } catch (error) {
@@ -189,9 +190,12 @@ export default function AddItemRequest({
         error
       );
 
-      alert(
-        "Unable to submit the additional item request."
-      );
+      toast.error("Unable to submit request.", {
+        description:
+          error instanceof Error
+            ? error.message
+            : undefined,
+      });
     } finally {
       setSubmitting(false);
     }

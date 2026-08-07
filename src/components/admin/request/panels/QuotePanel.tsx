@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { pdf } from "@react-pdf/renderer";
+import { toast } from "sonner";
 
 import type { Request } from "@/types/request";
 import Section from "@/components/ui/Section";
@@ -129,7 +130,7 @@ export default function QuotePanel({ request }: Props) {
 
         acceptedAt: null,
 
-        regeneratedCount: 0,
+        regeneratedCount: (existingQuote?.regeneratedCount ?? 0) + 1,
 
         expired: false,
       };
@@ -146,6 +147,7 @@ export default function QuotePanel({ request }: Props) {
 
           body: JSON.stringify({
             quote,
+            quoteRegenerationRequested: false,
           }),
         }
       );
@@ -163,20 +165,20 @@ export default function QuotePanel({ request }: Props) {
         );
       }
 
-      alert(
-        "Quote saved successfully!"
+      toast.success(
+        request.quoteRegenerationRequested
+          ? "New quotation generated successfully!"
+          : "Quote saved successfully."
       );
     } catch (error) {
-      console.error(
-        "Save quote failed:",
-        error
-      );
+      console.error(error);
 
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Failed to save quote."
-      );
+      toast.error("Failed to save quote.", {
+        description:
+          error instanceof Error
+            ? error.message
+            : undefined,
+      });
     } finally {
       setSaving(false);
     }
@@ -327,7 +329,7 @@ export default function QuotePanel({ request }: Props) {
               onClick={saveQuote}
               className="flex-1"
             >
-              {request.quote?.regenerationRequested
+              {request.quoteRegenerationRequested
                 ? "Generate New Quote"
                 : "Save Quote"}
             </ActionButton>

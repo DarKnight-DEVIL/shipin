@@ -6,6 +6,7 @@ import { auth } from "@/lib/firebase";
 import { addRequest } from "@/lib/firestore";
 import AddressCard from "@/components/address/AddressCard";
 import type { Address } from "@/types/address";
+import { toast } from "sonner";
 
 // Step 8.1: Imports added here
 import Modal from "@/components/ui/Modal";
@@ -87,18 +88,18 @@ export default function NewRequestPage() {
     const user = auth.currentUser;
 
     if (!user) {
-      alert("Please login again.");
+      toast.warning("Please login again.");
       return;
     }
 
     if (items.some((item) => !item.name || !item.url)) {
-      alert("Please complete all item details.");
+      toast.warning("Please complete all item details.");
       return;
     }
 
     // Validation
     if (!selectedAddress) {
-      alert("Please select an address.");
+      toast.warning("Please select an address.");
       return;
     }
 
@@ -119,7 +120,7 @@ export default function NewRequestPage() {
         user.uid
       );
 
-      alert("Request submitted successfully!");
+      toast.success("Request submitted successfully!");
 
       setItems([
         {
@@ -140,7 +141,7 @@ export default function NewRequestPage() {
       
     } catch (error) {
       console.error(error);
-      alert("Failed to submit request.");
+      toast.error("Failed to submit request.");
     }
   };
 

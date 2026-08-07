@@ -1,9 +1,7 @@
 "use client";
 
-import {
-  useEffect,
-  useState,
-} from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import type { Request } from "@/types/request";
 
@@ -23,90 +21,47 @@ interface Props {
   request: Request;
 }
 
-export default function WarehousePanel({
-  request,
-}: Props) {
-  const warehouse =
-    request.warehouse;
+export default function WarehousePanel({ request }: Props) {
+  const warehouse = request.warehouse;
 
-  const inspection =
-    request.serviceSelections
-      ?.inspection ?? "standard";
+  const inspection = request.serviceSelections?.inspection ?? "standard";
 
   const shippingPreference =
-    request.serviceSelections
-      ?.shippingPreference ??
-    "approval";
+    request.serviceSelections?.shippingPreference ?? "approval";
 
-  const [weight, setWeight] =
-    useState(
-      warehouse?.weight?.toString() ??
-        ""
-    );
+  const [weight, setWeight] = useState(
+    warehouse?.weight?.toString() ?? ""
+  );
 
-  const [length, setLength] =
-    useState(
-      warehouse?.length?.toString() ??
-        ""
-    );
+  const [length, setLength] = useState(
+    warehouse?.length?.toString() ?? ""
+  );
 
-  const [width, setWidth] =
-    useState(
-      warehouse?.width?.toString() ??
-        ""
-    );
+  const [width, setWidth] = useState(
+    warehouse?.width?.toString() ?? ""
+  );
 
-  const [height, setHeight] =
-    useState(
-      warehouse?.height?.toString() ??
-        ""
-    );
+  const [height, setHeight] = useState(
+    warehouse?.height?.toString() ?? ""
+  );
 
-  const [
-    condition,
-    setCondition,
-  ] = useState(
+  const [condition, setCondition] = useState(
     warehouse?.condition ?? "Good"
   );
 
-  const [
-    checklist,
-    setChecklist,
-  ] = useState({
-    packageReceived:
-      warehouse?.checklist
-        ?.packageReceived ?? false,
-
-    inspectionCompleted:
-      warehouse?.checklist
-        ?.inspectionCompleted ??
-      false,
-
-    photosUploaded:
-      warehouse?.checklist
-        ?.photosUploaded ?? false,
-
-    measured:
-      warehouse?.checklist
-        ?.measured ?? false,
-
-    readyForShipment:
-      warehouse?.checklist
-        ?.readyForShipment ??
-      false,
+  const [checklist, setChecklist] = useState({
+    packageReceived: warehouse?.checklist?.packageReceived ?? false,
+    inspectionCompleted: warehouse?.checklist?.inspectionCompleted ?? false,
+    photosUploaded: warehouse?.checklist?.photosUploaded ?? false,
+    measured: warehouse?.checklist?.measured ?? false,
+    readyForShipment: warehouse?.checklist?.readyForShipment ?? false,
   });
 
-  const [saving, setSaving] =
-    useState(false);
-
-  const [
-    updatingChecklist,
-    setUpdatingChecklist,
-  ] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [updatingChecklist, setUpdatingChecklist] = useState(false);
 
   /*
-   * Sync when parent request
-   * gets refreshed.
+   * Sync when parent request gets refreshed.
    */
   useEffect(() => {
     if (!request.warehouse) {
@@ -115,48 +70,25 @@ export default function WarehousePanel({
 
     setChecklist({
       packageReceived:
-        request.warehouse
-          .checklist
-          ?.packageReceived ??
-        false,
-
+        request.warehouse.checklist?.packageReceived ?? false,
       inspectionCompleted:
-        request.warehouse
-          .checklist
-          ?.inspectionCompleted ??
-        false,
-
+        request.warehouse.checklist?.inspectionCompleted ?? false,
       photosUploaded:
-        request.warehouse
-          .checklist
-          ?.photosUploaded ??
-        false,
-
-      measured:
-        request.warehouse
-          .checklist
-          ?.measured ?? false,
-
+        request.warehouse.checklist?.photosUploaded ?? false,
+      measured: request.warehouse.checklist?.measured ?? false,
       readyForShipment:
-        request.warehouse
-          .checklist
-          ?.readyForShipment ??
-        false,
+        request.warehouse.checklist?.readyForShipment ?? false,
     });
   }, [request.warehouse]);
 
-  async function updateShipmentStatusServer(
-    status: string
-  ) {
+  async function updateShipmentStatusServer(status: string) {
     const response = await fetch(
       `/api/requests/${request.id}/shipment-status`,
       {
         method: "PATCH",
-
         headers: {
           "Content-Type": "application/json",
         },
-
         body: JSON.stringify({
           status,
         }),
@@ -167,8 +99,7 @@ export default function WarehousePanel({
 
     if (!response.ok || !data.success) {
       throw new Error(
-        data.error ||
-          "Failed to update shipment status."
+        data.error || "Failed to update shipment status."
       );
     }
   }
@@ -184,8 +115,7 @@ export default function WarehousePanel({
   ) {
     setUpdatingChecklist(true);
 
-    const previousValue =
-      checklist[key];
+    const previousValue = checklist[key];
 
     /*
      * Optimistic UI update.
@@ -196,146 +126,97 @@ export default function WarehousePanel({
     }));
 
     try {
-      await updateWarehouseChecklist(
-        request.id,
-        {
-          [key]: value,
-        }
-      );
+      await updateWarehouseChecklist(request.id, {
+        [key]: value,
+      });
 
       /*
-       * When package is received,
-       * move request into warehouse.
+       * When package is received, move request into warehouse.
        */
-      if (
-        key ===
-          "packageReceived" &&
-        value
-      ) {
-        await updateShipmentStatusServer(
-          "warehouse_received"
-        );
+      if (key === "packageReceived" && value) {
+        await updateShipmentStatusServer("warehouse_received");
       }
 
       /*
-       * Start storage timer when
-       * inspection is complete and
+       * Start storage timer when inspection is complete and
        * customer approval is required.
        */
       if (
-        key ===
-          "inspectionCompleted" &&
+        key === "inspectionCompleted" &&
         value &&
-        shippingPreference ===
-          "approval"
+        shippingPreference === "approval"
       ) {
-        await startStorageTimer(
-          request.id
-        );
+        await startStorageTimer(request.id);
       }
 
       /*
-       * Ready for shipment moves
-       * workflow to packed.
+       * Ready for shipment moves workflow to packed.
        */
-      if (
-        key ===
-          "readyForShipment" &&
-        value
-      ) {
+      if (key === "readyForShipment" && value) {
         await updateShipmentStatusServer(
           "ready_for_international_shipping"
         );
       }
+
+      toast.success("Checklist updated successfully.");
     } catch (error) {
-      console.error(
-        "Checklist update failed:",
-        error
-      );
+      console.error("Checklist update failed:", error);
 
       /*
-       * Restore checkbox if
-       * Firestore failed.
+       * Restore checkbox if Firestore failed.
        */
       setChecklist((current) => ({
         ...current,
         [key]: previousValue,
       }));
 
-      alert(
-        "Failed to update warehouse checklist."
-      );
+      toast.error("Failed to update warehouse checklist.", {
+        description:
+          error instanceof Error ? error.message : undefined,
+      });
     } finally {
       setUpdatingChecklist(false);
     }
   }
 
   async function handleSaveInspection() {
-    if (
-      !weight ||
-      !length ||
-      !width ||
-      !height
-    ) {
-      alert(
-        "Please enter all package measurements."
-      );
-
+    if (!weight || !length || !width || !height) {
+      toast.error("Please enter all package measurements.");
       return;
     }
 
     setSaving(true);
 
     try {
-      await saveWarehouseInspection(
-        request.id,
-        {
-          weight: Number(weight),
-          length: Number(length),
-          width: Number(width),
-          height: Number(height),
-          condition: condition || "Good",
-        }
-      );
+      await saveWarehouseInspection(request.id, {
+        weight: Number(weight),
+        length: Number(length),
+        width: Number(width),
+        height: Number(height),
+        condition: condition || "Good",
+      });
 
-      await updateWarehouseChecklist(
-        request.id,
-        {
-          measured: true,
+      await updateWarehouseChecklist(request.id, {
+        measured: true,
+        inspectionCompleted:
+          inspection === "none" ? true : checklist.inspectionCompleted,
+      });
 
-          inspectionCompleted:
-            inspection === "none"
-              ? true
-              : checklist
-                  .inspectionCompleted,
-        }
-      );
+      setChecklist((current) => ({
+        ...current,
+        measured: true,
+        inspectionCompleted:
+          inspection === "none" ? true : current.inspectionCompleted,
+      }));
 
-      setChecklist(
-        (current) => ({
-          ...current,
-          measured: true,
-
-          inspectionCompleted:
-            inspection === "none"
-              ? true
-              : current
-                  .inspectionCompleted,
-        })
-      );
-
-      alert(
-        "Warehouse inspection saved successfully."
-      );
+      toast.success("Warehouse inspection saved successfully.");
     } catch (error) {
-      console.error(
-        "Save inspection failed:",
-        error
-      );
+      console.error("Save inspection failed:", error);
 
-      alert(
-        "Failed to save warehouse inspection."
-      );
+      toast.error("Failed to save warehouse inspection.", {
+        description:
+          error instanceof Error ? error.message : undefined,
+      });
     } finally {
       setSaving(false);
     }
@@ -343,24 +224,23 @@ export default function WarehousePanel({
 
   async function handlePhotoUploadSuccess() {
     try {
-      await updateWarehouseChecklist(
-        request.id,
-        {
-          photosUploaded: true,
-        }
-      );
+      await updateWarehouseChecklist(request.id, {
+        photosUploaded: true,
+      });
 
-      setChecklist(
-        (current) => ({
-          ...current,
-          photosUploaded: true,
-        })
-      );
+      setChecklist((current) => ({
+        ...current,
+        photosUploaded: true,
+      }));
+
+      toast.success("Inspection photos updated.");
     } catch (error) {
-      console.error(
-        "Failed to update photo checklist:",
-        error
-      );
+      console.error("Failed to update photo checklist:", error);
+
+      toast.error("Failed to update photo checklist.", {
+        description:
+          error instanceof Error ? error.message : undefined,
+      });
     }
   }
 
@@ -372,31 +252,24 @@ export default function WarehousePanel({
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-5">
-            <p className="text-sm text-slate-400 mb-2">
-              Inspection
-            </p>
+            <p className="text-sm text-slate-400 mb-2">Inspection</p>
 
             <p className="text-lg font-semibold text-white">
               {inspection === "none"
                 ? "No Inspection"
-                : inspection ===
-                  "standard"
+                : inspection === "standard"
                 ? "Standard Inspection"
                 : "Detailed Inspection"}
             </p>
           </div>
 
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-5">
-            <p className="text-sm text-slate-400 mb-2">
-              Shipping Preference
-            </p>
+            <p className="text-sm text-slate-400 mb-2">Shipping Preference</p>
 
             <p className="text-lg font-semibold text-white">
-              {shippingPreference ===
-              "auto"
+              {shippingPreference === "auto"
                 ? "Auto Ship"
-                : shippingPreference ===
-                  "approval"
+                : shippingPreference === "approval"
                 ? "Wait For Approval"
                 : "Hold Package"}
             </p>
@@ -404,154 +277,94 @@ export default function WarehousePanel({
         </div>
       </Section>
 
-      <Section
-        title="Warehouse Actions"
-        subtitle="Required processing"
-      >
+      <Section title="Warehouse Actions" subtitle="Required processing">
         <div className="space-y-3">
           {inspection === "none" && (
             <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-4 text-green-300">
-              Keep the package sealed.
-              Do not open it.
+              Keep the package sealed. Do not open it.
             </div>
           )}
 
-          {inspection ===
-            "standard" && (
+          {inspection === "standard" && (
             <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-4 text-blue-300">
-              Open package, verify
-              the correct item, and
-              inspect for visible
+              Open package, verify the correct item, and inspect for visible
               damage.
             </div>
           )}
 
-          {inspection ===
-            "detailed" && (
+          {inspection === "detailed" && (
             <div className="rounded-lg bg-purple-500/10 border border-purple-500/20 p-4 text-purple-300">
-              Perform a detailed
-              inspection, verify
-              accessories, and upload
+              Perform a detailed inspection, verify accessories, and upload
               multiple photos.
             </div>
           )}
 
-          {shippingPreference ===
-            "auto" && (
+          {shippingPreference === "auto" && (
             <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-4 text-emerald-300">
-              Ship internationally
-              immediately after
-              warehouse processing.
+              Ship internationally immediately after warehouse processing.
             </div>
           )}
 
-          {shippingPreference ===
-            "approval" && (
+          {shippingPreference === "approval" && (
             <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/20 p-4 text-yellow-300">
-              Wait for customer
-              approval before
-              international shipment.
+              Wait for customer approval before international shipment.
             </div>
           )}
 
-          {shippingPreference ===
-            "hold" && (
+          {shippingPreference === "hold" && (
             <div className="rounded-lg bg-orange-500/10 border border-orange-500/20 p-4 text-orange-300">
-              Hold package until the
-              customer requests
-              international shipment.
+              Hold package until the customer requests international shipment.
             </div>
           )}
         </div>
       </Section>
 
-      <Section
-        title="Warehouse Checklist"
-        subtitle="Processing progress"
-      >
+      <Section title="Warehouse Checklist" subtitle="Processing progress">
         <div className="space-y-4">
           <ChecklistItem
             label="Package received"
-            checked={
-              checklist.packageReceived
-            }
-            disabled={
-              updatingChecklist
-            }
+            checked={checklist.packageReceived}
+            disabled={updatingChecklist}
             onChange={(value) =>
-              handleChecklistChange(
-                "packageReceived",
-                value
-              )
+              handleChecklistChange("packageReceived", value)
             }
           />
 
           {inspection !== "none" && (
             <ChecklistItem
               label="Inspection completed"
-              checked={
-                checklist.inspectionCompleted
-              }
-              disabled={
-                updatingChecklist
-              }
+              checked={checklist.inspectionCompleted}
+              disabled={updatingChecklist}
               onChange={(value) =>
-                handleChecklistChange(
-                  "inspectionCompleted",
-                  value
-                )
+                handleChecklistChange("inspectionCompleted", value)
               }
             />
           )}
 
-          {inspection ===
-            "detailed" && (
+          {inspection === "detailed" && (
             <ChecklistItem
               label="Photos uploaded"
-              checked={
-                checklist.photosUploaded
-              }
-              disabled={
-                updatingChecklist
-              }
+              checked={checklist.photosUploaded}
+              disabled={updatingChecklist}
               onChange={(value) =>
-                handleChecklistChange(
-                  "photosUploaded",
-                  value
-                )
+                handleChecklistChange("photosUploaded", value)
               }
             />
           )}
 
           <ChecklistItem
             label="Package measured"
-            checked={
-              checklist.measured
-            }
-            disabled={
-              updatingChecklist
-            }
-            onChange={(value) =>
-              handleChecklistChange(
-                "measured",
-                value
-              )
-            }
+            checked={checklist.measured}
+            disabled={updatingChecklist}
+            onChange={(value) => handleChecklistChange("measured", value)}
           />
 
           <ChecklistItem
             label="Ready for shipment"
-            checked={
-              checklist.readyForShipment
-            }
-            disabled={
-              updatingChecklist
-            }
+            checked={checklist.readyForShipment}
+            disabled={updatingChecklist}
             onChange={(value) =>
-              handleChecklistChange(
-                "readyForShipment",
-                value
-              )
+              handleChecklistChange("readyForShipment", value)
             }
           />
         </div>
@@ -560,9 +373,7 @@ export default function WarehousePanel({
       {inspection !== "none" && (
         <InspectionPhotos
           requestId={request.id}
-          onUploadSuccess={
-            handlePhotoUploadSuccess
-          }
+          onUploadSuccess={handlePhotoUploadSuccess}
         />
       )}
 
@@ -572,10 +383,8 @@ export default function WarehousePanel({
       >
         <InspectionPhotoGallery
           photos={
-            request.warehouse
-              ?.photos ??
-            request.warehouse
-              ?.inspectionPhotos ??
+            request.warehouse?.photos ??
+            request.warehouse?.inspectionPhotos ??
             []
           }
         />
@@ -586,29 +395,13 @@ export default function WarehousePanel({
         subtitle="Inspect package after arrival"
       >
         <div className="grid md:grid-cols-2 gap-5">
-          <Input
-            label="Weight (kg)"
-            value={weight}
-            onChange={setWeight}
-          />
+          <Input label="Weight (kg)" value={weight} onChange={setWeight} />
 
-          <Input
-            label="Length (cm)"
-            value={length}
-            onChange={setLength}
-          />
+          <Input label="Length (cm)" value={length} onChange={setLength} />
 
-          <Input
-            label="Width (cm)"
-            value={width}
-            onChange={setWidth}
-          />
+          <Input label="Width (cm)" value={width} onChange={setWidth} />
 
-          <Input
-            label="Height (cm)"
-            value={height}
-            onChange={setHeight}
-          />
+          <Input label="Height (cm)" value={height} onChange={setHeight} />
         </div>
 
         <div className="mt-6">
@@ -618,30 +411,18 @@ export default function WarehousePanel({
 
           <select
             value={condition}
-            onChange={(e) =>
-              setCondition(
-                e.target.value
-              )
-            }
+            onChange={(e) => setCondition(e.target.value)}
             className="w-full rounded-xl bg-slate-900 border border-slate-700 px-4 py-3 text-white"
           >
-            <option>
-              Excellent
-            </option>
-
+            <option>Excellent</option>
             <option>Good</option>
-
-            <option>
-              Damaged
-            </option>
+            <option>Damaged</option>
           </select>
         </div>
 
         <div className="mt-8">
           <ActionButton
-            onClick={
-              handleSaveInspection
-            }
+            onClick={handleSaveInspection}
             loading={saving}
             className="w-full"
           >
@@ -662,9 +443,7 @@ function ChecklistItem({
   label: string;
   checked: boolean;
   disabled: boolean;
-  onChange: (
-    value: boolean
-  ) => void;
+  onChange: (value: boolean) => void;
 }) {
   return (
     <label className="flex items-center gap-3 cursor-pointer text-slate-300">
@@ -672,11 +451,7 @@ function ChecklistItem({
         type="checkbox"
         checked={checked}
         disabled={disabled}
-        onChange={(e) =>
-          onChange(
-            e.target.checked
-          )
-        }
+        onChange={(e) => onChange(e.target.checked)}
         className="h-5 w-5 rounded bg-slate-900 border-slate-700 accent-blue-500"
       />
 
@@ -692,23 +467,15 @@ function Input({
 }: {
   label: string;
   value: string;
-  onChange: (
-    value: string
-  ) => void;
+  onChange: (value: string) => void;
 }) {
   return (
     <div>
-      <label className="block text-sm text-slate-400 mb-2">
-        {label}
-      </label>
+      <label className="block text-sm text-slate-400 mb-2">{label}</label>
 
       <input
         value={value}
-        onChange={(e) =>
-          onChange(
-            e.target.value
-          )
-        }
+        onChange={(e) => onChange(e.target.value)}
         className="w-full rounded-xl bg-slate-900 border border-slate-700 px-4 py-3 text-white"
       />
     </div>

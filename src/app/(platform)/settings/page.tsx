@@ -7,6 +7,7 @@ import {
   updateProfile,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { toast } from "sonner";
 import {
   getUserProfile,
   createUserProfile,
@@ -292,7 +293,7 @@ export default function SettingsPage() {
     const user = auth.currentUser;
 
     if (!user) {
-      alert("Please login first.");
+      toast.warning("Please login first.");
       return;
     }
 
@@ -300,7 +301,7 @@ export default function SettingsPage() {
     const phone = profile.phone.trim();
 
     if (!displayName) {
-      alert("Please enter your name.");
+      toast.warning("Please enter your name.");
       return;
     }
 
@@ -327,7 +328,7 @@ export default function SettingsPage() {
       setProfileSaved(true);
     } catch (error) {
       console.error("Failed to update profile:", error);
-      alert("Unable to update profile.");
+      toast.error("Unable to update profile.");
     } finally {
       setProfileSaving(false);
     }
@@ -422,7 +423,7 @@ export default function SettingsPage() {
   async function saveNotifications(saveTarget: "channels" | "types" | "whatsapp") {
     const user = auth.currentUser;
     if (!user) {
-      alert("Please login first.");
+      toast.warning("Please login first.");
       return;
     }
 
@@ -433,12 +434,14 @@ export default function SettingsPage() {
       phone = `${whatsappCountryCode}${local}`;
 
       if (!local || phone.replace(/\D/g, "").length < 8 || phone.replace(/\D/g, "").length > 15) {
-        alert("Please enter a valid WhatsApp number.");
+        toast.warning("Please enter a valid WhatsApp number.");
         return;
       }
 
       if (!whatsappConsentChecked) {
-        alert("Please confirm your consent to receive transactional WhatsApp updates.");
+        toast.warning(
+  "Please confirm your consent to receive transactional WhatsApp updates."
+);
         return;
       }
     }
@@ -491,7 +494,15 @@ export default function SettingsPage() {
       }
     } catch (error) {
       console.error("Failed to save notification preferences:", error);
-      alert(error instanceof Error ? error.message : "Unable to save notification preferences.");
+      toast.error(
+        "Unable to save notification preferences.",
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : undefined,
+        }
+      );
     } finally {
       if (saveTarget === "channels") setNotificationChannelsSaving(false);
       if (saveTarget === "types") setNotificationTypesSaving(false);
@@ -515,7 +526,7 @@ export default function SettingsPage() {
     const user = auth.currentUser;
 
     if (!user) {
-      alert("Please login first.");
+      toast.warning("Please login first.");
       return;
     }
 
@@ -529,10 +540,14 @@ export default function SettingsPage() {
     } catch (error) {
       console.error("Failed to save dashboard settings:", error);
 
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Unable to save dashboard settings."
+      toast.error(
+        "Unable to save dashboard settings.",
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : undefined,
+        }
       );
     } finally {
       setDashboardSettingsSaving(false);

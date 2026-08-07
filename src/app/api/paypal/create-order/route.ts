@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
+import { isQuoteExpired } from "@/lib/quoteExpiry";
 
 type PaymentType = "main" | "additional_item";
 
@@ -99,6 +100,25 @@ export async function POST(request: NextRequest) {
           error: "Request data not found.",
         },
         { status: 404 }
+      );
+    }
+
+    /*
+     * Block expired quotations
+     */
+    if (
+      paymentType === "main" &&
+      isQuoteExpired(requestData.quote?.expiresAt)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "This quotation has expired. Please request a new quote.",
+        },
+        {
+          status: 400,
+        }
       );
     }
 

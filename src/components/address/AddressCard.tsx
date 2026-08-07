@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   deleteAddress,
   setDefaultAddress,
@@ -7,6 +8,7 @@ import {
 
 import { auth } from "@/lib/firebase";
 import type { Address } from "@/types/address";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 interface Props {
   address: Address;
@@ -19,18 +21,12 @@ export default function AddressCard({
   onEdit,
   onRefresh,
 }: Props) {
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
   async function handleDelete() {
     const user = auth.currentUser;
 
     if (!user) return;
-
-    if (
-      !confirm(
-        "Delete this address?"
-      )
-    ) {
-      return;
-    }
 
     await deleteAddress(
       user.uid,
@@ -114,13 +110,29 @@ export default function AddressCard({
 
         <button
           type="button"
-          onClick={handleDelete}
+          onClick={() => setShowDeleteDialog(true)}
           className="rounded-xl bg-red-600 px-4 py-2 font-medium text-white transition hover:bg-red-700"
         >
           Delete
         </button>
 
       </div>
+
+      <ConfirmDialog
+        open={showDeleteDialog}
+        title="Delete Address"
+        message="Are you sure you want to delete this address? This action cannot be undone."
+        confirmText="Delete"
+        danger
+        onCancel={() =>
+          setShowDeleteDialog(false)
+        }
+        onConfirm={async () => {
+          setShowDeleteDialog(false);
+
+          await handleDelete();
+        }}
+      />
     </div>
   );
 }

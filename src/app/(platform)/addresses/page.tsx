@@ -12,7 +12,7 @@ import {
 import AddressCard from "@/components/address/AddressCard";
 import AddressForm from "@/components/address/AddressForm";
 import Modal from "@/components/ui/Modal";
-
+import { toast } from "sonner";
 import type { Address } from "@/types/address";
 
 export default function AddressesPage() {
@@ -114,7 +114,7 @@ export default function AddressesPage() {
     const user = auth.currentUser;
 
     if (!user) {
-      alert("Please login first.");
+      toast.warning("Please login first.");
       return;
     }
 
@@ -149,7 +149,7 @@ export default function AddressesPage() {
         error
       );
 
-      alert(
+      toast.error(
         "Unable to save address. Please try again."
       );
     }

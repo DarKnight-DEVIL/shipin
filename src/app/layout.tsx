@@ -4,6 +4,7 @@ import "./globals.css";
 
 import PayPalProvider from "@/components/PayPalProvider";
 import ThemeProvider from "@/components/ThemeProvider";
+import { Toaster } from "sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,6 +38,18 @@ export default function RootLayout({
             {children}
           </PayPalProvider>
         </ThemeProvider>
+
+        <Toaster
+          position="top-right"
+          richColors
+          closeButton
+          expand
+          visibleToasts={4}
+          toastOptions={{
+            duration: 4000,
+            className: "rounded-2xl",
+          }}
+        />
       </body>
     </html>
   );

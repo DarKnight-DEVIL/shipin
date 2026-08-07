@@ -134,10 +134,13 @@ export interface Tracking {
 }
 
 export interface Payment {
-  provider: "paypal";
+  provider: "paypal" | "wallet";
   orderId: string;
   captureId?: string;
   amount: number;
+  walletAmount?: number;
+  paypalAmount?: number;
+  processingFee?: number;
   currency?: string;
   paidAt?: Timestamp;
 }
@@ -147,7 +150,7 @@ export interface AdditionalPayment {
 
   additionalItemRequestId: string;
 
-  provider: "paypal";
+  provider: "paypal" | "wallet";
 
   orderId?: string;
   captureId?: string;
@@ -255,6 +258,10 @@ export interface Request {
   serviceSelections?: ServiceSelections;
 
   quote?: Quote;
+
+  quoteRegenerationRequested?: boolean;
+
+  quoteRequestedAt?: Date | string | Timestamp | null;
 
   payment?: Payment;
 

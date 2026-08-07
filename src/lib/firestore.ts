@@ -227,6 +227,7 @@ export const markRequestPaid = async (
     orderId: string;
     captureId?: string;
     amount: number;
+    provider?: "paypal" | "wallet";
   }
 ) => {
   const requestRef = doc(
@@ -242,13 +243,13 @@ export const markRequestPaid = async (
     status: "paid",
 
     payment: {
-      provider: "paypal",
+      provider: paymentData.provider ?? "paypal",
       orderId:
         paymentData.orderId,
       captureId:
         paymentData.captureId ||
         null,
-      amount:
+      amountPaid:
         paymentData.amount,
       paidAt:
         serverTimestamp(),
@@ -262,6 +263,63 @@ export const markRequestPaid = async (
     await createNotification(userId, requestId, "Payment Received", "Your payment has been successfully recorded.", "payment");
   }
 };
+
+export async function recordPayment(
+  requestId: string,
+  paymentData: {
+    provider: "paypal" | "wallet";
+    amount: number;
+    orderId: string;
+    captureId?: string;
+  }
+) {
+  const requestRef = doc(db, "requests", requestId);
+
+  const snapshot = await getDoc(requestRef);
+
+  if (!snapshot.exists()) {
+    throw new Error("Request not found");
+  }
+
+  const request = snapshot.data();
+
+  const previousPaid =
+    request.payment?.amountPaid ?? 0;
+
+  const grandTotal =
+    request.quote?.breakdown?.grandTotal ?? 0;
+
+  const totalPaid =
+    previousPaid + paymentData.amount;
+
+  const isFullyPaid =
+    totalPaid >= grandTotal - 0.01;
+
+  await updateDoc(requestRef, {
+
+    payment: {
+
+      provider: paymentData.provider,
+
+      orderId: paymentData.orderId,
+
+      captureId:
+        paymentData.captureId ?? null,
+
+      amountPaid: totalPaid,
+
+      paidAt: serverTimestamp(),
+
+    },
+
+    status: isFullyPaid
+      ? "paid"
+      : "awaiting_payment",
+
+    updatedAt: serverTimestamp(),
+
+  });
+}
 
 /* =========================================
    SHIPMENT TRACKING
@@ -867,22 +925,26 @@ export async function saveInspectionPhotos(
   photos: string[]
 ) {
   const requestRef = doc(db, "requests", requestId);
+
   const snapshot = await getDoc(requestRef);
-  const userId = snapshot.exists() ? snapshot.data()?.userId : null;
 
-  await updateDoc(
-    requestRef,
-    {
-      warehouse: {
-        inspectionPhotos: photos,
-      },
+  const userId = snapshot.exists()
+    ? snapshot.data()?.userId
+    : null;
 
-      updatedAt: serverTimestamp(),
-    }
-  );
+  await updateDoc(requestRef, {
+    "warehouse.inspectionPhotos": photos,
+    updatedAt: serverTimestamp(),
+  });
 
   if (userId) {
-    await createNotification(userId, requestId, "Inspection Complete", "Your warehouse inspection items and photos are available.", "warehouse");
+    await createNotification(
+      userId,
+      requestId,
+      "Inspection Complete",
+      "Your warehouse inspection photos are now available.",
+      "warehouse"
+    );
   }
 }
 

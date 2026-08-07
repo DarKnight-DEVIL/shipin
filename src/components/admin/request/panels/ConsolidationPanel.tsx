@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import {
   createShipment,
   addRequestToShipment,
@@ -11,167 +12,130 @@ interface Props {
   request: any;
 }
 
-export default function ConsolidationPanel({
-  request,
-}: Props) {
-
-  const [loading, setLoading] =
-    useState(false);
-  const [shipments, setShipments] =
-    useState<any[]>([]);
-  const [selectedShipment, setSelectedShipment] =
-    useState("");
+export default function ConsolidationPanel({ request }: Props) {
+  const [loading, setLoading] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [shipments, setShipments] = useState<any[]>([]);
+  const [selectedShipment, setSelectedShipment] = useState("");
 
   useEffect(() => {
     async function load() {
-      const data =
-        await getUserShipments(
-          request.userId
-        );
-
-      setShipments(data);
+      try {
+        const data = await getUserShipments(request.userId);
+        setShipments(data);
+      } catch (e) {
+        console.error(e);
+        toast.error("Failed to load user shipments.");
+      }
     }
 
     load();
   }, [request.userId]);
 
-  const shipmentId =
-    request.consolidation?.shipmentId;
+  const shipmentId = request.consolidation?.shipmentId;
 
   async function handleCreateShipment() {
-
     try {
-
       setLoading(true);
 
-      const id =
-        await createShipment(
-          request.userId
-        );
+      const id = await createShipment(request.userId);
 
-      await addRequestToShipment(
-        id,
-        request.id
-      );
+      await addRequestToShipment(id, request.id);
 
-      alert(
-        `Shipment ${id} created successfully.`
-      );
+      toast.success(`Shipment ${id} created successfully.`);
 
       window.location.reload();
-
     } catch (e) {
-
       console.error(e);
 
-      alert(
-        "Unable to create shipment."
-      );
-
+      toast.error("Unable to create shipment.", {
+        description:
+          e instanceof Error ? e.message : "An unexpected error occurred.",
+      });
     } finally {
-
       setLoading(false);
+    }
+  }
 
+  async function handleAddToShipment() {
+    if (!selectedShipment) {
+      toast.warning("Please select a shipment.");
+      return;
     }
 
+    try {
+      setAssigning(true);
+
+      await addRequestToShipment(selectedShipment, request.id);
+
+      toast.success("Package added to shipment successfully.");
+
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+
+      toast.error("Unable to add package to shipment.", {
+        description:
+          e instanceof Error ? e.message : "An unexpected error occurred.",
+      });
+    } finally {
+      setAssigning(false);
+    }
   }
 
   return (
-
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8">
-
-      <h2 className="text-3xl font-bold text-white mb-8">
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8">
+      <h2 className="mb-8 text-3xl font-bold text-white">
         Package Consolidation
       </h2>
 
       {!shipmentId ? (
-
         <>
-          <p className="text-slate-400 mb-8">
+          <p className="mb-8 text-slate-400">
             This package is not assigned to a shipment.
           </p>
 
           <button
             disabled={loading}
             onClick={handleCreateShipment}
-            className="bg-purple-600 hover:bg-purple-700 rounded-xl px-6 py-3 font-semibold"
+            className="rounded-xl bg-purple-600 px-6 py-3 font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading
-              ? "Creating..."
-              : "Create Shipment"}
+            {loading ? "Creating..." : "Create Shipment"}
           </button>
-
         </>
-
       ) : (
-
         <div className="space-y-6">
-
           <div>
+            <p className="text-slate-400">Shipment ID</p>
 
-            <p className="text-slate-400">
-              Shipment ID
-            </p>
-
-            <p className="text-white font-mono mt-2">
-              {shipmentId}
-            </p>
-
+            <p className="mt-2 font-mono text-white">{shipmentId}</p>
           </div>
 
           <div className="space-y-4">
-
             <select
               value={selectedShipment}
-              onChange={(e)=>
-                setSelectedShipment(e.target.value)
-              }
-              className="w-full rounded-xl bg-slate-950 border border-slate-700 p-3"
+              onChange={(e) => setSelectedShipment(e.target.value)}
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white outline-none focus:border-purple-500"
             >
+              <option value="">Select Shipment</option>
 
-              <option value="">
-                Select Shipment
-              </option>
-
-              {shipments.map((shipment)=>(
-                <option
-                  key={shipment.id}
-                  value={shipment.id}
-                >
+              {shipments.map((shipment) => (
+                <option key={shipment.id} value={shipment.id}>
                   {shipment.id}
                 </option>
               ))}
-
             </select>
 
             <button
-              onClick={async()=>{
-
-                if(!selectedShipment){
-                  alert("Select a shipment.");
-                  return;
-                }
-
-                await addRequestToShipment(
-                  selectedShipment,
-                  request.id
-                );
-
-                window.location.reload();
-
-              }}
-              className="bg-green-600 hover:bg-green-700 rounded-xl px-6 py-3 font-semibold"
+              disabled={assigning}
+              onClick={handleAddToShipment}
+              className="rounded-xl bg-green-600 px-6 py-3 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Add To Shipment
+              {assigning ? "Adding..." : "Add To Shipment"}
             </button>
           </div>
-
         </div>
-
       )}
-
     </div>
-
   );
-
 }
