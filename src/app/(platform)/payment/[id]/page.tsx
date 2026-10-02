@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { getRequestById } from "@/lib/firestore";
 import { getWallet } from "@/lib/wallet";
 import { isQuoteExpired } from "@/lib/quoteExpiry";
-
+import PageSkeleton from "@/components/ui/PageSkeleton";
 import type { Request } from "@/types/request";
 
 import PaymentCard from "@/components/checkout/PaymentCard";
@@ -61,7 +61,7 @@ export default function PaymentPage() {
   if (loading) {
     return (
       <div className="p-8">
-        Loading...
+        <PageSkeleton />
       </div>
     );
   }

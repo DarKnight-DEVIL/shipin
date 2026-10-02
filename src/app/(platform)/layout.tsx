@@ -14,6 +14,8 @@ import {
   Menu,
   PackageSearch,
   Settings,
+  WalletCards,
+  MessageCircle,
   X,
 } from "lucide-react";
 
@@ -377,6 +379,23 @@ export default function PlatformLayout({
               pathname={pathname}
             />
 
+            <NavItem
+              href="/wallet"
+              label="Wallet"
+              icon={
+                <WalletCards size={19} />
+              }
+              pathname={pathname}
+            />
+            <NavItem
+              href="/support"
+              label="Support"
+              icon={
+                <MessageCircle size={19} />
+              }
+              pathname={pathname}
+            />
+            
             <NavItem
               href="/notifications"
               label="Notifications"

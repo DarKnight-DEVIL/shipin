@@ -8,23 +8,19 @@ export function generateShippingLabel(request: Request) {
     format: "a6",
   });
 
-const address = request.shippingAddress;
-const tracking = request.tracking;
+  const address = request.shippingAddress;
+  const tracking = request.tracking;
 
-/*
- * A shipping label cannot be generated
- * without a delivery address.
- *
- * Some older Firestore requests may not
- * contain shippingAddress.
- */
-if (!address) {
-  alert(
-    "This request does not have a shipping address. Please add or select a shipping address before generating the shipping label."
-  );
-
-  return;
-}
+  /*
+   * A shipping label cannot be generated
+   * without a delivery address.
+   *
+   * Some older Firestore requests may not
+   * contain shippingAddress.
+   */
+  if (!address) {
+    return false;
+  }
 
   let y = 12;
 
@@ -197,4 +193,5 @@ if (!address) {
       : `shipping-label-${request.id}.pdf`;
 
   pdf.save(filename);
+  return true;
 }

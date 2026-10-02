@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { updateDoc, doc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -54,10 +55,10 @@ export default function ShipmentManagementPanel({
         }
       );
 
-      alert("Shipment updated.");
+      toast.success("Shipment updated.");
     } catch (e) {
       console.error(e);
-      alert("Unable to update shipment.");
+      toast.error("Unable to update shipment.");
     } finally {
       setSaving(false);
     }
@@ -76,14 +77,14 @@ export default function ShipmentManagementPanel({
           value={courier}
           onChange={(e)=>setCourier(e.target.value)}
           placeholder="Courier"
-          className="bg-slate-950 border border-slate-700 rounded-xl p-3"
+          className="bg-slate-950 border border-slate-700 rounded-xl p-3 text-white"
         />
 
         <input
           value={tracking}
           onChange={(e)=>setTracking(e.target.value)}
           placeholder="Tracking Number"
-          className="bg-slate-950 border border-slate-700 rounded-xl p-3"
+          className="bg-slate-950 border border-slate-700 rounded-xl p-3 text-white"
         />
 
         <input
@@ -91,7 +92,7 @@ export default function ShipmentManagementPanel({
           value={weight}
           onChange={(e)=>setWeight(Number(e.target.value))}
           placeholder="Weight"
-          className="bg-slate-950 border border-slate-700 rounded-xl p-3"
+          className="bg-slate-950 border border-slate-700 rounded-xl p-3 text-white"
         />
 
         <input
@@ -99,7 +100,7 @@ export default function ShipmentManagementPanel({
           value={length}
           onChange={(e)=>setLength(Number(e.target.value))}
           placeholder="Length"
-          className="bg-slate-950 border border-slate-700 rounded-xl p-3"
+          className="bg-slate-950 border border-slate-700 rounded-xl p-3 text-white"
         />
 
         <input
@@ -107,7 +108,7 @@ export default function ShipmentManagementPanel({
           value={width}
           onChange={(e)=>setWidth(Number(e.target.value))}
           placeholder="Width"
-          className="bg-slate-950 border border-slate-700 rounded-xl p-3"
+          className="bg-slate-950 border border-slate-700 rounded-xl p-3 text-white"
         />
 
         <input
@@ -115,7 +116,7 @@ export default function ShipmentManagementPanel({
           value={height}
           onChange={(e)=>setHeight(Number(e.target.value))}
           placeholder="Height"
-          className="bg-slate-950 border border-slate-700 rounded-xl p-3"
+          className="bg-slate-950 border border-slate-700 rounded-xl p-3 text-white"
         />
 
       </div>
@@ -123,7 +124,7 @@ export default function ShipmentManagementPanel({
       <button
         onClick={saveShipment}
         disabled={saving}
-        className="mt-8 bg-purple-600 hover:bg-purple-700 rounded-xl px-6 py-3 font-semibold"
+        className="mt-8 bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-6 py-3 font-semibold transition disabled:opacity-50"
       >
         {saving ? "Saving..." : "Save Shipment"}
       </button>

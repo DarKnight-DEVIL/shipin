@@ -152,7 +152,10 @@ export default function SettingsPage() {
         setProfileLoading(false);
         return;
       }
-
+      
+      console.log("AUTH USER:", user);
+      console.log("AUTH PHOTO URL:", user.photoURL);
+      
       const providers = user.providerData.map((provider) => provider.providerId);
       setHasPasswordProvider(providers.includes("password"));
       setHasGoogleProvider(providers.includes("google.com"));
@@ -169,7 +172,8 @@ export default function SettingsPage() {
         */
        if (
          !savedProfile ||
-         !savedProfile.email
+         !savedProfile.email ||
+         !savedProfile.photoURL
        ) {
          await createUserProfile(user.uid, {
            displayName:
@@ -195,6 +199,18 @@ export default function SettingsPage() {
 
          savedProfile =
            await getUserProfile(user.uid);
+        }
+
+        if (
+          user.photoURL &&
+          savedProfile?.photoURL !== user.photoURL
+        ) {
+          await updateUserProfile(user.uid, {
+            photoURL: user.photoURL,
+          });
+
+          savedProfile =
+            await getUserProfile(user.uid);
         }
 
         setProfile({

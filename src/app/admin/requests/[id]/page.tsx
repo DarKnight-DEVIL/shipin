@@ -18,7 +18,7 @@ import type { Request } from "@/types/request";
 
 import RequestLayout from "@/components/admin/request/RequestLayout";
 import RequestSidebar from "@/components/admin/request/RequestSidebar";
-import LoadingCard from "@/components/ui/LoadingCard";
+import PageSkeleton from "@/components/ui/PageSkeleton";
 
 import OverviewPanel from "@/components/admin/request/panels/OverviewPanel";
 import ProductsPanel from "@/components/admin/request/panels/ProductsPanel";
@@ -98,7 +98,7 @@ export default function AdminRequestPage() {
   }, [id]);
 
   if (loading) {
-    return <LoadingCard />;
+    return <PageSkeleton />;
   }
 
   if (!request) {

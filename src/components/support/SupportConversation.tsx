@@ -1,9 +1,12 @@
 "use client";
 
+import { MessageSquare } from "lucide-react";
+
 import {
   SupportTicket,
   SupportMessage,
 } from "@/types/support";
+import EmptyState from "@/components/ui/EmptyState";
 
 import IndividualSupportMessage from "./SupportMessage";
 import ReplyBox from "./ReplyBox";
@@ -75,13 +78,11 @@ export default function SupportConversation({
       <div className="max-h-[500px] min-h-[250px] space-y-4 overflow-y-auto bg-slate-50/50 p-6 dark:bg-slate-950/30">
 
         {messages.length === 0 ? (
-          <div className="flex min-h-[200px] items-center justify-center">
-
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              No messages yet.
-            </p>
-
-          </div>
+          <EmptyState
+            icon={<MessageSquare size={26} />}
+            title="No messages yet"
+            description="Send a message to start the conversation with our support team."
+          />
         ) : (
           messages.map((message) => (
             <IndividualSupportMessage

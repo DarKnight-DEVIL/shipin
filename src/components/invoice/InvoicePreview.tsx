@@ -1,5 +1,8 @@
 "use client";
 
+import { PackageOpen } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
+
 interface Props {
   invoice: any;
 }
@@ -457,7 +460,7 @@ export default function InvoicePreview({
 
 
 /* =========================================
-   ITEMS TABLE
+    ITEMS TABLE
 ========================================= */
 
 function InvoiceItemsTable({
@@ -467,9 +470,11 @@ function InvoiceItemsTable({
 }) {
   if (!items.length) {
     return (
-      <div className="rounded-xl border border-slate-800 p-5 text-sm text-slate-400">
-        No products available.
-      </div>
+      <EmptyState
+        icon={<PackageOpen size={26} />}
+        title="No products available"
+        description="There are no products to display in this section."
+      />
     );
   }
 
@@ -557,7 +562,7 @@ function InvoiceItemsTable({
 
 
 /* =========================================
-   MONEY ROW
+    MONEY ROW
 ========================================= */
 
 function Row({

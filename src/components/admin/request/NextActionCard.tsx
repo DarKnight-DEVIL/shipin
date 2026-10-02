@@ -169,9 +169,7 @@ export default function NextActionCard({
         error
       );
 
-      alert(
-        "Unable to update the request status."
-      );
+      toast.error("Unable to update the request status.");
     } finally {
       setUpdating(false);
     }

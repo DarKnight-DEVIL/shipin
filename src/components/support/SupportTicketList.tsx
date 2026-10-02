@@ -1,6 +1,9 @@
 "use client";
 
+import { MessageCircle } from "lucide-react";
+
 import { SupportTicket } from "@/types/support";
+import EmptyState from "@/components/ui/EmptyState";
 
 interface Props {
   tickets: SupportTicket[];
@@ -25,11 +28,11 @@ export default function SupportTicketList({
 
       {/* EMPTY STATE */}
       {tickets.length === 0 && (
-        <div className="p-6">
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            No tickets yet.
-          </p>
-        </div>
+        <EmptyState
+          icon={<MessageCircle size={26} />}
+          title="No support tickets"
+          description="You don't have any support tickets yet. Create one if you need help with a request."
+        />
       )}
 
       {/* TICKET LIST */}

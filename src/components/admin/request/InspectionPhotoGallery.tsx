@@ -4,10 +4,12 @@ import {
   useEffect,
   useState,
 } from "react";
+import { ImageOff } from "lucide-react";
 
 import {
   auth,
 } from "@/lib/firebase";
+import EmptyState from "@/components/ui/EmptyState";
 
 interface Props {
   photos?: string[];
@@ -132,11 +134,11 @@ export default function InspectionPhotoGallery({
 
   if (!photos.length) {
     return (
-      <div className="rounded-xl border border-slate-800 bg-slate-950 p-5">
-        <p className="text-sm text-slate-500">
-          No inspection photos uploaded yet.
-        </p>
-      </div>
+      <EmptyState
+        icon={<ImageOff size={26} />}
+        title="No inspection photos"
+        description="Inspection photos uploaded by the warehouse team will appear here."
+      />
     );
   }
 

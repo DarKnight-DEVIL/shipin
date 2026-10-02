@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect } from "react";
+import { X } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -24,9 +25,13 @@ export default function Modal({
       }
     };
 
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     document.addEventListener("keydown", handleEscape);
 
     return () => {
+      document.body.style.overflow = originalOverflow;
       document.removeEventListener("keydown", handleEscape);
     };
   }, [open, onClose]);
@@ -35,30 +40,96 @@ export default function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-      onClick={onClose}
+      className="
+        fixed inset-0 z-[100]
+        flex items-center justify-center
+        p-4 sm:p-6
+        bg-slate-950/60
+        backdrop-blur-sm
+      "
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={title ? "modal-title" : undefined}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950"
+        className="
+          relative w-full max-w-lg
+          max-h-[90vh]
+          overflow-y-auto
+          rounded-3xl
+          border border-slate-200
+          bg-white
+          shadow-2xl
+          shadow-black/20
+
+          dark:border-slate-800
+          dark:bg-slate-950
+          dark:shadow-black/50
+
+          animate-in
+          fade-in
+          zoom-in-95
+          duration-200
+        "
+        onMouseDown={(event) => event.stopPropagation()}
       >
-        {/* Header */}
-        <div className="sticky top-0 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-5 dark:border-slate-800 dark:bg-slate-950">
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-            {title}
-          </h2>
+        {/* HEADER */}
+        {title && (
+          <div
+            className="
+              flex items-center justify-between
+              border-b border-slate-200
+              px-6 py-5
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-black dark:hover:bg-slate-800 dark:hover:text-white"
+              dark:border-slate-800
+            "
           >
-            ✕
-          </button>
-        </div>
+            <h2
+              id="modal-title"
+              className="
+                text-lg font-bold
+                text-slate-950
+                dark:text-white
+              "
+            >
+              {title}
+            </h2>
 
-        {/* Body */}
-        <div className="p-6">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close modal"
+              className="
+                flex h-9 w-9
+                items-center justify-center
+                rounded-xl
+                text-slate-500
+                transition
+
+                hover:bg-slate-100
+                hover:text-slate-950
+
+                dark:text-slate-400
+                dark:hover:bg-slate-800
+                dark:hover:text-white
+
+                focus:outline-none
+                focus:ring-2
+                focus:ring-blue-500/40
+              "
+            >
+              <X size={19} />
+            </button>
+          </div>
+        )}
+
+        {/* BODY */}
+        <div className="p-6 sm:p-7">
           {children}
         </div>
       </div>

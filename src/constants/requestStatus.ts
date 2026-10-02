@@ -1,24 +1,49 @@
 export const REQUEST_STATUS = {
   SUBMITTED: "submitted",
 
-  PURCHASE_INVOICE_SENT: "purchase_invoice_sent",
-  PURCHASE_INVOICE_PAID: "purchase_invoice_paid",
+  PURCHASE_INVOICE_SENT:
+    "purchase_invoice_sent",
 
-  ITEMS_ORDERED: "items_ordered",
+  PURCHASE_INVOICE_PAID:
+    "purchase_invoice_paid",
 
-  WAREHOUSE_RECEIVED: "warehouse_received",
-  WAREHOUSE_INSPECTED: "warehouse_inspected",
+  ITEMS_ORDERED:
+    "items_ordered",
 
-  SHIPPING_INVOICE_SENT: "shipping_invoice_sent",
-  SHIPPING_INVOICE_PAID: "shipping_invoice_paid",
+  WAREHOUSE_RECEIVED:
+    "warehouse_received",
 
-  SHIPPED: "shipped",
+  WAREHOUSE_INSPECTED:
+    "warehouse_inspected",
 
-  DELIVERED: "delivered",
+  SHIPPING_INVOICE_SENT:
+    "shipping_invoice_sent",
 
-  CANCELLED: "cancelled",
+  SHIPPING_INVOICE_PAID:
+    "shipping_invoice_paid",
 
-  REFUNDED: "refunded",
+  SHIPPED:
+    "shipped",
+
+  DELIVERED:
+    "delivered",
+
+  /*
+   * Customer has requested a refund.
+   *
+   * This is an active admin-action status.
+   * It is intentionally different from
+   * REFUNDED, which means the refund is
+   * completely processed.
+   */
+  REFUND_REQUESTED:
+    "refund_requested",
+
+  CANCELLED:
+    "cancelled",
+
+  REFUNDED:
+    "refunded",
 } as const;
 
 export type RequestStatus =

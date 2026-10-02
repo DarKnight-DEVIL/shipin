@@ -224,10 +224,13 @@ export const saveDetailedQuote = async (
 export const markRequestPaid = async (
   requestId: string,
   paymentData: {
-    orderId: string;
+    orderId?: string;
     captureId?: string;
     amount: number;
-    provider?: "paypal" | "wallet";
+    walletAmount?: number;
+    paypalAmount?: number;
+    provider?: "paypal" | "wallet" | "split";
+    paymentMethod?: string;
   }
 ) => {
   const requestRef = doc(
@@ -237,30 +240,90 @@ export const markRequestPaid = async (
   );
 
   const snapshot = await getDoc(requestRef);
-  const userId = snapshot.exists() ? snapshot.data()?.userId : null;
 
-  await updateDoc(requestRef, {
-    status: "paid",
+  const userId =
+    snapshot.data()?.userId ?? null;
 
-    payment: {
-      provider: paymentData.provider ?? "paypal",
-      orderId:
-        paymentData.orderId,
-      captureId:
-        paymentData.captureId ||
-        null,
-      amountPaid:
-        paymentData.amount,
-      paidAt:
+  const walletAmount =
+    Number(
+      paymentData.walletAmount ?? 0
+    );
+
+  const paypalAmount =
+    Number(
+      paymentData.paypalAmount ??
+        paymentData.amount ??
+        0
+    );
+
+  let paymentMethod =
+    paymentData.paymentMethod;
+
+  /*
+   * Automatically determine the payment
+   * method when it isn't explicitly provided.
+   */
+  if (!paymentMethod) {
+    if (
+      walletAmount > 0 &&
+      paypalAmount > 0
+    ) {
+      paymentMethod =
+        "wallet_and_paypal";
+    } else if (
+      walletAmount > 0
+    ) {
+      paymentMethod = "wallet";
+    } else {
+      paymentMethod = "paypal";
+    }
+  }
+
+  await updateDoc(
+    requestRef,
+    {
+      status: "paid",
+
+      payment: {
+        provider:
+          paymentData.provider ??
+          "paypal",
+
+        paymentMethod,
+
+        orderId:
+          paymentData.orderId,
+
+        captureId:
+          paymentData.captureId ??
+          null,
+
+        amountPaid:
+          paymentData.amount,
+
+        walletAmount,
+
+        paypalAmount,
+
+        status: "completed",
+
+        paidAt:
+          serverTimestamp(),
+      },
+
+      updatedAt:
         serverTimestamp(),
-    },
-
-    updatedAt:
-      serverTimestamp(),
-  });
+    }
+  );
 
   if (userId) {
-    await createNotification(userId, requestId, "Payment Received", "Your payment has been successfully recorded.", "payment");
+    await createNotification(
+      userId,
+      requestId,
+      "Payment Received",
+      "Your payment has been successfully recorded.",
+      "payment"
+    );
   }
 };
 
@@ -656,6 +719,40 @@ export const subscribeToRequests = (
   });
 };
 
+export const subscribeToRequest = (
+  requestId: string,
+  callback: (request: any | null) => void
+) => {
+  const requestRef = doc(
+    db,
+    "requests",
+    requestId
+  );
+
+  return onSnapshot(
+    requestRef,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        callback(null);
+        return;
+      }
+
+      callback({
+        id: snapshot.id,
+        ...snapshot.data(),
+      });
+    },
+    (error) => {
+      console.error(
+        "Request subscription error:",
+        error
+      );
+
+      callback(null);
+    }
+  );
+};
+
 /* =========================================
    SUPPORT TICKETS & MESSAGING (COLLECTIONS)
 ========================================= */
@@ -824,6 +921,55 @@ export const subscribeToSupportTickets = (
         ...doc.data(),
       }))
     );
+  });
+};
+
+export const subscribeToAllSupportTickets = (
+  callback: (tickets: any[]) => void
+) => {
+  const q = query(
+    collection(db, "supportTickets"),
+    orderBy("updatedAt", "desc")
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      callback(
+        snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }))
+      );
+    },
+    (error) => {
+      console.error(
+        "Admin support tickets subscription error:",
+        error
+      );
+
+      callback([]);
+    }
+  );
+};
+
+export const subscribeToCustomerSupportTickets = (
+  customerId: string,
+  callback: (tickets: any[]) => void
+) => {
+  const q = query(
+    collection(db, "supportTickets"),
+    where("customerId", "==", customerId),
+    orderBy("updatedAt", "desc")
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    const tickets = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    callback(tickets);
   });
 };
 

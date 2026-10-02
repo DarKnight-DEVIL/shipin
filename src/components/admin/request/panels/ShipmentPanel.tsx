@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Timestamp } from "firebase/firestore";
 import { toast } from "sonner";
+import { Truck } from "lucide-react";
 
 import type { Request } from "@/types/request";
 import { CARRIERS } from "@/types/carrier";
@@ -455,16 +456,38 @@ export default function ShipmentPanel({ request }: Props) {
 
             <button
               type="button"
-              onClick={() => generateShippingLabel(request)}
+              onClick={() => {
+                const generated = generateShippingLabel(request);
+
+                if (!generated) {
+                  toast.error(
+                    "This request does not have a shipping address. Please add or select a shipping address before generating the shipping label."
+                  );
+                }
+              }}
               className="w-full rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 transition active:scale-[0.98]"
             >
               Print Shipping Label
             </button>
           </div>
         ) : (
-          <div className="rounded-xl border border-dashed border-slate-700 p-5 text-sm text-slate-400">
-            No ShipIN tracking ID has been generated yet. It will be generated
-            when the shipment is created.
+          <div className="mt-6 rounded-2xl border border-dashed border-slate-700 bg-slate-900/50 p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-800">
+                <Truck size={22} className="text-slate-400" />
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-white">
+                  Tracking ID not generated yet
+                </h3>
+
+                <p className="mt-1 text-sm leading-6 text-slate-400">
+                  A ShipIN tracking ID will appear here once the shipment has
+                  been created and tracking information is available.
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </Section>

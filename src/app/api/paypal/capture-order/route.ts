@@ -7,9 +7,17 @@ import {
 
 type PaymentType = "main" | "additional_item";
 
+function toNumber(value: unknown): number {
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : 0;
+}
+
 async function getPayPalAccessToken() {
   const clientId = process.env.PAYPAL_CLIENT_ID;
-  const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
+
+  const clientSecret =
+    process.env.PAYPAL_CLIENT_SECRET;
 
   const baseUrl =
     process.env.PAYPAL_API_URL ||
@@ -29,15 +37,12 @@ async function getPayPalAccessToken() {
     `${baseUrl}/v1/oauth2/token`,
     {
       method: "POST",
-
       headers: {
         Authorization: `Basic ${auth}`,
         "Content-Type":
           "application/x-www-form-urlencoded",
       },
-
       body: "grant_type=client_credentials",
-
       cache: "no-store",
     }
   );
@@ -67,18 +72,21 @@ export async function POST(
     const {
       requestId,
       orderID,
+      amount,
       paymentType = "main",
       additionalItemRequestId,
     }: {
       requestId?: string;
       orderID?: string;
+      amount?: number;
       paymentType?: PaymentType;
       additionalItemRequestId?: string;
     } = body;
 
-
     /*
+     * ========================================
      * VALIDATION
+     * ========================================
      */
 
     if (!requestId) {
@@ -95,7 +103,23 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          error: "PayPal Order ID is required.",
+          error:
+            "PayPal Order ID is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (
+      typeof amount !== "number" ||
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "A valid PayPal payment amount is required.",
         },
         { status: 400 }
       );
@@ -129,7 +153,9 @@ export async function POST(
     }
 
     /*
-     * GET REQUEST FROM FIRESTORE
+     * ========================================
+     * GET REQUEST
+     * ========================================
      */
 
     const requestRef = adminDb
@@ -163,37 +189,212 @@ export async function POST(
     }
 
     /*
-     * PREVENT DUPLICATE ADDITIONAL ITEM PAYMENT
+     * ========================================
+     * GET STORED PAYPAL PAYMENT ORDER
+     * ========================================
      */
 
-    if (
-      paymentType === "additional_item"
-    ) {
-      const additionalPayments =
-        requestData.additionalPayments || [];
+    const paymentOrderRef = adminDb
+      .collection("paypalPaymentOrders")
+      .doc(orderID);
 
-      const alreadyPaid =
-        additionalPayments.find(
-          (payment: any) =>
-            payment.additionalItemRequestId ===
-              additionalItemRequestId &&
-            payment.status === "completed"
-        );
+    const paymentOrderSnapshot =
+      await paymentOrderRef.get();
 
-      if (alreadyPaid) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "This additional item has already been paid.",
-          },
-          { status: 409 }
-        );
-      }
+    if (!paymentOrderSnapshot.exists) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "PayPal payment order could not be verified.",
+        },
+        { status: 403 }
+      );
+    }
+
+    const paymentOrder =
+      paymentOrderSnapshot.data();
+
+    if (!paymentOrder) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "PayPal payment order data could not be verified.",
+        },
+        { status: 403 }
+      );
     }
 
     /*
-     * CAPTURE PAYPAL ORDER
+     * ========================================
+     * VERIFY PAYMENT ORDER
+     * ========================================
+     */
+
+    if (
+      paymentOrder.requestId !==
+      requestId
+    ) {
+      console.error(
+        "PayPal request ownership mismatch:",
+        {
+          storedRequestId:
+            paymentOrder.requestId,
+          requestId,
+          orderID,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "This payment does not belong to the requested order.",
+        },
+        { status: 403 }
+      );
+    }
+
+    if (
+      paymentOrder.paymentType !==
+      paymentType
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment type does not match the PayPal order.",
+        },
+        { status: 403 }
+      );
+    }
+
+    const storedAdditionalItemId =
+      paymentOrder.additionalItemRequestId ||
+      null;
+
+    const requestedAdditionalItemId =
+      additionalItemRequestId || null;
+
+    if (
+      storedAdditionalItemId !==
+      requestedAdditionalItemId
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Additional item payment does not match the PayPal order.",
+        },
+        { status: 403 }
+      );
+    }
+
+    /*
+     * ========================================
+     * VERIFY REQUEST OWNER
+     * ========================================
+     */
+
+    const requestUserId =
+      requestData.userId;
+
+    const paymentOrderUserId =
+      paymentOrder.userId;
+
+    if (
+      !requestUserId ||
+      !paymentOrderUserId ||
+      requestUserId !==
+        paymentOrderUserId
+    ) {
+      console.error(
+        "PayPal payment ownership mismatch:",
+        {
+          requestUserId,
+          paymentOrderUserId,
+          requestId,
+          orderID,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "This payment does not belong to the authenticated account.",
+        },
+        { status: 403 }
+      );
+    }
+
+    /*
+     * ========================================
+     * IDEMPOTENCY CHECK
+     * ========================================
+     */
+
+    if (
+      paymentOrder.status ===
+      "completed"
+    ) {
+      return NextResponse.json({
+        success: true,
+        alreadyCompleted: true,
+        paymentType,
+        captureId:
+          paymentOrder.captureId ||
+          null,
+      });
+    }
+
+    /*
+     * ========================================
+     * VERIFY CLIENT AMOUNT
+     * ========================================
+     */
+
+    const expectedPayPalAmount =
+      Number(
+        toNumber(
+          paymentOrder.paypalAmount
+        ).toFixed(2)
+      );
+
+    const clientAmount =
+      Number(amount.toFixed(2));
+
+    if (
+      Math.abs(
+        clientAmount -
+          expectedPayPalAmount
+      ) > 0.01
+    ) {
+      console.error(
+        "Client PayPal amount mismatch:",
+        {
+          clientAmount,
+          expectedPayPalAmount,
+          requestId,
+          orderID,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The PayPal payment amount could not be verified.",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * ========================================
+     * CAPTURE PAYPAL
+     * ========================================
      */
 
     const accessToken =
@@ -203,19 +404,19 @@ export async function POST(
       process.env.PAYPAL_API_URL ||
       "https://api-m.sandbox.paypal.com";
 
-    const paypalResponse = await fetch(
-      `${baseUrl}/v2/checkout/orders/${orderID}/capture`,
-      {
-        method: "POST",
-
-        headers: {
-          Authorization:
-            `Bearer ${accessToken}`,
-          "Content-Type":
-            "application/json",
-        },
-      }
-    );
+    const paypalResponse =
+      await fetch(
+        `${baseUrl}/v2/checkout/orders/${orderID}/capture`,
+        {
+          method: "POST",
+          headers: {
+            Authorization:
+              `Bearer ${accessToken}`,
+            "Content-Type":
+              "application/json",
+          },
+        }
+      );
 
     const paypalData =
       await paypalResponse.json();
@@ -230,20 +431,25 @@ export async function POST(
         {
           success: false,
           error:
+            paypalData?.message ||
             "PayPal could not capture the payment.",
         },
         {
-          status: paypalResponse.status,
+          status:
+            paypalResponse.status,
         }
       );
     }
 
     /*
-     * VERIFY PAYPAL PAYMENT STATUS
+     * ========================================
+     * VERIFY PAYPAL STATUS
+     * ========================================
      */
 
     if (
-      paypalData.status !== "COMPLETED"
+      paypalData.status !==
+      "COMPLETED"
     ) {
       return NextResponse.json(
         {
@@ -256,7 +462,9 @@ export async function POST(
     }
 
     /*
-     * GET CAPTURE DETAILS
+     * ========================================
+     * GET CAPTURE
+     * ========================================
      */
 
     const capture =
@@ -274,17 +482,32 @@ export async function POST(
       );
     }
 
-    const captureId = capture.id;
+    const captureId =
+      capture.id;
 
-    const capturedAmount = Number(
-      capture.amount?.value
-    );
+    if (!captureId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "PayPal capture ID was not found.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const capturedAmount =
+      Number(
+        capture.amount?.value
+      );
 
     const capturedCurrency =
       capture.amount?.currency_code;
 
     if (
-      !Number.isFinite(capturedAmount) ||
+      !Number.isFinite(
+        capturedAmount
+      ) ||
       capturedAmount <= 0
     ) {
       return NextResponse.json(
@@ -311,249 +534,24 @@ export async function POST(
     }
 
     /*
-     * MAIN REQUEST PAYMENT
-     */
-
-    if (paymentType === "main") {
-      const expectedAmount =
-        requestData?.quote?.breakdown
-          ?.grandTotal;
-
-      if (
-        typeof expectedAmount !==
-          "number" ||
-        !Number.isFinite(
-          expectedAmount
-        )
-      ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Expected quotation amount could not be verified.",
-          },
-          { status: 400 }
-        );
-      }
-
-      /*
-       * Compare amounts.
-       * Math.abs protects against
-       * floating-point rounding issues.
-       */
-
-      if (
-        Math.abs(
-          capturedAmount -
-            expectedAmount
-        ) > 0.01
-      ) {
-        console.error(
-          "PayPal amount mismatch:",
-          {
-            expectedAmount,
-            capturedAmount,
-          }
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Captured payment amount does not match the quotation.",
-          },
-          { status: 400 }
-        );
-      }
-
-      /*
-       * Update MAIN request only.
-       */
-
-      await requestRef.update({
-        status: "paid",
-
-        payment: {
-          provider: "paypal",
-          orderId: orderID,
-          captureId,
-          amount: capturedAmount,
-          currency: capturedCurrency,
-          status: "completed",
-          paidAt:
-            FieldValue.serverTimestamp(),
-        },
-
-        updatedAt:
-          FieldValue.serverTimestamp(),
-      });
-
-      /*
-       * PAYMENT RECEIVED NOTIFICATION
-       *
-       * Payment has already been verified by
-       * PayPal before reaching this point.
-       *
-       * Notification preferences, channel
-       * settings and WhatsApp consent are
-       * enforced by notificationService.ts.
-       */
-      try {
-        const userId =
-          requestData.userId;
-
-        const customerName =
-          requestData.customerName ||
-          requestData.shippingAddress
-            ?.firstName ||
-          "Customer";
-
-        await sendNotification({
-          userId,
-
-          requestId,
-
-          title:
-            "Payment Received",
-
-          message:
-            "We’ve received your payment successfully.",
-
-          type: "payment",
-          category: "payment",
-
-          channels: {
-            inApp: true,
-            email: true,
-            whatsapp: true,
-          },
-
-          whatsapp: {
-            templateName:
-              "shipin_payment_received",
-
-            languageCode: "en",
-
-            components: [
-              {
-                type: "body",
-
-                parameters: [
-                  {
-                    type: "text",
-                    text: customerName,
-                  },
-                  {
-                    type: "text",
-                    text: requestId,
-                  },
-                ],
-              },
-            ],
-          },
-        });
-      } catch (error) {
-        /*
-         * A notification failure must NEVER
-         * turn a successful PayPal payment
-         * into a failed payment response.
-         */
-        console.error(
-          "Payment notification failed:",
-          error
-        );
-      }
-
-      return NextResponse.json({
-        success: true,
-        paymentType: "main",
-        captureId,
-      });
-    }
-
-    /*
-     * ADDITIONAL ITEM PAYMENT
-     */
-
-    const additionalItems =
-      requestData.additionalItemRequests ||
-      [];
-
-    const additionalItemIndex =
-      additionalItems.findIndex(
-        (item: any) =>
-          item.id ===
-          additionalItemRequestId
-      );
-
-    if (
-      additionalItemIndex === -1
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Additional item request could not be found.",
-        },
-        { status: 404 }
-      );
-    }
-
-    const additionalItem =
-      additionalItems[
-        additionalItemIndex
-      ];
-
-    if (
-      additionalItem.status !==
-      "awaiting_payment"
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "This additional item is not awaiting payment.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const expectedAmount =
-      additionalItem.totalDue;
-
-    if (
-      typeof expectedAmount !==
-        "number" ||
-      !Number.isFinite(
-        expectedAmount
-      )
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Expected additional item amount could not be verified.",
-        },
-        { status: 400 }
-      );
-    }
-
-    /*
-     * Verify PayPal charged
-     * the correct amount.
+     * ========================================
+     * VERIFY CAPTURE AMOUNT
+     * ========================================
      */
 
     if (
       Math.abs(
         capturedAmount -
-          expectedAmount
+          expectedPayPalAmount
       ) > 0.01
     ) {
       console.error(
-        "Additional item PayPal amount mismatch:",
+        "PayPal capture amount mismatch:",
         {
-          expectedAmount,
+          expectedPayPalAmount,
           capturedAmount,
+          orderID,
+          requestId,
         }
       );
 
@@ -561,126 +559,681 @@ export async function POST(
         {
           success: false,
           error:
-            "Captured payment amount does not match the additional item quotation.",
+            "Captured payment amount does not match the expected PayPal payment.",
         },
         { status: 400 }
       );
     }
 
     /*
-     * Mark ONLY this additional
-     * item as paid.
-     *
-     * Do NOT change the main
-     * request status here.
+     * ========================================
+     * ADDITIONAL ITEM PAYMENT
+     * ========================================
      */
 
-    additionalItems[
-      additionalItemIndex
-    ] = {
-      ...additionalItem,
+    if (
+      paymentType ===
+      "additional_item"
+    ) {
+      const additionalItems =
+        requestData.additionalItemRequests ||
+        [];
 
-      status: "paid",
+      const additionalItemIndex =
+        additionalItems.findIndex(
+          (item: any) =>
+            item.id ===
+            additionalItemRequestId
+        );
 
-      amountPaid:
+      if (
+        additionalItemIndex === -1
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Additional item request could not be found.",
+          },
+          { status: 404 }
+        );
+      }
+
+      const additionalItem =
+        additionalItems[
+          additionalItemIndex
+        ];
+
+      if (
+        additionalItem.status !==
+        "awaiting_payment"
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "This additional item is not awaiting payment.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const storedBaseAmount =
+        Number(
+          toNumber(
+            paymentOrder.baseAmount
+          ).toFixed(2)
+        );
+
+      const additionalItemTotal =
+        Number(
+          toNumber(
+            additionalItem.totalDue
+          ).toFixed(2)
+        );
+
+      if (
+        Math.abs(
+          storedBaseAmount -
+            additionalItemTotal
+        ) > 0.01
+      ) {
+        console.error(
+          "Additional item base amount mismatch:",
+          {
+            storedBaseAmount,
+            additionalItemTotal,
+            orderID,
+          }
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "The additional item payment amount could not be verified.",
+          },
+          { status: 400 }
+        );
+      }
+
+      /*
+       * Mark additional item paid.
+       */
+
+      additionalItems[
+        additionalItemIndex
+      ] = {
+        ...additionalItem,
+
+        status: "paid",
+
+        amountPaid:
+          capturedAmount,
+
+        paidAt: new Date(),
+      };
+
+      /*
+       * Payment history.
+       */
+
+      const additionalPayment = {
+        id: captureId,
+
+        additionalItemRequestId,
+
+        provider: "paypal",
+
+        paymentMethod: "paypal",
+
+        orderId: orderID,
+
+        captureId,
+
+        amount:
+          capturedAmount,
+
+        currency:
+          capturedCurrency,
+
+        status: "completed",
+
+        paidAt:
+          new Date().toISOString(),
+      };
+
+      /*
+       * Update request.
+       */
+
+      await requestRef.update({
+        additionalItemRequests:
+          additionalItems,
+
+        items:
+          FieldValue.arrayUnion({
+            name:
+              additionalItem.item
+                ?.name,
+
+            url:
+              additionalItem.item
+                ?.url || "",
+
+            quantity:
+              additionalItem.item
+                ?.quantity,
+
+            unitPrice:
+              additionalItem.unitPrice,
+
+            subtotal:
+              additionalItem.subtotal,
+          }),
+
+        additionalPayments:
+          FieldValue.arrayUnion(
+            additionalPayment
+          ),
+
+        updatedAt:
+          FieldValue.serverTimestamp(),
+      });
+
+      /*
+       * Mark PayPal payment order
+       * as completed.
+       */
+
+      await paymentOrderRef.update({
+        status: "completed",
+
+        captureId,
+
         capturedAmount,
 
-      paidAt:
-        new Date(),
-    };
-
-    /*
-     * Store payment history.
-     */
-
-    const additionalPayment = {
-      id: captureId,
-
-      additionalItemRequestId,
-
-      provider: "paypal",
-
-      orderId: orderID,
-
-      captureId,
-
-      amount:
-        capturedAmount,
-
-      currency:
         capturedCurrency,
 
-      status: "completed",
+        completedAt:
+          FieldValue.serverTimestamp(),
+      });
 
-      paidAt:
-        new Date().toISOString(),
-    };
+      return NextResponse.json({
+        success: true,
+
+        paymentType:
+          "additional_item",
+
+        additionalItemRequestId,
+
+        captureId,
+
+        amountPaid:
+          capturedAmount,
+
+        paymentMethod:
+          "paypal",
+      });
+    }
 
     /*
-     * Update Firestore.
+     * ========================================
+     * MAIN PAYMENT
+     * ========================================
      */
 
-    await requestRef.update({
-      /*
-       * Update the additional item request.
-       *
-       * awaiting_payment → paid
-       */
-      additionalItemRequests:
-        additionalItems,
+    const walletApplied =
+      Number(
+        toNumber(
+          paymentOrder.walletApplied
+        ).toFixed(2)
+      );
 
-      /*
-       * Add the successfully paid item
-       * to the main request product list.
-       *
-       * This happens ONLY after PayPal
-       * confirms successful payment.
-       */
-      items:
-        FieldValue.arrayUnion({
-          name:
-            additionalItem.item.name,
+    const totalRequired =
+      Number(
+        toNumber(
+          paymentOrder.totalRequired
+        ).toFixed(2)
+      );
 
-          url:
-            additionalItem.item.url ||
-            "",
+    const baseAmount =
+      Number(
+        toNumber(
+          paymentOrder.baseAmount
+        ).toFixed(2)
+      );
 
-          quantity:
-            additionalItem.item.quantity,
+    if (
+      baseAmount <= 0 ||
+      totalRequired <= 0
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The stored payment calculation is invalid.",
+        },
+        { status: 400 }
+      );
+    }
 
-          unitPrice:
-            additionalItem.unitPrice,
+    /*
+     * Verify:
+     *
+     * Total required
+     * - Wallet applied
+     * = PayPal amount
+     */
 
-          subtotal:
-            additionalItem.subtotal,
-        }),
+    const calculatedPayPalAmount =
+      Number(
+        (
+          totalRequired -
+          walletApplied
+        ).toFixed(2)
+      );
 
-      /*
-       * Save the separate PayPal payment
-       * record for this additional item.
-       */
-      additionalPayments:
-        FieldValue.arrayUnion(
-          additionalPayment
-        ),
+    if (
+      Math.abs(
+        calculatedPayPalAmount -
+          expectedPayPalAmount
+      ) > 0.01
+    ) {
+      console.error(
+        "Stored payment calculation mismatch:",
+        {
+          baseAmount,
+          totalRequired,
+          walletApplied,
+          calculatedPayPalAmount,
+          expectedPayPalAmount,
+          orderID,
+        }
+      );
 
-      updatedAt:
-        FieldValue.serverTimestamp(),
-    });
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The stored payment calculation could not be verified.",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * ========================================
+     * DETERMINE PAYMENT METHOD
+     * ========================================
+     *
+     * IMPORTANT:
+     * This is calculated server-side.
+     * We do NOT trust the browser.
+     */
+
+    let paymentMethod:
+      | "paypal"
+      | "wallet_and_paypal";
+
+    if (walletApplied > 0) {
+      paymentMethod =
+        "wallet_and_paypal";
+    } else {
+      paymentMethod =
+        "paypal";
+    }
+
+    /*
+     * ========================================
+     * WALLET + PAYMENT TRANSACTION
+     * ========================================
+     */
+
+    const walletRef = adminDb
+      .collection("wallets")
+      .doc(
+        paymentOrder.userId
+      );
+
+    /*
+     * Use a unique wallet transaction
+     * document based on the PayPal
+     * capture ID.
+     */
+
+    const walletTransactionRef =
+      adminDb
+        .collection(
+          "walletTransactions"
+        )
+        .doc(
+          `paypal_${captureId}`
+        );
+
+    await adminDb.runTransaction(
+      async (transaction) => {
+        /*
+         * READS FIRST
+         */
+
+        const walletSnapshot =
+          await transaction.get(
+            walletRef
+          );
+
+        const paymentOrderSnapshot =
+          await transaction.get(
+            paymentOrderRef
+          );
+
+        const requestSnapshot =
+          await transaction.get(
+            requestRef
+          );
+
+        /*
+         * Re-check payment order.
+         */
+
+        const currentPaymentOrder =
+          paymentOrderSnapshot.data();
+
+        if (
+          !currentPaymentOrder
+        ) {
+          throw new Error(
+            "PayPal payment order could not be found."
+          );
+        }
+
+        /*
+         * Another request may have
+         * completed this payment.
+         */
+
+        if (
+          currentPaymentOrder.status ===
+          "completed"
+        ) {
+          return;
+        }
+
+        /*
+         * Verify ownership again.
+         */
+
+        if (
+          currentPaymentOrder.userId !==
+          paymentOrder.userId
+        ) {
+          throw new Error(
+            "Payment ownership verification failed."
+          );
+        }
+
+        /*
+         * Current wallet balance.
+         */
+
+        const currentBalance =
+          walletSnapshot.exists
+            ? Math.max(
+                0,
+                toNumber(
+                  walletSnapshot.data()
+                    ?.balance
+                )
+              )
+            : 0;
+
+        /*
+         * Wallet cannot become negative.
+         */
+
+        if (
+          walletApplied >
+          currentBalance + 0.01
+        ) {
+          throw new Error(
+            "Insufficient wallet balance to complete this payment."
+          );
+        }
+
+        /*
+         * New balance.
+         */
+
+        const newBalance =
+          Number(
+            (
+              currentBalance -
+              walletApplied
+            ).toFixed(2)
+          );
+
+        /*
+         * ====================================
+         * WALLET DEDUCTION
+         * ====================================
+         */
+
+        if (walletApplied > 0) {
+          transaction.set(
+            walletRef,
+            {
+              balance:
+                newBalance,
+
+              currency:
+                walletSnapshot.exists
+                  ? walletSnapshot.data()
+                      ?.currency ||
+                    "USD"
+                  : "USD",
+
+              updatedAt:
+                FieldValue.serverTimestamp(),
+            },
+            {
+              merge: true,
+            }
+          );
+
+          transaction.set(
+            walletTransactionRef,
+            {
+              userId:
+                paymentOrder.userId,
+
+              type: "payment",
+
+              amount:
+                -walletApplied,
+
+              balanceAfter:
+                newBalance,
+
+              requestId,
+
+              description:
+                "Request Payment",
+
+              createdAt:
+                FieldValue.serverTimestamp(),
+            }
+          );
+        }
+
+        /*
+         * ====================================
+         * MARK REQUEST PAID
+         * ====================================
+         */
+
+        transaction.update(
+          requestRef,
+          {
+            status: "paid",
+
+            payment: {
+              provider:
+                paymentMethod,
+
+              paymentMethod,
+
+              orderId:
+                orderID,
+
+              captureId,
+
+              amount:
+                totalRequired,
+
+              amountPaid:
+                totalRequired,
+
+              paypalAmount:
+                capturedAmount,
+
+              walletAmount:
+                walletApplied,
+
+              quoteAmount:
+                baseAmount,
+
+              currency:
+                capturedCurrency,
+
+              status:
+                "completed",
+
+              paidAt:
+                FieldValue.serverTimestamp(),
+            },
+
+            updatedAt:
+              FieldValue.serverTimestamp(),
+          }
+        );
+
+        /*
+         * ====================================
+         * MARK PAYPAL ORDER COMPLETE
+         * ====================================
+         */
+
+        transaction.update(
+          paymentOrderRef,
+          {
+            status: "completed",
+
+            captureId,
+
+            capturedAmount,
+
+            capturedCurrency,
+
+            completedAt:
+              FieldValue.serverTimestamp(),
+          }
+        );
+      }
+    );
+
+    /*
+     * ========================================
+     * PAYMENT NOTIFICATION
+     * ========================================
+     */
+
+    try {
+      const userId =
+        requestData.userId;
+
+      const customerName =
+        requestData.customerName ||
+        requestData.shippingAddress
+          ?.firstName ||
+        "Customer";
+
+      await sendNotification({
+        userId,
+
+        requestId,
+
+        title:
+          "Payment Received",
+
+        message:
+          "We’ve received your payment successfully.",
+
+        type: "payment",
+
+        category: "payment",
+
+        channels: {
+          inApp: true,
+          email: true,
+          whatsapp: true,
+        },
+
+        whatsapp: {
+          templateName:
+            "shipin_payment_received",
+
+          languageCode: "en",
+
+          components: [
+            {
+              type: "body",
+
+              parameters: [
+                {
+                  type: "text",
+                  text: customerName,
+                },
+                {
+                  type: "text",
+                  text: requestId,
+                },
+              ],
+            },
+          ],
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Payment notification failed:",
+        error
+      );
+    }
+
+    /*
+     * ========================================
+     * SUCCESS
+     * ========================================
+     */
 
     return NextResponse.json({
       success: true,
 
-      paymentType:
-        "additional_item",
-
-      additionalItemRequestId,
+      paymentType: "main",
 
       captureId,
 
-      amountPaid:
+      paymentMethod,
+
+      paypalAmount:
         capturedAmount,
+
+      walletAmount:
+        walletApplied,
+
+      totalAmount:
+        totalRequired,
     });
+
   } catch (error) {
     console.error(
       "PayPal capture order route error:",
@@ -696,10 +1249,7 @@ export async function POST(
             ? error.message
             : "Something went wrong while capturing the PayPal payment.",
       },
-
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }

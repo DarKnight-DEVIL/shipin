@@ -1,18 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
-
 import {
-  getRequestById,
-  markRequestPaid,
-} from "@/lib/firestore";
+  NextRequest,
+  NextResponse,
+} from "next/server";
 
-import {
-  deductFromWallet,
-} from "@/lib/wallet";
+import { adminDb } from "@/lib/firebaseAdmin";
+import { FieldValue } from "firebase-admin/firestore";
 
-export async function POST(req: NextRequest) {
-
+export async function POST(
+  req: NextRequest
+) {
   try {
-
     const {
       requestId,
       amount,
@@ -23,66 +20,263 @@ export async function POST(req: NextRequest) {
         {
           error: "Missing fields",
         },
+        { status: 400 }
+      );
+    }
+
+    const numericAmount = Number(amount);
+
+    if (
+      !Number.isFinite(numericAmount) ||
+      numericAmount <= 0
+    ) {
+      return NextResponse.json(
         {
-          status: 400,
-        }
+          error:
+            "Invalid payment amount.",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * ========================================
+     * GET REQUEST
+     * ========================================
+     */
+
+    const requestRef = adminDb
+      .collection("requests")
+      .doc(requestId);
+
+    const requestSnapshot =
+      await requestRef.get();
+
+    if (!requestSnapshot.exists) {
+      return NextResponse.json(
+        {
+          error: "Request not found.",
+        },
+        { status: 404 }
       );
     }
 
     const request =
-      await getRequestById(requestId);
+      requestSnapshot.data();
 
-    if (!request) {
+    const userId =
+      request?.userId;
+
+    if (!userId) {
       return NextResponse.json(
         {
-          error: "Request not found",
+          error: "Missing user.",
         },
-        {
-          status: 404,
-        }
+        { status: 400 }
       );
     }
 
-    if (!request.userId) {
+    /*
+     * ========================================
+     * GET WALLET
+     * ========================================
+     */
+
+    const walletRef = adminDb
+      .collection("wallets")
+      .doc(userId);
+
+    const walletSnapshot =
+      await walletRef.get();
+
+    if (!walletSnapshot.exists) {
       return NextResponse.json(
         {
-          error: "Missing user",
+          error:
+            "Wallet not found.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
-    await deductFromWallet(
-      request.userId,
-      amount,
-      requestId
+    const wallet =
+      walletSnapshot.data();
+
+    const currentBalance =
+      Number(wallet?.balance ?? 0);
+
+    /*
+     * ========================================
+     * VERIFY BALANCE
+     * ========================================
+     */
+
+    if (
+      !Number.isFinite(
+        currentBalance
+      ) ||
+      currentBalance < numericAmount
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Insufficient wallet balance.",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * ========================================
+     * PREVENT DUPLICATE PAYMENT
+     * ========================================
+     */
+
+    if (request?.status === "paid") {
+      return NextResponse.json(
+        {
+          error:
+            "This request has already been paid.",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * ========================================
+     * CALCULATE NEW BALANCE
+     * ========================================
+     */
+
+    const newBalance =
+      currentBalance -
+      numericAmount;
+
+    /*
+     * ========================================
+     * ATOMIC WALLET PAYMENT
+     * ========================================
+     */
+
+    const batch =
+      adminDb.batch();
+
+    /*
+     * Deduct wallet.
+     */
+    batch.update(
+      walletRef,
+      {
+        balance: newBalance,
+
+        updatedAt:
+          FieldValue.serverTimestamp(),
+      }
     );
 
-    await markRequestPaid(requestId, {
-      orderId: "wallet",
-      amount,
-      provider: "wallet",
-    });
+    /*
+     * Record wallet transaction.
+     */
+    const transactionRef =
+      adminDb
+        .collection(
+          "walletTransactions"
+        )
+        .doc();
+
+    batch.set(
+      transactionRef,
+      {
+        userId,
+
+        type: "payment",
+
+        amount:
+          -numericAmount,
+
+        balanceAfter:
+          newBalance,
+
+        requestId,
+
+        description:
+          "Request Payment",
+
+        createdAt:
+          FieldValue.serverTimestamp(),
+      }
+    );
+
+    /*
+     * ========================================
+     * MARK REQUEST PAID
+     * ========================================
+     *
+     * This mirrors markRequestPaid()
+     * exactly for a wallet-only payment.
+     */
+
+    batch.update(
+      requestRef,
+      {
+        status: "paid",
+
+        payment: {
+          provider: "wallet",
+
+          paymentMethod:
+            "wallet",
+
+          orderId:
+            "wallet",
+
+          captureId: null,
+
+          amountPaid:
+            numericAmount,
+
+          walletAmount:
+            numericAmount,
+
+          paypalAmount: 0,
+
+          status: "completed",
+
+          paidAt:
+            FieldValue.serverTimestamp(),
+        },
+
+        updatedAt:
+          FieldValue.serverTimestamp(),
+      }
+    );
+
+    await batch.commit();
+
+    /*
+     * ========================================
+     * SUCCESS
+     * ========================================
+     */
 
     return NextResponse.json({
       success: true,
     });
 
-  } catch (err) {
-
-    console.error(err);
+  } catch (error) {
+    console.error(
+      "Wallet payment error:",
+      error
+    );
 
     return NextResponse.json(
       {
-        error: "Unable to complete payment",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to complete payment.",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
-
   }
-
 }

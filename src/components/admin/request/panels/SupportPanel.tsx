@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { toast } from "sonner"; // Update import based on your toast library
+import { auth } from "@/lib/firebase";
+import { toast } from "sonner";
+import { MessageCircle, MessageSquare, DollarSign, ChevronDown, ChevronUp } from "lucide-react";
 
 import type { Request } from "@/types/request";
 import useSupport from "@/hooks/useSupport";
+import EmptyState from "@/components/ui/EmptyState";
 
 interface Props {
   request: Request;
@@ -24,6 +27,16 @@ export default function SupportPanel({ request }: Props) {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [resolving, setResolving] = useState(false);
+  
+  const [partialRefundOpen, setPartialRefundOpen] = useState(false);
+  const [partialRefundAmount, setPartialRefundAmount] = useState("");
+  const [partialRefundReason, setPartialRefundReason] = useState("");
+  const [partialRefundProcessing, setPartialRefundProcessing] = useState(false);
+  const [partialRefundCompleting, setPartialRefundCompleting] = useState(false);
+  const [partialRefundPaypalTransactionId, setPartialRefundPaypalTransactionId] = useState("");
+
+  const [startingRefund, setStartingRefund] = useState(false);
+  const [refundReason, setRefundReason] = useState("");
 
   /*
    * If tickets load but none is currently
@@ -88,6 +101,259 @@ export default function SupportPanel({ request }: Props) {
     }
   }
 
+  async function handleAdminRefund() {
+    if (
+      startingRefund ||
+      request.status !== "purchased"
+    ) {
+      return;
+    }
+
+    const reason = refundReason.trim();
+
+    if (!reason) {
+      toast.error("Please enter a reason for offering the refund.");
+      return;
+    }
+
+    try {
+      setStartingRefund(true);
+
+      const currentUser = auth.currentUser;
+
+      if (!currentUser) {
+        throw new Error("Authentication required.");
+      }
+
+      const idToken = await currentUser.getIdToken();
+
+      const response = await fetch(
+        `/api/admin/requests/${request.id}/refund-offer`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            reason,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.error || "Unable to offer refund."
+        );
+      }
+
+      toast.success(
+        "Refund option offered to customer."
+      );
+
+      setRefundReason("");
+
+      // Refresh the request so status becomes refund_offered.
+      window.location.reload();
+
+    } catch (error) {
+      console.error(
+        "Unable to offer refund:",
+        error
+      );
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Unable to offer refund."
+      );
+    } finally {
+      setStartingRefund(false);
+    }
+  }
+
+  async function handlePartialRefund() {
+    if (partialRefundProcessing) return;
+
+    try {
+      setPartialRefundProcessing(true);
+
+      if (request.status === "rejected" || request.status === "refunded") {
+        throw new Error("This request cannot be refunded.");
+      }
+
+      const amount = Number(partialRefundAmount);
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error("Enter a valid refund amount.");
+      }
+
+      if (!partialRefundReason.trim()) {
+        throw new Error("Enter a reason for the partial refund.");
+      }
+
+      const totalPaid = Number(
+        request.payment?.amountPaid ??
+          request.payment?.amount ??
+          0
+      );
+
+      const alreadyRefunded = Number(
+        request.totalRefundedAmount ?? 0
+      );
+
+      const remainingRefundable = Math.max(
+        0,
+        totalPaid - alreadyRefunded
+      );
+
+      if (amount > remainingRefundable) {
+        throw new Error(
+          `Maximum refundable amount is $${remainingRefundable.toFixed(2)}.`
+        );
+      }
+
+      const currentUser = auth.currentUser;
+
+      if (!currentUser) {
+        throw new Error("Authentication required.");
+      }
+
+      const idToken = await currentUser.getIdToken();
+
+      const response = await fetch(
+        `/api/admin/requests/${request.id}/partial-refund`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            amount,
+            reason: partialRefundReason.trim(),
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.error || "Unable to offer partial refund."
+        );
+      }
+
+      toast.success(
+        `$${amount.toFixed(2)} partial refund offered to customer.`
+      );
+
+      setPartialRefundAmount("");
+      setPartialRefundReason("");
+      setPartialRefundOpen(false);
+
+      window.location.reload();
+    } catch (error) {
+      console.error("Unable to offer partial refund:", error);
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Unable to offer partial refund."
+      );
+    } finally {
+      setPartialRefundProcessing(false);
+    }
+  }
+
+  async function handleCompletePartialRefund() {
+    if (
+      partialRefundCompleting ||
+      request.partialRefundOffer?.status !== "accepted"
+    ) {
+      return;
+    }
+
+    try {
+      setPartialRefundCompleting(true);
+
+      const currentUser = auth.currentUser;
+
+      if (!currentUser) {
+        throw new Error("Authentication required.");
+      }
+
+      const idToken = await currentUser.getIdToken();
+
+      const offerAmount = Number(
+        request.partialRefundOffer.amount ?? 0
+      );
+
+      const walletAmount = Number(
+        request.payment?.walletAmount ?? 0
+      );
+
+      const paypalAmount = Math.max(
+        0,
+        Number((offerAmount - walletAmount).toFixed(2))
+      );
+
+      if (
+        paypalAmount > 0 &&
+        !partialRefundPaypalTransactionId.trim()
+      ) {
+        toast.error("PayPal refund transaction ID is required.");
+        return;
+      }
+
+      const response = await fetch(
+        `/api/admin/requests/${request.id}/partial-refund/complete`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            paypalRefundTransactionId:
+              partialRefundPaypalTransactionId.trim(),
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.error || "Unable to complete partial refund."
+        );
+      }
+
+      toast.success(
+        `$${offerAmount.toFixed(2)} partial refund completed.`
+      );
+
+      setPartialRefundPaypalTransactionId("");
+
+      window.location.reload();
+    } catch (error) {
+      console.error(
+        "Unable to complete partial refund:",
+        error
+      );
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Unable to complete partial refund."
+      );
+    } finally {
+      setPartialRefundCompleting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
@@ -97,8 +363,289 @@ export default function SupportPanel({ request }: Props) {
     );
   }
 
+  const totalPaid = Number(
+    request.payment?.amountPaid ?? request.payment?.amount ?? 0
+  );
+  const alreadyRefunded = Number(request.totalRefundedAmount ?? 0);
+  const remainingRefundable = Math.max(0, totalPaid - alreadyRefunded);
+
   return (
     <div className="space-y-6">
+      {/* ADMIN ACTION: REFUND CUSTOMER (FULL REFUND OFFER) */}
+      {request.status === "purchased" && (
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-6 dark:bg-red-500/[0.04]">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-red-500">
+              Admin Action
+            </p>
+
+            <h2 className="mt-1 text-lg font-semibold text-white">
+              Offer Full Refund to Customer
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-400">
+              Offer the customer the option to request a refund for this purchased order.
+            </p>
+          </div>
+
+          <div className="mt-5">
+            <label
+              htmlFor="refund-reason"
+              className="mb-2 block text-sm font-medium text-slate-300"
+            >
+              Reason for refund offer
+            </label>
+
+            <textarea
+              id="refund-reason"
+              value={refundReason}
+              onChange={(event) => setRefundReason(event.target.value)}
+              placeholder="Enter the reason for offering this refund..."
+              rows={4}
+              disabled={startingRefund}
+              className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+
+            <p className="mt-2 text-xs text-slate-500">
+              This reason will be visible to the customer.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleAdminRefund}
+            disabled={startingRefund || !refundReason.trim()}
+            className="mt-4 w-full rounded-xl bg-red-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {startingRefund ? "Offering..." : "Offer Refund"}
+          </button>
+        </div>
+      )}
+
+      {/* ADMIN ACTION: PARTIAL REFUND ACCEPTED - ADMIN PROCESSING */}
+      {request.partialRefundOffer?.status === "accepted" &&
+        request.partialRefundOffer.selectedMethod ===
+          "original_payment" && (
+          <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">
+              Partial Refund
+            </p>
+
+            <h2 className="mt-1 text-lg font-semibold text-white">
+              Refund Awaiting Processing
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-400">
+              The customer accepted the partial refund using the
+              original payment method.
+            </p>
+
+            <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-400">
+                  Refund Amount
+                </span>
+
+                <span className="text-lg font-semibold text-white">
+                  $
+                  {Number(
+                    request.partialRefundOffer.amount ?? 0
+                  ).toFixed(2)}
+                </span>
+              </div>
+
+              <div className="mt-3">
+                <span className="text-sm text-slate-400">
+                  Reason
+                </span>
+
+                <p className="mt-1 text-sm text-slate-200">
+                  {request.partialRefundOffer.reason}
+                </p>
+              </div>
+            </div>
+
+            {(() => {
+              const offerAmount = Number(
+                request.partialRefundOffer?.amount ?? 0
+              );
+
+              const originalWalletAmount = Number(
+                request.payment?.walletAmount ?? 0
+              );
+
+              const originalPaypalAmount = Number(
+                request.payment?.paypalAmount ?? 0
+              );
+
+              const walletRefund = Math.min(
+                offerAmount,
+                Math.max(0, originalWalletAmount)
+              );
+
+              const paypalRefund = Math.max(
+                0,
+                Number(
+                  (offerAmount - walletRefund).toFixed(2)
+                )
+              );
+
+              return (
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm">
+                    <p className="text-slate-300">
+                      Wallet portion:{" "}
+                      <span className="font-semibold text-white">
+                        ${walletRefund.toFixed(2)}
+                      </span>
+                    </p>
+
+                    <p className="mt-1 text-slate-300">
+                      PayPal portion:{" "}
+                      <span className="font-semibold text-white">
+                        ${paypalRefund.toFixed(2)}
+                      </span>
+                    </p>
+                  </div>
+
+                  {paypalRefund > 0 &&
+                    originalPaypalAmount > 0 && (
+                      <div>
+                        <label
+                          htmlFor="partial-refund-paypal-id"
+                          className="mb-2 block text-sm font-medium text-slate-300"
+                        >
+                          PayPal Refund Transaction ID
+                        </label>
+
+                        <input
+                          id="partial-refund-paypal-id"
+                          type="text"
+                          value={partialRefundPaypalTransactionId}
+                          onChange={(e) =>
+                            setPartialRefundPaypalTransactionId(
+                              e.target.value
+                            )
+                          }
+                          placeholder="Enter the PayPal refund transaction ID"
+                          disabled={partialRefundCompleting}
+                          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        />
+
+                        <p className="mt-2 text-xs text-slate-500">
+                          Complete the PayPal refund manually through
+                          PayPal, then enter its transaction ID here.
+                        </p>
+                      </div>
+                    )}
+
+                  <button
+                    type="button"
+                    onClick={handleCompletePartialRefund}
+                    disabled={
+                      partialRefundCompleting ||
+                      (paypalRefund > 0 &&
+                        !partialRefundPaypalTransactionId.trim())
+                    }
+                    className="w-full rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {partialRefundCompleting
+                      ? "Completing Refund..."
+                      : "Complete Partial Refund"}
+                  </button>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+      {/* ADMIN ACTION: PARTIAL REFUND UI */}
+      {request.status !== "rejected" && request.status !== "refunded" && (
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-6 dark:bg-amber-500/[0.04]">
+          <button
+            type="button"
+            onClick={() => setPartialRefundOpen((prev) => !prev)}
+            className="flex w-full items-center justify-between text-left"
+          >
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-500">
+                Admin Action
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-white">
+                Issue Partial Refund
+              </h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Offer a partial refund to the customer (Remaining refundable: ${remainingRefundable.toFixed(2)})
+              </p>
+            </div>
+            {partialRefundOpen ? (
+              <ChevronUp className="h-5 w-5 text-slate-400" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-slate-400" />
+            )}
+          </button>
+
+          {partialRefundOpen && (
+            <div className="mt-5 space-y-4 border-t border-slate-800 pt-5">
+              <div>
+                <label
+                  htmlFor="partial-refund-amount"
+                  className="mb-2 block text-sm font-medium text-slate-300"
+                >
+                  Refund Amount ($)
+                </label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  <input
+                    id="partial-refund-amount"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    max={remainingRefundable}
+                    value={partialRefundAmount}
+                    onChange={(e) => setPartialRefundAmount(e.target.value)}
+                    placeholder="0.00"
+                    disabled={partialRefundProcessing}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-9 pr-4 text-sm text-white outline-none focus:border-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="partial-refund-reason"
+                  className="mb-2 block text-sm font-medium text-slate-300"
+                >
+                  Reason for Partial Refund
+                </label>
+                <textarea
+                  id="partial-refund-reason"
+                  value={partialRefundReason}
+                  onChange={(e) => setPartialRefundReason(e.target.value)}
+                  placeholder="Explain why this partial refund is being issued..."
+                  rows={3}
+                  disabled={partialRefundProcessing}
+                  className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handlePartialRefund}
+                disabled={
+                  partialRefundProcessing ||
+                  !partialRefundAmount ||
+                  !partialRefundReason.trim()
+                }
+                className="w-full rounded-xl bg-amber-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {partialRefundProcessing ? "Processing..." : "Offer Partial Refund"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* HEADER */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
         <h2 className="text-xl font-semibold text-white">Support</h2>
@@ -108,15 +655,11 @@ export default function SupportPanel({ request }: Props) {
       </div>
 
       {tickets.length === 0 ? (
-        /* NO TICKETS */
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center">
-          <div className="text-lg font-medium text-white">
-            No support tickets
-          </div>
-          <p className="mt-2 text-sm text-slate-400">
-            The customer has not opened a support ticket for this request.
-          </p>
-        </div>
+        <EmptyState
+          icon={<MessageCircle size={26} />}
+          title="No support tickets"
+          description="There are no support tickets associated with this request yet."
+        />
       ) : (
         <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
           {/* TICKET LIST */}
@@ -206,16 +749,11 @@ export default function SupportPanel({ request }: Props) {
               {/* MESSAGES */}
               <div className="max-h-[560px] min-h-[400px] space-y-4 overflow-y-auto p-5">
                 {messages.length === 0 ? (
-                  <div className="flex min-h-[350px] items-center justify-center text-center">
-                    <div>
-                      <p className="font-medium text-slate-300">
-                        No messages yet
-                      </p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Messages for this ticket will appear here.
-                      </p>
-                    </div>
-                  </div>
+                  <EmptyState
+                    icon={<MessageSquare size={26} />}
+                    title="No messages yet"
+                    description="Messages from the customer will appear here when the conversation begins."
+                  />
                 ) : (
                   messages.map((supportMessage: any) => {
                     const fromAdmin = supportMessage.sender === "admin";

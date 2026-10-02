@@ -1,4 +1,4 @@
-export interface SupportMessage {
+﻿export interface SupportMessage {
   id: string;
   sender: "customer" | "admin";
   message: string;
@@ -10,6 +10,7 @@ export interface SupportTicket {
   ticketNumber: string;
   requestId: string;
   customerId: string;
+
   category:
     | "Shipment"
     | "Tracking"
@@ -19,10 +20,17 @@ export interface SupportTicket {
     | "Missing Item"
     | "Wrong Item"
     | "Other";
+
   subject: string;
+
   status: "open" | "resolved";
+
+  customerUnread?: boolean;
+  adminUnread?: boolean;
+
   createdAt: string;
   updatedAt: string;
   resolvedAt?: string | null;
+
   messages: SupportMessage[];
 }

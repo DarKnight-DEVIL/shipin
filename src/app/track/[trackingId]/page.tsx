@@ -10,6 +10,9 @@ import {
   useRouter,
 } from "next/navigation";
 
+import { Truck } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
+
 const TRACKING_STAGES = [
   {
     status: "shipped",
@@ -121,15 +124,12 @@ export default function TrackingResultPage() {
     );
   }
 
-  if (
-    error ||
-    !shipment
-  ) {
+  if (error) {
     return (
       <div className="max-w-xl mx-auto p-8">
         <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-6">
           <h1 className="text-xl font-semibold text-red-400">
-            Shipment Not Found
+            Error Loading Shipment
           </h1>
 
           <p className="mt-2 text-slate-400">
@@ -142,7 +142,32 @@ export default function TrackingResultPage() {
                 "/track"
               )
             }
-            className="mt-5 rounded-xl bg-purple-600 px-5 py-3 font-semibold text-white"
+            className="mt-5 rounded-xl bg-purple-600 px-5 py-3 font-semibold text-white transition hover:bg-purple-700"
+          >
+            Try Another Tracking ID
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!shipment) {
+    return (
+      <div className="max-w-xl mx-auto p-8">
+        <EmptyState
+          icon={<Truck size={26} />}
+          title="Shipment not found"
+          description="We couldn't find a shipment associated with this tracking ID. Please check the tracking ID and try again."
+        />
+
+        <div className="mt-6 text-center">
+          <button
+            onClick={() =>
+              router.push(
+                "/track"
+              )
+            }
+            className="rounded-xl bg-purple-600 px-5 py-3 font-semibold text-white transition hover:bg-purple-700"
           >
             Try Another Tracking ID
           </button>

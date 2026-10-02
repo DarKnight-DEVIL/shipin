@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { PackageOpen, Truck } from "lucide-react";
+
 import { auth } from "@/lib/firebase";
 import { getRequests } from "@/lib/firestore";
 import type { Request } from "@/types/request";
@@ -16,6 +19,7 @@ import {
 import { getUserPreferences } from "@/lib/userPreferences";
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("there");
@@ -154,8 +158,34 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="p-8 text-slate-600 dark:text-slate-400">
-        Loading dashboard...
+      <div className="w-full px-6 py-8 lg:px-10">
+        <div className="space-y-8">
+          {/* Header skeleton */}
+          <div className="space-y-3">
+            <div className="h-4 w-32 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+
+            <div className="h-10 w-80 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-800" />
+
+            <div className="h-5 w-96 max-w-full animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
+          </div>
+
+          {/* Stats skeleton */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-32 animate-pulse rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+              />
+            ))}
+          </div>
+
+          {/* Content skeleton */}
+          <div className="grid gap-6 xl:grid-cols-3">
+            <div className="h-80 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 xl:col-span-2" />
+
+            <div className="h-80 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -191,6 +221,7 @@ export default function DashboardPage() {
         {visibleMetrics.map((metric) => (
           <StatCard
             key={metric.id}
+            id={metric.id}
             title={metric.label}
             value={metricValues[metric.id]}
             description={metric.description}
@@ -249,14 +280,28 @@ export default function DashboardPage() {
 
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
             {recentRequests.length === 0 ? (
-              <div className="px-6 py-12 text-center">
-                <h3 className="font-semibold text-slate-950 dark:text-white">
-                  No requests yet
-                </h3>
+              <div className="flex min-h-[320px] items-center justify-center p-8">
+                <div className="text-center">
+                  <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                    <PackageOpen size={26} />
+                  </div>
 
-                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                  Create your first shopping request to get started.
-                </p>
+                  <h3 className="text-xl font-semibold text-slate-950 dark:text-white">
+                    No activity yet
+                  </h3>
+
+                  <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
+                    Your requests and shipment activity will appear here once you get started.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => router.push("/requests/new")}
+                    className="mt-6 rounded-xl bg-purple-600 px-5 py-3 font-semibold text-white transition hover:bg-purple-700"
+                  >
+                    Create Request
+                  </button>
+                </div>
               </div>
             ) : (
               recentRequests.map((request) => (
@@ -299,9 +344,9 @@ export default function DashboardPage() {
               Latest Shipment
             </h2>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+            <div>
               {latestShipment ? (
-                <>
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
                     ShipIN Tracking ID
                   </p>
@@ -332,12 +377,28 @@ export default function DashboardPage() {
                   >
                     View Shipment
                   </Link>
-                </>
+                </div>
               ) : (
-                <div className="py-6 text-center">
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    No active shipment yet.
-                  </p>
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
+                      <Truck
+                        size={22}
+                        className="text-slate-500 dark:text-slate-400"
+                      />
+                    </div>
+
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-slate-900 dark:text-white">
+                        No active shipment
+                      </h3>
+
+                      <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                        Your shipment and tracking details will appear here once your order
+                        has been dispatched.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -383,30 +444,86 @@ export default function DashboardPage() {
 }
 
 /* =========================================
+METRIC HREF ROUTER
+========================================= */
+function getMetricHref(id: DashboardMetricId): string {
+  switch (id) {
+    case "active":
+      return "/requests";
+
+    case "submitted":
+      return "/requests?status=submitted";
+
+    case "quote_ready":
+      return "/requests?status=review";
+
+    case "awaiting_payment":
+      return "/requests?status=awaiting_payment";
+
+    case "paid":
+      return "/requests?status=paid";
+
+    case "purchased":
+      return "/requests?status=purchased";
+
+    case "warehouse_received":
+      return "/requests?status=warehouse_received";
+
+    case "ready_for_international_shipping":
+      return "/requests?status=ready_for_international_shipping";
+
+    case "packed":
+      return "/requests?status=packed";
+
+    case "shipped":
+      return "/requests?status=shipped";
+
+    case "in_transit":
+      return "/requests?status=in_transit";
+
+    case "out_for_delivery":
+      return "/requests?status=out_for_delivery";
+
+    case "delivered":
+      return "/requests?status=delivered";
+
+    case "refunded":
+      return "/requests?status=refunded";
+
+    default:
+      return "/requests";
+  }
+}
+
+/* =========================================
 STAT CARD
 ========================================= */
 function StatCard({
+  id,
   title,
   value,
   description,
   highlight = false,
 }: {
+  id: DashboardMetricId;
   title: string;
   value: number;
   description: string;
   highlight?: boolean;
 }) {
   return (
-    <div
-      className={`rounded-2xl border p-6 ${
+    <Link
+      href={getMetricHref(id)}
+      className={`block rounded-2xl border p-6 transition hover:shadow-md ${
         highlight
-          ? "border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/5"
-          : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+          ? "border-amber-200 bg-amber-50 hover:border-amber-300 dark:border-amber-500/20 dark:bg-amber-500/5 dark:hover:border-amber-500/40"
+          : "border-slate-200 bg-white hover:border-purple-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-purple-500/40"
       }`}
     >
       <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
         {title}
       </p>
+
       <p
         className={`mt-3 text-4xl font-bold ${
           highlight
@@ -420,7 +537,7 @@ function StatCard({
       <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
         {description}
       </p>
-    </div>
+    </Link>
   );
 }
 

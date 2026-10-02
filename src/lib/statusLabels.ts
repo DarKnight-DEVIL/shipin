@@ -5,25 +5,42 @@ export const statusLabels = {
 
   [REQUEST_STATUS.review]: "Quote Ready",
 
-  [REQUEST_STATUS.awaiting_payment]: "Awaiting Payment",
+  [REQUEST_STATUS.awaiting_payment]:
+    "Awaiting Payment",
 
-  [REQUEST_STATUS.paid]: "Payment Received",
+  [REQUEST_STATUS.paid]:
+    "Payment Received",
 
-  [REQUEST_STATUS.purchased]: "Purchased",
+   [REQUEST_STATUS.refund_offered]:
+    "Refund Offered",
 
-  [REQUEST_STATUS.warehouse_received]: "Warehouse Received",
+  [REQUEST_STATUS.refund_requested]:
+    "Refund Requested",
+
+  [REQUEST_STATUS.purchased]:
+    "Purchased",
+
+  [REQUEST_STATUS.warehouse_received]:
+    "Warehouse Received",
 
   [REQUEST_STATUS.ready_for_international_shipping]:
     "Ready For International Shipment",
 
-  [REQUEST_STATUS.packed]: "Packed",
+  [REQUEST_STATUS.packed]:
+    "Packed",
 
-  [REQUEST_STATUS.shipped]: "Shipped",
+  [REQUEST_STATUS.shipped]:
+    "Shipped",
 
   [REQUEST_STATUS.out_for_delivery]:
     "Out For Delivery",
 
-  [REQUEST_STATUS.delivered]: "Delivered",
+  [REQUEST_STATUS.delivered]:
+    "Delivered",
 
-  [REQUEST_STATUS.refunded]: "Refunded",
+  [REQUEST_STATUS.refunded]:
+    "Refunded",
+
+  [REQUEST_STATUS.rejected]:
+    "Rejected",
 } as const;

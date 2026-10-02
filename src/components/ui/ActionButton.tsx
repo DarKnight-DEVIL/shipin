@@ -44,7 +44,17 @@ export default function ActionButton({
         ${className}
       `}
     >
-      {loading ? "Loading..." : children}
+      {loading ? (
+        <span className="flex items-center justify-center gap-2">
+          <span
+            className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
+            aria-hidden="true"
+          />
+          <span>Processing...</span>
+        </span>
+      ) : (
+        children
+      )}
     </button>
   );
 }

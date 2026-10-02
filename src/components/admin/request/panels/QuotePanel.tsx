@@ -10,7 +10,13 @@ import ActionButton from "@/components/ui/ActionButton";
 import InvoicePreview from "@/components/invoice/InvoicePreview";
 import InvoicePDF from "@/components/invoice/InvoicePDF";
 
-import { calculateServiceFeeFromConfig } from "@/lib/quoteCalculator";
+import {
+  calculateServiceFeeFromConfig,
+  calculateInspectionFee,
+  calculateHoldFee,
+  requiresManualQuote,
+} from "@/lib/quoteCalculator";
+
 import { buildInvoiceSummary } from "@/components/invoice/InvoiceSummary";
 
 interface Props {
@@ -35,23 +41,29 @@ export default function QuotePanel({ request }: Props) {
       }))
   );
 
-  // Step 1: Initialize service selections right below quote state
+  // Service selections
   const inspection =
-    request.serviceSelections?.inspection ??
-    "standard";
+    request.serviceSelections?.inspection ?? "standard";
+
   const shippingPreference =
-    request.serviceSelections
-      ?.shippingPreference ??
-    "approval";
+    request.serviceSelections?.shippingPreference ?? "approval";
 
   const [domesticShipping, setDomesticShipping] = useState(
     existingQuote?.breakdown?.domesticShipping ?? 0
   );
-  const [internationalShipping, setInternationalShipping] = useState(
-    existingQuote?.breakdown?.internationalShipping ?? 0
-  );
-  
+
+  const [internationalShipping, setInternationalShipping] =
+    useState(
+      existingQuote?.breakdown?.internationalShipping ?? 0
+    );
+
   const [saving, setSaving] = useState(false);
+
+  /*
+   * ========================================
+   * PRODUCTS TOTAL
+   * ========================================
+   */
 
   const productsTotal = products.reduce(
     (sum: number, item) =>
@@ -59,22 +71,52 @@ export default function QuotePanel({ request }: Props) {
     0
   );
 
-  // Global Config Driven Service Fee calculation reference
+  /*
+   * ========================================
+   * SERVICE FEE
+   * ========================================
+   *
+   * Product-based ShipIN service fee:
+   *
+   * <= $10       → $0
+   * > $10–$30    → $5
+   * > $30–$500   → 10%, minimum $10
+   * > $500       → Manual quote
+   *
+   * Inspection and hold fees are NOT included
+   * in this calculation.
+   */
+
   const serviceFee = calculateServiceFeeFromConfig(
-    request.serviceSelections
+    request.serviceSelections,
+    productsTotal
   );
 
-  // Step 2: Calculate inspectionFee and holdFee after totals are set
-  const inspectionFee =
-    inspection === "detailed"
-      ? 5
-      : 0;
-  const holdFee =
-    shippingPreference === "hold"
-      ? 5
-      : 0;
+  const manualQuoteRequired =
+    requiresManualQuote(productsTotal);
 
-  // Step 3 & 4: Safe explicit typecast formatting grandTotal calculation
+  /*
+   * ========================================
+   * ADDITIONAL SERVICE FEES
+   * ========================================
+   */
+
+  const inspectionFee =
+    calculateInspectionFee(
+      request.serviceSelections
+    );
+
+  const holdFee =
+    calculateHoldFee(
+      request.serviceSelections
+    );
+
+  /*
+   * ========================================
+   * GRAND TOTAL
+   * ========================================
+   */
+
   const grandTotal =
     Number(productsTotal) +
     Number(domesticShipping) +
@@ -83,20 +125,50 @@ export default function QuotePanel({ request }: Props) {
     Number(inspectionFee) +
     Number(holdFee);
 
+  /*
+   * ========================================
+   * INVOICE DOWNLOAD
+   * ========================================
+   */
+
   async function downloadInvoice() {
     const blob = await pdf(
       <InvoicePDF invoice={invoice} />
     ).toBlob();
 
     const url = URL.createObjectURL(blob);
+
     const link = document.createElement("a");
+
     link.href = url;
     link.download = `Invoice-${request.id}.pdf`;
+
     link.click();
+
     URL.revokeObjectURL(url);
   }
 
+  /*
+   * ========================================
+   * SAVE QUOTE
+   * ========================================
+   */
+
   async function saveQuote() {
+    if (manualQuoteRequired) {
+      toast.error("Manual quote required.", {
+        description:
+          "Orders with products above $500 require a manual quote.",
+      });
+
+      return;
+    }
+
+    if (productsTotal < 0) {
+      toast.error("Invalid products total.");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -115,9 +187,14 @@ export default function QuotePanel({ request }: Props) {
           productsTotal,
           domesticShipping,
           internationalShipping,
+
+          // Product-based ShipIN service fee
           serviceFee,
+
+          // Additional fees kept separate
           inspectionFee,
           holdFee,
+
           grandTotal,
         },
 
@@ -130,7 +207,8 @@ export default function QuotePanel({ request }: Props) {
 
         acceptedAt: null,
 
-        regeneratedCount: (existingQuote?.regeneratedCount ?? 0) + 1,
+        regeneratedCount:
+          (existingQuote?.regeneratedCount ?? 0) + 1,
 
         expired: false,
       };
@@ -147,7 +225,9 @@ export default function QuotePanel({ request }: Props) {
 
           body: JSON.stringify({
             quote,
-            quoteRegenerationRequested: false,
+
+            quoteRegenerationRequested:
+              false,
           }),
         }
       );
@@ -173,12 +253,15 @@ export default function QuotePanel({ request }: Props) {
     } catch (error) {
       console.error(error);
 
-      toast.error("Failed to save quote.", {
-        description:
-          error instanceof Error
-            ? error.message
-            : undefined,
-      });
+      toast.error(
+        "Failed to save quote.",
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : undefined,
+        }
+      );
     } finally {
       setSaving(false);
     }
@@ -190,37 +273,58 @@ export default function QuotePanel({ request }: Props) {
       subtitle="Create customer invoice"
     >
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        
-        {/* LEFT */}
+
+        {/* ========================================
+            LEFT
+            ======================================== */}
+
         <div className="space-y-6">
-          {/* Product Prices */}
+
+          {/* ========================================
+              PRODUCT PRICES
+              ======================================== */}
+
           {products.map((item, index) => (
             <div
               key={index}
               className="bg-slate-800 rounded-xl p-5"
             >
               <div className="flex justify-between items-center">
+
                 <div>
                   <h3 className="text-white font-semibold">
                     {item.name}
                   </h3>
+
                   <p className="text-slate-400 text-sm">
                     Quantity: {item.quantity}
                   </p>
                 </div>
 
-                {/* Updated Unit Price Input and Subtotal Preview Layout */}
                 <div className="flex items-center gap-6">
+
                   <div className="flex flex-col">
                     <label className="text-xs text-slate-500 mb-1">
                       Unit Price ($)
                     </label>
+
                     <input
                       type="number"
-                      value={item.unitPrice || ""}
+                      min="0"
+                      step="0.01"
+                      value={
+                        item.unitPrice || ""
+                      }
                       onChange={(e) => {
-                        const copy = [...products];
-                        copy[index].unitPrice = Number(e.target.value);
+                        const copy = [
+                          ...products,
+                        ];
+
+                        copy[index].unitPrice =
+                          Number(
+                            e.target.value
+                          );
+
                         setProducts(copy);
                       }}
                       className="w-28 rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white"
@@ -231,16 +335,26 @@ export default function QuotePanel({ request }: Props) {
                     <p className="text-xs text-slate-500">
                       Subtotal
                     </p>
+
                     <p className="text-lg font-semibold text-green-400">
-                      ${(item.quantity * (item.unitPrice || 0)).toFixed(2)}
+                      $
+                      {(
+                        item.quantity *
+                        (item.unitPrice || 0)
+                      ).toFixed(2)}
                     </p>
                   </div>
+
                 </div>
               </div>
             </div>
           ))}
 
           <hr className="border-slate-700" />
+
+          {/* ========================================
+              SHIPPING
+              ======================================== */}
 
           <CostField
             label="Domestic Shipping"
@@ -251,87 +365,168 @@ export default function QuotePanel({ request }: Props) {
           <CostField
             label="International Shipping"
             value={internationalShipping}
-            setValue={setInternationalShipping}
+            setValue={
+              setInternationalShipping
+            }
           />
 
-          {/* Updated Breakdown Summary Area */}
+          {/* ========================================
+              BREAKDOWN
+              ======================================== */}
+
           <div className="bg-slate-800 rounded-xl p-6 space-y-4">
+
             <SummaryRow
               label="Products Total"
               value={productsTotal}
             />
-            
-            {/* Step 5: Inline Custom Selection Structural Elements added */}
+
+            {/* ========================================
+                SHIPIN SERVICE FEE
+                ======================================== */}
+
             <div className="flex justify-between text-slate-400 text-sm">
-              <span>Sidebar - Inspection</span>
               <span>
-                $
-                {request.serviceSelections?.inspection === "detailed"
-                  ? 5
-                  : 0}
+                ShipIN Service Fee
+              </span>
+
+              <span>
+                {manualQuoteRequired ? (
+                  <span className="text-amber-400 font-medium">
+                    Manual Quote
+                  </span>
+                ) : (
+                  `$${serviceFee.toFixed(2)}`
+                )}
               </span>
             </div>
 
+            {/* Service Fee Explanation */}
+
+            {!manualQuoteRequired &&
+              productsTotal > 0 && (
+                <div className="text-xs text-slate-500 -mt-2">
+                  {productsTotal <= 10 && (
+                    <>
+                      No service fee for
+                      orders up to $10.
+                    </>
+                  )}
+
+                  {productsTotal > 10 &&
+                    productsTotal <= 30 && (
+                      <>
+                        $5 service fee for
+                        orders above $10
+                        up to $30.
+                      </>
+                    )}
+
+                  {productsTotal > 30 &&
+                    productsTotal <= 500 && (
+                      <>
+                        10% service fee
+                        with a $10 minimum.
+                      </>
+                    )}
+                </div>
+              )}
+
+            {manualQuoteRequired && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+                <p className="text-sm text-amber-400 font-medium">
+                  Manual quote required
+                </p>
+
+                <p className="text-xs text-amber-400/80 mt-1">
+                  Product totals above
+                  $500 require a
+                  manually reviewed quote.
+                </p>
+              </div>
+            )}
+
+            {/* ========================================
+                INSPECTION
+                ======================================== */}
+
             <div className="flex justify-between text-slate-400 text-sm">
-              <span>Hold Package</span>
+              <span>
+                Detailed Inspection
+              </span>
+
               <span>
                 $
-                {request.serviceSelections?.shippingPreference === "hold"
-                  ? 5
-                  : 0}
+                {inspectionFee.toFixed(2)}
               </span>
             </div>
 
-            <div className="flex justify-between font-semibold text-white">
-              <span>Service Fees</span>
-              <span>${serviceFee}</span>
+            {/* ========================================
+                HOLD PACKAGE
+                ======================================== */}
+
+            <div className="flex justify-between text-slate-400 text-sm">
+              <span>
+                Hold Package
+              </span>
+
+              <span>
+                $
+                {holdFee.toFixed(2)}
+              </span>
             </div>
+
+            {/* ========================================
+                SHIPPING
+                ======================================== */}
 
             <SummaryRow
               label="Domestic Shipping"
               value={domesticShipping}
             />
+
             <SummaryRow
               label="International Shipping"
               value={internationalShipping}
             />
 
-            {inspectionFee > 0 && (
-              <SummaryRow
-                label="Detailed Inspection"
-                value={inspectionFee}
-              />
-            )}
-
-            {holdFee > 0 && (
-              <SummaryRow
-                label="Hold Package"
-                value={holdFee}
-              />
-            )}
-
             <hr className="border-slate-700" />
+
+            {/* ========================================
+                GRAND TOTAL
+                ======================================== */}
 
             <div className="flex justify-between">
               <span className="text-xl font-bold text-white">
                 Grand Total
               </span>
+
               <span className="text-2xl font-bold text-green-400">
-                ${grandTotal.toFixed(2)}
+                {manualQuoteRequired
+                  ? "Manual Quote"
+                  : `$${grandTotal.toFixed(2)}`}
               </span>
             </div>
+
           </div>
 
-          {/* Context-Aware Dynamic Save/Action Panel */}
+          {/* ========================================
+              SAVE / DOWNLOAD
+              ======================================== */}
+
           <div className="flex gap-3 mt-8">
+
             <ActionButton
               loading={saving}
               onClick={saveQuote}
+              disabled={manualQuoteRequired}
               className="flex-1"
             >
-              {request.quoteRegenerationRequested
-                ? "Generate New Quote"
-                : "Save Quote"}
+              {manualQuoteRequired
+                ? "Manual Quote Required"
+                : request.quoteRegenerationRequested
+                  ? "Generate New Quote"
+                  : "Save Quote"}
             </ActionButton>
 
             <ActionButton
@@ -341,16 +536,27 @@ export default function QuotePanel({ request }: Props) {
             >
               📄 Download Invoice
             </ActionButton>
+
           </div>
+
         </div>
 
-        {/* RIGHT */}
+        {/* ========================================
+            RIGHT — INVOICE PREVIEW
+            ======================================== */}
+
         <InvoicePreview invoice={invoice} />
 
       </div>
     </Section>
   );
 }
+
+/*
+ * ========================================
+ * COST FIELD
+ * ========================================
+ */
 
 function CostField({
   label,
@@ -363,18 +569,36 @@ function CostField({
 }) {
   return (
     <div className="flex justify-between items-center">
+
       <span className="text-slate-300">
         {label}
       </span>
+
       <input
         type="number"
+        min="0"
+        step="0.01"
         value={value || ""}
-        onChange={(e) => setValue(Number(e.target.value))}
+        onChange={(e) =>
+          setValue(
+            Math.max(
+              0,
+              Number(e.target.value)
+            )
+          )
+        }
         className="w-28 rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white"
       />
+
     </div>
   );
 }
+
+/*
+ * ========================================
+ * SUMMARY ROW
+ * ========================================
+ */
 
 function SummaryRow({
   label,
@@ -385,12 +609,15 @@ function SummaryRow({
 }) {
   return (
     <div className="flex justify-between">
+
       <span className="text-slate-400">
         {label}
       </span>
+
       <span className="text-white font-medium">
         ${value.toFixed(2)}
       </span>
+
     </div>
   );
 }

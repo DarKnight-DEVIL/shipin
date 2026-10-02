@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { collection, getDocs } from "firebase/firestore";
+import { LayoutDashboard } from "lucide-react";
 
+import { db } from "@/lib/firebase";
 import { 
   getDashboardStats, 
   getMonthlyRevenue, 
@@ -11,11 +15,7 @@ import {
   getOperationsOverview,
   getFinancialOverview
 } from "@/lib/adminAnalytics";
-// Import collection fetching items if explicit client-side local arrays are calculated
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 
-import KPICard from "@/components/admin/dashboard/KPICard";
 import RevenueChart from "@/components/admin/dashboard/RevenueChart";
 import StatusDistributionChart from "@/components/admin/dashboard/StatusDistributionChart";
 import RecentActivity from "@/components/admin/dashboard/RecentActivity";
@@ -24,13 +24,13 @@ import OperationsOverview from "@/components/admin/dashboard/OperationsOverview"
 import FinancialOverview from "@/components/admin/dashboard/FinancialOverview";
 
 export default function AdminDashboardPage() {
-  // Step 6.1 — Updated state structure setup configuration layout
   const [stats, setStats] = useState({
     total: 0,
     submitted: 0,
     review: 0,
     quoteReady: 0,
     quoteUpdates: 0,
+    refundRequested: 0,
     shipped: 0,
     revenue: 0,
     awaitingPayment: 0,
@@ -50,7 +50,6 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     async function load() {
       try {
-        // Fetch raw request elements to safely perform client filters
         const querySnapshot = await getDocs(collection(db, "requests"));
         const requests = querySnapshot.docs.map(doc => ({
           id: doc.id,
@@ -59,7 +58,6 @@ export default function AdminDashboardPage() {
 
         const analyticsData = await getDashboardStats();
 
-        // Step 6.2 — Calculate explicit state filters
         setStats({
           total: requests.length,
 
@@ -76,14 +74,19 @@ export default function AdminDashboardPage() {
           ).length,
 
           quoteUpdates: requests.filter(
-            (r: any) => r.quote?.regenerationRequested
+            (r: any) =>
+              r.quoteRegenerationRequested === true &&
+              r.status !== "rejected"
+          ).length,
+
+          refundRequested: requests.filter(
+            (r: any) => r.refundRequest?.status === "requested"
           ).length,
 
           shipped: requests.filter(
             (r: any) => r.status === "shipped"
           ).length,
           
-          // Preserving original analytics numbers seamlessly below
           revenue: analyticsData.revenue ?? 0,
           awaitingPayment: analyticsData.awaitingPayment ?? 0,
           warehouse: analyticsData.warehouse ?? 0,
@@ -119,14 +122,27 @@ export default function AdminDashboardPage() {
 
   if (loading) {
     return (
-      <div className="p-8 text-white">
-        Loading dashboard...
+      <div className="min-h-screen bg-slate-950 p-8 text-white">
+        <div className="space-y-6">
+          <div className="h-10 w-64 animate-pulse rounded-xl bg-slate-800" />
+
+          <div className="h-5 w-96 animate-pulse rounded-lg bg-slate-800" />
+
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-32 animate-pulse rounded-2xl border border-slate-800 bg-slate-900"
+              />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="min-h-full bg-slate-950 p-8 space-y-8 text-white">
 
       <div>
         <h1 className="text-4xl font-bold text-white">
@@ -137,93 +153,187 @@ export default function AdminDashboardPage() {
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+      {stats.total === 0 ? (
+        <div className="flex min-h-[400px] items-center justify-center rounded-2xl border border-slate-800 bg-slate-900">
+          <div className="text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-800 text-slate-400">
+              <LayoutDashboard size={26} />
+            </div>
 
-        <KPICard
-          title="Revenue"
-          value={`$${stats.revenue.toFixed(2)}`}
-          color="text-green-400"
-        />
+            <h2 className="text-xl font-semibold text-white">
+              Nothing to show yet
+            </h2>
 
-        {/* Total Requests Card */}
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
-          <h2 className="text-slate-400">Total Requests</h2>
-          <p className="text-4xl font-bold mt-2 text-white">{stats.total}</p>
+            <p className="mt-2 max-w-md text-sm text-slate-400">
+              There is currently no activity or data available for the selected view.
+            </p>
+          </div>
         </div>
+      ) : (
+        <>
+          {/* TOP-LEVEL METRIC CARDS */}
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-5">
 
-        <KPICard
-          title="Awaiting Payment"
-          value={stats.awaitingPayment}
-          color="text-amber-400"
-        />
+            <Link
+              href="/admin/requests"
+              className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-green-500/40 hover:bg-slate-800"
+            >
+              <h2 className="text-slate-400">
+                Revenue
+              </h2>
+              <p className="mt-2 text-4xl font-bold text-white">
+                ${stats.revenue.toFixed(2)}
+              </p>
+            </Link>
 
-        <KPICard
-          title="Warehouse"
-          value={stats.warehouse}
-          color="text-blue-400"
-        />
+            <Link
+              href="/admin/requests"
+              className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-slate-600 hover:bg-slate-800"
+            >
+              <h2 className="text-slate-400">
+                Total Requests
+              </h2>
+              <p className="mt-2 text-4xl font-bold text-white">
+                {stats.total}
+              </p>
+            </Link>
 
-        {/* Submitted Card */}
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
-          <h2 className="text-slate-400">Submitted</h2>
-          <p className="text-4xl font-bold mt-2 text-white">{stats.submitted}</p>
-        </div>
+            <Link
+              href="/admin/requests?status=awaiting_payment"
+              className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-amber-500/40 hover:bg-slate-800"
+            >
+              <h2 className="text-slate-400">
+                Awaiting Payment
+              </h2>
+              <p className="mt-2 text-4xl font-bold text-white">
+                {stats.awaitingPayment}
+              </p>
+            </Link>
 
-        {/* Under Review Card */}
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
-          <h2 className="text-slate-400">Under Review</h2>
-          <p className="text-4xl font-bold mt-2 text-white">{stats.review}</p>
-        </div>
+            <Link
+              href="/admin/requests?status=warehouse_received"
+              className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-blue-500/40 hover:bg-slate-800"
+            >
+              <h2 className="text-slate-400">
+                Warehouse
+              </h2>
+              <p className="mt-2 text-4xl font-bold text-white">
+                {stats.warehouse}
+              </p>
+            </Link>
 
-        {/* Quotes Ready Card */}
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
-          <h2 className="text-slate-400">Quotes Ready</h2>
-          <p className="text-4xl font-bold mt-2 text-white">{stats.quoteReady}</p>
-        </div>
+            <Link
+              href="/admin/requests?status=submitted"
+              className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-blue-500/40 hover:bg-slate-800"
+            >
+              <h2 className="text-slate-400">
+                Submitted
+              </h2>
+              <p className="mt-2 text-4xl font-bold text-white">
+                {stats.submitted}
+              </p>
+            </Link>
 
-        {/* Step 6.3 — Added Quote Updates structural card component block layout */}
-        <div className="bg-slate-900 p-6 rounded-2xl border border-amber-500/20">
-          <h2 className="text-amber-400">
-            Quote Updates
-          </h2>
-          <p className="text-4xl font-bold mt-2 text-white">
-            {stats.quoteUpdates}
-          </p>
-        </div>
+            <Link
+              href="/admin/requests?status=review"
+              className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-blue-500/40 hover:bg-slate-800"
+            >
+              <h2 className="text-slate-400">
+                Under Review
+              </h2>
+              <p className="mt-2 text-4xl font-bold text-white">
+                {stats.review}
+              </p>
+            </Link>
 
-        {/* Shipped Card */}
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
-          <h2 className="text-purple-400">Shipped</h2>
-          <p className="text-4xl font-bold mt-2 text-white">{stats.shipped}</p>
-        </div>
+            <Link
+              href="/admin/requests?status=review"
+              className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-green-500/40 hover:bg-slate-800"
+            >
+              <h2 className="text-slate-400">
+                Quotes Ready
+              </h2>
+              <p className="mt-2 text-4xl font-bold text-white">
+                {stats.quoteReady}
+              </p>
+            </Link>
 
-        <KPICard
-          title="Delivered"
-          value={stats.delivered}
-          color="text-green-400"
-        />
+            <Link
+              href="/admin/requests?status=quote_requested"
+              className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-amber-500/50 hover:bg-slate-800"
+            >
+              <h2 className="text-slate-400">
+                Quote Updates
+              </h2>
+              <p className="mt-2 text-4xl font-bold text-white">
+                {stats.quoteUpdates}
+              </p>
+            </Link>
 
-      </div>
+            <Link
+              href="/admin/requests?status=refund_requested"
+              className="block rounded-2xl border border-red-500/30 bg-slate-900 p-6 transition hover:border-red-500/60 hover:bg-red-950/20"
+            >
+              <h2 className="text-red-400">
+                Refund Requests
+              </h2>
 
-      {operations && (
-        <OperationsOverview
-          stats={operations}
-        />
+              <p className="mt-2 text-4xl font-bold text-white">
+                {stats.refundRequested}
+              </p>
+
+              <p className="mt-2 text-xs text-slate-500">
+                Requires admin action
+              </p>
+            </Link>
+
+            <Link
+              href="/admin/requests?status=shipped"
+              className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-purple-500/50 hover:bg-slate-800"
+            >
+              <h2 className="text-slate-400">
+                Shipped
+              </h2>
+              <p className="mt-2 text-4xl font-bold text-white">
+                {stats.shipped}
+              </p>
+            </Link>
+
+            <Link
+              href="/admin/requests?status=delivered"
+              className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-green-500/50 hover:bg-slate-800"
+            >
+              <h2 className="text-slate-400">
+                Delivered
+              </h2>
+              <p className="mt-2 text-4xl font-bold text-white">
+                {stats.delivered}
+              </p>
+            </Link>
+
+          </div>
+
+          {operations && (
+            <OperationsOverview
+              stats={operations}
+            />
+          )}
+
+          {financials && (
+            <FinancialOverview
+              stats={financials}
+            />
+          )}
+
+          <div className="grid xl:grid-cols-2 gap-6">
+            <RevenueChart data={monthlyRevenue} />
+            <StatusDistributionChart data={statusDistribution} />
+          </div>
+
+          <RecentActivity activities={recentActivity} />
+          <TopCustomers customers={topCustomers} />
+        </>
       )}
-
-      {financials && (
-        <FinancialOverview
-          stats={financials}
-        />
-      )}
-
-      <div className="grid xl:grid-cols-2 gap-6">
-        <RevenueChart data={monthlyRevenue} />
-        <StatusDistributionChart data={statusDistribution} />
-      </div>
-
-      <RecentActivity activities={recentActivity} />
-      <TopCustomers customers={topCustomers} />
 
     </div>
   );

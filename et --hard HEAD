@@ -1,0 +1,7 @@
+[33m329be56[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m UI polish: toast notifications, payment improvements, build fixes
+[33mf6afeda[m Working PayPal legacy integration
+[33m80acc6b[m Complete request status refactor and additional services workflow
+[33m0b28b2b[m Restore admin workspace foundation
+[33mba3f4bb[m[33m ([m[1;31morigin/main[m[33m)[m Implemented user addresses and request flow
+[33me71e7fd[m Added dashboard, dynamic requests and addresses
+[33m4c94ac9[m Initial ShipIN landing page

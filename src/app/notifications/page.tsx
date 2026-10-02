@@ -2,8 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { BellOff } from "lucide-react";
+
 import { auth } from "@/lib/firebase";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import EmptyState from "@/components/ui/EmptyState";
+import PageSkeleton from "@/components/ui/PageSkeleton";
 
 import {
   getNotifications,
@@ -253,7 +257,7 @@ export default function NotificationsPage() {
   if (loading) {
     return (
       <div className="p-8 text-slate-400">
-        Loading notifications...
+        <PageSkeleton />
       </div>
     );
   }
@@ -394,28 +398,11 @@ export default function NotificationsPage() {
         "
       >
         {filteredNotifications.length === 0 ? (
-          /* EMPTY STATE */
-          <div className="px-6 py-16 text-center">
-            <div
-              className="
-                mx-auto flex h-12 w-12
-                items-center justify-center
-                rounded-xl
-                bg-slate-100 text-xl
-                dark:bg-slate-800
-              "
-            >
-              🔔
-            </div>
-
-            <h2 className="mt-4 text-lg font-semibold text-slate-950 dark:text-white">
-              No notifications
-            </h2>
-
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              Nothing to show for this filter.
-            </p>
-          </div>
+          <EmptyState
+            icon={<BellOff size={26} />}
+            title="You're all caught up"
+            description="You don't have any new notifications right now."
+          />
         ) : (
           filteredNotifications.map((notification) => (
             <div

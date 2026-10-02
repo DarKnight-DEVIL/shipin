@@ -1,6 +1,9 @@
 "use client";
 
-interface Activity {
+import { Activity } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
+
+interface ActivityItem {
   id: string;
   title: string;
   description: string;
@@ -8,7 +11,7 @@ interface Activity {
 }
 
 interface Props {
-  activities: Activity[];
+  activities: ActivityItem[];
 }
 
 export default function RecentActivity({
@@ -24,9 +27,11 @@ export default function RecentActivity({
       <div className="space-y-5">
 
         {activities.length === 0 && (
-          <p className="text-slate-500">
-            No recent activity.
-          </p>
+          <EmptyState
+            icon={<Activity size={26} />}
+            title="No recent activity"
+            description="Recent request and shipment activity will appear here."
+          />
         )}
 
         {activities.map((activity) => (

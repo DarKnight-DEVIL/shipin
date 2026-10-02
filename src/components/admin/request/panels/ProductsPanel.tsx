@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
+import { PackageOpen } from "lucide-react";
 
 import { db } from "@/lib/firebase";
 
@@ -10,6 +11,7 @@ import type { AdditionalItemRequest, Request } from "@/types/request";
 
 import Section from "@/components/ui/Section";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import EmptyState from "@/components/ui/EmptyState";
 import ProductCard from "../ProductCard";
 
 interface Props {
@@ -36,7 +38,11 @@ export default function ProductsPanel({ request }: Props) {
         }`}
       >
         {items.length === 0 ? (
-          <div className="text-slate-400">No products in this request.</div>
+          <EmptyState
+            icon={<PackageOpen size={26} />}
+            title="No products in this request"
+            description="This request does not contain any products yet."
+          />
         ) : (
           <div className="space-y-6">
             {items.map((item, index) => {
@@ -72,9 +78,11 @@ export default function ProductsPanel({ request }: Props) {
         }
       >
         {additionalRequests.length === 0 ? (
-          <div className="text-slate-400">
-            The customer has not requested any additional items.
-          </div>
+          <EmptyState
+            icon={<PackageOpen size={26} />}
+            title="No pending item requests"
+            description="There are no additional item requests waiting for review."
+          />
         ) : (
           <div className="space-y-5">
             {additionalRequests.map((additionalRequest) => (

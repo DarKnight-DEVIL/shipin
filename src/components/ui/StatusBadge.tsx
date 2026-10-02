@@ -15,6 +15,10 @@ const styles: Record<RequestStatus, string> = {
 
   paid: "bg-green-500/10 text-green-400",
 
+  refund_requested: "bg-red-500/10 text-red-400",
+
+  refund_offered: "bg-purple-500/10 text-purple-400",
+
   purchased: "bg-purple-500/10 text-purple-400",
 
   warehouse_received: "bg-indigo-500/10 text-indigo-400",
@@ -31,6 +35,8 @@ const styles: Record<RequestStatus, string> = {
   delivered: "bg-lime-500/10 text-lime-400",
 
   refunded: "bg-red-500/10 text-red-400",
+
+  rejected: "bg-red-500/10 text-red-400",
 };
 
 export default function StatusBadge({ status }: Props) {

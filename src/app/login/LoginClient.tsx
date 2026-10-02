@@ -12,26 +12,41 @@ import {
 } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
+import { getUserProfile } from "@/lib/userProfile";
 import { toast } from "sonner";
 
 export default function LoginClient() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const searchParams =
+    useSearchParams();
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] =
+    useState(false);
 
   const requestedNext =
     searchParams.get("next");
 
-  const destination =
+  /*
+   * Only allow internal routes.
+   *
+   * Prevents things such as:
+   * /login?next=https://malicious-site.com
+   */
+  const safeRequestedNext =
     requestedNext?.startsWith("/") &&
     !requestedNext.startsWith("//")
       ? requestedNext
-      : "/dashboard";
+      : null;
 
   async function handleGoogleLogin() {
     try {
       setLoading(true);
+
+      /*
+       * ========================================
+       * GOOGLE SIGN IN
+       * ========================================
+       */
 
       const provider =
         new GoogleAuthProvider();
@@ -42,28 +57,86 @@ export default function LoginClient() {
           provider
         );
 
-      router.push(destination);
+      const user =
+        result.user;
+
+      /*
+       * ========================================
+       * GET USER PROFILE
+       * ========================================
+       */
+
+      const profile =
+        await getUserProfile(
+          user.uid
+        );
+
+      /*
+       * ========================================
+       * DETERMINE DESTINATION
+       * ========================================
+       *
+       * Admins go to the admin dashboard.
+       *
+       * Normal customers go to the
+       * customer dashboard.
+       */
+
+      if (
+        profile?.role === "admin"
+      ) {
+        /*
+         * If an admin was explicitly trying
+         * to reach another internal page,
+         * respect that destination.
+         *
+         * Otherwise send them to admin dashboard.
+         */
+        const destination =
+          safeRequestedNext ||
+          "/admin/dashboard";
+
+        router.replace(
+          destination
+        );
+      } else {
+        /*
+         * Customers should never be
+         * automatically sent to /admin/*
+         * through the login redirect.
+         */
+
+        const customerDestination =
+          safeRequestedNext &&
+          !safeRequestedNext.startsWith(
+            "/admin"
+          )
+            ? safeRequestedNext
+            : "/dashboard";
+
+        router.replace(
+          customerDestination
+        );
+      }
 
       router.refresh();
-
     } catch (error) {
-
-      console.error(error);
+      console.error(
+        "Google login failed:",
+        error
+      );
 
       toast.error(
         "Unable to sign in with Google."
       );
 
       setLoading(false);
-
     }
   }
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-4">
-
       <div className="bg-slate-900 p-10 rounded-2xl border border-slate-800 w-full max-w-[400px]">
-
         <h1 className="text-3xl font-bold mb-2 text-center">
           Ship
           <span className="text-purple-400">
@@ -86,9 +159,7 @@ export default function LoginClient() {
             ? "Signing in..."
             : "Continue with Google"}
         </button>
-
       </div>
-
     </main>
   );
 }

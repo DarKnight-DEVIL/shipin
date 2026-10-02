@@ -10,11 +10,22 @@ import { db } from "@/lib/firebase";
 
 export interface UserProfile {
   displayName: string;
+
   email: string;
+
   phone: string;
+
   photoURL?: string;
 
+  /**
+   * Administrator role.
+   *
+   * Normal customers do not need this field.
+   */
+  role?: "admin" | "customer";
+
   createdAt?: any;
+
   updatedAt?: any;
 }
 
@@ -41,8 +52,11 @@ export async function createUserProfile(
   userId: string,
   profile: {
     displayName: string;
+
     email: string;
+
     phone?: string;
+
     photoURL?: string;
   }
 ) {
@@ -77,9 +91,10 @@ export async function createUserProfile(
       /*
        * VERY IMPORTANT:
        *
-       * Your user document may already
-       * contain preferences/settings.
-       * Do not overwrite them.
+       * merge=true means an existing
+       * role field will NOT be removed.
+       *
+       * This is important for admins.
        */
       merge: true,
     }
@@ -90,8 +105,11 @@ export async function updateUserProfile(
   userId: string,
   updates: {
     displayName?: string;
+
     email?: string;
+
     phone?: string;
+
     photoURL?: string;
   }
 ) {
@@ -105,6 +123,7 @@ export async function updateUserProfile(
     ref,
     {
       ...updates,
+
       updatedAt:
         serverTimestamp(),
     }

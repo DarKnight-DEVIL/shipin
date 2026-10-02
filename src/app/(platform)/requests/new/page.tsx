@@ -7,6 +7,9 @@ import { addRequest } from "@/lib/firestore";
 import AddressCard from "@/components/address/AddressCard";
 import type { Address } from "@/types/address";
 import { toast } from "sonner";
+import { MapPinOff } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
+import { useRouter } from "next/navigation";
 
 // Step 8.1: Imports added here
 import Modal from "@/components/ui/Modal";
@@ -15,6 +18,8 @@ import AddressForm from "@/components/address/AddressForm";
 import { getAddresses, addAddress } from "@/lib/addressBook";
 
 export default function NewRequestPage() {
+  const router = useRouter();
+
   const [items, setItems] = useState([
     {
       name: "",
@@ -285,9 +290,20 @@ export default function NewRequestPage() {
             </div>
           </div>
         ) : (
-          <div className="text-slate-600 dark:text-slate-400">
-            No saved address found.
-          </div>
+          <EmptyState
+            icon={<MapPinOff size={26} />}
+            title="No saved address"
+            description="You need a shipping address before you can submit this request."
+            action={
+              <button
+                type="button"
+                onClick={() => router.push("/addresses")}
+                className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700"
+              >
+                Add Address
+              </button>
+            }
+          />
         )}
       </div>
 

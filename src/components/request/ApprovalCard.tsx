@@ -1,5 +1,6 @@
 "use client";
 
+import { toast } from "sonner";
 import Section from "@/components/ui/Section";
 import ActionButton from "@/components/ui/ActionButton";
 import { approveInternationalShipment } from "@/lib/firestore";
@@ -54,9 +55,7 @@ export default function ApprovalCard({
                 request.id
               );
 
-              alert(
-                "Shipment approved successfully."
-              );
+              toast.success("Shipment approved successfully.");
             }}>
             Approve Shipment
           </ActionButton>
