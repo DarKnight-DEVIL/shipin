@@ -41,95 +41,43 @@ export default function LoginClient() {
   async function handleGoogleLogin() {
     try {
       setLoading(true);
-
-      /*
-       * ========================================
-       * GOOGLE SIGN IN
-       * ========================================
-       */
-
-      const provider =
-        new GoogleAuthProvider();
-
-      const result =
-        await signInWithPopup(
-          auth,
-          provider
-        );
-
-      const user =
-        result.user;
-
-      /*
-       * ========================================
-       * GET USER PROFILE
-       * ========================================
-       */
-
-      const profile =
-        await getUserProfile(
-          user.uid
-        );
-
-      /*
-       * ========================================
-       * DETERMINE DESTINATION
-       * ========================================
-       *
-       * Admins go to the admin dashboard.
-       *
-       * Normal customers go to the
-       * customer dashboard.
-       */
-
-      if (
-        profile?.role === "admin"
-      ) {
-        /*
-         * If an admin was explicitly trying
-         * to reach another internal page,
-         * respect that destination.
-         *
-         * Otherwise send them to admin dashboard.
-         */
-        const destination =
-          safeRequestedNext ||
-          "/admin/dashboard";
-
-        router.replace(
-          destination
-        );
-      } else {
-        /*
-         * Customers should never be
-         * automatically sent to /admin/*
-         * through the login redirect.
-         */
-
-        const customerDestination =
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      toast.success(
+        `Welcome${user.displayName ? `, ${user.displayName}` : ""}!`
+      );
+      
+      // Decide destination (don't block redirect on profile errors)
+      let destination = "/dashboard";
+      
+      try {
+        const profile = await getUserProfile(user.uid);
+        if (profile?.role === "admin") {
+          destination =
+            safeRequestedNext || "/admin/dashboard";
+        } else {
+          destination =
+            safeRequestedNext &&
+            !safeRequestedNext.startsWith("/admin")
+              ? safeRequestedNext
+              : "/dashboard";
+        }
+      } catch (profileError) {
+        console.error("Profile load failed:", profileError);
+        // Still continue to dashboard for normal users
+        destination =
           safeRequestedNext &&
-          !safeRequestedNext.startsWith(
-            "/admin"
-          )
+          !safeRequestedNext.startsWith("/admin")
             ? safeRequestedNext
             : "/dashboard";
-
-        router.replace(
-          customerDestination
-        );
       }
-
+      
+      router.replace(destination);
       router.refresh();
     } catch (error) {
-      console.error(
-        "Google login failed:",
-        error
-      );
-
-      toast.error(
-        "Unable to sign in with Google."
-      );
-
+      console.error("Google login failed:", error);
+      toast.error("Unable to sign in with Google.");
       setLoading(false);
     }
   }

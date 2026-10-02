@@ -7,13 +7,25 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --muted: #64748b;
+  --border: #e2e8f0;
+  --accent: #9333ea;
+  --accent-soft: rgba(147, 51, 234, 0.12);
+  --glow: rgba(147, 51, 234, 0.25);
 }
 
 .dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --background: #020617;
+  --foreground: #f1f5f9;
+  --card: #0f172a;
+  --muted: #94a3b8;
+  --border: #1e293b;
+  --accent: #a855f7;
+  --accent-soft: rgba(168, 85, 247, 0.15);
+  --glow: rgba(168, 85, 247, 0.35);
 }
 
 @theme inline {
@@ -23,10 +35,162 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* ========================================
+   SHARED SURFACES
+======================================== */
+
+.shipin-card {
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  transition:
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.25s ease;
+}
+
+.shipin-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px -12px var(--glow);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.shipin-glass {
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+}
+
+.shipin-btn-primary {
+  background: linear-gradient(135deg, #9333ea 0%, #7c3aed 50%, #6d28d9 100%);
+  color: white;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.25s ease,
+    filter 0.2s ease;
+  box-shadow: 0 8px 24px -8px var(--glow);
+}
+
+.shipin-btn-primary:hover {
+  transform: translateY(-1px) scale(1.01);
+  filter: brightness(1.08);
+  box-shadow: 0 12px 32px -8px var(--glow);
+}
+
+.shipin-btn-primary:active {
+  transform: translateY(0) scale(0.99);
+}
+
+/* ========================================
+   ANIMATIONS (Spline-inspired)
+======================================== */
+
+@keyframes shipin-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shipin-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shipin-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes shipin-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.75;
+  }
+}
+
+@keyframes shipin-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-fade-up {
+  animation: shipin-fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-fade-in {
+  animation: shipin-fade-in 0.6s ease both;
+}
+
+.animate-float {
+  animation: shipin-float 5s ease-in-out infinite;
+}
+
+.animate-glow-pulse {
+  animation: shipin-glow-pulse 4s ease-in-out infinite;
+}
+
+.animate-delay-100 {
+  animation-delay: 0.1s;
+}
+.animate-delay-200 {
+  animation-delay: 0.2s;
+}
+.animate-delay-300 {
+  animation-delay: 0.3s;
+}
+.animate-delay-400 {
+  animation-delay: 0.4s;
+}
+.animate-delay-500 {
+  animation-delay: 0.5s;
+}
+
+/* Gradient mesh background (hero / login) */
+.shipin-mesh {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -20%, var(--accent-soft), transparent),
+    radial-gradient(ellipse 50% 40% at 100% 50%, rgba(59, 130, 246, 0.08), transparent),
+    radial-gradient(ellipse 40% 30% at 0% 80%, rgba(168, 85, 247, 0.1), transparent),
+    var(--background);
+}
+
+/* Soft page transition helper */
+.shipin-page {
+  animation: shipin-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* ========================================

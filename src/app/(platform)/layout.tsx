@@ -132,7 +132,7 @@ export default function PlatformLayout({
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-white">
+    <main className="min-h-screen bg-slate-50 text-slate-950 dark:bg-[#020617] dark:text-white">
 
       {/* MOBILE HEADER */}
 
@@ -243,12 +243,15 @@ export default function PlatformLayout({
         className={`
           fixed inset-y-0 left-0 z-50
           flex w-72 flex-col
-          border-r border-slate-200
-          bg-white
-          transition-transform duration-200
+          border-r border-slate-200/80
+          bg-white/95
+          shadow-[4px_0_24px_-12px_rgba(147,51,234,0.12)]
+          backdrop-blur-xl
+          transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]
 
-          dark:border-slate-800
-          dark:bg-slate-900
+          dark:border-slate-800/80
+          dark:bg-slate-950/90
+          dark:shadow-[4px_0_32px_-12px_rgba(168,85,247,0.2)]
 
           md:w-64
           md:translate-x-0
@@ -266,7 +269,8 @@ export default function PlatformLayout({
         <div
           className="
             flex h-20 items-center
-            justify-between px-6
+            justify-between border-b border-slate-100 px-6
+            dark:border-slate-800/60
           "
         >
           <Link
@@ -527,7 +531,9 @@ export default function PlatformLayout({
           md:ml-64
         "
       >
-        {children}
+        <div className="shipin-page">
+          {children}
+        </div>
       </section>
 
     </main>
@@ -580,17 +586,21 @@ function NavItem({
             ? `
               bg-purple-50
               text-purple-700
+              shadow-sm
+              ring-1 ring-purple-500/15
 
-              dark:bg-purple-500/10
+              dark:bg-purple-500/15
               dark:text-purple-300
+              dark:ring-purple-400/20
             `
             : `
               text-slate-600
               hover:bg-slate-100
               hover:text-slate-950
+              transition-all duration-200
 
               dark:text-slate-400
-              dark:hover:bg-slate-800
+              dark:hover:bg-slate-800/80
               dark:hover:text-white
             `
         }

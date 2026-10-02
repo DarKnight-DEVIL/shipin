@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PackageOpen, Truck } from "lucide-react";
+import { motion } from "framer-motion";
 
 import { auth } from "@/lib/firebase";
 import { getRequests } from "@/lib/firestore";
@@ -191,7 +192,12 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="w-full px-6 py-8 lg:px-10">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      className="w-full px-6 py-8 lg:px-10"
+    >
       {/* HEADER */}
       <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
@@ -210,7 +216,7 @@ export default function DashboardPage() {
 
         <Link
           href="/requests/new"
-          className="inline-flex items-center justify-center rounded-xl bg-purple-600 px-5 py-3 font-semibold text-white transition hover:bg-purple-700"
+          className="shipin-btn-primary inline-flex items-center justify-center px-5 py-3 text-sm"
         >
           + Create Request
         </Link>
@@ -278,7 +284,7 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <div className="shipin-card overflow-hidden">
             {recentRequests.length === 0 ? (
               <div className="flex min-h-[320px] items-center justify-center p-8">
                 <div className="text-center">
@@ -346,7 +352,7 @@ export default function DashboardPage() {
 
             <div>
               {latestShipment ? (
-                <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+                <div className="shipin-card p-6">
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
                     ShipIN Tracking ID
                   </p>
@@ -410,7 +416,7 @@ export default function DashboardPage() {
               Quick Actions
             </h2>
 
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <div className="shipin-card overflow-hidden">
               <QuickAction
                 href="/requests/new"
                 title="Create Request"
@@ -439,7 +445,7 @@ export default function DashboardPage() {
           </section>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -514,10 +520,10 @@ function StatCard({
   return (
     <Link
       href={getMetricHref(id)}
-      className={`block rounded-2xl border p-6 transition hover:shadow-md ${
+      className={`shipin-card block p-6 transition hover:shadow-md ${
         highlight
           ? "border-amber-200 bg-amber-50 hover:border-amber-300 dark:border-amber-500/20 dark:bg-amber-500/5 dark:hover:border-amber-500/40"
-          : "border-slate-200 bg-white hover:border-purple-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-purple-500/40"
+          : "hover:border-purple-300 dark:hover:border-purple-500/40"
       }`}
     >
       <p className="text-sm font-medium text-slate-500 dark:text-slate-400">

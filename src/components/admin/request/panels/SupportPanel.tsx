@@ -559,7 +559,7 @@ export default function SupportPanel({ request }: Props) {
           </div>
         )}
 
-      {/* ADMIN ACTION: PARTIAL REFUND UI */}
+      {/* ADMIN ACTION: PARTIAL REFUND UI + HISTORY */}
       {request.status !== "rejected" && request.status !== "refunded" && (
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-6 dark:bg-amber-500/[0.04]">
           <button
@@ -575,7 +575,8 @@ export default function SupportPanel({ request }: Props) {
                 Issue Partial Refund
               </h2>
               <p className="mt-1 text-sm text-slate-400">
-                Offer a partial refund to the customer (Remaining refundable: ${remainingRefundable.toFixed(2)})
+                Offer a partial refund to the customer (Remaining refundable: $
+                {remainingRefundable.toFixed(2)})
               </p>
             </div>
             {partialRefundOpen ? (
@@ -639,10 +640,159 @@ export default function SupportPanel({ request }: Props) {
                 }
                 className="w-full rounded-xl bg-amber-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {partialRefundProcessing ? "Processing..." : "Offer Partial Refund"}
+                {partialRefundProcessing
+                  ? "Processing..."
+                  : "Offer Partial Refund"}
               </button>
             </div>
           )}
+
+          {/* ========== PARTIAL REFUND TRACKING ========== */}
+          {(() => {
+            const history = Array.isArray(request.partialRefunds)
+              ? request.partialRefunds
+              : [];
+            const activeOffer = request.partialRefundOffer;
+            const hasActiveOffer =
+              activeOffer &&
+              ["offered", "accepted"].includes(activeOffer.status);
+
+            if (history.length === 0 && !hasActiveOffer) {
+              return null;
+            }
+
+            return (
+              <div className="mt-6 border-t border-slate-800 pt-5">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-500">
+                      Tracking
+                    </p>
+                    <h3 className="mt-1 text-base font-semibold text-white">
+                      Partial Refund History
+                    </h3>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-2 text-right">
+                    <p className="text-xs text-slate-500">Total partial refunded</p>
+                    <p className="text-lg font-bold text-amber-400">
+                      ${alreadyRefunded.toFixed(2)}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      of ${totalPaid.toFixed(2)} · Remaining $
+                      {remainingRefundable.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Active offer (not yet completed) */}
+                {hasActiveOffer && (
+                  <div className="mb-3 rounded-xl border border-orange-500/30 bg-orange-500/10 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-orange-300">
+                          Active offer — $
+                          {Number(activeOffer.amount ?? 0).toFixed(2)}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          {activeOffer.reason || "No reason recorded"}
+                        </p>
+                      </div>
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                          activeOffer.status === "offered"
+                            ? "bg-orange-500/20 text-orange-300"
+                            : "bg-blue-500/20 text-blue-300"
+                        }`}
+                      >
+                        {activeOffer.status === "offered"
+                          ? "Awaiting customer"
+                          : "Accepted — processing"}
+                      </span>
+                    </div>
+                    {activeOffer.selectedMethod && (
+                      <p className="mt-2 text-xs text-slate-400">
+                        Method:{" "}
+                        {activeOffer.selectedMethod === "wallet"
+                          ? "ShipIN Wallet"
+                          : "Original payment"}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Completed history */}
+                {history.length > 0 ? (
+                  <div className="space-y-2">
+                    {[...history].reverse().map((entry: any) => (
+                      <div
+                        key={entry.id}
+                        className="rounded-xl border border-slate-800 bg-slate-950 p-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-white">
+                              ${Number(entry.amount ?? 0).toFixed(2)}
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-400">
+                              {entry.reason || "No reason recorded"}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-green-500/15 px-3 py-1 text-xs font-semibold text-green-400">
+                            Completed
+                          </span>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                          <span>
+                            Method:{" "}
+                            {entry.method === "wallet"
+                              ? "ShipIN Wallet"
+                              : entry.method === "original_payment"
+                                ? "Original payment"
+                                : entry.method || "—"}
+                          </span>
+                          {entry.walletRefundAmount != null &&
+                            Number(entry.walletRefundAmount) > 0 && (
+                              <span>
+                                Wallet: $
+                                {Number(entry.walletRefundAmount).toFixed(2)}
+                              </span>
+                            )}
+                          {entry.paypalRefundAmount != null &&
+                            Number(entry.paypalRefundAmount) > 0 && (
+                              <span>
+                                PayPal: $
+                                {Number(entry.paypalRefundAmount).toFixed(2)}
+                              </span>
+                            )}
+                          {entry.paypalRefundTransactionId && (
+                            <span>
+                              PayPal TX: {entry.paypalRefundTransactionId}
+                            </span>
+                          )}
+                          {entry.createdByEmail && (
+                            <span>By: {entry.createdByEmail}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  !hasActiveOffer && (
+                    <p className="text-sm text-slate-500">
+                      No completed partial refunds yet.
+                    </p>
+                  )
+                )}
+
+                <p className="mt-4 text-xs text-slate-500">
+                  Partial refunds do not close support tickets. Only a full
+                  refund closes the ticket / request.
+                </p>
+              </div>
+            );
+          })()}
         </div>
       )}
 
