@@ -26,7 +26,7 @@ export default function SupportPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-6 md:p-8">
+    <div className="shipin-page mx-auto max-w-7xl px-6 py-8 lg:px-10">
       <CustomerSupportCenter
         customerId={customerId}
       />

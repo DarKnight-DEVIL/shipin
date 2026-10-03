@@ -220,7 +220,7 @@ function RequestsPageContent() {
   }
 
   return (
-    <div className="w-full px-6 py-8 lg:px-10">
+    <div className="shipin-page w-full px-6 py-8 lg:px-10">
       {/* ========================================
           HEADER
       ======================================== */}
@@ -291,19 +291,7 @@ function RequestsPageContent() {
           <button
             type="button"
             onClick={() => router.push("/requests/new")}
-            className="
-              whitespace-nowrap
-              rounded-xl
-              bg-purple-600
-              px-5
-              py-3
-              font-semibold
-              text-white
-              transition
-              hover:bg-purple-700
-              hover:shadow-lg
-              hover:shadow-purple-600/20
-            "
+            className="shipin-btn-primary whitespace-nowrap px-5 py-3 text-sm"
           >
             + New Request
           </button>
@@ -323,14 +311,14 @@ function RequestsPageContent() {
             <button
               type="button"
               onClick={() => router.push("/requests/new")}
-              className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700"
+              className="shipin-btn-primary px-5 py-3 text-sm"
             >
               Create Request
             </button>
           }
         />
       ) : filteredRequests.length === 0 ? (
-        <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-slate-200 bg-white p-8 dark:border-slate-800 dark:bg-slate-900">
+        <div className="shipin-card flex min-h-[320px] items-center justify-center p-8">
           <div className="text-center">
             <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
               <PackageOpen size={26} />
@@ -381,19 +369,11 @@ function RequestsPageContent() {
               >
                 <article
                   className={`
-                    rounded-2xl
-                    border
-                    bg-white
-                    p-6
-                    shadow-sm
-                    transition
-                    hover:shadow-md
-                    dark:bg-slate-900
-                    dark:shadow-none
+                    shipin-card p-6
                     ${
                       isRejected
                         ? "border-red-200 hover:border-red-400 dark:border-red-500/30 dark:hover:border-red-500"
-                        : "border-slate-200 hover:border-purple-500 dark:border-slate-800 dark:hover:border-purple-500"
+                        : ""
                     }
                   `}
                 >
