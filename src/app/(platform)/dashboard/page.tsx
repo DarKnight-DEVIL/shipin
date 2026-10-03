@@ -74,13 +74,11 @@ export default function DashboardPage() {
         ACTIVE_REQUEST_STATUSES.includes(request.status)
       ).length,
 
-      submitted: requests.filter(
-        (request) => request.status === "submitted"
-      ).length,
+      submitted: requests.filter((request) => request.status === "submitted")
+        .length,
 
-      quote_ready: requests.filter(
-        (request) => request.status === "review"
-      ).length,
+      quote_ready: requests.filter((request) => request.status === "review")
+        .length,
 
       awaiting_payment: requests.filter((request) => {
         const mainPayment =
@@ -109,7 +107,8 @@ export default function DashboardPage() {
 
       packed: requests.filter((request) => request.status === "packed").length,
 
-      shipped: requests.filter((request) => request.status === "shipped").length,
+      shipped: requests.filter((request) => request.status === "shipped")
+        .length,
 
       in_transit: requests.filter((request) =>
         IN_TRANSIT_STATUSES.includes(request.status)
@@ -132,8 +131,7 @@ export default function DashboardPage() {
       dashboardMetrics.find((metric) => metric.id === metricId)
     )
     .filter(
-      (metric): metric is (typeof dashboardMetrics)[number] =>
-        Boolean(metric)
+      (metric): metric is (typeof dashboardMetrics)[number] => Boolean(metric)
     );
 
   /*
@@ -159,14 +157,12 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="w-full px-6 py-8 lg:px-10">
+      <div className="shipin-page w-full px-6 py-8 lg:px-10">
         <div className="space-y-8">
           {/* Header skeleton */}
           <div className="space-y-3">
             <div className="h-4 w-32 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
-
             <div className="h-10 w-80 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-800" />
-
             <div className="h-5 w-96 max-w-full animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
           </div>
 
@@ -175,16 +171,15 @@ export default function DashboardPage() {
             {Array.from({ length: 4 }).map((_, index) => (
               <div
                 key={index}
-                className="h-32 animate-pulse rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+                className="shipin-card h-32 animate-pulse"
               />
             ))}
           </div>
 
           {/* Content skeleton */}
           <div className="grid gap-6 xl:grid-cols-3">
-            <div className="h-80 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 xl:col-span-2" />
-
-            <div className="h-80 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" />
+            <div className="shipin-card h-80 xl:col-span-2" />
+            <div className="shipin-card h-80" />
           </div>
         </div>
       </div>
@@ -196,7 +191,7 @@ export default function DashboardPage() {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-      className="w-full px-6 py-8 lg:px-10"
+      className="shipin-page w-full px-6 py-8 lg:px-10"
     >
       {/* HEADER */}
       <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
@@ -297,13 +292,14 @@ export default function DashboardPage() {
                   </h3>
 
                   <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
-                    Your requests and shipment activity will appear here once you get started.
+                    Your requests and shipment activity will appear here once
+                    you get started.
                   </p>
 
                   <button
                     type="button"
                     onClick={() => router.push("/requests/new")}
-                    className="mt-6 rounded-xl bg-purple-600 px-5 py-3 font-semibold text-white transition hover:bg-purple-700"
+                    className="shipin-btn-primary mt-6 px-5 py-3 text-sm"
                   >
                     Create Request
                   </button>
@@ -385,7 +381,7 @@ export default function DashboardPage() {
                   </Link>
                 </div>
               ) : (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+                <div className="shipin-card border-dashed p-6">
                   <div className="flex items-start gap-4">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
                       <Truck
@@ -400,8 +396,8 @@ export default function DashboardPage() {
                       </h3>
 
                       <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                        Your shipment and tracking details will appear here once your order
-                        has been dispatched.
+                        Your shipment and tracking details will appear here once
+                        your order has been dispatched.
                       </p>
                     </div>
                   </div>
@@ -456,46 +452,32 @@ function getMetricHref(id: DashboardMetricId): string {
   switch (id) {
     case "active":
       return "/requests";
-
     case "submitted":
       return "/requests?status=submitted";
-
     case "quote_ready":
       return "/requests?status=review";
-
     case "awaiting_payment":
       return "/requests?status=awaiting_payment";
-
     case "paid":
       return "/requests?status=paid";
-
     case "purchased":
       return "/requests?status=purchased";
-
     case "warehouse_received":
       return "/requests?status=warehouse_received";
-
     case "ready_for_international_shipping":
       return "/requests?status=ready_for_international_shipping";
-
     case "packed":
       return "/requests?status=packed";
-
     case "shipped":
       return "/requests?status=shipped";
-
     case "in_transit":
       return "/requests?status=in_transit";
-
     case "out_for_delivery":
       return "/requests?status=out_for_delivery";
-
     case "delivered":
       return "/requests?status=delivered";
-
     case "refunded":
       return "/requests?status=refunded";
-
     default:
       return "/requests";
   }
@@ -520,10 +502,10 @@ function StatCard({
   return (
     <Link
       href={getMetricHref(id)}
-      className={`shipin-card block p-6 transition hover:shadow-md ${
+      className={`block shipin-card p-5 transition-all hover:shadow-md ${
         highlight
-          ? "border-amber-200 bg-amber-50 hover:border-amber-300 dark:border-amber-500/20 dark:bg-amber-500/5 dark:hover:border-amber-500/40"
-          : "hover:border-purple-300 dark:hover:border-purple-500/40"
+          ? "border-amber-300/80 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/5"
+          : ""
       }`}
     >
       <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
@@ -558,10 +540,10 @@ function AttentionCard({ request }: { request: Request }) {
   );
   let title = "Action required";
   let description = "Open this request to continue.";
+  
   if (request.status === "review") {
     title = "Quote ready for approval";
-    description =
-      "Your ShipIN quote is ready. Review and approve it to continue.";
+    description = "Your ShipIN quote is ready. Review and approve it to continue.";
   } else if (mainPayment) {
     title = "Payment required";
     description = "Your approved request is waiting for payment.";
@@ -569,6 +551,7 @@ function AttentionCard({ request }: { request: Request }) {
     title = "Additional item payment required";
     description = "An approved additional item is waiting for payment.";
   }
+  
   return (
     <Link
       href={`/requests/${request.id}`}

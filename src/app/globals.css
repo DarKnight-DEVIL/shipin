@@ -188,9 +188,9 @@ body {
     var(--background);
 }
 
-/* Soft page transition helper */
+/* Soft page transition helper — opacity only (no transform) */
 .shipin-page {
-  animation: shipin-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: shipin-fade-in 0.45s ease both;
 }
 
 /* ========================================
