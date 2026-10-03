@@ -164,41 +164,41 @@ export default function SettingsPage() {
         let savedProfile = await getUserProfile(user.uid);
 
         /*
-        * Ensure the Firestore user document always
-        * contains the authenticated account details.
-        *
-        * createUserProfile uses merge: true, so existing
-        * preferences and other user data are preserved.
-        */
-       if (
-         !savedProfile ||
-         !savedProfile.email ||
-         !savedProfile.photoURL
-       ) {
-         await createUserProfile(user.uid, {
-           displayName:
-             savedProfile?.displayName ||
-             user.displayName ||
-             "",
+         * Ensure the Firestore user document always
+         * contains the authenticated account details.
+         *
+         * createUserProfile uses merge: true, so existing
+         * preferences and other user data are preserved.
+         */
+        if (
+          !savedProfile ||
+          !savedProfile.email ||
+          !savedProfile.photoURL
+        ) {
+          await createUserProfile(user.uid, {
+            displayName:
+              savedProfile?.displayName ||
+              user.displayName ||
+              "",
 
-           email:
-             user.email ||
-             savedProfile?.email ||
-             "",
+            email:
+              user.email ||
+              savedProfile?.email ||
+              "",
 
-           phone:
-             savedProfile?.phone ||
-             user.phoneNumber ||
-             "",
+            phone:
+              savedProfile?.phone ||
+              user.phoneNumber ||
+              "",
 
-           photoURL:
-             savedProfile?.photoURL ||
-             user.photoURL ||
-             "",
-         });
+            photoURL:
+              savedProfile?.photoURL ||
+              user.photoURL ||
+              "",
+          });
 
-         savedProfile =
-           await getUserProfile(user.uid);
+          savedProfile =
+            await getUserProfile(user.uid);
         }
 
         if (
@@ -580,20 +580,20 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-8">
+    <div className="shipin-page mx-auto max-w-4xl px-6 py-8 lg:px-10">
       <div className="mb-10">
         <h1 className="text-4xl font-bold text-slate-950 dark:text-white">
           Settings
         </h1>
 
-        <p className="mt-2 text-slate-400">
+        <p className="mt-2 text-slate-600 dark:text-slate-400">
           Customize your ShipIN experience.
         </p>
       </div>
 
       <div className="space-y-6">
         {/* ACCOUNT */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+        <section className="shipin-card p-6">
           <div className="flex items-start justify-between gap-4">
             <div className="flex gap-4">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400">
@@ -708,7 +708,7 @@ export default function SettingsPage() {
                     type="button"
                     disabled={profileSaving}
                     onClick={handleSaveProfile}
-                    className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 font-semibold text-white transition hover:bg-purple-700 disabled:opacity-50"
+                    className="shipin-btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-sm disabled:opacity-50"
                   >
                     <Save size={17} />
                     {profileSaving ? "Saving..." : "Save Profile"}
@@ -720,7 +720,7 @@ export default function SettingsPage() {
         </section>
 
         {/* SECURITY */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+        <section className="shipin-card p-6">
           <div className="flex gap-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400">
               <ShieldCheck size={21} />
@@ -808,7 +808,7 @@ export default function SettingsPage() {
                   <button
                     type="submit"
                     disabled={changingPassword}
-                    className="rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:opacity-50"
+                    className="shipin-btn-primary px-6 py-2.5 text-sm disabled:opacity-50"
                   >
                     {changingPassword ? "Updating..." : "Update Password"}
                   </button>
@@ -857,7 +857,7 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     disabled
-                    className="rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-semibold text-white opacity-50"
+                    className="shipin-btn-primary px-6 py-2.5 text-sm opacity-50"
                   >
                     Update Password
                   </button>
@@ -868,7 +868,7 @@ export default function SettingsPage() {
         </section>
 
         {/* APPEARANCE */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+        <section className="shipin-card p-6">
           <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
             Appearance
           </h2>
@@ -906,7 +906,7 @@ export default function SettingsPage() {
         </section>
 
         {/* LANGUAGE */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+        <section className="shipin-card p-6">
           <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
             Language
           </h2>
@@ -927,7 +927,7 @@ export default function SettingsPage() {
         </section>
 
         {/* Step 3E — Add the UI: NOTIFICATION PREFERENCES */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+        <section className="shipin-card p-6">
           <div className="flex gap-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400">
               <Bell size={21} />
@@ -1180,7 +1180,7 @@ export default function SettingsPage() {
                   type="button"
                   disabled={notificationChannelsSaving}
                   onClick={handleSaveNotificationChannels}
-                  className="rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="shipin-btn-primary px-6 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {notificationChannelsSaving ? "Saving..." : "Save Channels"}
                 </button>
@@ -1190,7 +1190,7 @@ export default function SettingsPage() {
         </section>
 
         {/* NOTIFICATION TYPES */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+        <section className="shipin-card p-6">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400">
               <Bell size={20} />
@@ -1277,7 +1277,7 @@ export default function SettingsPage() {
                   type="button"
                   disabled={notificationTypesSaving}
                   onClick={handleSaveNotificationTypes}
-                  className="rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="shipin-btn-primary px-6 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {notificationTypesSaving
                     ? "Saving..."
@@ -1289,7 +1289,7 @@ export default function SettingsPage() {
         </section>
 
         {/* DASHBOARD STATUS CARDS */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+        <section className="shipin-card p-6">
           <div className="flex items-start justify-between gap-4">
             <div className="flex gap-4">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400">
@@ -1382,7 +1382,7 @@ export default function SettingsPage() {
                   type="button"
                   disabled={dashboardSettingsSaving}
                   onClick={handleSaveDashboardSettings}
-                  className="rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:opacity-50"
+                  className="shipin-btn-primary px-6 py-2.5 text-sm disabled:opacity-50"
                 >
                   {dashboardSettingsSaving ? "Saving..." : "Save Dashboard"}
                 </button>
