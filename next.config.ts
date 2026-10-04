@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Disable Strict Mode to prevent WebGPU texture destruction on mount
+  reactStrictMode: false, 
+  
+  // ... any other config you already have
 };
 
 export default nextConfig;

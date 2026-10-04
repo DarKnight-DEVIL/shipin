@@ -94,7 +94,7 @@ export default function HelpCard() {
               </h3>
 
               <p className="text-sm text-slate-400">
-                support@shipin.com
+                contact.shipin@gmail.com
               </p>
 
             </div>

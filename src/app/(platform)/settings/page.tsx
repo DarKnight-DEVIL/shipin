@@ -58,6 +58,29 @@ import { useTheme } from "next-themes";
 
 type ThemeOption = "light" | "dark" | "system";
 
+const LANGUAGES = [
+  { code: "en", name: "English", native: "English", flag: "🇬🇧" },
+  { code: "hi", name: "Hindi", native: "हिन्दी", flag: "🇮🇳" },
+  { code: "es", name: "Spanish", native: "Español", flag: "🇪🇸" },
+  { code: "fr", name: "French", native: "Français", flag: "🇫🇷" },
+  { code: "de", name: "German", native: "Deutsch", flag: "🇩🇪" },
+  { code: "pt", name: "Portuguese", native: "Português", flag: "🇧🇷" },
+  { code: "ar", name: "Arabic", native: "العربية", flag: "🇦🇪" },
+  { code: "zh", name: "Chinese (Simplified)", native: "简体中文", flag: "🇨🇳" },
+  { code: "ja", name: "Japanese", native: "日本語", flag: "🇯🇵" },
+  { code: "ko", name: "Korean", native: "한국어", flag: "🇰🇷" },
+  { code: "it", name: "Italian", native: "Italiano", flag: "🇮🇹" },
+  { code: "nl", name: "Dutch", native: "Nederlands", flag: "🇳🇱" },
+  { code: "ru", name: "Russian", native: "Русский", flag: "🇷🇺" },
+  { code: "tr", name: "Turkish", native: "Türkçe", flag: "🇹🇷" },
+  { code: "id", name: "Indonesian", native: "Bahasa Indonesia", flag: "🇮🇩" },
+  { code: "ms", name: "Malay", native: "Bahasa Melayu", flag: "🇲🇾" },
+  { code: "th", name: "Thai", native: "ไทย", flag: "🇹🇭" },
+  { code: "vi", name: "Vietnamese", native: "Tiếng Việt", flag: "🇻🇳" },
+] as const;
+
+type LanguageCode = (typeof LANGUAGES)[number]["code"];
+
 const WHATSAPP_COUNTRIES = [
   ["🇮🇳","India","+91"],["🇺🇸","United States","+1"],["🇨🇦","Canada","+1"],
   ["🇬🇧","United Kingdom","+44"],["🇦🇪","United Arab Emirates","+971"],
@@ -137,11 +160,12 @@ export default function SettingsPage() {
 
   useEffect(() => {
     setMounted(true);
-
     const savedLanguage = localStorage.getItem("shipin-language");
-
+  
     if (savedLanguage) {
       setLanguage(savedLanguage);
+      document.documentElement.lang = savedLanguage;
+      document.documentElement.dir = savedLanguage === "ar" ? "rtl" : "ltr";
     }
   }, []);
 
@@ -573,6 +597,15 @@ export default function SettingsPage() {
   function changeLanguage(value: string) {
     setLanguage(value);
     localStorage.setItem("shipin-language", value);
+    document.documentElement.lang = value;
+    // RTL for Arabic
+    document.documentElement.dir = value === "ar" ? "rtl" : "ltr";
+    
+    toast.success(
+      `Language set to ${
+        LANGUAGES.find((l) => l.code === value)?.name ?? value
+      }`
+    );
   }
 
   if (!mounted) {
@@ -911,18 +944,40 @@ export default function SettingsPage() {
             Language
           </h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Select your preferred display language.
+            Choose your preferred display language. More languages will roll out as
+            translations are completed.
           </p>
-          <div className="mt-4">
-            <select
-              value={language}
-              onChange={(e) => changeLanguage(e.target.value)}
-              className="w-full max-w-xs rounded-xl border border-slate-300 bg-white p-3 text-slate-900 outline-none transition focus:border-purple-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-            >
-              <option value="en">English</option>
-              <option value="es">Español</option>
-              <option value="fr">Français</option>
-            </select>
+          <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {LANGUAGES.map((lang) => {
+              const selected = language === lang.code;
+              return (
+                <button
+                  key={lang.code}
+                  type="button"
+                  onClick={() => changeLanguage(lang.code)}
+                  className={`flex items-center gap-3 rounded-xl border p-3 text-left transition ${
+                    selected
+                      ? "border-purple-500 bg-purple-500/10 ring-1 ring-purple-500/30"
+                      : "border-slate-200 hover:border-purple-300 dark:border-slate-700 dark:hover:border-purple-500/50"
+                  }`}
+                >
+                  <span className="text-xl leading-none" aria-hidden>
+                    {lang.flag}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-900 dark:text-white">
+                      {lang.native}
+                    </span>
+                    <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                      {lang.name}
+                    </span>
+                  </span>
+                  {selected && (
+                    <Check className="h-4 w-4 shrink-0 text-purple-500" />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </section>
 

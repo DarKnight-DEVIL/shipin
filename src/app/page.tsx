@@ -17,6 +17,26 @@ import {
 
 import { auth } from "@/lib/firebase";
 import SplineHero from "@/components/landing/SplineHero";
+import Image from "next/image";
+
+function timeAgo(isoDate: string): string {
+  const then = new Date(isoDate).getTime();
+  const now = Date.now();
+  const seconds = Math.max(0, Math.floor((now - then) / 1000));
+
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  const months = Math.floor(days / 30);
+  const years = Math.floor(days / 365);
+
+  if (years > 0) return years === 1 ? "1 year ago" : `${years} years ago`;
+  if (months > 0) return months === 1 ? "1 month ago" : `${months} months ago`;
+  if (days > 0) return days === 1 ? "1 day ago" : `${days} days ago`;
+  if (hours > 0) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  if (minutes > 0) return minutes === 1 ? "1 minute ago" : `${minutes} minutes ago`;
+  return "just now";
+}
 
 /* ─── animation helpers ─── */
 const fadeUp = {
@@ -90,24 +110,28 @@ const testimonials = [
     location: "Stralsund, Germany",
     text: "This was my first time using the service of an international shopper, and it honestly couldn’t have gone any better. Everything was perfect — from the communication, to the payment process, to the ordering and shipping. Everything worked out flawlessly without any problems. On top of that, he was super friendly as well. ❤️",
     rating: 5,
+    postedAt: "2026-05-26"
   },
   {
     name: "u/Logical-Hawk8",
     location: "Palm Harbor, USA",
     text: "I made shipping payment on Jul 24 at 5pm; was provided tracking at 11pm and notices of export clearance, import clearance, and delivery on Aug 4. Package was received well packed. A+++",
     rating: 5,
+    postedAt: "2026-08-15"
   },
   {
     name: "u/pookiemjmi",
     location: "Vietnam",
     text: "I just completed a successful transaction with ShipIN. They handled my requests very well and quickly, which was really helpful for a buyer like me who lives far away, very trustworthy!",
     rating: 5,
+    postedAt: "2026-09-17"
   },
   {
-    name: "Marcus L.",
-    location: "Berlin, Germany",
-    text: "Ordered electronics and books together. Everything arrived safely. Will use again.",
-    rating: 4,
+    name: "Karlek Kouaya",
+    location: "Rue des journaliers, France",
+    text: "I'm very satisfied with the service. Everything went smoothly, and I would definitely recommend this service to others.",
+    rating: 5,
+    postedAt: "2026-10-04"
   },
   {
     name: "Neha P.",
@@ -149,8 +173,21 @@ export default function Home() {
 
         <div className="pointer-events-none relative z-10 flex h-full flex-col">
           <nav className="pointer-events-auto mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5 md:px-8">
-            <Link href="/" className="text-2xl font-bold md:text-3xl">
-              Ship<span className="text-purple-400">IN</span>
+            <Link
+              href="/"
+              className="flex items-center gap-1 text-2xl font-bold md:text-3xl"
+            >
+              <Image
+                src="/ShipIN.svg"
+                alt="ShipIN"
+                width={50}
+                height={50}
+                className="h-10 w-10 object-contain md:h-12 md:w-12"
+                priority
+              />
+              <span>
+                Ship<span className="text-purple-400">IN</span>
+              </span>
             </Link>
 
             <div className="flex items-center gap-3 md:gap-5">
@@ -395,7 +432,11 @@ export default function Home() {
                 </p>
                 <div className="mt-4 border-t border-white/10 pt-3">
                   <p className="text-sm font-medium text-white">{t.name}</p>
-                  <p className="text-xs text-white/40">{t.location}</p>
+                  <p className="text-xs text-white/40">
+                   {t.location}
+                   <span className="mx-1.5 text-white/20">·</span>
+                   {t.postedAt ? timeAgo(t.postedAt) : null}
+                  </p>
                 </div>
               </article>
             ))}
