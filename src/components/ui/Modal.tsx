@@ -1,6 +1,7 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 interface Props {
@@ -16,6 +17,12 @@ export default function Modal({
   onClose,
   children,
 }: Props) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     if (!open) return;
 
@@ -36,9 +43,9 @@ export default function Modal({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  return createPortal(
     <div
       className="
         fixed inset-0 z-[100]
@@ -70,16 +77,10 @@ export default function Modal({
           dark:border-slate-800
           dark:bg-slate-950
           dark:shadow-black/50
-
-          animate-in
-          fade-in
-          zoom-in-95
-          duration-200
         "
         onMouseDown={(event) => event.stopPropagation()}
       >
-        {/* HEADER */}
-        {title && (
+        {title ? (
           <div
             className="
               flex items-center justify-between
@@ -126,13 +127,11 @@ export default function Modal({
               <X size={19} />
             </button>
           </div>
-        )}
+        ) : null}
 
-        {/* BODY */}
-        <div className="p-6 sm:p-7">
-          {children}
-        </div>
+        <div className="p-6 sm:p-7">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

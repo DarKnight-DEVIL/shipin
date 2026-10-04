@@ -627,26 +627,24 @@ export async function deleteNotification(
 export async function markAllNotificationsRead(
   userId: string
 ) {
-  const snapshot = await getDocs(
-    collection(db, "notifications")
+  const q = query(
+    collection(db, "notifications"),
+    where("userId", "==", userId)
   );
 
-  const batch = writeBatch(db);
+  const snapshot = await getDocs(q);
 
-  snapshot.docs.forEach((notificationDoc) => {
-    const data = notificationDoc.data();
+  const toUpdate = snapshot.docs.filter(
+    (d) => d.data().read !== true
+  );
 
-    if (
-      data.userId === userId &&
-      data.read !== true
-    ) {
-      batch.update(notificationDoc.ref, {
-        read: true,
-      });
-    }
-  });
-
-  await batch.commit();
+  for (let i = 0; i < toUpdate.length; i += 500) {
+    const batch = writeBatch(db);
+    toUpdate.slice(i, i + 500).forEach((notificationDoc) => {
+      batch.update(notificationDoc.ref, { read: true });
+    });
+    await batch.commit();
+  }
 }
 
 /*
@@ -655,24 +653,24 @@ export async function markAllNotificationsRead(
 export async function clearReadNotifications(
   userId: string
 ) {
-  const snapshot = await getDocs(
-    collection(db, "notifications")
+  const q = query(
+    collection(db, "notifications"),
+    where("userId", "==", userId)
   );
 
-  const batch = writeBatch(db);
+  const snapshot = await getDocs(q);
 
-  snapshot.docs.forEach((notificationDoc) => {
-    const data = notificationDoc.data();
+  const toDelete = snapshot.docs.filter(
+    (d) => d.data().read === true
+  );
 
-    if (
-      data.userId === userId &&
-      data.read === true
-    ) {
+  for (let i = 0; i < toDelete.length; i += 500) {
+    const batch = writeBatch(db);
+    toDelete.slice(i, i + 500).forEach((notificationDoc) => {
       batch.delete(notificationDoc.ref);
-    }
-  });
-
-  await batch.commit();
+    });
+    await batch.commit();
+  }
 }
 
 /* =========================================

@@ -225,3 +225,38 @@ body {
   color: currentColor;
   opacity: 0.6;
 }
+
+/* Full-bleed Spline canvas */
+.spline-fullpage,
+.spline-fullpage > div,
+.spline-fullpage canvas {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  display: block !important;
+}
+
+/* Hide "Built with Spline" badge */
+a[href*="spline.design"],
+button[aria-label*="Spline" i] {
+  /* only hide promo badge, not your own links */
+}
+
+/* Runtime injects a fixed badge — cover common patterns */
+body > div:has(> a[href*="spline.design"]),
+div[style*="z-index"] > a[href*="spline.design"] {
+  display: none !important;
+}
+
+/* Fallback: mask bottom-right badge area on the landing page only */
+.spline-badge-mask {
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 180px;
+  height: 56px;
+  background: linear-gradient(to top left, #05050a 40%, transparent);
+}
