@@ -260,3 +260,21 @@ div[style*="z-index"] > a[href*="spline.design"] {
   height: 56px;
   background: linear-gradient(to top left, #05050a 40%, transparent);
 }
+
+/* Infinite testimonials marquee (right → left) */
+@keyframes shipin-marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.shipin-marquee {
+  animation: shipin-marquee 45s linear infinite;
+}
+
+.shipin-marquee:hover {
+  animation-play-state: paused; /* optional: pause on hover to read */
+}
