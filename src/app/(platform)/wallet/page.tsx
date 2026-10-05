@@ -2,17 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import {
-  ArrowDownToLine,
-  ReceiptText,
-  WalletCards,
-} from "lucide-react";
+import { ArrowDownToLine, ArrowUpRight, Plus, ReceiptText } from "lucide-react";
 
 import { auth } from "@/lib/firebase";
 import { getWallet, getWalletTransactions } from "@/lib/wallet";
-
-import PageSkeleton from "@/components/ui/PageSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 
 interface WalletData {
@@ -29,6 +22,32 @@ interface WalletTransaction {
   createdAt?: {
     toDate?: () => Date;
   };
+}
+
+function formatMoney(n: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(n);
+}
+
+function formatDate(date?: Date) {
+  if (!date) return "";
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function txLabel(tx: WalletTransaction) {
+  if (tx.description?.trim()) return tx.description;
+  if (tx.type === "topup" || tx.type === "credit") return "Top up";
+  if (tx.type === "payment" || tx.type === "debit") return "Payment";
+  if (tx.type === "refund") return "Refund";
+  return "Transaction";
 }
 
 export default function WalletPage() {
@@ -53,8 +72,10 @@ export default function WalletPage() {
       }
 
       try {
-        const data = await getWallet(user.uid);
-        const history = await getWalletTransactions(user.uid);
+        const [data, history] = await Promise.all([
+          getWallet(user.uid),
+          getWalletTransactions(user.uid),
+        ]);
 
         if (!mounted) return;
 
@@ -77,126 +98,162 @@ export default function WalletPage() {
   }, []);
 
   if (loading) {
-    return <PageSkeleton />;
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+        <div className="mb-8 h-7 w-32 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
+        <div className="mb-8 h-36 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800/60" />
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="h-16 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/40"
+            />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-      className="shipin-page w-full px-6 py-8 lg:px-10"
-    >
+    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       {/* Header */}
-      <div className="mb-8">
-        <div className="mb-2 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
-            <WalletCards size={23} />
-          </div>
-          <h1 className="text-3xl font-bold text-slate-950 dark:text-white md:text-4xl">
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
             Wallet
           </h1>
-        </div>
-        <p className="text-slate-500 dark:text-slate-400">
-          Manage your ShipIN wallet balance and transactions.
-        </p>
-      </div>
-
-      {/* Balance + CTA */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <div className="shipin-card p-8">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                Available Balance
-              </p>
-              <h2 className="mt-2 text-4xl font-bold text-emerald-500 md:text-5xl">
-                ${wallet.balance.toFixed(2)}
-              </h2>
-              <p className="mt-2 text-sm text-slate-400">USD</p>
-            </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
-              <WalletCards size={24} />
-            </div>
-          </div>
-        </div>
-
-        <div className="shipin-card border-purple-500/20 bg-purple-500/5 p-8 dark:bg-purple-500/10">
-          <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
-            Need more balance?
-          </h2>
-          <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-            Add funds securely using PayPal and use your wallet for future
-            ShipIN payments.
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Balance and activity for ShipIN payments
           </p>
-          <Link
-            href="/wallet/topup"
-            className="shipin-btn-primary mt-6 inline-flex items-center gap-2 px-5 py-3 text-sm"
-          >
-            <ArrowDownToLine size={18} />
-            Top Up
-          </Link>
         </div>
+
+        <Link
+          href="/wallet/topup"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+        >
+          <Plus size={16} strokeWidth={2.5} />
+          Top up
+        </Link>
       </div>
 
-      {/* Transactions */}
-      <div className="shipin-card mt-8 p-6 md:p-8">
-        <h2 className="mb-6 text-xl font-semibold text-slate-950 dark:text-white md:text-2xl">
-          Transaction History
-        </h2>
+      {/* Balance */}
+      <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 sm:p-7">
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Available
+        </p>
+        <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
+          {formatMoney(wallet.balance)}
+        </p>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          USD · used automatically at checkout when available
+        </p>
 
-        {transactions.length === 0 ? (
-          <EmptyState
-            icon={<ReceiptText size={26} />}
-            title="No transactions yet"
-            description="Your wallet transactions will appear here once you add funds or use your wallet."
-          />
-        ) : (
-          <div className="space-y-1">
-            {transactions.map((tx, i) => {
-              const isPositive = Number(tx.amount) >= 0;
-              const date = tx.createdAt?.toDate?.();
-
-              return (
-                <div
-                  key={tx.id}
-                  className="flex flex-col gap-3 rounded-xl px-3 py-4 transition hover:bg-slate-50 dark:hover:bg-slate-800/50 sm:flex-row sm:items-center sm:justify-between"
-                  style={{
-                    animationDelay: `${Math.min(i, 8) * 0.04}s`,
-                  }}
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium text-slate-900 dark:text-white">
-                      {tx.description || "Wallet Transaction"}
-                    </p>
-                    {date && (
-                      <p className="mt-1 text-sm text-slate-500">
-                        {date.toLocaleString()}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="shrink-0 text-left sm:text-right">
-                    <p
-                      className={`font-bold ${
-                        isPositive ? "text-emerald-500" : "text-red-500"
-                      }`}
-                    >
-                      {isPositive ? "+" : "−"}$
-                      {Math.abs(Number(tx.amount)).toFixed(2)}
-                    </p>
-                    {typeof tx.balanceAfter === "number" && (
-                      <p className="mt-1 text-xs text-slate-500">
-                        Balance: ${tx.balanceAfter.toFixed(2)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+        {wallet.balance <= 0 && (
+          <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Add funds with PayPal to pay for requests from your wallet.
+            </p>
+            <Link
+              href="/wallet/topup"
+              className="inline-flex items-center gap-1.5 self-start rounded-lg border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <ArrowDownToLine size={15} />
+              Add funds
+            </Link>
           </div>
         )}
       </div>
-    </motion.div>
+
+      {/* History */}
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-medium text-slate-900 dark:text-white">
+            Activity
+          </h2>
+          {transactions.length > 0 && (
+            <span className="text-xs text-slate-400">
+              {transactions.length}{" "}
+              {transactions.length === 1 ? "entry" : "entries"}
+            </span>
+          )}
+        </div>
+
+        {transactions.length === 0 ? (
+          <EmptyState
+            icon={<ReceiptText size={22} />}
+            title="No activity yet"
+            description="Top-ups, payments, and refunds will show up here."
+            action={
+              <Link
+                href="/wallet/topup"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+              >
+                <Plus size={16} strokeWidth={2.5} />
+                Top up wallet
+              </Link>
+            }
+          />
+        ) : (
+          <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
+            {transactions.map((tx) => {
+              const amount = Number(tx.amount) || 0;
+              const credit = amount >= 0;
+              const date = tx.createdAt?.toDate?.();
+
+              return (
+                <li
+                  key={tx.id}
+                  className="flex items-start justify-between gap-4 px-4 py-3.5 sm:px-5"
+                >
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span
+                      className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                        credit
+                          ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+                          : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                      }`}
+                    >
+                      {credit ? (
+                        <ArrowDownToLine size={14} strokeWidth={2.25} />
+                      ) : (
+                        <ArrowUpRight size={14} strokeWidth={2.25} />
+                      )}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900 dark:text-white">
+                        {txLabel(tx)}
+                      </p>
+                      {date && (
+                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                          {formatDate(date)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 text-right">
+                    <p
+                      className={`text-sm font-medium tabular-nums ${
+                        credit
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-slate-900 dark:text-white"
+                      }`}
+                    >
+                      {credit ? "+" : "−"}
+                      {formatMoney(Math.abs(amount))}
+                    </p>
+                    {typeof tx.balanceAfter === "number" && (
+                      <p className="mt-0.5 text-xs tabular-nums text-slate-400">
+                        {formatMoney(tx.balanceAfter)}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }

@@ -2,186 +2,181 @@
 
 import { useState } from "react";
 import type { Address } from "@/types/address";
-
 import CountrySelect from "./CountrySelect";
 import InternationalPhoneInput from "./PhoneInput";
 
 interface Props {
   initialData?: Partial<Address>;
   onSubmit: (
-    data: Omit<
-      Address,
-      "id" | "createdAt" | "updatedAt"
-    >
+    data: Omit<Address, "id" | "createdAt" | "updatedAt">
   ) => Promise<void>;
+  submitting?: boolean;
 }
 
-const fieldClass =
-  "w-full rounded-xl border border-slate-300 bg-white p-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-600";
+const inputClass =
+  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-900/5 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-slate-500 dark:focus:ring-white/10";
+
+const labelClass =
+  "mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400";
 
 export default function AddressForm({
   initialData,
   onSubmit,
+  submitting = false,
 }: Props) {
   const [form, setForm] = useState({
     label: initialData?.label ?? "",
-    recipientName:
-      initialData?.recipientName ?? "",
+    recipientName: initialData?.recipientName ?? "",
     phone: initialData?.phone ?? "",
     email: initialData?.email ?? "",
     country: initialData?.country ?? "",
     state: initialData?.state ?? "",
     city: initialData?.city ?? "",
-    postalCode:
-      initialData?.postalCode ?? "",
-    addressLine1:
-      initialData?.addressLine1 ?? "",
-    addressLine2:
-      initialData?.addressLine2 ?? "",
-    isDefault:
-      initialData?.isDefault ?? false,
+    postalCode: initialData?.postalCode ?? "",
+    addressLine1: initialData?.addressLine1 ?? "",
+    addressLine2: initialData?.addressLine2 ?? "",
+    isDefault: initialData?.isDefault ?? false,
   });
 
-  const update = (
-    key: keyof typeof form,
-    value: string | boolean
-  ) => {
-    setForm((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
+  const update = (key: keyof typeof form, value: string | boolean) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
   };
 
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
+        if (submitting) return;
         await onSubmit(form);
       }}
-      className="space-y-5 text-slate-900 dark:text-white"
+      className="space-y-4"
     >
-      <input
-        value={form.label}
-        onChange={(e) =>
-          update("label", e.target.value)
-        }
-        placeholder="Label (Home, Office...)"
-        className={fieldClass}
-      />
+      {/* Label + recipient */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className={labelClass}>Label</label>
+          <input
+            value={form.label}
+            onChange={(e) => update("label", e.target.value)}
+            placeholder="Home, Office…"
+            className={inputClass}
+            required
+          />
+        </div>
+        <div>
+          <label className={labelClass}>Recipient</label>
+          <input
+            value={form.recipientName}
+            onChange={(e) => update("recipientName", e.target.value)}
+            placeholder="Full name"
+            className={inputClass}
+            required
+          />
+        </div>
+      </div>
 
-      <input
-        value={form.recipientName}
-        onChange={(e) =>
-          update(
-            "recipientName",
-            e.target.value
-          )
-        }
-        placeholder="Recipient Name"
-        className={fieldClass}
-      />
+      {/* Contact */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className={labelClass}>Phone</label>
+          <InternationalPhoneInput
+            value={form.phone}
+            onChange={(value) => update("phone", value)}
+          />
+        </div>
+        <div>
+          <label className={labelClass}>
+            Email <span className="font-normal text-slate-400">(optional)</span>
+          </label>
+          <input
+            type="email"
+            value={form.email}
+            onChange={(e) => update("email", e.target.value)}
+            placeholder="name@email.com"
+            className={inputClass}
+          />
+        </div>
+      </div>
 
-      <InternationalPhoneInput
-        value={form.phone}
-        onChange={(value) =>
-          update("phone", value)
-        }
-      />
+      {/* Location */}
+      <div>
+        <label className={labelClass}>Country</label>
+        <CountrySelect
+          value={form.country}
+          onChange={(value) => update("country", value)}
+        />
+      </div>
 
-      <input
-        type="email"
-        value={form.email}
-        onChange={(e) =>
-          update("email", e.target.value)
-        }
-        placeholder="Email"
-        className={fieldClass}
-      />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div>
+          <label className={labelClass}>State / region</label>
+          <input
+            value={form.state}
+            onChange={(e) => update("state", e.target.value)}
+            className={inputClass}
+            required
+          />
+        </div>
+        <div>
+          <label className={labelClass}>City</label>
+          <input
+            value={form.city}
+            onChange={(e) => update("city", e.target.value)}
+            className={inputClass}
+            required
+          />
+        </div>
+        <div>
+          <label className={labelClass}>Postal code</label>
+          <input
+            value={form.postalCode}
+            onChange={(e) => update("postalCode", e.target.value)}
+            className={inputClass}
+            required
+          />
+        </div>
+      </div>
 
-      <CountrySelect
-        value={form.country}
-        onChange={(value) =>
-          update("country", value)
-        }
-      />
+      <div>
+        <label className={labelClass}>Street address</label>
+        <input
+          value={form.addressLine1}
+          onChange={(e) => update("addressLine1", e.target.value)}
+          placeholder="House / flat, street"
+          className={inputClass}
+          required
+        />
+      </div>
 
-      <input
-        value={form.state}
-        onChange={(e) =>
-          update("state", e.target.value)
-        }
-        placeholder="State"
-        className={fieldClass}
-      />
+      <div>
+        <label className={labelClass}>
+          Address line 2{" "}
+          <span className="font-normal text-slate-400">(optional)</span>
+        </label>
+        <input
+          value={form.addressLine2}
+          onChange={(e) => update("addressLine2", e.target.value)}
+          placeholder="Landmark, building, floor…"
+          className={inputClass}
+        />
+      </div>
 
-      <input
-        value={form.city}
-        onChange={(e) =>
-          update("city", e.target.value)
-        }
-        placeholder="City"
-        className={fieldClass}
-      />
-
-      <input
-        value={form.postalCode}
-        onChange={(e) =>
-          update(
-            "postalCode",
-            e.target.value
-          )
-        }
-        placeholder="Postal Code"
-        className={fieldClass}
-      />
-
-      <textarea
-        value={form.addressLine1}
-        onChange={(e) =>
-          update(
-            "addressLine1",
-            e.target.value
-          )
-        }
-        placeholder="Address Line 1"
-        rows={3}
-        className={`${fieldClass} resize-none`}
-      />
-
-      <textarea
-        value={form.addressLine2}
-        onChange={(e) =>
-          update(
-            "addressLine2",
-            e.target.value
-          )
-        }
-        placeholder="Address Line 2 (Optional)"
-        rows={3}
-        className={`${fieldClass} resize-none`}
-      />
-
-      <label className="flex cursor-pointer select-none items-center gap-3 text-slate-700 dark:text-slate-300">
+      <label className="flex cursor-pointer select-none items-center gap-2.5 pt-1 text-sm text-slate-700 dark:text-slate-300">
         <input
           type="checkbox"
           checked={form.isDefault}
-          onChange={(e) =>
-            update(
-              "isDefault",
-              e.target.checked
-            )
-          }
-          className="h-4 w-4 accent-purple-600"
+          onChange={(e) => update("isDefault", e.target.checked)}
+          className="h-4 w-4 rounded border-slate-300 accent-slate-900 dark:accent-white"
         />
-
-        Make Default Address
+        Use as default for new requests
       </label>
 
       <button
         type="submit"
-        className="w-full rounded-xl bg-purple-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-purple-700"
+        disabled={submitting}
+        className="mt-2 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
       >
-        Save Address
+        {submitting ? "Saving…" : "Save address"}
       </button>
     </form>
   );

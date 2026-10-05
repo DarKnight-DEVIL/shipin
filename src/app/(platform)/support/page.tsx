@@ -11,25 +11,30 @@ export default function SupportPage() {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       setCustomerId(user?.uid ?? null);
     });
-
     return unsubscribe;
   }, []);
 
   if (!customerId) {
     return (
-      <div className="flex min-h-screen items-center justify-center p-8">
-        <p className="text-slate-500">
-          Loading support...
-        </p>
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+        <div className="mb-6 h-7 w-28 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
+        <div className="h-[560px] animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800/50" />
       </div>
     );
   }
 
   return (
-    <div className="shipin-page mx-auto max-w-7xl px-6 py-8 lg:px-10">
-      <CustomerSupportCenter
-        customerId={customerId}
-      />
+    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
+          Support
+        </h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Conversations about your requests and refunds
+        </p>
+      </div>
+
+      <CustomerSupportCenter customerId={customerId} />
     </div>
   );
 }

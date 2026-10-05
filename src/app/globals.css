@@ -197,12 +197,19 @@ body {
    PHONE NUMBER INPUT
 ======================================== */
 
+.shipin-phone-input {
+  display: flex;
+  align-items: center;
+  border-radius: 0.5rem;
+}
+
 .shipin-phone-input .PhoneInputInput {
-  background: transparent;
-  color: inherit;
+  flex: 1;
+  min-width: 0;
   border: none;
   outline: none;
-  min-width: 0;
+  background: transparent;
+  color: inherit;
 }
 
 .shipin-phone-input .PhoneInputInput::placeholder {
@@ -214,16 +221,7 @@ body {
 }
 
 .shipin-phone-input .PhoneInputCountry {
-  margin-right: 0.75rem;
-}
-
-.shipin-phone-input .PhoneInputCountrySelect {
-  color: inherit;
-}
-
-.shipin-phone-input .PhoneInputCountrySelectArrow {
-  color: currentColor;
-  opacity: 0.6;
+  margin-right: 0.5rem;
 }
 
 /* Full-bleed Spline canvas */

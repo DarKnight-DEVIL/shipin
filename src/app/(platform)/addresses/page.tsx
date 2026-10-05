@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { MapPinOff } from "lucide-react";
+import { MapPin, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { auth } from "@/lib/firebase";
@@ -22,13 +22,10 @@ export default function AddressesPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingAddress, setEditingAddress] = useState<Address | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  /*
-   * LOAD ADDRESSES
-   */
   const loadAddresses = useCallback(async () => {
     const user = auth.currentUser;
-
     if (!user) {
       setAddresses([]);
       setLoading(false);
@@ -40,14 +37,12 @@ export default function AddressesPage() {
       setAddresses(data);
     } catch (error) {
       console.error("Failed to load addresses:", error);
+      toast.error("Couldn't load addresses.");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  /*
-   * AUTH LISTENER
-   */
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (!user) {
@@ -55,116 +50,116 @@ export default function AddressesPage() {
         setLoading(false);
         return;
       }
-
       await loadAddresses();
     });
-
     return () => unsubscribe();
   }, [loadAddresses]);
 
-  /*
-   * OPEN ADD MODAL
-   */
   function openAddModal() {
     setEditingAddress(null);
     setShowModal(true);
   }
 
-  /*
-   * OPEN EDIT MODAL
-   */
   function openEditModal(address: Address) {
     setEditingAddress(address);
     setShowModal(true);
   }
 
-  /*
-   * CLOSE MODAL
-   */
   function closeModal() {
     setShowModal(false);
     setEditingAddress(null);
   }
 
-  /*
-   * SAVE ADDRESS
-   */
   async function handleSaveAddress(
     data: Omit<Address, "id" | "createdAt" | "updatedAt">
   ) {
     const user = auth.currentUser;
-
     if (!user) {
-      toast.warning("Please login first.");
+      toast.warning("Please sign in first.");
       return;
     }
 
+    setSaving(true);
     try {
-      /*
-       * EDIT EXISTING ADDRESS
-       */
       if (editingAddress) {
         await updateAddress(user.uid, editingAddress.id, data);
-      }
-      /*
-       * CREATE NEW ADDRESS
-       */
-      else {
+        toast.success("Address updated");
+      } else {
         await addAddress(user.uid, data);
+        toast.success("Address saved");
       }
-
       await loadAddresses();
       closeModal();
     } catch (error) {
       console.error("Failed to save address:", error);
-      toast.error("Unable to save address. Please try again.");
+      toast.error("Couldn't save address. Try again.");
+    } finally {
+      setSaving(false);
     }
   }
 
-  /*
-   * LOADING
-   */
   if (loading) {
     return (
-      <div className="p-8 text-slate-600 dark:text-slate-400">
-        Loading addresses...
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+        <div className="mb-8 h-8 w-48 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          {[1, 2].map((i) => (
+            <div
+              key={i}
+              className="h-48 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800/60"
+            />
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-8">
-      {/* HEADER */}
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+      {/* Header */}
+      <div className="mb-8 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold text-slate-950 dark:text-white">
-            Addresses
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
+            Shipping addresses
           </h1>
-
-          <p className="mt-2 text-slate-600 dark:text-slate-400">
-            Manage your saved shipping addresses.
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            {addresses.length === 0
+              ? "Add an address to use on new requests."
+              : `${addresses.length} saved · default used for new requests`}
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={openAddModal}
-          className="rounded-xl bg-purple-600 px-5 py-3 font-semibold text-white transition hover:bg-purple-700"
-        >
-          + Add Address
-        </button>
+        {addresses.length > 0 && (
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+          >
+            <Plus size={16} strokeWidth={2.5} />
+            Add
+          </button>
+        )}
       </div>
 
-      {/* EMPTY STATE */}
+      {/* Content */}
       {addresses.length === 0 ? (
         <EmptyState
-          icon={<MapPinOff size={26} />}
-          title="No saved addresses"
-          description="Add a shipping address so you can use it when creating your next request."
+          icon={<MapPin size={22} />}
+          title="No addresses yet"
+          description="Save a shipping address so you don't have to type it every time you create a request."
+          action={
+            <button
+              type="button"
+              onClick={openAddModal}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+            >
+              <Plus size={16} strokeWidth={2.5} />
+              Add address
+            </button>
+          }
         />
       ) : (
-        /* ADDRESS GRID */
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           {addresses.map((address) => (
             <AddressCard
               key={address.id}
@@ -176,16 +171,16 @@ export default function AddressesPage() {
         </div>
       )}
 
-      {/* ADD / EDIT MODAL */}
       <Modal
         open={showModal}
-        title={editingAddress ? "Edit Address" : "Add Address"}
+        title={editingAddress ? "Edit address" : "New address"}
         onClose={closeModal}
       >
         <AddressForm
-          key={editingAddress?.id ?? "new-address"}
+          key={editingAddress?.id ?? "new"}
           initialData={editingAddress ?? undefined}
           onSubmit={handleSaveAddress}
+          submitting={saving}
         />
       </Modal>
     </div>

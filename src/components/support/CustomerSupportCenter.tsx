@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MessageCircle, Send } from "lucide-react";
 import { toast } from "sonner";
@@ -9,6 +9,10 @@ import useCustomerSupport from "@/hooks/useCustomerSupport";
 
 interface Props {
   customerId: string;
+}
+
+function requestCode(id: string) {
+  return id.slice(0, 6).toUpperCase();
 }
 
 export default function CustomerSupportCenter({ customerId }: Props) {
@@ -29,21 +33,29 @@ export default function CustomerSupportCenter({ customerId }: Props) {
 
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [refundPreference, setRefundPreference] = useState<"wallet" | "original_payment">("wallet");
+  const [refundPreference, setRefundPreference] = useState<
+    "wallet" | "original_payment"
+  >("wallet");
   const [refundSubmitting, setRefundSubmitting] = useState(false);
   const [ticketCreating, setTicketCreating] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to the bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const refundOnlyRequests = requests.filter(
+    (request) =>
+      request.status === "refund_offered" &&
+      request.refundOffer?.offered === true &&
+      !tickets.some((ticket) => ticket.requestId === request.id)
+  );
+
+  const hasSidebarItems = tickets.length > 0 || refundOnlyRequests.length > 0;
+
   async function handleSend() {
-    if (!selectedTicket || !message.trim() || sending) {
-      return;
-    }
+    if (!selectedTicket || !message.trim() || sending) return;
 
     try {
       setSending(true);
@@ -61,36 +73,25 @@ export default function CustomerSupportCenter({ customerId }: Props) {
 
   async function handleRefundRequest() {
     const requestId = selectedTicket?.requestId || selectedRequest?.id;
-
-    if (!requestId || refundSubmitting) {
-      return;
-    }
+    if (!requestId || refundSubmitting) return;
 
     try {
       setRefundSubmitting(true);
-
       const response = await fetch(`/api/requests/${requestId}/refund`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           preference: refundPreference,
           initiatedBy: "customer",
         }),
       });
-
       const result = await response.json();
-
       if (!response.ok || !result.success) {
-        throw new Error(
-          result.error || "Unable to submit refund request."
-        );
+        throw new Error(result.error || "Unable to submit refund request.");
       }
-
-      toast.success("Refund request submitted successfully.");
+      toast.success("Refund request submitted.");
     } catch (error) {
-      console.error("Unable to submit refund request:", error);
+      console.error(error);
       toast.error(
         error instanceof Error
           ? error.message
@@ -103,203 +104,133 @@ export default function CustomerSupportCenter({ customerId }: Props) {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 dark:border-slate-800 dark:bg-slate-900">
-        <p className="text-slate-500">Loading support...</p>
-      </div>
+      <div className="h-[560px] animate-pulse rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/50" />
     );
   }
 
   return (
-    <div className="grid min-h-[600px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:grid-cols-12">
-      {/* SIDEBAR */}
+    <div className="grid min-h-[560px] overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 lg:grid-cols-12">
+      {/* Sidebar */}
       <aside className="border-b border-slate-200 dark:border-slate-800 lg:col-span-4 lg:border-b-0 lg:border-r">
-        <div className="border-b border-slate-200 p-5 dark:border-slate-800">
-          <h2 className="text-xl font-bold text-slate-950 dark:text-white">
-            Support
-          </h2>
-
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Your request conversations
+        <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Conversations
           </p>
         </div>
 
-        <div className="max-h-[520px] overflow-y-auto p-3">
-          {tickets.length === 0 &&
-          !requests.some(
-            (request) =>
-              request.status === "refund_offered" &&
-              request.refundOffer?.offered === true
-          ) ? (
-            <div className="flex flex-col items-center justify-center px-5 py-16 text-center">
+        <div className="max-h-[520px] overflow-y-auto p-2">
+          {!hasSidebarItems ? (
+            <div className="px-3 py-12 text-center">
               <MessageCircle
-                size={32}
-                className="text-slate-400"
+                size={22}
+                className="mx-auto text-slate-300 dark:text-slate-600"
               />
-
-              <p className="mt-4 font-semibold text-slate-700 dark:text-slate-300">
-                No support conversations
+              <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                No conversations yet
               </p>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Your support conversations will appear here.
+              <p className="mt-1 text-xs text-slate-500">
+                Open a request if you need help with an order.
               </p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {/* EXISTING SUPPORT TICKETS */}
+            <div className="space-y-1">
               {tickets.map((ticket) => {
                 const selected = selectedTicket?.id === ticket.id;
-
                 return (
                   <button
-                    key={`ticket-${ticket.id}`}
+                    key={ticket.id}
                     type="button"
                     onClick={() => setSelectedTicket(ticket)}
-                    className={`w-full rounded-xl p-4 text-left transition ${
+                    className={`w-full rounded-xl px-3 py-3 text-left transition ${
                       selected
-                        ? "bg-purple-600 text-white"
-                        : "bg-slate-50 text-slate-900 hover:bg-slate-100 dark:bg-slate-950/50 dark:text-white dark:hover:bg-slate-800"
+                        ? "bg-slate-100 dark:bg-slate-800"
+                        : "hover:bg-slate-50 dark:hover:bg-slate-800/60"
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p
-                          className={`text-xs font-bold uppercase tracking-wide ${
-                            selected
-                              ? "text-purple-100"
-                              : "text-purple-600 dark:text-purple-400"
-                          }`}
-                        >
-                          Request #
-                          {ticket.requestId
-                            .slice(0, 6)
-                            .toUpperCase()}
+                        <p className="text-[11px] font-medium tabular-nums text-slate-400">
+                          #{requestCode(ticket.requestId)}
                         </p>
-
-                        <p className="mt-1 truncate font-semibold">
-                          {ticket.subject || "Support Request"}
+                        <p className="mt-0.5 truncate text-sm font-medium text-slate-900 dark:text-white">
+                          {ticket.subject || "Support"}
                         </p>
-
-                        <p
-                          className={`mt-1 text-xs ${
-                            selected
-                              ? "text-purple-100"
-                              : "text-slate-500 dark:text-slate-400"
-                          }`}
-                        >
+                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                           {ticket.category}
                         </p>
                       </div>
-
-                      {ticket.status === "resolved" && (
-                        <span
-                          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                            selected
-                              ? "bg-purple-500/30 text-purple-100"
-                              : "bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400"
-                          }`}
-                        >
-                          Resolved
-                        </span>
-                      )}
-
-                      {ticket.customerUnread && (
-                        <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-purple-500" />
-                      )}
+                      <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        {ticket.status === "resolved" ? (
+                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
+                            Resolved
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                            Open
+                          </span>
+                        )}
+                        {ticket.customerUnread && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-purple-500" />
+                        )}
+                      </div>
                     </div>
                   </button>
                 );
               })}
 
-              {/* REFUND-OFFERED REQUESTS */}
-              {requests
-                .filter(
-                  (request) =>
-                    request.status === "refund_offered" &&
-                    request.refundOffer?.offered === true &&
-                    !tickets.some(
-                      (ticket) => ticket.requestId === request.id
-                    )
-                )
-                .map((request) => {
-                  const selected = selectedRequest?.id === request.id;
-
-                  return (
-                    <button
-                      key={`refund-${request.id}`}
-                      type="button"
-                      onClick={() => selectRefundRequest(request)}
-                      className={`w-full rounded-xl border p-4 text-left transition ${
-                        selected
-                          ? "border-amber-500 bg-amber-500 text-white"
-                          : "border-amber-200 bg-amber-50 text-slate-900 hover:bg-amber-100 dark:border-amber-500/20 dark:bg-amber-500/5 dark:text-white dark:hover:bg-amber-500/10"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p
-                            className={`text-xs font-bold uppercase tracking-wide ${
-                              selected
-                                ? "text-amber-100"
-                                : "text-amber-700 dark:text-amber-400"
-                            }`}
-                          >
-                            Request #
-                            {request.id.slice(0, 6).toUpperCase()}
-                          </p>
-
-                          <p className="mt-1 font-semibold">
-                            Refund Offered
-                          </p>
-
-                          <p
-                            className={`mt-1 text-xs ${
-                              selected
-                                ? "text-amber-100"
-                                : "text-slate-600 dark:text-slate-400"
-                            }`}
-                          >
-                            Refund amount{" "}
-                            {typeof request.refundOffer?.amount === "number"
-                              ? `$${request.refundOffer.amount.toFixed(2)}`
-                              : "available"}
-                          </p>
-                        </div>
-
-                        <span
-                          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                            selected
-                              ? "bg-white/20 text-white"
-                              : "bg-amber-200 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300"
-                          }`}
-                        >
-                          Action Required
-                        </span>
+              {refundOnlyRequests.map((request) => {
+                const selected = selectedRequest?.id === request.id && !selectedTicket;
+                return (
+                  <button
+                    key={request.id}
+                    type="button"
+                    onClick={() => selectRefundRequest(request)}
+                    className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                      selected
+                        ? "border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10"
+                        : "border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium tabular-nums text-slate-400">
+                          #{requestCode(request.id)}
+                        </p>
+                        <p className="mt-0.5 text-sm font-medium text-slate-900 dark:text-white">
+                          Refund offered
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                          {typeof request.refundOffer?.amount === "number"
+                            ? `$${request.refundOffer.amount.toFixed(2)}`
+                            : "Action needed"}
+                        </p>
                       </div>
-                    </button>
-                  );
-                })}
+                      <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+                        Action
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
       </aside>
 
-      {/* CONVERSATION VIEW */}
-      <section className="flex min-h-[600px] flex-col lg:col-span-8">
+      {/* Main */}
+      <section className="flex min-h-[560px] flex-col lg:col-span-8">
         {!selectedTicket && !selectedRequest ? (
           <div className="flex flex-1 items-center justify-center p-8 text-center">
             <div>
               <MessageCircle
-                size={40}
-                className="mx-auto text-slate-300 dark:text-slate-700"
+                size={28}
+                className="mx-auto text-slate-300 dark:text-slate-600"
               />
-
-              <p className="mt-4 font-semibold text-slate-700 dark:text-slate-300">
-                Select a request
+              <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                Select a conversation
               </p>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Choose a request from the sidebar to view its conversation.
+              <p className="mt-1 text-xs text-slate-500">
+                Pick one from the left to view messages.
               </p>
             </div>
           </div>
@@ -307,286 +238,190 @@ export default function CustomerSupportCenter({ customerId }: Props) {
           <>
             {/* Header */}
             {selectedTicket && (
-              <div className="border-b border-slate-200 p-5 dark:border-slate-800">
-                <p className="text-xs font-bold uppercase tracking-wide text-purple-600 dark:text-purple-400">
-                  Request #
-                  {selectedTicket.requestId.slice(0, 6).toUpperCase()}
-                </p>
-
-                <div className="mt-1 flex items-center justify-between gap-4">
-                  <h3 className="text-lg font-bold text-slate-950 dark:text-white">
-                    {selectedTicket.subject || "Support Request"}
-                  </h3>
-
-                  <span className="text-xs font-medium capitalize text-slate-500">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800 sm:px-5">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium tabular-nums text-slate-400">
+                    Request #{requestCode(selectedTicket.requestId)}
+                  </p>
+                  <h2 className="truncate text-sm font-semibold text-slate-900 dark:text-white">
+                    {selectedTicket.subject || "Support"}
+                  </h2>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] capitalize text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                     {selectedTicket.status}
                   </span>
+                  <Link
+                    href={`/requests/${selectedTicket.requestId}`}
+                    className="text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline dark:hover:text-slate-200"
+                  >
+                    View request
+                  </Link>
                 </div>
               </div>
             )}
 
-            {/* Active Refund Offer Banner */}
+            {/* Active refund offer */}
             {refundOffer && !selectedRequest?.refundRequest && (
-              <div className="border-b border-amber-200 bg-amber-50 p-5 dark:border-amber-500/20 dark:bg-amber-500/5">
-                <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                    <span className="text-sm font-bold">$</span>
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <h4 className="font-semibold text-amber-900 dark:text-amber-300">
-                          Refund Offered
-                        </h4>
-
-                        {refundOffer.reason && (
-                          <div className="mt-2">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-                              Reason
-                            </p>
-
-                            <p className="mt-1 text-sm text-amber-900 dark:text-amber-200">
-                              {refundOffer.reason}
-                            </p>
-                          </div>
-                        )}
-
-                        {typeof refundOffer.amount === "number" && (
-                          <div className="mt-3">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-                              Refund Amount
-                            </p>
-
-                            <p className="mt-1 text-lg font-bold text-amber-900 dark:text-amber-200">
-                              ${refundOffer.amount.toFixed(2)}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      <Link
-                        href={`/requests/${
-                          selectedTicket?.requestId || selectedRequest?.id
-                        }`}
-                        className="inline-flex shrink-0 items-center justify-center rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-amber-700"
-                      >
-                        Go to Request
-                      </Link>
-                    </div>
-
-                    {/* Preference Selection */}
-                    <div className="mt-5 rounded-xl border border-amber-200 bg-white p-4 dark:border-amber-500/20 dark:bg-slate-900">
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                        Choose Refund Method
+              <div className="border-b border-amber-200/80 bg-amber-50/80 px-4 py-4 dark:border-amber-500/20 dark:bg-amber-500/5 sm:px-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                      Refund offered
+                      {typeof refundOffer.amount === "number" && (
+                        <span className="ml-1.5 font-semibold tabular-nums">
+                          · ${refundOffer.amount.toFixed(2)}
+                        </span>
+                      )}
+                    </p>
+                    {refundOffer.reason && (
+                      <p className="mt-1 text-sm text-amber-800/90 dark:text-amber-200/80">
+                        {refundOffer.reason}
                       </p>
-
-                      <div className="mt-3 space-y-3">
-                        <label className="flex cursor-pointer gap-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
-                          <input
-                            type="radio"
-                            name="support-refund-preference"
-                            value="wallet"
-                            checked={refundPreference === "wallet"}
-                            onChange={() => setRefundPreference("wallet")}
-                            disabled={refundSubmitting}
-                          />
-
-                          <div>
-                            <p className="font-medium text-slate-900 dark:text-white">
-                              Wallet Credit
-                            </p>
-
-                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                              Instantly credit the refund to your ShipIN wallet.
-                            </p>
-                          </div>
-                        </label>
-
-                        <label className="flex cursor-pointer gap-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
-                          <input
-                            type="radio"
-                            name="support-refund-preference"
-                            value="original_payment"
-                            checked={refundPreference === "original_payment"}
-                            onChange={() => setRefundPreference("original_payment")}
-                            disabled={refundSubmitting}
-                          />
-
-                          <div>
-                            <p className="font-medium text-slate-900 dark:text-white">
-                              Original Payment Method
-                            </p>
-
-                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                              Refund the amount through the original payment method.
-                            </p>
-                          </div>
-                        </label>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={handleRefundRequest}
-                        disabled={refundSubmitting}
-                        className="mt-4 w-full rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {refundSubmitting ? "Submitting..." : "Request Refund"}
-                      </button>
-                    </div>
+                    )}
                   </div>
+                  <Link
+                    href={`/requests/${selectedTicket?.requestId || selectedRequest?.id}`}
+                    className="shrink-0 text-xs font-medium text-amber-800 underline-offset-2 hover:underline dark:text-amber-300"
+                  >
+                    Open request
+                  </Link>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    How should we refund you?
+                  </p>
+                  {(
+                    [
+                      {
+                        value: "wallet" as const,
+                        title: "Wallet credit",
+                        desc: "Instant credit to your ShipIN wallet",
+                      },
+                      {
+                        value: "original_payment" as const,
+                        title: "Original payment",
+                        desc: "Back to the method you paid with",
+                      },
+                    ] as const
+                  ).map((opt) => (
+                    <label
+                      key={opt.value}
+                      className={`flex cursor-pointer gap-3 rounded-xl border px-3 py-2.5 transition ${
+                        refundPreference === opt.value
+                          ? "border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900"
+                          : "border-slate-200/80 bg-white/60 dark:border-slate-700 dark:bg-slate-900/40"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="support-refund-preference"
+                        value={opt.value}
+                        checked={refundPreference === opt.value}
+                        onChange={() => setRefundPreference(opt.value)}
+                        disabled={refundSubmitting}
+                        className="mt-1 accent-slate-900 dark:accent-white"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-slate-900 dark:text-white">
+                          {opt.title}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {opt.desc}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleRefundRequest}
+                    disabled={refundSubmitting}
+                    className="mt-1 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+                  >
+                    {refundSubmitting ? "Submitting…" : "Request refund"}
+                  </button>
                 </div>
               </div>
             )}
 
-            {/* Refund Banner: Pending vs Completed */}
+            {/* Refund status */}
             {selectedRequest?.refundRequest && (
               <div
-                className={`border-b p-5 ${
+                className={`border-b px-4 py-4 sm:px-5 ${
                   selectedRequest.refundRequest.status === "completed"
-                    ? "border-green-200 bg-green-50 dark:border-green-500/20 dark:bg-green-500/5"
-                    : "border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/5"
+                    ? "border-emerald-200 bg-emerald-50/80 dark:border-emerald-500/20 dark:bg-emerald-500/5"
+                    : "border-amber-200 bg-amber-50/80 dark:border-amber-500/20 dark:bg-amber-500/5"
                 }`}
               >
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                      selectedRequest.refundRequest.status === "completed"
-                        ? "bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400"
-                        : "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
-                    }`}
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p
+                      className={`text-sm font-semibold ${
+                        selectedRequest.refundRequest.status === "completed"
+                          ? "text-emerald-900 dark:text-emerald-200"
+                          : "text-amber-900 dark:text-amber-200"
+                      }`}
+                    >
+                      {selectedRequest.refundRequest.status === "completed"
+                        ? "Refund completed"
+                        : "Refund pending"}
+                      {typeof selectedRequest.refundRequest.amount === "number" && (
+                        <span className="ml-1.5 tabular-nums">
+                          · ${selectedRequest.refundRequest.amount.toFixed(2)}
+                        </span>
+                      )}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+                      {selectedRequest.refundRequest.preference === "wallet"
+                        ? "Wallet credit"
+                        : "Original payment method"}
+                      {selectedRequest.refundRequest.status !== "completed" &&
+                        " · under review"}
+                    </p>
+                  </div>
+                  <Link
+                    href={`/requests/${selectedRequest.id}`}
+                    className="shrink-0 text-xs font-medium text-slate-600 underline-offset-2 hover:underline dark:text-slate-300"
                   >
-                    <span className="text-sm font-bold">$</span>
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <h4
-                          className={`font-semibold ${
-                            selectedRequest.refundRequest.status === "completed"
-                              ? "text-green-900 dark:text-green-300"
-                              : "text-amber-900 dark:text-amber-300"
-                          }`}
-                        >
-                          {selectedRequest.refundRequest.status === "completed"
-                            ? "Refund Completed"
-                            : "Refund Request Pending"}
-                        </h4>
-
-                        <p
-                          className={`mt-1 text-sm ${
-                            selectedRequest.refundRequest.status === "completed"
-                              ? "text-green-800 dark:text-green-200"
-                              : "text-amber-800 dark:text-amber-200"
-                          }`}
-                        >
-                          {selectedRequest.refundRequest.status === "completed"
-                            ? "Your refund has been processed successfully."
-                            : "Your refund request has been submitted and is currently under review by our team."}
-                        </p>
-
-                        {selectedRequest.refundRequest.preference && (
-                          <div className="mt-3">
-                            <p
-                              className={`text-xs font-semibold uppercase tracking-wide ${
-                                selectedRequest.refundRequest.status === "completed"
-                                  ? "text-green-700 dark:text-green-400"
-                                  : "text-amber-700 dark:text-amber-400"
-                              }`}
-                            >
-                              Refund Method
-                            </p>
-
-                            <p
-                              className={`mt-1 text-sm font-medium ${
-                                selectedRequest.refundRequest.status === "completed"
-                                  ? "text-green-900 dark:text-green-200"
-                                  : "text-amber-900 dark:text-amber-200"
-                              }`}
-                            >
-                              {selectedRequest.refundRequest.preference === "wallet"
-                                ? "Wallet Credit"
-                                : "Original Payment Method"}
-                            </p>
-                          </div>
-                        )}
-
-                        {typeof selectedRequest.refundRequest.amount === "number" && (
-                          <div className="mt-3">
-                            <p
-                              className={`text-xs font-semibold uppercase tracking-wide ${
-                                selectedRequest.refundRequest.status === "completed"
-                                  ? "text-green-700 dark:text-green-400"
-                                  : "text-amber-700 dark:text-amber-400"
-                              }`}
-                            >
-                              Refund Amount
-                            </p>
-
-                            <p
-                              className={`mt-1 text-lg font-bold ${
-                                selectedRequest.refundRequest.status === "completed"
-                                  ? "text-green-900 dark:text-green-200"
-                                  : "text-amber-900 dark:text-amber-200"
-                              }`}
-                            >
-                              ${selectedRequest.refundRequest.amount.toFixed(2)}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      <Link
-                        href={`/requests/${selectedRequest.id}`}
-                        className={`inline-flex shrink-0 items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold text-white transition ${
-                          selectedRequest.refundRequest.status === "completed"
-                            ? "bg-green-600 hover:bg-green-700"
-                            : "bg-amber-600 hover:bg-amber-700"
-                        }`}
-                      >
-                        Go to Request
-                      </Link>
-                    </div>
-                  </div>
+                    Open request
+                  </Link>
                 </div>
               </div>
             )}
 
-            {/* Message Area */}
-            <div className="flex-1 space-y-4 overflow-y-auto p-5">
+            {/* Messages */}
+            <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-5">
               {messages.length === 0 ? (
-                <p className="text-center text-sm text-slate-500">
-                  No messages yet.
+                <p className="py-8 text-center text-sm text-slate-400">
+                  No messages yet
                 </p>
               ) : (
                 messages.map((item) => {
                   const fromCustomer = item.sender === "customer";
-
                   return (
                     <div
                       key={item.id}
-                      className={`flex ${
-                        fromCustomer ? "justify-end" : "justify-start"
-                      }`}
+                      className={`flex ${fromCustomer ? "justify-end" : "justify-start"}`}
                     >
                       <div
-                        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 sm:max-w-[75%] ${
                           fromCustomer
-                            ? "bg-purple-600 text-white"
+                            ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
                             : "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white"
                         }`}
                       >
-                        <p className="whitespace-pre-wrap text-sm">
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed">
                           {item.message}
                         </p>
-
                         <p
-                          className={`mt-1 text-[11px] ${
-                            fromCustomer ? "text-purple-100" : "text-slate-500"
+                          className={`mt-1 text-[10px] ${
+                            fromCustomer
+                              ? "text-slate-400 dark:text-slate-500"
+                              : "text-slate-400"
                           }`}
                         >
-                          {fromCustomer ? "You" : "ShipIN Support"}
+                          {fromCustomer ? "You" : "ShipIN"}
                         </p>
                       </div>
                     </div>
@@ -596,96 +431,82 @@ export default function CustomerSupportCenter({ customerId }: Props) {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Action Panel */}
+            {/* Composer */}
             {selectedTicket ? (
               selectedTicket.status === "resolved" ? (
-                <div className="border-t border-slate-200 p-5 text-center dark:border-slate-800">
-                  <p className="text-sm font-medium text-slate-500">
-                    This support conversation has been resolved.
-                  </p>
+                <div className="border-t border-slate-100 px-4 py-4 text-center text-sm text-slate-500 dark:border-slate-800">
+                  This conversation is resolved
                 </div>
               ) : (
-                <div className="border-t border-slate-200 p-4 dark:border-slate-800">
-                  <div className="flex gap-3">
+                <div className="border-t border-slate-100 p-3 dark:border-slate-800 sm:p-4">
+                  <div className="flex gap-2">
                     <textarea
                       value={message}
-                      onChange={(event) => setMessage(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (
-                          event.key === "Enter" &&
-                          !event.shiftKey
-                        ) {
-                          event.preventDefault();
+                      onChange={(e) => setMessage(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
                           handleSend();
                         }
                       }}
-                      placeholder="Type your message..."
+                      placeholder="Write a reply…"
                       rows={2}
-                      className="min-h-[52px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-purple-500 dark:border-slate-700 dark:bg-slate-950"
+                      className="min-h-[48px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-900/5 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-slate-600 dark:focus:ring-white/10"
                     />
-
                     <button
                       type="button"
                       onClick={handleSend}
                       disabled={sending || !message.trim()}
-                      className="self-end rounded-xl bg-purple-600 p-3 text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="self-end rounded-xl bg-slate-900 p-2.5 text-white transition hover:bg-slate-800 disabled:opacity-40 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+                      aria-label="Send"
                     >
-                      <Send size={18} />
+                      <Send size={16} />
                     </button>
                   </div>
-
-                  <p className="mt-2 text-xs text-slate-400">
-                    Press Enter to send • Shift + Enter for a new line
+                  <p className="mt-1.5 text-[11px] text-slate-400">
+                    Enter to send · Shift+Enter for new line
                   </p>
                 </div>
               )
             ) : selectedRequest ? (
-              <div className="border-t border-slate-200 p-5 dark:border-slate-800">
-                <div className="flex flex-col gap-4 rounded-xl bg-slate-50 p-4 dark:bg-slate-950/50 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      This refund offer does not have a support conversation yet.
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Need help with this refund? Start a conversation with ShipIN Support.
-                    </p>
-                  </div>
-
+              <div className="border-t border-slate-100 p-4 dark:border-slate-800">
+                <div className="flex flex-col gap-3 rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-950/60 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    No thread yet for this refund. Start one if you need help.
+                  </p>
                   <button
                     type="button"
                     disabled={ticketCreating}
                     onClick={async () => {
                       if (!selectedRequest || ticketCreating) return;
-
                       try {
                         setTicketCreating(true);
                         const ticketId = await createTicket({
                           requestId: selectedRequest.id,
                           customerId,
                           category: "Refund",
-                          subject: "Refund Offer Support",
-                          firstMessage: "Hello, I have a question regarding the refund offered for this request.",
+                          subject: "Refund offer",
+                          firstMessage:
+                            "Hi — I have a question about the refund offered on this request.",
                         });
-
                         if (ticketId) {
                           openCreatedTicket(ticketId);
-                          toast.success("Support conversation started.");
+                          toast.success("Conversation started");
                         }
                       } catch (error) {
-                        console.error("Failed to create ticket:", error);
+                        console.error(error);
                         toast.error(
                           error instanceof Error
                             ? error.message
-                            : "Failed to start support conversation."
+                            : "Could not start conversation"
                         );
                       } finally {
                         setTicketCreating(false);
                       }
                     }}
-                    className="shrink-0 rounded-xl bg-purple-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-purple-700 disabled:opacity-50"
+                    className="shrink-0 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
                   >
-                    {ticketCreating ? "Starting..." : "Start Conversation"}
+                    {ticketCreating ? "Starting…" : "Start conversation"}
                   </button>
                 </div>
               </div>
