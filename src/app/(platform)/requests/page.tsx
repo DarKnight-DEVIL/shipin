@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  Suspense,
-  useEffect,
-  useState,
-} from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -13,7 +9,13 @@ import {
   MessageCircle,
   RotateCcw,
   ChevronDown,
+  Plus,
+  Package,
+  ArrowRight,
+  CreditCard,
+  Truck,
 } from "lucide-react";
+import { motion } from "framer-motion";
 
 import { auth } from "@/lib/firebase";
 import { subscribeToRequests } from "@/lib/firestore";
@@ -24,100 +26,79 @@ import EmptyState from "@/components/ui/EmptyState";
 
 import type { Request } from "@/types/request";
 
-const cardMessage: Record<
-  string,
-  { text: string; style: string }
-> = {
+const cardMessage: Record<string, { text: string; style: string }> = {
   review: {
-    text: "Your request is being reviewed",
+    text: "Quote ready — review and approve to continue",
     style:
       "bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-300",
   },
-
   awaiting_payment: {
-    text: "Payment Required • Click to complete checkout",
+    text: "Payment required — complete checkout to proceed",
     style:
-      "bg-yellow-500/10 border-yellow-500/20 text-yellow-700 dark:text-yellow-300",
+      "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-300",
   },
-
   purchased: {
-    text: "Updates Available • Click to view shipment progress",
+    text: "Items purchased — track progress in details",
     style:
-      "bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-300",
+      "bg-purple-500/10 border-purple-500/20 text-purple-700 dark:text-purple-300",
   },
-
   warehouse_received: {
-    text: "Updates Available • Click to view shipment progress",
+    text: "At warehouse — inspection and packing next",
     style:
-      "bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-300",
+      "bg-indigo-500/10 border-indigo-500/20 text-indigo-700 dark:text-indigo-300",
   },
-
   packed: {
-    text: "Updates Available • Click to view shipment progress",
+    text: "Packed — ready for international dispatch",
     style:
-      "bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-300",
+      "bg-cyan-500/10 border-cyan-500/20 text-cyan-700 dark:text-cyan-300",
   },
-
   shipped: {
-    text: "Updates Available • Click to track your shipment",
-    style:
-      "bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-300",
+    text: "Shipped — tracking is available",
+    style: "bg-sky-500/10 border-sky-500/20 text-sky-700 dark:text-sky-300",
   },
-
   out_for_delivery: {
-    text: "Updates Available • Delivery is approaching",
-    style:
-      "bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-300",
+    text: "Out for delivery — almost there",
+    style: "bg-sky-500/10 border-sky-500/20 text-sky-700 dark:text-sky-300",
   },
-
   refund_requested: {
-    text: "Refund Requested • Click to view details",
-    style:
-      "bg-red-500/10 border-red-500/20 text-red-700 dark:text-red-300",
+    text: "Refund requested — view details",
+    style: "bg-red-500/10 border-red-500/20 text-red-700 dark:text-red-300",
   },
-
   rejected: {
-    text: "Request Rejected • Click to view details",
-    style:
-      "bg-red-500/10 border-red-500/20 text-red-700 dark:text-red-300",
+    text: "Request rejected — see reason below",
+    style: "bg-red-500/10 border-red-500/20 text-red-700 dark:text-red-300",
   },
 };
 
 const filterTitles: Record<string, string> = {
-  submitted: "Submitted Requests",
-  review: "Quote Ready Requests",
+  submitted: "Submitted",
+  review: "Quote Ready",
   awaiting_payment: "Awaiting Payment",
   paid: "Payment Confirmed",
   refund_requested: "Refund Requested",
-  purchased: "Purchased Requests",
-  warehouse_received: "Warehouse Received",
-  ready_for_international_shipping: "Ready for International Shipping",
-  packed: "Packed Requests",
-  shipped: "Shipped Requests",
+  purchased: "Purchased",
+  warehouse_received: "At Warehouse",
+  ready_for_international_shipping: "Ready to Ship",
+  packed: "Packed",
+  shipped: "Shipped",
   in_transit: "In Transit",
   refund_offered: "Refund Offered",
   out_for_delivery: "Out for Delivery",
-  delivered: "Delivered Requests",
-  refunded: "Refunded Requests",
-  rejected: "Rejected Requests",
+  delivered: "Delivered",
+  refunded: "Refunded",
+  rejected: "Rejected",
 };
 
 const filterOptions = [
-  { value: "", label: "All Requests" },
+  { value: "", label: "All requests" },
   { value: "submitted", label: "Submitted" },
   { value: "review", label: "Quote Ready" },
   { value: "awaiting_payment", label: "Awaiting Payment" },
   { value: "paid", label: "Payment Confirmed" },
-  {
-    value: "refund_requested",
-    label: "Refund Requested",
-  },
+  { value: "refund_requested", label: "Refund Requested" },
   { value: "purchased", label: "Items Purchased" },
   { value: "warehouse_received", label: "At Warehouse" },
-  {
-    value: "ready_for_international_shipping",
-    label: "Ready to Ship",
-  },
+  { value: "ready_for_international_shipping", label: "Ready to Ship" },
   { value: "packed", label: "Packed" },
   { value: "shipped", label: "Shipped" },
   { value: "in_transit", label: "In Transit" },
@@ -127,10 +108,18 @@ const filterOptions = [
   { value: "rejected", label: "Rejected" },
 ];
 
+/** Quick chips shown under the header */
+const quickFilters = [
+  { value: "", label: "All" },
+  { value: "review", label: "Quote Ready" },
+  { value: "awaiting_payment", label: "Payment" },
+  { value: "in_transit", label: "In Transit" },
+  { value: "delivered", label: "Delivered" },
+];
+
 function RequestsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-
   const statusFilter = searchParams.get("status");
 
   const pageTitle = statusFilter
@@ -140,16 +129,18 @@ function RequestsPageContent() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const handleStatusFilter = (
-    event: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const value = event.target.value;
-
+  const setStatusFilter = (value: string) => {
     if (value) {
       router.push(`/requests?status=${value}`);
     } else {
       router.push("/requests");
     }
+  };
+
+  const handleStatusFilter = (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    setStatusFilter(event.target.value);
   };
 
   useEffect(() => {
@@ -159,120 +150,99 @@ function RequestsPageContent() {
       if (!user) {
         setRequests([]);
         setLoading(false);
-
-        if (unsubscribeRequests) {
-          unsubscribeRequests();
-        }
-
+        if (unsubscribeRequests) unsubscribeRequests();
         return;
       }
 
-      unsubscribeRequests = subscribeToRequests(
-        user.uid,
-        (data: Request[]) => {
-          setRequests(data);
-          setLoading(false);
-        }
-      );
+      unsubscribeRequests = subscribeToRequests(user.uid, (data: Request[]) => {
+        setRequests(data);
+        setLoading(false);
+      });
     });
 
     return () => {
       unsubscribeAuth();
-
-      if (unsubscribeRequests) {
-        unsubscribeRequests();
-      }
+      if (unsubscribeRequests) unsubscribeRequests();
     };
   }, []);
 
-  // Complete Filtering Logic
-  const filteredRequests = statusFilter
-    ? requests.filter((request) => {
-        if (statusFilter === "awaiting_payment") {
-          const mainPayment =
-            request.status === "awaiting_payment" && !request.payment;
+  const filteredRequests = useMemo(() => {
+    const list = statusFilter
+      ? requests.filter((request) => {
+          if (statusFilter === "awaiting_payment") {
+            const mainPayment =
+              request.status === "awaiting_payment" && !request.payment;
+            const additionalPayment =
+              request.additionalItemRequests?.some(
+                (item) => item.status === "awaiting_payment"
+              ) ?? false;
+            return mainPayment || additionalPayment;
+          }
 
-          const additionalPayment =
-            request.additionalItemRequests?.some(
-              (item) => item.status === "awaiting_payment"
-            ) ?? false;
+          if (statusFilter === "in_transit") {
+            return (
+              request.status === "shipped" ||
+              request.status === "out_for_delivery"
+            );
+          }
 
-          return mainPayment || additionalPayment;
-        }
+          return request.status === statusFilter;
+        })
+      : requests;
 
-        if (statusFilter === "in_transit") {
-          return (
-            request.status === "shipped" ||
-            request.status === "out_for_delivery"
-          );
-        }
-
-        return request.status === statusFilter;
-      })
-    : requests;
+    return [...list].sort((a, b) => {
+      const aTime = a.createdAt?.seconds ?? 0;
+      const bTime = b.createdAt?.seconds ?? 0;
+      return bTime - aTime;
+    });
+  }, [requests, statusFilter]);
 
   if (loading) {
     return (
-      <div className="p-8 text-slate-600 dark:text-slate-400">
-        Loading requests...
+      <div className="shipin-page w-full px-6 py-8 lg:px-10">
+        <div className="mb-8 space-y-3">
+          <div className="h-9 w-56 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-800" />
+          <div className="h-5 w-80 max-w-full animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
+        </div>
+        <div className="space-y-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="shipin-card h-40 animate-pulse" />
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="shipin-page w-full px-6 py-8 lg:px-10">
-      {/* ========================================
-          HEADER
-      ======================================== */}
-
-      <div className="mb-8 flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-        {/* TITLE */}
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      className="shipin-page w-full px-6 py-8 lg:px-10"
+    >
+      {/* HEADER */}
+      <div className="mb-6 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-slate-950 dark:text-white">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-4xl">
             {pageTitle}
           </h1>
-
           <p className="mt-2 text-slate-500 dark:text-slate-400">
             {statusFilter
-              ? `Showing your ${
-                  filterTitles[statusFilter]?.toLowerCase() ??
-                  "filtered requests"
-                }.`
-              : "View and manage your ShipIN purchase requests."}
+              ? `${filteredRequests.length} matching request${
+                  filteredRequests.length === 1 ? "" : "s"
+                }`
+              : `${requests.length} total request${
+                  requests.length === 1 ? "" : "s"
+                } · view and manage your orders`}
           </p>
         </div>
 
-        {/* ACTIONS */}
-        <div className="flex shrink-0 items-center gap-3">
-          {/* FILTER */}
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
           <div className="relative">
             <select
               value={statusFilter ?? ""}
               onChange={handleStatusFilter}
-              className="
-                appearance-none
-                rounded-xl
-                border
-                border-slate-200
-                bg-white
-                py-3
-                pl-4
-                pr-11
-                text-sm
-                font-medium
-                text-slate-700
-                shadow-sm
-                outline-none
-                transition
-                hover:border-purple-300
-                focus:border-purple-500
-                focus:ring-2
-                focus:ring-purple-500/20
-                dark:border-slate-800
-                dark:bg-slate-900
-                dark:text-slate-200
-                dark:hover:border-purple-500/40
-              "
+              className="appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-4 pr-10 text-sm font-medium text-slate-700 shadow-sm outline-none transition hover:border-purple-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-purple-500/40"
             >
               {filterOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -280,28 +250,45 @@ function RequestsPageContent() {
                 </option>
               ))}
             </select>
-
             <ChevronDown
-              size={18}
-              className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
+              size={16}
+              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
             />
           </div>
 
-          {/* NEW REQUEST */}
           <button
             type="button"
             onClick={() => router.push("/requests/new")}
-            className="shipin-btn-primary whitespace-nowrap px-5 py-3 text-sm"
+            className="shipin-btn-primary inline-flex items-center gap-2 whitespace-nowrap px-5 py-2.5 text-sm"
           >
-            + New Request
+            <Plus size={16} />
+            New Request
           </button>
         </div>
       </div>
 
-      {/* ========================================
-          EMPTY STATE & FILTERED RESULTS
-      ======================================== */}
+      {/* QUICK FILTER CHIPS */}
+      <div className="mb-6 flex flex-wrap gap-2">
+        {quickFilters.map((chip) => {
+          const active = (statusFilter ?? "") === chip.value;
+          return (
+            <button
+              key={chip.value || "all"}
+              type="button"
+              onClick={() => setStatusFilter(chip.value)}
+              className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
+                active
+                  ? "bg-purple-600 text-white shadow-sm"
+                  : "border border-slate-200 bg-white text-slate-600 hover:border-purple-300 hover:text-purple-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-purple-500/40 dark:hover:text-purple-300"
+              }`}
+            >
+              {chip.label}
+            </button>
+          );
+        })}
+      </div>
 
+      {/* LIST */}
       {requests.length === 0 ? (
         <EmptyState
           icon={<PackageOpen size={26} />}
@@ -311,300 +298,238 @@ function RequestsPageContent() {
             <button
               type="button"
               onClick={() => router.push("/requests/new")}
-              className="shipin-btn-primary px-5 py-3 text-sm"
+              className="shipin-btn-primary inline-flex items-center gap-2 px-5 py-3 text-sm"
             >
+              <Plus size={16} />
               Create Request
             </button>
           }
         />
       ) : filteredRequests.length === 0 ? (
-        <div className="shipin-card flex min-h-[320px] items-center justify-center p-8">
+        <div className="shipin-card flex min-h-[280px] items-center justify-center p-8">
           <div className="text-center">
             <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
               <PackageOpen size={26} />
             </div>
-
             <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
               No matching requests
             </h2>
-
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              There are no requests with this status.
+              Nothing in this status right now.
             </p>
-
             <button
               type="button"
               onClick={() => router.push("/requests")}
-              className="mt-5 rounded-xl bg-purple-600 px-5 py-3 font-semibold text-white transition hover:bg-purple-700"
+              className="shipin-btn-primary mt-5 px-5 py-3 text-sm"
             >
-              View All Requests
+              View all requests
             </button>
           </div>
         </div>
       ) : (
-        <div className="space-y-6">
-          {filteredRequests.map((request) => {
+        <div className="space-y-4">
+          {filteredRequests.map((request, index) => {
             const dynamicBanner = cardMessage[request.status];
-
             const itemCount = request.items?.length ?? 0;
-
             const isRejected = request.status === "rejected";
-
-            /*
-             * Rejected requests get their
-             * own explicit styling.
-             */
+            const needsPayment =
+              (request.status === "awaiting_payment" && !request.payment) ||
+              (request.additionalItemRequests?.some(
+                (item) => item.status === "awaiting_payment"
+              ) ??
+                false);
 
             const statusColor = isRejected
-              ? "border-red-500/30 bg-red-500/10 text-red-400"
-              : statusColors[
-                  request.status as keyof typeof statusColors
-                ] || "border-slate-700 bg-slate-800 text-slate-400";
+              ? "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400"
+              : statusColors[request.status as keyof typeof statusColors] ||
+                "border-slate-300 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400";
+
+            const previewItems = request.items?.slice(0, 2) ?? [];
+            const extraCount = Math.max(0, itemCount - 2);
 
             return (
-              <Link
+              <motion.div
                 key={request.id}
-                href={`/requests/${request.id}`}
-                className="block"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(index * 0.04, 0.2), duration: 0.35 }}
               >
-                <article
-                  className={`
-                    shipin-card p-6
-                    ${
+                <Link href={`/requests/${request.id}`} className="block">
+                  <article
+                    className={`shipin-card p-5 transition hover:shadow-md sm:p-6 ${
                       isRejected
-                        ? "border-red-200 hover:border-red-400 dark:border-red-500/30 dark:hover:border-red-500"
-                        : ""
-                    }
-                  `}
-                >
-                  {/* ========================================
-                      REQUEST HEADER
-                  ======================================== */}
-
-                  <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                        Purchase Request
-                      </p>
-
-                      <h2 className="mb-3 text-xl font-semibold text-slate-950 dark:text-white">
-                        Request #
-                        {request.id.slice(0, 6).toUpperCase()}
-                      </h2>
-
-                      <div
-                        className={`
-                          inline-flex
-                          items-center
-                          gap-2
-                          rounded-full
-                          border
-                          px-4
-                          py-2
-                          text-sm
-                          font-semibold
-                          ${statusColor}
-                        `}
-                      >
-                        {isRejected && <AlertCircle size={16} />}
-
-                        {statusLabels[request.status] ||
-                          (isRejected ? "Rejected" : request.status)}
-                      </div>
-                    </div>
-
-                    <div
-                      className={`
-                        self-start
-                        rounded-xl
-                        px-4
-                        py-2
-                        font-medium
-                        ${
-                          isRejected
-                            ? "bg-red-500/10 text-red-700 dark:text-red-300"
-                            : "bg-purple-500/10 text-purple-700 dark:text-purple-300"
-                        }
-                      `}
-                    >
-                      {itemCount} {itemCount === 1 ? "Item" : "Items"}
-                    </div>
-                  </div>
-
-                  {/* ========================================
-                      REJECTED NOTICE
-                  ======================================== */}
-
-                  {isRejected && (
-                    <div className="mb-6 rounded-2xl border border-red-500/20 bg-red-500/5 p-5 dark:bg-red-500/10">
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-500/10">
-                          <AlertCircle
-                            size={20}
-                            className="text-red-500"
-                          />
+                        ? "border-red-200 dark:border-red-500/30"
+                        : needsPayment
+                          ? "border-amber-200/80 dark:border-amber-500/25"
+                          : ""
+                    }`}
+                  >
+                    {/* Top row */}
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div
+                          className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                            isRejected
+                              ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                              : needsPayment
+                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                : "bg-purple-500/10 text-purple-600 dark:text-purple-400"
+                          }`}
+                        >
+                          {needsPayment ? (
+                            <CreditCard size={18} />
+                          ) : request.status === "shipped" ||
+                            request.status === "out_for_delivery" ? (
+                            <Truck size={18} />
+                          ) : isRejected ? (
+                            <AlertCircle size={18} />
+                          ) : (
+                            <Package size={18} />
+                          )}
                         </div>
 
                         <div className="min-w-0">
-                          <h3 className="font-semibold text-red-700 dark:text-red-300">
-                            This request was rejected
-                          </h3>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="text-lg font-semibold text-slate-950 dark:text-white">
+                              Request #{request.id.slice(0, 6).toUpperCase()}
+                            </h2>
+                            <span
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusColor}`}
+                            >
+                              {isRejected && <AlertCircle size={12} />}
+                              {statusLabels[request.status] ||
+                                (isRejected ? "Rejected" : request.status)}
+                            </span>
+                          </div>
 
-                          <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                            Please review the reason below. You can open the
-                            request for complete details and support.
+                          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                            {itemCount} {itemCount === 1 ? "item" : "items"}
+                            {request.createdAt && (
+                              <>
+                                {" · "}
+                                {request.createdAt.toDate().toLocaleDateString(
+                                  undefined,
+                                  {
+                                    year: "numeric",
+                                    month: "short",
+                                    day: "numeric",
+                                  }
+                                )}
+                              </>
+                            )}
+                            {request.tracking?.internalTrackingId && (
+                              <>
+                                {" · "}
+                                <span className="font-medium text-slate-600 dark:text-slate-300">
+                                  {request.tracking.internalTrackingId}
+                                </span>
+                              </>
+                            )}
                           </p>
                         </div>
                       </div>
+                    </div>
 
-                      {request.rejectionReason && (
-                        <div className="mt-4 rounded-xl border border-red-500/20 bg-white/70 p-4 dark:bg-slate-950/40">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-red-500 dark:text-red-400">
-                            Reason for rejection
-                          </p>
-
-                          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-200">
+                    {/* Rejection */}
+                    {isRejected && (
+                      <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/5 p-4 dark:bg-red-500/10">
+                        <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+                          This request was rejected
+                        </p>
+                        {request.rejectionReason && (
+                          <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-red-600/90 dark:text-red-400">
                             {request.rejectionReason}
                           </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                        )}
+                      </div>
+                    )}
 
-                  {/* ========================================
-                      PRODUCTS
-                  ======================================== */}
-
-                  {itemCount > 0 && (
-                    <div className="space-y-3">
-                      {request.items.map((item: any, index: number) => (
-                        <div
-                          key={index}
-                          className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950"
-                        >
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    {/* Item preview */}
+                    {itemCount > 0 && (
+                      <div className="mt-4 space-y-2">
+                        {previewItems.map((item, i) => (
+                          <div
+                            key={i}
+                            className="flex items-start justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3.5 py-2.5 dark:border-slate-800 dark:bg-slate-950/50"
+                          >
                             <div className="min-w-0">
-                              <h3 className="font-semibold text-slate-900 dark:text-white">
+                              <p className="truncate text-sm font-medium text-slate-900 dark:text-white">
                                 {item.name}
-                              </h3>
-
-                              <p className="mt-1 break-all text-sm text-slate-500 dark:text-slate-500">
-                                {item.url}
                               </p>
+                              {item.url && (
+                                <p className="mt-0.5 truncate text-xs text-slate-400">
+                                  {item.url}
+                                </p>
+                              )}
                             </div>
-
-                            <div className="shrink-0 text-sm font-medium text-slate-600 dark:text-slate-400">
-                              Qty: {item.quantity}
-                            </div>
+                            <span className="shrink-0 text-xs font-medium text-slate-500">
+                              ×{item.quantity}
+                            </span>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                        {extraCount > 0 && (
+                          <p className="px-1 text-xs font-medium text-slate-400">
+                            +{extraCount} more item{extraCount === 1 ? "" : "s"}
+                          </p>
+                        )}
+                      </div>
+                    )}
 
-                  {/* ========================================
-                      ACTION BANNER
-                  ======================================== */}
+                    {/* Action banner */}
+                    {dynamicBanner && !isRejected && (
+                      <div
+                        className={`mt-4 rounded-xl border px-3.5 py-2.5 text-sm font-medium ${dynamicBanner.style}`}
+                      >
+                        {dynamicBanner.text}
+                      </div>
+                    )}
 
-                  {dynamicBanner && (
-                    <div
-                      className={`
-                        mt-6
-                        rounded-xl
-                        border
-                        p-4
-                        font-medium
-                        ${dynamicBanner.style}
-                      `}
-                    >
-                      {dynamicBanner.text}
-                    </div>
-                  )}
-
-                  {/* ========================================
-                      REJECTED ACTIONS
-                  ======================================== */}
-
-                  {isRejected && (
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple-500/10">
+                    {/* Rejected helpers */}
+                    {isRejected && (
+                      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                        <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-950">
                           <MessageCircle
-                            size={18}
-                            className="text-purple-600 dark:text-purple-400"
+                            size={16}
+                            className="shrink-0 text-purple-600 dark:text-purple-400"
                           />
+                          <span className="text-xs text-slate-600 dark:text-slate-400">
+                            Open request for support options
+                          </span>
                         </div>
-
-                        <div>
-                          <p className="font-semibold text-slate-900 dark:text-white">
-                            Need help?
-                          </p>
-
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            Open the request for support options.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-500/10">
+                        <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-950">
                           <RotateCcw
-                            size={18}
-                            className="text-blue-600 dark:text-blue-400"
+                            size={16}
+                            className="shrink-0 text-blue-600 dark:text-blue-400"
                           />
-                        </div>
-
-                        <div>
-                          <p className="font-semibold text-slate-900 dark:text-white">
-                            Start again
-                          </p>
-
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            Create a new request if needed.
-                          </p>
+                          <span className="text-xs text-slate-600 dark:text-slate-400">
+                            Create a new request if needed
+                          </span>
                         </div>
                       </div>
+                    )}
+
+                    {/* Footer */}
+                    <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3 dark:border-slate-800">
+                      <span className="text-sm text-slate-500 dark:text-slate-400">
+                        {isRejected
+                          ? "View rejection details"
+                          : needsPayment
+                            ? "Complete payment"
+                            : "Open request details"}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-sm font-semibold text-purple-600 dark:text-purple-400">
+                        View
+                        <ArrowRight size={14} />
+                      </span>
                     </div>
-                  )}
-
-                  {/* ========================================
-                      NOTES
-                  ======================================== */}
-
-                  {(request as any).notes && (
-                    <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-                      <h3 className="mb-2 font-semibold text-slate-900 dark:text-white">
-                        Notes
-                      </h3>
-
-                      <p className="text-slate-600 dark:text-slate-400">
-                        {(request as any).notes}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* ========================================
-                      FOOTER
-                  ======================================== */}
-
-                  <div className="mt-6 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-800">
-                    <span className="text-sm text-slate-500 dark:text-slate-400">
-                      {isRejected
-                        ? "View rejection details"
-                        : "Open request details"}
-                    </span>
-
-                    <span className="font-medium text-purple-600 dark:text-purple-400">
-                      View Request →
-                    </span>
-                  </div>
-                </article>
-              </Link>
+                  </article>
+                </Link>
+              </motion.div>
             );
           })}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -612,8 +537,8 @@ export default function RequestsPage() {
   return (
     <Suspense
       fallback={
-        <div className="p-8 text-slate-600 dark:text-slate-400">
-          Loading requests...
+        <div className="shipin-page w-full px-6 py-8 lg:px-10">
+          <div className="h-9 w-56 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-800" />
         </div>
       }
     >

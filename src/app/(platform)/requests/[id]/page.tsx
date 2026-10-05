@@ -43,23 +43,12 @@ export default function RequestDetailsPage() {
 
   const requestId = params.id as string;
 
-  const [request, setRequest] =
-    useState<Request | null>(null);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [approving, setApproving] =
-    useState(false);
-
-  const [inspectionUrls, setInspectionUrls] =
-    useState<string[]>([]);
-
-  const [lightboxOpen, setLightboxOpen] =
-    useState(false);
-
-  const [selectedPhoto, setSelectedPhoto] =
-    useState(0);
+  const [request, setRequest] = useState<Request | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [approving, setApproving] = useState(false);
+  const [inspectionUrls, setInspectionUrls] = useState<string[]>([]);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState(0);
 
   /*
    * ========================================
@@ -70,55 +59,42 @@ export default function RequestDetailsPage() {
   useEffect(() => {
     if (!requestId) return;
 
-    let unsubscribeSnapshot:
-      | (() => void)
-      | undefined;
+    let unsubscribeSnapshot: (() => void) | undefined;
 
-    const unsubscribeAuth = onAuthStateChanged(
-      auth,
-      (user) => {
-        if (!user) {
-          setRequest(null);
-          setLoading(false);
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        setRequest(null);
+        setLoading(false);
 
-          if (unsubscribeSnapshot) {
-            unsubscribeSnapshot();
-          }
-
-          return;
+        if (unsubscribeSnapshot) {
+          unsubscribeSnapshot();
         }
 
-        const requestRef = doc(
-          db,
-          "requests",
-          requestId
-        );
-
-        unsubscribeSnapshot = onSnapshot(
-          requestRef,
-          (snapshot) => {
-            if (snapshot.exists()) {
-              setRequest({
-                id: snapshot.id,
-                ...snapshot.data(),
-              } as Request);
-            } else {
-              setRequest(null);
-            }
-
-            setLoading(false);
-          },
-          (error) => {
-            console.error(
-              "Request snapshot error:",
-              error
-            );
-
-            setLoading(false);
-          }
-        );
+        return;
       }
-    );
+
+      const requestRef = doc(db, "requests", requestId);
+
+      unsubscribeSnapshot = onSnapshot(
+        requestRef,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            setRequest({
+              id: snapshot.id,
+              ...snapshot.data(),
+            } as Request);
+          } else {
+            setRequest(null);
+          }
+
+          setLoading(false);
+        },
+        (error) => {
+          console.error("Request snapshot error:", error);
+          setLoading(false);
+        }
+      );
+    });
 
     return () => {
       unsubscribeAuth();
@@ -137,66 +113,45 @@ export default function RequestDetailsPage() {
 
   useEffect(() => {
     async function loadInspectionPhotos() {
-      if (
-        !request?.warehouse?.inspectionPhotos
-          ?.length
-      ) {
+      if (!request?.warehouse?.inspectionPhotos?.length) {
         setInspectionUrls([]);
         return;
       }
 
       try {
-        const currentUser =
-          auth.currentUser;
+        const currentUser = auth.currentUser;
 
         if (!currentUser) {
           return;
         }
 
-        const token =
-          await currentUser.getIdToken();
+        const token = await currentUser.getIdToken();
 
         const urls = await Promise.all(
-          request.warehouse.inspectionPhotos.map(
-            async (key) => {
-              const res = await fetch(
-                "/api/r2/view",
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type":
-                      "application/json",
+          request.warehouse.inspectionPhotos.map(async (key) => {
+            const res = await fetch("/api/r2/view", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ key }),
+            });
 
-                    Authorization:
-                      `Bearer ${token}`,
-                  },
-                  body: JSON.stringify({
-                    key,
-                  }),
-                }
-              );
+            const data = await res.json();
 
-              const data =
-                await res.json();
-
-              if (!res.ok) {
-                console.error(data);
-                return "";
-              }
-
-              return data.url;
+            if (!res.ok) {
+              console.error(data);
+              return "";
             }
-          )
+
+            return data.url;
+          })
         );
 
-        setInspectionUrls(
-          urls.filter(Boolean)
-        );
+        setInspectionUrls(urls.filter(Boolean));
       } catch (error) {
-        console.error(
-          "Failed to load inspection photos:",
-          error
-        );
+        console.error("Failed to load inspection photos:", error);
       }
     }
 
@@ -209,46 +164,41 @@ export default function RequestDetailsPage() {
    * ========================================
    */
 
-  const handleApproveQuote =
-    async () => {
-      if (!requestId) return;
+  const handleApproveQuote = async () => {
+    if (!requestId || !request) return;
 
-      setApproving(true);
+    if (isQuoteExpired(request.quote?.expiresAt)) {
+      toast.error("This quote has expired.", {
+        description: "Please request a new quote before approving.",
+      });
+      return;
+    }
 
-      try {
-        const requestRef = doc(
-          db,
-          "requests",
-          requestId
-        );
+    if (request.payment) {
+      toast.info("Payment already completed for this request.");
+      return;
+    }
 
-        await updateDoc(
-          requestRef,
-          {
-            status:
-              "awaiting_payment",
-          }
-        );
+    setApproving(true);
 
-        router.push(
-          `/payment/${requestId}`
-        );
-      } catch (error) {
-        console.error(error);
+    try {
+      const requestRef = doc(db, "requests", requestId);
 
-        toast.error(
-          "Unable to approve quote.",
-          {
-            description:
-              error instanceof Error
-                ? error.message
-                : undefined,
-          }
-        );
-      } finally {
-        setApproving(false);
-      }
-    };
+      await updateDoc(requestRef, {
+        status: "awaiting_payment",
+      });
+
+      router.push(`/payment/${requestId}`);
+    } catch (error) {
+      console.error(error);
+
+      toast.error("Unable to approve quote.", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setApproving(false);
+    }
+  };
 
   /*
    * ========================================
@@ -287,15 +237,10 @@ export default function RequestDetailsPage() {
   if (request.status === "rejected") {
     return (
       <div className="mx-auto max-w-5xl space-y-8 p-8">
-
         {/* REQUEST HEADER */}
-
-        <RequestHeader
-          request={request}
-        />
+        <RequestHeader request={request} />
 
         {/* REJECTION CARD */}
-
         <section
           className="
             rounded-2xl
@@ -309,7 +254,6 @@ export default function RequestDetailsPage() {
           "
         >
           <div className="flex items-start gap-4">
-
             <div
               className="
                 flex
@@ -323,16 +267,11 @@ export default function RequestDetailsPage() {
                 bg-red-500/10
               "
             >
-              <AlertCircle
-                size={24}
-                className="text-red-400"
-              />
+              <AlertCircle size={24} className="text-red-400" />
             </div>
 
             <div className="min-w-0">
-
               <div className="flex flex-wrap items-center gap-3">
-
                 <h1 className="text-2xl font-bold text-slate-950 dark:text-white">
                   Request Rejected
                 </h1>
@@ -351,20 +290,15 @@ export default function RequestDetailsPage() {
                 >
                   Rejected
                 </span>
-
               </div>
 
               <p className="mt-2 text-slate-600 dark:text-slate-400">
-                Unfortunately, we were unable to
-                process this purchase request.
+                Unfortunately, we were unable to process this purchase request.
               </p>
-
             </div>
-
           </div>
 
           {/* REASON */}
-
           <div
             className="
               mt-6
@@ -389,15 +323,12 @@ export default function RequestDetailsPage() {
             </p>
 
             <p className="mt-2 whitespace-pre-wrap text-base leading-7 text-slate-700 dark:text-slate-200">
-              {request.rejectionReason ||
-                "No rejection reason was provided."}
+              {request.rejectionReason || "No rejection reason was provided."}
             </p>
           </div>
-
         </section>
 
         {/* TIMELINE */}
-
         <RequestTimeline
           status={request.status}
           history={request.statusHistory}
@@ -407,7 +338,6 @@ export default function RequestDetailsPage() {
         />
 
         {/* PRODUCTS */}
-
         <section className="space-y-4">
           <div>
             <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
@@ -419,23 +349,17 @@ export default function RequestDetailsPage() {
             </p>
           </div>
 
-          <ProductsCard
-            request={request}
-          />
+          <ProductsCard request={request} />
         </section>
 
         {/* SUPPORT */}
-
         <SupportCenter
           requestId={request.id}
           customerId={request.userId}
-          canCreateTicket={canCreateSupportTicket(
-            request
-          )}
+          canCreateTicket={canCreateSupportTicket(request)}
         />
 
         {/* NEXT ACTION */}
-
         <section
           className="
             rounded-2xl
@@ -449,18 +373,15 @@ export default function RequestDetailsPage() {
           "
         >
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-
             <div>
-
               <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
                 Want to try again?
               </h2>
 
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                Create a new purchase request with
-                different products or updated details.
+                Create a new purchase request with different products or updated
+                details.
               </p>
-
             </div>
 
             <Link
@@ -481,18 +402,13 @@ export default function RequestDetailsPage() {
                 hover:bg-purple-700
               "
             >
-              <RotateCcw
-                size={18}
-              />
-
+              <RotateCcw size={18} />
               Create New Request
             </Link>
-
           </div>
         </section>
 
         {/* BACK */}
-
         <div>
           <Link
             href="/requests"
@@ -507,14 +423,10 @@ export default function RequestDetailsPage() {
               hover:text-white
             "
           >
-            <ArrowLeft
-              size={16}
-            />
-
+            <ArrowLeft size={16} />
             Back to My Requests
           </Link>
         </div>
-
       </div>
     );
   }
@@ -525,22 +437,15 @@ export default function RequestDetailsPage() {
    * ========================================
    */
 
-  const quoteExpired =
-    isQuoteExpired(
-      request.quote?.expiresAt
-    );
+  const paid = Boolean(request.payment);
+  const quoteExpired = isQuoteExpired(request.quote?.expiresAt);
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-8">
-
       {/* REQUEST HEADER */}
-
-      <RequestHeader
-        request={request}
-      />
+      <RequestHeader request={request} />
 
       {/* REFUND OFFER NOTIFICATION */}
-
       {request.status === "refund_offered" &&
         request.refundOffer?.offered === true &&
         !request.refundRequest && (
@@ -567,9 +472,8 @@ export default function RequestDetailsPage() {
                     </h2>
 
                     <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                      Our team has offered you a refund for this order.
-                      Please review the offer and select your preferred
-                      refund method.
+                      Our team has offered you a refund for this order. Please
+                      review the offer and select your preferred refund method.
                     </p>
                   </div>
                 </div>
@@ -619,7 +523,6 @@ export default function RequestDetailsPage() {
         )}
 
       {/* REQUEST TIMELINE */}
-
       <RequestTimeline
         status={request.status}
         history={request.statusHistory}
@@ -629,16 +532,12 @@ export default function RequestDetailsPage() {
       />
 
       {/* SHIPMENT TRACKING */}
-
       <section className="space-y-4">
-
         <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
           Shipment
         </h2>
 
-        {request.tracking
-          ?.internalTrackingId ? (
-
+        {request.tracking?.internalTrackingId ? (
           <div
             className="
               rounded-xl
@@ -652,117 +551,56 @@ export default function RequestDetailsPage() {
               dark:shadow-none
             "
           >
-            <p className="text-sm text-slate-400">
-              ShipIN Tracking ID
-            </p>
+            <p className="text-sm text-slate-400">ShipIN Tracking ID</p>
 
             <p className="mt-1 text-lg font-semibold text-slate-950 dark:text-white">
-              {
-                request.tracking
-                  .internalTrackingId
-              }
+              {request.tracking.internalTrackingId}
             </p>
 
             <p className="mt-2 text-xs text-slate-500">
               Use this tracking ID to track your shipment on ShipIN.
             </p>
           </div>
-
         ) : (
-
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Your shipment has not been dispatched yet.
           </p>
-
         )}
-
       </section>
 
       {/* ORIGINAL PRODUCTS */}
-
-      <ProductsCard
-        request={request}
-      />
+      <ProductsCard request={request} />
 
       {/* ADD ITEM REQUEST */}
-
-      <AddItemRequest
-        request={request}
-      />
+      <AddItemRequest request={request} />
 
       {/* ADDITIONAL ITEM PAYMENTS */}
-
       <AdditionalItemPaymentsCard
         requestId={request.id}
-        additionalItemRequests={
-          request.additionalItemRequests ||
-          []
-        }
+        additionalItemRequests={request.additionalItemRequests || []}
       />
 
       {/* MAIN QUOTE */}
-
-      <QuoteCard
-        request={request}
-      />
+      <QuoteCard request={request} />
 
       {/* QUOTE COUNTDOWN */}
-
       {request.quote?.expiresAt &&
-        request.status === "review" && (
-          <QuoteCountdown
-            expiresAt={
-              request.quote.expiresAt
-            }
-          />
+        !paid &&
+        !quoteExpired &&
+        (request.status === "review" ||
+          request.status === "awaiting_payment") && (
+          <QuoteCountdown expiresAt={request.quote.expiresAt} />
         )}
 
       {/* MAIN PAYMENT ACTIONS */}
-
       <RequestPaymentStatus
         request={request}
-        onApproveQuote={
-          handleApproveQuote
-        }
+        onApproveQuote={handleApproveQuote}
         approving={approving}
       />
 
-      {/* QUOTE EXPIRED BANNER */}
-
-      {quoteExpired &&
-        (
-          request.status ===
-            "review" ||
-          request.status ===
-            "awaiting_payment"
-        ) && (
-
-          <div
-            className="
-              mt-6
-              rounded-xl
-              border
-              border-red-500/20
-              bg-red-500/10
-              p-5
-            "
-          >
-            <h2 className="font-semibold text-red-400">
-              Quote Expired
-            </h2>
-
-            <p className="mt-2 text-slate-400">
-              This quote has expired and can no longer be used for payment.
-              Please request a new quote.
-            </p>
-          </div>
-
-        )}
-
       {/* INSPECTION PHOTOS */}
-
       {inspectionUrls.length > 0 && (
-
         <div
           className="
             rounded-2xl
@@ -776,73 +614,51 @@ export default function RequestDetailsPage() {
             dark:shadow-none
           "
         >
-
           <h2 className="mb-5 text-xl font-semibold text-slate-950 dark:text-white">
             Inspection Photos
           </h2>
 
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-
-            {inspectionUrls.map(
-              (photo, index) => (
-
-                <img
-                  key={photo}
-                  src={photo}
-                  alt="Inspection"
-                  onClick={() => {
-                    setSelectedPhoto(
-                      index
-                    );
-
-                    setLightboxOpen(
-                      true
-                    );
-                  }}
-                  className="
-                    aspect-video
-                    cursor-zoom-in
-                    rounded-xl
-                    border
-                    border-slate-700
-                    object-cover
-                    transition
-                    hover:scale-[1.02]
-                  "
-                />
-
-              )
-            )}
-
+            {inspectionUrls.map((photo, index) => (
+              <img
+                key={photo}
+                src={photo}
+                alt="Inspection"
+                onClick={() => {
+                  setSelectedPhoto(index);
+                  setLightboxOpen(true);
+                }}
+                className="
+                  aspect-video
+                  cursor-zoom-in
+                  rounded-xl
+                  border
+                  border-slate-700
+                  object-cover
+                  transition
+                  hover:scale-[1.02]
+                "
+              />
+            ))}
           </div>
 
           <Lightbox
             open={lightboxOpen}
-            close={() =>
-              setLightboxOpen(false)
-            }
-            slides={inspectionUrls.map(
-              (url) => ({
-                src: url,
-              })
-            )}
+            close={() => setLightboxOpen(false)}
+            slides={inspectionUrls.map((url) => ({
+              src: url,
+            }))}
             index={selectedPhoto}
           />
-
         </div>
-
       )}
 
       {/* SUPPORT */}
-
       <SupportCenter
         requestId={request.id}
         customerId={request.userId}
-        canCreateTicket={canCreateSupportTicket(
-          request
-        )}
+        canCreateTicket={canCreateSupportTicket(request)}
       />
-
     </div>
   );
 }
