@@ -2,16 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import {
-  doc,
-  updateDoc,
-  onSnapshot,
-} from "firebase/firestore";
-import {
-  AlertCircle,
-  ArrowLeft,
-  RotateCcw,
-} from "lucide-react";
+import { doc, updateDoc, onSnapshot } from "firebase/firestore";
+import { AlertCircle, RotateCcw, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -40,7 +32,6 @@ import type { Request } from "@/types/request";
 export default function RequestDetailsPage() {
   const params = useParams();
   const router = useRouter();
-
   const requestId = params.id as string;
 
   const [request, setRequest] = useState<Request | null>(null);
@@ -49,12 +40,6 @@ export default function RequestDetailsPage() {
   const [inspectionUrls, setInspectionUrls] = useState<string[]>([]);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState(0);
-
-  /*
-   * ========================================
-   * LIVE REQUEST LISTENER
-   * ========================================
-   */
 
   useEffect(() => {
     if (!requestId) return;
@@ -65,11 +50,7 @@ export default function RequestDetailsPage() {
       if (!user) {
         setRequest(null);
         setLoading(false);
-
-        if (unsubscribeSnapshot) {
-          unsubscribeSnapshot();
-        }
-
+        if (unsubscribeSnapshot) unsubscribeSnapshot();
         return;
       }
 
@@ -86,7 +67,6 @@ export default function RequestDetailsPage() {
           } else {
             setRequest(null);
           }
-
           setLoading(false);
         },
         (error) => {
@@ -98,18 +78,9 @@ export default function RequestDetailsPage() {
 
     return () => {
       unsubscribeAuth();
-
-      if (unsubscribeSnapshot) {
-        unsubscribeSnapshot();
-      }
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
     };
   }, [requestId]);
-
-  /*
-   * ========================================
-   * INSPECTION PHOTOS
-   * ========================================
-   */
 
   useEffect(() => {
     async function loadInspectionPhotos() {
@@ -120,10 +91,7 @@ export default function RequestDetailsPage() {
 
       try {
         const currentUser = auth.currentUser;
-
-        if (!currentUser) {
-          return;
-        }
+        if (!currentUser) return;
 
         const token = await currentUser.getIdToken();
 
@@ -139,12 +107,10 @@ export default function RequestDetailsPage() {
             });
 
             const data = await res.json();
-
             if (!res.ok) {
               console.error(data);
               return "";
             }
-
             return data.url;
           })
         );
@@ -158,177 +124,90 @@ export default function RequestDetailsPage() {
     loadInspectionPhotos();
   }, [request]);
 
-  /*
-   * ========================================
-   * MAIN QUOTE APPROVAL
-   * ========================================
-   */
-
   const handleApproveQuote = async () => {
     if (!requestId || !request) return;
 
     if (isQuoteExpired(request.quote?.expiresAt)) {
       toast.error("This quote has expired.", {
-        description: "Please request a new quote before approving.",
+        description: "Request a new quote to continue.",
       });
       return;
     }
-
-    if (request.payment) {
-      toast.info("Payment already completed for this request.");
-      return;
-    }
-
+    
     setApproving(true);
 
     try {
       const requestRef = doc(db, "requests", requestId);
-
       await updateDoc(requestRef, {
         status: "awaiting_payment",
       });
-
       router.push(`/payment/${requestId}`);
     } catch (error) {
       console.error(error);
-
       toast.error("Unable to approve quote.", {
-        description: error instanceof Error ? error.message : undefined,
+        description:
+          error instanceof Error ? error.message : undefined,
       });
     } finally {
       setApproving(false);
     }
   };
 
-  /*
-   * ========================================
-   * LOADING
-   * ========================================
-   */
-
   if (loading) {
     return (
-      <div className="mx-auto max-w-5xl space-y-8 p-8">
+      <div className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
         <PageSkeleton />
       </div>
     );
   }
 
-  /*
-   * ========================================
-   * REQUEST NOT FOUND
-   * ========================================
-   */
-
   if (!request) {
     return (
-      <div className="p-8 text-slate-700 dark:text-slate-300">
-        Request not found.
+      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
+        <p className="text-slate-500">Request not found.</p>
+        <Link
+          href="/requests"
+          className="mt-4 inline-flex items-center gap-1.5 text-sm text-purple-400 hover:text-purple-300"
+        >
+          <ArrowLeft size={14} />
+          Back to My Requests
+        </Link>
       </div>
     );
   }
 
-  /*
-   * ========================================
-   * REJECTED REQUEST
-   * ========================================
-   */
-
+  /* ─── Rejected ─── */
   if (request.status === "rejected") {
     return (
-      <div className="mx-auto max-w-5xl space-y-8 p-8">
-        {/* REQUEST HEADER */}
+      <div className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
         <RequestHeader request={request} />
 
-        {/* REJECTION CARD */}
-        <section
-          className="
-            rounded-2xl
-            border border-red-200
-            bg-white
-            p-6
-            shadow-sm
-            dark:border-red-500/20
-            dark:bg-slate-900
-            dark:shadow-none
-          "
-        >
+        <section className="shipin-surface p-6">
           <div className="flex items-start gap-4">
-            <div
-              className="
-                flex
-                h-12
-                w-12
-                shrink-0
-                items-center
-                justify-center
-                rounded-full
-                border border-red-500/30
-                bg-red-500/10
-              "
-            >
-              <AlertCircle size={24} className="text-red-400" />
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10">
+              <AlertCircle size={22} className="text-red-400" />
             </div>
-
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-2xl font-bold text-slate-950 dark:text-white">
-                  Request Rejected
-                </h1>
-
-                <span
-                  className="
-                    rounded-full
-                    border border-red-500/30
-                    bg-red-500/10
-                    px-3
-                    py-1
-                    text-xs
-                    font-semibold
-                    text-red-400
-                  "
-                >
-                  Rejected
-                </span>
-              </div>
-
-              <p className="mt-2 text-slate-600 dark:text-slate-400">
-                Unfortunately, we were unable to process this purchase request.
+              <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
+                Request rejected
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                We were unable to process this purchase request.
               </p>
             </div>
           </div>
 
-          {/* REASON */}
-          <div
-            className="
-              mt-6
-              rounded-xl
-              border border-red-200
-              bg-red-50
-              p-5
-              dark:border-red-500/20
-              dark:bg-slate-950
-            "
-          >
-            <p
-              className="
-                text-xs
-                font-semibold
-                uppercase
-                tracking-wide
-                text-red-400
-              "
-            >
-              Reason for Rejection
+          <div className="mt-5 rounded-xl border border-red-500/15 bg-red-500/5 p-4">
+            <p className="shipin-section-label text-red-400/80">
+              Reason
             </p>
-
-            <p className="mt-2 whitespace-pre-wrap text-base leading-7 text-slate-700 dark:text-slate-200">
-              {request.rejectionReason || "No rejection reason was provided."}
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-200">
+              {request.rejectionReason ||
+                "No rejection reason was provided."}
             </p>
           </div>
         </section>
 
-        {/* TIMELINE */}
         <RequestTimeline
           status={request.status}
           history={request.statusHistory}
@@ -337,160 +216,61 @@ export default function RequestDetailsPage() {
           partialRefunds={request.partialRefunds}
         />
 
-        {/* PRODUCTS */}
-        <section className="space-y-4">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
-              Requested Products
-            </h2>
+        <ProductsCard request={request} />
 
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              Products included in this request.
-            </p>
-          </div>
-
-          <ProductsCard request={request} />
-        </section>
-
-        {/* SUPPORT */}
         <SupportCenter
           requestId={request.id}
           customerId={request.userId}
           canCreateTicket={canCreateSupportTicket(request)}
         />
 
-        {/* NEXT ACTION */}
-        <section
-          className="
-            rounded-2xl
-            border border-slate-200
-            bg-white
-            p-6
-            shadow-sm
-            dark:border-slate-800
-            dark:bg-slate-900
-            dark:shadow-none
-          "
-        >
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
-                Want to try again?
-              </h2>
-
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                Create a new purchase request with different products or updated
-                details.
-              </p>
-            </div>
-
-            <Link
-              href="/requests/new"
-              className="
-                inline-flex
-                shrink-0
-                items-center
-                justify-center
-                gap-2
-                rounded-xl
-                bg-purple-600
-                px-5
-                py-3
-                font-semibold
-                text-white
-                transition
-                hover:bg-purple-700
-              "
-            >
-              <RotateCcw size={18} />
-              Create New Request
-            </Link>
+        <section className="shipin-surface flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-slate-950 dark:text-white">
+              Want to try again?
+            </h2>
+            <p className="mt-0.5 text-sm text-slate-500">
+              Create a new request with different products.
+            </p>
           </div>
-        </section>
-
-        {/* BACK */}
-        <div>
           <Link
-            href="/requests"
-            className="
-              inline-flex
-              items-center
-              gap-2
-              text-sm
-              font-medium
-              text-slate-400
-              transition
-              hover:text-white
-            "
+            href="/requests/new"
+            className="shipin-btn-primary inline-flex shrink-0 items-center justify-center gap-2 px-5 py-2.5 text-sm"
           >
-            <ArrowLeft size={16} />
-            Back to My Requests
+            <RotateCcw size={16} />
+            Create new request
           </Link>
-        </div>
+        </section>
       </div>
     );
   }
 
-  /*
-   * ========================================
-   * NORMAL REQUEST
-   * ========================================
-   */
-
-  const paid = Boolean(request.payment);
+  /* ─── Normal request ─── */
   const quoteExpired = isQuoteExpired(request.quote?.expiresAt);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8 p-8">
-      {/* REQUEST HEADER */}
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
       <RequestHeader request={request} />
 
-      {/* REFUND OFFER NOTIFICATION */}
+      {/* Refund offer banner */}
       {request.status === "refund_offered" &&
         request.refundOffer?.offered === true &&
         !request.refundRequest && (
-          <section
-            className="
-              rounded-2xl
-              border border-red-500/20
-              bg-red-500/5
-              p-6
-              shadow-sm
-              dark:bg-red-500/[0.04]
-            "
-          >
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <section className="mt-6 shipin-surface border-red-500/20 bg-red-500/5 p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10 text-red-600 dark:text-red-400">
-                    !
-                  </div>
-
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-950 dark:text-white">
-                      Refund Offered
-                    </h2>
-
-                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                      Our team has offered you a refund for this order. Please
-                      review the offer and select your preferred refund method.
-                    </p>
-                  </div>
-                </div>
-
+                <h2 className="text-base font-semibold text-slate-950 dark:text-white">
+                  Refund offered
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Review the offer and choose your preferred refund method.
+                </p>
                 {request.refundOffer?.reason && (
-                  <div className="mt-4 rounded-xl border border-red-500/10 bg-white p-4 dark:bg-slate-900">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      Reason
-                    </p>
-
-                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
-                      {request.refundOffer.reason}
-                    </p>
-                  </div>
+                  <p className="mt-3 rounded-lg border border-red-500/10 bg-white/50 px-3 py-2 text-sm text-slate-600 dark:bg-slate-950/40 dark:text-slate-300">
+                    {request.refundOffer.reason}
+                  </p>
                 )}
               </div>
-
               <button
                 type="button"
                 onClick={() => {
@@ -501,164 +281,124 @@ export default function RequestDetailsPage() {
                       block: "center",
                     });
                 }}
-                className="
-                  inline-flex
-                  shrink-0
-                  items-center
-                  justify-center
-                  rounded-xl
-                  bg-red-600
-                  px-5
-                  py-3
-                  font-semibold
-                  text-white
-                  transition
-                  hover:bg-red-700
-                "
+                className="shrink-0 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
               >
-                Review Refund Offer
+                Review offer
               </button>
             </div>
           </section>
         )}
 
-      {/* REQUEST TIMELINE */}
-      <RequestTimeline
-        status={request.status}
-        history={request.statusHistory}
-        orderChange={request.orderChange}
-        refundRequest={request.refundRequest}
-        partialRefunds={request.partialRefunds}
-      />
+      <div className="mt-8">
+        <RequestTimeline
+          status={request.status}
+          history={request.statusHistory}
+          orderChange={request.orderChange}
+          refundRequest={request.refundRequest}
+          partialRefunds={request.partialRefunds}
+        />
+      </div>
 
-      {/* SHIPMENT TRACKING */}
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
-          Shipment
-        </h2>
+      {/* Main + sticky sidebar */}
+      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+        <div className="space-y-6">
+          {/* Shipment */}
+          <section className="shipin-surface p-5">
+            <p className="shipin-section-label mb-3">Shipment</p>
+            {request.tracking?.internalTrackingId ? (
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <div>
+                  <p className="text-xs text-slate-500">ShipIN tracking ID</p>
+                  <p className="mt-0.5 font-mono text-lg font-medium tracking-wide text-slate-950 dark:text-white">
+                    {request.tracking.internalTrackingId}
+                  </p>
+                </div>
+                <Link
+                  href={`/shipment/${request.id}`}
+                  className="text-sm font-medium text-purple-400 hover:text-purple-300"
+                >
+                  Track →
+                </Link>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">
+                Not dispatched yet.
+              </p>
+            )}
+          </section>
 
-        {request.tracking?.internalTrackingId ? (
-          <div
-            className="
-              rounded-xl
-              border
-              border-slate-200
-              bg-white
-              p-4
-              shadow-sm
-              dark:border-slate-800
-              dark:bg-slate-900
-              dark:shadow-none
-            "
-          >
-            <p className="text-sm text-slate-400">ShipIN Tracking ID</p>
+          <ProductsCard request={request} />
 
-            <p className="mt-1 text-lg font-semibold text-slate-950 dark:text-white">
-              {request.tracking.internalTrackingId}
-            </p>
+          <AddItemRequest request={request} />
 
-            <p className="mt-2 text-xs text-slate-500">
-              Use this tracking ID to track your shipment on ShipIN.
-            </p>
-          </div>
-        ) : (
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Your shipment has not been dispatched yet.
-          </p>
-        )}
-      </section>
+          <AdditionalItemPaymentsCard
+            requestId={request.id}
+            additionalItemRequests={
+              request.additionalItemRequests || []
+            }
+          />
 
-      {/* ORIGINAL PRODUCTS */}
-      <ProductsCard request={request} />
-
-      {/* ADD ITEM REQUEST */}
-      <AddItemRequest request={request} />
-
-      {/* ADDITIONAL ITEM PAYMENTS */}
-      <AdditionalItemPaymentsCard
-        requestId={request.id}
-        additionalItemRequests={request.additionalItemRequests || []}
-      />
-
-      {/* MAIN QUOTE */}
-      <QuoteCard request={request} />
-
-      {/* QUOTE COUNTDOWN */}
-      {request.quote?.expiresAt &&
-        !paid &&
-        !quoteExpired &&
-        (request.status === "review" ||
-          request.status === "awaiting_payment") && (
-          <QuoteCountdown expiresAt={request.quote.expiresAt} />
-        )}
-
-      {/* MAIN PAYMENT ACTIONS */}
-      <RequestPaymentStatus
-        request={request}
-        onApproveQuote={handleApproveQuote}
-        approving={approving}
-      />
-
-      {/* INSPECTION PHOTOS */}
-      {inspectionUrls.length > 0 && (
-        <div
-          className="
-            rounded-2xl
-            border
-            border-slate-200
-            bg-white
-            p-6
-            shadow-sm
-            dark:border-slate-800
-            dark:bg-slate-900
-            dark:shadow-none
-          "
-        >
-          <h2 className="mb-5 text-xl font-semibold text-slate-950 dark:text-white">
-            Inspection Photos
-          </h2>
-
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-            {inspectionUrls.map((photo, index) => (
-              <img
-                key={photo}
-                src={photo}
-                alt="Inspection"
-                onClick={() => {
-                  setSelectedPhoto(index);
-                  setLightboxOpen(true);
-                }}
-                className="
-                  aspect-video
-                  cursor-zoom-in
-                  rounded-xl
-                  border
-                  border-slate-700
-                  object-cover
-                  transition
-                  hover:scale-[1.02]
-                "
+          {inspectionUrls.length > 0 && (
+            <section className="shipin-surface p-5 sm:p-6">
+              <h2 className="mb-4 text-base font-semibold text-slate-950 dark:text-white">
+                Inspection photos
+              </h2>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                {inspectionUrls.map((photo, index) => (
+                  <button
+                    key={photo}
+                    type="button"
+                    onClick={() => {
+                      setSelectedPhoto(index);
+                      setLightboxOpen(true);
+                    }}
+                    className="group overflow-hidden rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/50"
+                  >
+                    <img
+                      src={photo}
+                      alt={`Inspection ${index + 1}`}
+                      className="aspect-video w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                    />
+                  </button>
+                ))}
+              </div>
+              <Lightbox
+                open={lightboxOpen}
+                close={() => setLightboxOpen(false)}
+                slides={inspectionUrls.map((url) => ({ src: url }))}
+                index={selectedPhoto}
               />
-            ))}
-          </div>
+            </section>
+          )}
 
-          <Lightbox
-            open={lightboxOpen}
-            close={() => setLightboxOpen(false)}
-            slides={inspectionUrls.map((url) => ({
-              src: url,
-            }))}
-            index={selectedPhoto}
+          <SupportCenter
+            requestId={request.id}
+            customerId={request.userId}
+            canCreateTicket={canCreateSupportTicket(request)}
           />
         </div>
-      )}
 
-      {/* SUPPORT */}
-      <SupportCenter
-        requestId={request.id}
-        customerId={request.userId}
-        canCreateTicket={canCreateSupportTicket(request)}
-      />
+        {/* Sticky actions column */}
+        <aside className="space-y-4 lg:sticky lg:top-6">
+          {/* Note: Remember to add `compact?: boolean` to the Props interface in your QuoteCard.tsx! */}
+          <QuoteCard request={request} compact />
+          
+          {/* Countdown only while the quote is still valid */}
+          {request.quote?.expiresAt &&
+            !quoteExpired &&
+            (request.status === "review" ||
+              request.status === "awaiting_payment") &&
+            !request.payment && (
+              <QuoteCountdown expiresAt={request.quote.expiresAt} />
+            )}
+
+          <RequestPaymentStatus
+            request={request}
+            onApproveQuote={handleApproveQuote}
+            approving={approving}
+          />
+        </aside>
+      </div>
     </div>
   );
 }

@@ -278,3 +278,45 @@ div[style*="z-index"] > a[href*="spline.design"] {
 .shipin-marquee:hover {
   animation-play-state: paused; /* optional: pause on hover to read */
 }
+
+/* ========================================
+   REQUEST DETAIL SURFACES
+======================================== */
+
+.shipin-surface {
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+}
+
+.shipin-section-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.shipin-input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 0.75rem 1rem;
+  color: var(--foreground);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.shipin-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.shipin-input::placeholder {
+  color: #64748b;
+}
+
+.dark .shipin-input::placeholder {
+  color: #475569;
+}

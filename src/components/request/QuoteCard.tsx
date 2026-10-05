@@ -4,11 +4,10 @@ import type { Request } from "@/types/request";
 
 interface Props {
   request: Request;
+  compact?: boolean;
 }
 
-export default function QuoteCard({
-  request,
-}: Props) {
+export default function QuoteCard({ request, compact = false}: Props) {
   const quote = request.quote;
 
   if (!quote) return null;

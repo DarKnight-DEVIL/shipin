@@ -2,47 +2,51 @@
 
 import { useEffect, useState } from "react";
 import { Timestamp } from "firebase/firestore";
-import {
-  getRemainingTime,
-} from "@/lib/quoteExpiry";
+import { getRemainingTime, isQuoteExpired } from "@/lib/quoteExpiry";
 
 interface Props {
   expiresAt: Timestamp | Date | string;
 }
 
-export default function QuoteCountdown({
-  expiresAt,
-}: Props) {
-  const [time, setTime] =
-    useState(
-      getRemainingTime(expiresAt)
-    );
+export default function QuoteCountdown({ expiresAt }: Props) {
+  const [time, setTime] = useState(() => getRemainingTime(expiresAt));
 
   useEffect(() => {
-    const interval =
-      setInterval(() => {
-        setTime(
-          getRemainingTime(expiresAt)
-        );
-      }, 1000);
+    // Immediate recompute in case expiresAt changed
+    setTime(getRemainingTime(expiresAt));
 
-    return () =>
-      clearInterval(interval);
+    if (isQuoteExpired(expiresAt)) return;
+
+    const interval = setInterval(() => {
+      const next = getRemainingTime(expiresAt);
+      setTime(next);
+      if (next.expired) clearInterval(interval);
+    }, 1000);
+
+    return () => clearInterval(interval);
   }, [expiresAt]);
 
+  // Hide entirely when expired or no meaningful time left
+  if (time.expired || time.totalMs <= 0) {
+    return null;
+  }
+
+  const urgent = time.totalMs < 3600_000; // under 1 hour
+
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
-
-      <h3 className="mb-3 font-semibold text-slate-950 dark:text-white">
-        Quote Expires In
-      </h3>
-
-      <div className="text-4xl font-bold text-green-600 dark:text-green-400">
-        {String(time.hours).padStart(2, "0")}:
-        {String(time.minutes).padStart(2, "0")}:
-        {String(time.seconds).padStart(2, "0")}
+    <div className="shipin-surface px-5 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="shipin-section-label">Quote expires in</p>
+        <p
+          className={`font-mono text-xl font-semibold tracking-tight ${
+            urgent ? "text-amber-400" : "text-emerald-500"
+          }`}
+        >
+          {String(time.hours).padStart(2, "0")}:
+          {String(time.minutes).padStart(2, "0")}:
+          {String(time.seconds).padStart(2, "0")}
+        </p>
       </div>
-
     </div>
   );
 }
