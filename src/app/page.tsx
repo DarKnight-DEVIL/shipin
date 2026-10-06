@@ -18,6 +18,7 @@ import {
 import { auth } from "@/lib/firebase";
 import SplineHero from "@/components/landing/SplineHero";
 import Image from "next/image";
+import TimeAgo from "@/components/landing/TimeAgo";
 
 function timeAgo(isoDate: string): string {
   const then = new Date(isoDate).getTime();
@@ -434,8 +435,12 @@ export default function Home() {
                   <p className="text-sm font-medium text-white">{t.name}</p>
                   <p className="text-xs text-white/40">
                    {t.location}
-                   <span className="mx-1.5 text-white/20">·</span>
-                   {t.postedAt ? timeAgo(t.postedAt) : null}
+                   {t.postedAt && (
+                     <>
+                       <span className="mx-1.5 text-white/20">·</span>
+                       <TimeAgo date={t.postedAt} />
+                     </>
+                    )}
                   </p>
                 </div>
               </article>

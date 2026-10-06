@@ -5,6 +5,8 @@ import "./globals.css";
 import PayPalProvider from "@/components/PayPalProvider";
 import ThemeProvider from "@/components/ThemeProvider";
 import { Toaster } from "sonner";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -51,6 +53,9 @@ export default function RootLayout({
             className: "rounded-2xl",
           }}
         />
+
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

@@ -6,10 +6,18 @@ import dynamic from "next/dynamic";
 export const SHIPIN_SPLINE_SCENE =
   "https://prod.spline.design/YX2rEgWTG3n3kgnJ/scene.splinecode";
 
-const Spline = dynamic(() => import("@splinetool/react-spline"), {
-  ssr: false,
-  loading: () => <div className="absolute inset-0 bg-[#05050a]" />,
-});
+const Spline = dynamic(
+  () =>
+    import("@splinetool/react-spline").catch((err) => {
+      console.error("Failed to load Spline:", err);
+      // Return a dummy component so the page still works
+      return { default: () => null };
+    }),
+  {
+    ssr: false,
+    loading: () => <div className="absolute inset-0 bg-[#05050a]" />,
+  }
+);
 
 export default function SplineHero({
   scene = SHIPIN_SPLINE_SCENE,
