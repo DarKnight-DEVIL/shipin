@@ -1,0 +1,9 @@
+{
+  "files": [
+    "src/app/page.tsx",
+    "src/app/(platform)/dashboard/page.tsx",
+    "src/app/(platform)/requests/new/page.tsx",
+    "src/app/admin/dashboard/page.tsx"
+  ],
+  "devCommand": "npm run dev"
+}

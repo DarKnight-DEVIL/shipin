@@ -1,0 +1,79 @@
+{
+  "buildPath": "comp",
+  "hook": {
+    "enabled": true,
+    "limits": {
+      "maxFindings": 5,
+      "maxChars": 8000
+    }
+  },
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "src/app/page.tsx"
+        ],
+        "createdAt": "2026-10-11T07:04:11.342Z",
+        "reason": "DESIGN.md: hero headline gradient is the brand's primary purple accent expression"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "geist mono",
+        "createdAt": "2026-10-14T05:23:19.296Z",
+        "reason": "Intentional use per DESIGN.md typography section which mentions Geist Mono for tracking IDs and technical data"
+      },
+      {
+        "rule": "overused-font",
+        "value": "geist sans",
+        "createdAt": "2026-10-14T05:28:43.054Z",
+        "reason": "Intentional use per DESIGN.md typography section which specifies Geist Sans as the primary font family"
+      },
+      {
+        "rule": "overused-font",
+        "value": "geist mono",
+        "createdAt": "2026-10-14T05:30:53.587Z",
+        "reason": "Intentional use per DESIGN.md typography section which specifies Geist Mono for tracking IDs and technical data"
+      },
+      {
+        "rule": "nested-cards",
+        "value": "*",
+        "files": [
+          "public/landing.html"
+        ],
+        "createdAt": "2026-10-14T05:34:26.062Z",
+        "reason": "Product cards are standalone grid elements, not actually nested. Ops nodes contain status indicators but are not card-in-card nesting."
+      },
+      {
+        "rule": "pulsing-dot",
+        "value": "*",
+        "files": [
+          "public/landing.html"
+        ],
+        "createdAt": "2026-10-14T05:35:44.422Z",
+        "reason": "Ops__dot pulse animation indicates live/active nodes in logistics network - represents genuinely changing operational data"
+      },
+      {
+        "rule": "icon-tile-stack",
+        "value": "*",
+        "files": [
+          "public/landing.html"
+        ],
+        "createdAt": "2026-10-14T06:28:17.591Z",
+        "reason": "Intentional design pattern per ShipIN visual language, not AI artifact"
+      },
+      {
+        "rule": "marquee",
+        "value": "*",
+        "files": [
+          "public/landing.html"
+        ],
+        "createdAt": "2026-10-14T06:30:13.097Z",
+        "reason": "Core design feature: logistics ribbon animation representing continuous flow"
+      }
+    ]
+  }
+}
