@@ -55,6 +55,13 @@ export default function Home() {
         gsap.fromTo(".hero__subtitle", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out", delay: 1.2 });
         gsap.fromTo(".hero__ctas", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out", delay: 1.4 });
 
+        // Globe entrance — fade + rise + slight scale, arriving after the hero copy
+        gsap.fromTo(
+          ".hero__globe",
+          { opacity: 0, y: 40, scale: 0.92 },
+          { opacity: 1, y: 0, scale: 1, duration: 1.4, ease: "power3.out", delay: 1.1, clearProps: "transform" }
+        );
+
         gsap.utils.toArray<HTMLElement>(".section__label, .section__title, .section__desc").forEach((el) => {
           gsap.fromTo(el, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out", scrollTrigger: { trigger: el, start: "top 85%", once: true } });
         });
@@ -332,6 +339,8 @@ export default function Home() {
           display: flex;
           align-items: center;
           justify-content: center;
+          opacity: 0;
+          will-change: opacity, transform;
         }
 
         /* MARQUEE RIBBON */

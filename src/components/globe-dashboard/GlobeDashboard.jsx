@@ -95,6 +95,7 @@ export default function GlobeDashboard({
   const [hoveredIdx, setHoveredIdx] = useState(null);
   const [mounted, setMounted] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [revealed, setRevealed] = useState(false);    // ← add
   const reduceMotionRef = useRef(false);
 
   const theme = useMemo(() => getTheme(darkMode), [darkMode]);
@@ -201,13 +202,41 @@ export default function GlobeDashboard({
 
     const textureLoader = new THREE.TextureLoader();
 
+    // ── Entrance: reveal once the globe actually has pixels (handles late chunk loads) ──
+    let disposed = false;
+    let revealedOnce = false;
+    let revealFallback;
+    const reveal = () => {
+      if (disposed || revealedOnce) return;
+      revealedOnce = true;
+      if (revealFallback) clearTimeout(revealFallback);
+      setRevealed(true);
+    };
+
+    if (reduceMotionRef.current) {
+      // Respect reduced motion: show instantly, no transition.
+      revealedOnce = true;
+      setRevealed(true);
+    } else {
+      // Safety net if the texture never resolves (offline / decode failure).
+      revealFallback = setTimeout(reveal, 1200);
+    }
+
     if (earthSrc) {
-      textureLoader.load(earthSrc, (tex) => {
-        tex.colorSpace = THREE.SRGBColorSpace;
-        earthMat.color.setHex(0xffffff);
-        earthMat.map = tex;
-        earthMat.needsUpdate = true;
-      });
+      textureLoader.load(
+        earthSrc,
+        (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          earthMat.color.setHex(0xffffff);
+          earthMat.map = tex;
+          earthMat.needsUpdate = true;
+          reveal();
+        },
+        undefined,
+        () => reveal()
+      );
+    } else {
+      reveal();
     }
 
     if (cloudsSrc) {
@@ -248,6 +277,8 @@ export default function GlobeDashboard({
     window.addEventListener("resize", handleResize);
 
     return () => {
+      disposed = true;
+      if (revealFallback) clearTimeout(revealFallback);
       window.removeEventListener("resize", handleResize);
       cancelAnimationFrame(animId);
       renderer.dispose();
@@ -308,7 +339,25 @@ export default function GlobeDashboard({
   ) : null;
 
   return (
-    <div style={{ width: "100%", height: "100%", minHeight: 480, display: "flex", alignItems: "center", justifyContent: "center", gap: 24, background: bgColor, ...style }}>
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        minHeight: 480,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 24,
+        background: bgColor,
+        opacity: revealed ? 1 : 0,
+        transform: revealed ? "translateY(0) scale(1)" : "translateY(28px) scale(0.94)",
+        transition: reduceMotion
+          ? "none"
+          : "opacity 1.1s cubic-bezier(0.22, 1, 0.36, 1), transform 1.1s cubic-bezier(0.22, 1, 0.36, 1)",
+        willChange: "opacity, transform",
+        ...style,
+      }}
+    >
       {/* Globe Container */}
       <div ref={globeContainerRef} style={{ flex: 1, height: "100%", position: "relative", overflow: "hidden", background: "transparent", minHeight: 0, minWidth: 280 }}>
         <div ref={mountRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
