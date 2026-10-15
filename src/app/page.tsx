@@ -583,7 +583,6 @@ export default function Home() {
           </div>
           <div className="hero__globe">
             <GlobeDashboard
-              browserUrl=""
               darkMode={false}
               bgColor="transparent"
             />

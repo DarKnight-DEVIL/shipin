@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useEffect, useMemo } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import * as THREE from "three";
 
 import earthTextureUrl from "./earth-texture.webp";
@@ -82,19 +82,20 @@ function LocationsPanel({ theme, locations, hoveredIdx, onEnter, onLeave, accent
 
 export default function GlobeDashboard({
   locations = DEFAULT_LOCATIONS,
-  dotColor = "#ffffff", // Fixed: replaced rgba string to prevent Three.js color warning
+  dotColor = "#ffffff",
   accentColor = "#3B82F6",
   highlightColor = "#F59E0B",
   darkMode = true,
   rightPanelPadding = 18,
   style = {},
-  browserUrl = "",
   bgColor = "transparent",
 }) {
   const mountRef = useRef(null);
   const globeContainerRef = useRef(null);
   const [hoveredIdx, setHoveredIdx] = useState(null);
   const [mounted, setMounted] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const reduceMotionRef = useRef(false);
 
   const theme = useMemo(() => getTheme(darkMode), [darkMode]);
   const targetLngRef = useRef(30);
@@ -102,6 +103,38 @@ export default function GlobeDashboard({
   const isHoveringRef = useRef(false);
   const leaveTimerRef = useRef(null);
   const pinMeshesRef = useRef([]);
+
+  // Track system preference for reduced motion
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const handleChange = (e) => {
+      reduceMotionRef.current = e.matches;
+      setReduceMotion(e.matches);
+    };
+
+    reduceMotionRef.current = mq.matches;
+    setReduceMotion(mq.matches);
+
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', handleChange);
+    }
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        reduceMotionRef.current = mq.matches;
+        setReduceMotion(mq.matches);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      if (typeof mq.removeEventListener === 'function') {
+        mq.removeEventListener('change', handleChange);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -127,7 +160,7 @@ export default function GlobeDashboard({
     scene.add(globeGroup);
 
     const sphereGeo = new THREE.SphereGeometry(1, 24, 24);
-    
+
     const earthMat = new THREE.MeshBasicMaterial({ color: 0x2b4c7e });
     const earthMesh = new THREE.Mesh(sphereGeo, earthMat);
     globeGroup.add(earthMesh);
@@ -190,13 +223,15 @@ export default function GlobeDashboard({
     const animate = () => {
       animId = requestAnimationFrame(animate);
 
-      if (!isHoveringRef.current) {
-        targetLngRef.current += 0.03;
-      }
+      if (!reduceMotionRef.current) {
+        if (!isHoveringRef.current) {
+          targetLngRef.current += 0.03;
+        }
 
-      currentLngRef.current += (targetLngRef.current - currentLngRef.current) * 0.05;
-      globeGroup.rotation.y = THREE.MathUtils.degToRad(currentLngRef.current);
-      cloudsMesh.rotation.y += 0.0002;
+        currentLngRef.current += (targetLngRef.current - currentLngRef.current) * 0.05;
+        globeGroup.rotation.y = THREE.MathUtils.degToRad(currentLngRef.current);
+        cloudsMesh.rotation.y += 0.0002;
+      }
 
       renderer.render(scene, camera);
     };
@@ -253,11 +288,31 @@ export default function GlobeDashboard({
     return <div style={{ width: "100%", height: "100%", minHeight: 480, background: "transparent", ...style }} />;
   }
 
+  // Reduced motion notice
+  const reduceMotionNotice = reduceMotion ? (
+    <div style={{
+      position: 'absolute',
+      bottom: 10,
+      left: 10,
+      background: 'rgba(0,0,0,0.6)',
+      color: '#fff',
+      padding: '4px 8px',
+      borderRadius: 4,
+      fontSize: 10,
+      fontFamily: 'system-ui, sans-serif',
+      pointerEvents: 'none',
+      zIndex: 10
+    }}>
+      Globe motion paused (reduce motion enabled)
+    </div>
+  ) : null;
+
   return (
     <div style={{ width: "100%", height: "100%", minHeight: 480, display: "flex", alignItems: "center", justifyContent: "center", gap: 24, background: bgColor, ...style }}>
       {/* Globe Container */}
       <div ref={globeContainerRef} style={{ flex: 1, height: "100%", position: "relative", overflow: "hidden", background: "transparent", minHeight: 0, minWidth: 280 }}>
         <div ref={mountRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+        {reduceMotionNotice}
       </div>
 
       {/* Locations Panel */}
