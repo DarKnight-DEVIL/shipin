@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import dynamic from "next/dynamic";
+import type Lenis from "lenis";
+import "lenis/dist/lenis.css";
 
 const GlobeDashboard = dynamic(
   () => import("@/components/globe-dashboard/GlobeDashboard"),
@@ -16,20 +18,68 @@ export default function Home() {
   const [activeModalPlan, setActiveModalPlan] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lastFocusedRef = useRef<HTMLElement | null>(null);
+  const lenisRef = useRef<Lenis | null>(null);
+
   useEffect(() => {
     setIsMounted(true);
     return onAuthStateChanged(auth, (user) => setLoggedIn(!!user));
   }, []);
 
-  // Handle background scroll lock when modal is open
+  // Handle background scroll lock & Lenis stop/start without layout shift
   useEffect(() => {
+    const body = document.body;
     if (activeModalPlan) {
-      document.body.style.overflow = "hidden";
+      lenisRef.current?.stop();
+      const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+      body.style.overflow = "hidden";
+      if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
     } else {
-      document.body.style.overflow = "";
+      lenisRef.current?.start();
+      body.style.overflow = "";
+      body.style.paddingRight = "";
     }
     return () => {
-      document.body.style.overflow = "";
+      lenisRef.current?.start();
+      body.style.overflow = "";
+      body.style.paddingRight = "";
+    };
+  }, [activeModalPlan]);
+
+  // Modal dialog behaviour: initial focus, Escape, focus trap + restore
+  useEffect(() => {
+    if (!activeModalPlan) return;
+
+    lastFocusedRef.current = document.activeElement as HTMLElement | null;
+    const node = containerRef.current;
+    node?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveModalPlan(null);
+        return;
+      }
+      if (event.key !== "Tab" || !node) return;
+      const focusables = node.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      lastFocusedRef.current?.focus();
     };
   }, [activeModalPlan]);
 
@@ -37,62 +87,111 @@ export default function Home() {
     ? "/requests/new"
     : "/login?next=/requests/new";
 
-  // Client-side initialization for GSAP, interactive tilts, and modals
+  const handleTicketKeyDown = (plan: string) => (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+      event.preventDefault();
+      setActiveModalPlan(plan);
+    }
+  };
+
+  // Client-side initialization for GSAP, Lenis, interactive tilts, and modals
   useEffect(() => {
     if (!isMounted) return;
     let isCancelled = false;
 
-    // ─── GSAP ENTRANCES & SCROLL TRIGGERS ───
-    import("gsap").then((gsapMod) => {
-      import("gsap/ScrollTrigger").then((ScrollTriggerMod) => {
-        if (isCancelled) return;
-        const gsap = gsapMod.default;
-        const ScrollTrigger = ScrollTriggerMod.default;
-        gsap.registerPlugin(ScrollTrigger);
+    let revertAnimations: (() => void) | null = null;
+    let stopSmoothScroll: (() => void) | null = null;
 
-        gsap.fromTo("#header", { opacity: 0, y: -40 }, { opacity: 1, y: 0, duration: 0.8, ease: "power3.out", delay: 0.6 });
-        gsap.fromTo(".hero__title", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 1, ease: "power3.out", delay: 1 });
-        gsap.fromTo(".hero__subtitle", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out", delay: 1.2 });
-        gsap.fromTo(".hero__ctas", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out", delay: 1.4 });
+    import("gsap")
+      .then((gsapMod) =>
+        import("gsap/ScrollTrigger").then((ScrollTriggerMod) => {
+          if (isCancelled) return;
+          const gsap = gsapMod.default;
+          const ScrollTrigger = ScrollTriggerMod.default;
+          gsap.registerPlugin(ScrollTrigger);
 
-        // Globe entrance — fade + rise + slight scale, arriving after the hero copy
-        gsap.fromTo(
-          ".hero__globe",
-          { opacity: 0, y: 40, scale: 0.92 },
-          { opacity: 1, y: 0, scale: 1, duration: 1.4, ease: "power3.out", delay: 1.1, clearProps: "transform" }
-        );
+          const mm = gsap.matchMedia();
 
-        gsap.utils.toArray<HTMLElement>(".section__label, .section__title, .section__desc").forEach((el) => {
-          gsap.fromTo(el, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out", scrollTrigger: { trigger: el, start: "top 85%", once: true } });
-        });
+          mm.add("(prefers-reduced-motion: reduce)", () => {
+            gsap.set(
+              ["#header", ".hero__title", ".hero__subtitle", ".hero__ctas", ".hero__globe",
+               ".section__label", ".section__title", ".section__desc",
+               ".product-card", ".expand-section", ".ticket"],
+              { opacity: 1, clearProps: "transform" }
+            );
+          });
 
-        ScrollTrigger.batch(".product-card", {
-          onEnter: (elements) => {
-            gsap.fromTo(elements, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.6, stagger: 0.1, ease: "power3.out", clearProps: "transform" });
-          },
-          start: "top 85%",
-          once: true
-        });
+          mm.add("(prefers-reduced-motion: no-preference)", () => {
+            gsap.fromTo("#header", { opacity: 0, y: -40 }, { opacity: 1, y: 0, duration: 0.8, ease: "power3.out", delay: 0.6 });
+            gsap.fromTo(".hero__title", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 1, ease: "power3.out", delay: 1 });
+            gsap.fromTo(".hero__subtitle", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out", delay: 1.2 });
+            gsap.fromTo(".hero__ctas", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out", delay: 1.4 });
+            gsap.fromTo(
+              ".hero__globe",
+              { opacity: 0, y: 40, scale: 0.92 },
+              { opacity: 1, y: 0, scale: 1, duration: 1.4, ease: "power3.out", delay: 1.1, clearProps: "transform" }
+            );
 
-        ScrollTrigger.batch(".expand-section", {
-          onEnter: (elements) => {
-            gsap.fromTo(elements, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out", clearProps: "transform" });
-          },
-          start: "top 85%",
-          once: true
-        });
+            gsap.utils.toArray<HTMLElement>(".section__label, .section__title, .section__desc").forEach((el) => {
+              gsap.fromTo(el, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out", scrollTrigger: { trigger: el, start: "top 85%", once: true } });
+            });
 
-        ScrollTrigger.batch(".ticket", {
-          onEnter: (elements) => {
-            gsap.fromTo(elements, { opacity: 0, y: 50, rotateX: -5 }, { opacity: 1, y: 0, rotateX: 0, duration: 0.7, stagger: 0.12, ease: "power3.out", clearProps: "transform" });
-          },
-          start: "top 85%",
-          once: true
-        });
+            ScrollTrigger.batch(".product-card", {
+              onEnter: (elements) => {
+                gsap.fromTo(elements, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.6, stagger: 0.1, ease: "power3.out", clearProps: "transform" });
+              },
+              start: "top 85%",
+              once: true
+            });
+
+            ScrollTrigger.batch(".expand-section", {
+              onEnter: (elements) => {
+                gsap.fromTo(elements, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out", clearProps: "transform" });
+              },
+              start: "top 85%",
+              once: true
+            });
+
+            ScrollTrigger.batch(".ticket", {
+              onEnter: (elements) => {
+                gsap.fromTo(elements, { opacity: 0, y: 50, rotateX: -5 }, { opacity: 1, y: 0, rotateX: 0, duration: 0.7, stagger: 0.12, ease: "power3.out", clearProps: "transform" });
+              },
+              start: "top 85%",
+              once: true
+            });
+          });
+
+          import("lenis")
+            .then(({ default: Lenis }) => {
+              if (isCancelled) return;
+              const lenis = new Lenis({
+                duration: 1.1,
+                smoothWheel: true,
+                anchors: { offset: 112 },
+                stopInertiaOnNavigate: true,
+              });
+              lenisRef.current = lenis;
+
+              lenis.on("scroll", ScrollTrigger.update);
+              const onTick = (time: number) => lenis.raf(time * 1000);
+              gsap.ticker.add(onTick);
+              gsap.ticker.lagSmoothing(0);
+
+              stopSmoothScroll = () => {
+                gsap.ticker.remove(onTick);
+                lenis.destroy();
+                lenisRef.current = null;
+              };
+            })
+            .catch(() => {});
+
+          revertAnimations = () => mm.revert();
+        })
+      )
+      .catch(() => {
+        document.documentElement.classList.add("anim-failed");
       });
-    });
 
-    // ─── TICKET 3D HOVER EFFECT ───
     const tickets = document.querySelectorAll(".ticket[data-ticket]");
     const cleanupListeners: (() => void)[] = [];
 
@@ -124,7 +223,6 @@ export default function Home() {
       });
     });
 
-    // ─── ACCORDION EXPAND LOGIC ───
     const expandRows = document.querySelectorAll("[data-expand]");
     const expandCleanups: (() => void)[] = [];
     expandRows.forEach((rowEl) => {
@@ -139,7 +237,6 @@ export default function Home() {
       expandCleanups.push(() => btn?.removeEventListener("click", onClick));
     });
 
-    // ─── BARCODE GENERATOR ───
     const barcodePatterns = [
       [3, 1, 2, 1, 3, 1, 1, 2, 3, 1, 2, 1, 3, 1, 2, 3, 1, 1, 2, 1, 3, 2, 1, 1, 3, 1, 2, 3, 1, 2, 1, 1, 3, 2],
       [2, 1, 3, 2, 1, 1, 2, 3, 1, 2, 1, 3, 2, 1, 1, 3, 2, 1, 2, 3, 1, 1, 3, 2, 1, 2, 1, 3, 2, 1, 1, 3, 2, 1],
@@ -159,6 +256,8 @@ export default function Home() {
 
     return () => {
       isCancelled = true;
+      stopSmoothScroll?.();
+      revertAnimations?.();
       cleanupListeners.forEach((fn) => fn());
       expandCleanups.forEach((fn) => fn());
     };
@@ -173,7 +272,16 @@ export default function Home() {
   const activePlanDetails = activeModalPlan ? planDataMap[activeModalPlan] : null;
 
   return (
-    <main className="landing-page-root" style={{ opacity: isMounted ? 1 : 0, transition: "opacity 0.2s ease-in" }}>
+    <main className="landing-page-root">
+      <noscript>
+        <style>{`
+          .landing-page-root .header,
+          .landing-page-root .hero__title,
+          .landing-page-root .hero__subtitle,
+          .landing-page-root .hero__ctas,
+          .landing-page-root .hero__globe { opacity: 1 !important; transform: none !important; }
+        `}</style>
+      </noscript>
       <style jsx global>{`
         :root {
           --paper: #f7f9fe;
@@ -185,9 +293,9 @@ export default function Home() {
           --blue-light: #9cc4fb;
           --sky: #8ecae6;
           --blue-grad: linear-gradient(135deg, #9cc4fb 0%, #a855f7 100%);
-          --font-display: system-ui, sans-serif;
-          --font-body: system-ui, sans-serif;
-          --font-mono: monospace;
+          --font-display: 'Geist Sans', system-ui, sans-serif;
+          --font-body: 'Geist Sans', system-ui, sans-serif;
+          --font-mono: 'Geist Mono', monospace;
           --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
           --glass-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.1) 100%);
@@ -200,7 +308,7 @@ export default function Home() {
           --pressed-shadow: inset 1px 2px 5px rgba(16, 17, 23, 0.1), inset -1px -1px 3px rgba(255, 255, 255, 0.9);
         }
         .landing-page-root *, .landing-page-root *::before, .landing-page-root *::after { margin: 0; padding: 0; box-sizing: border-box; }
-        .landing-page-root html { -webkit-font-smoothing: antialiased; overscroll-behavior: contain; scroll-behavior: smooth; }
+        html { -webkit-font-smoothing: antialiased; overscroll-behavior: contain; }
         .landing-page-root {
           font-family: var(--font-body);
           color: var(--dark);
@@ -212,12 +320,18 @@ export default function Home() {
             radial-gradient(ellipse at 75% 75%, rgba(210, 150, 240, 0.22) 0%, transparent 48%),
             radial-gradient(ellipse at 20% 80%, rgba(100, 200, 235, 0.28) 0%, transparent 50%),
             radial-gradient(ellipse at 50% 50%, rgba(255, 205, 215, 0.10) 0%, transparent 60%);
+          background-attachment: fixed;
+          background-size: cover;
           min-height: 100vh;
         }
         .landing-page-root a { color: inherit; text-decoration: none; }
         .landing-page-root button { font-family: inherit; cursor: pointer; border: none; background: none; }
         .landing-page-root img, .landing-page-root svg { display: block; }
         .landing-page-root ul { list-style: none; }
+
+        .landing-page-root a:focus-visible,
+        .landing-page-root button:focus-visible,
+        .landing-page-root [role="button"]:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 
         /* FLOATING PILL HEADER WITH FROSTED BLUR */
         .landing-page-root .header {
@@ -228,11 +342,11 @@ export default function Home() {
           display: flex; align-items: center; justify-content: space-between;
           padding: 0.75rem 1.25rem 0.75rem 2rem;
           border-radius: 100px;
-          background: rgba(255, 255, 255, 0.75);
-          backdrop-filter: blur(24px) saturate(180%);
-          -webkit-backdrop-filter: blur(24px) saturate(180%);
-          border: 1px solid rgba(255, 255, 255, 0.8);
-          box-shadow: 0 10px 30px rgba(31, 38, 135, 0.1), inset 0 1px 0 rgba(255, 255, 255, 1);
+          background: var(--glass-bg);
+          backdrop-filter: blur(20px) saturate(120%);
+          -webkit-backdrop-filter: blur(20px) saturate(120%);
+          border: 1px solid var(--glass-border);
+          box-shadow: var(--glass-shadow-outer), var(--glass-shadow-inner);
           opacity: 0;
         }
         .landing-page-root .header__brand { display: flex; align-items: center; gap: 0.7rem; }
@@ -256,7 +370,7 @@ export default function Home() {
           border: 1px solid rgba(16, 17, 23, 0.05);
           border-radius: 100px;
           box-shadow: var(--pressed-shadow);
-          transition: all 0.3s var(--ease-out);
+          transition: box-shadow 0.3s var(--ease-out), background-color 0.3s var(--ease-out), color 0.3s var(--ease-out);
         }
         .landing-page-root .header__login:hover {
           box-shadow: inset 1px 2px 6px rgba(16, 17, 23, 0.15), inset -1px -1px 3px rgba(255,255,255,1);
@@ -303,7 +417,8 @@ export default function Home() {
           display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.9rem 2.2rem;
           background: var(--glass-bg); backdrop-filter: blur(12px);
           border: 1px solid var(--glass-border); border-radius: 12px;
-          font-weight: 600; font-size: 0.95rem; color: var(--dark); transition: all 0.3s ease;
+          font-weight: 600; font-size: 0.95rem; color: var(--dark);
+          transition: box-shadow 0.3s var(--ease-out), background-color 0.3s var(--ease-out), color 0.3s var(--ease-out), transform 0.3s var(--ease-out);
           box-shadow: var(--glass-shadow-outer), var(--glass-shadow-inner);
         }
         .landing-page-root .hero__cta-secondary:hover { transform: translateY(-2px); box-shadow: var(--glass-shadow-hover), var(--glass-shadow-inner); }
@@ -322,7 +437,6 @@ export default function Home() {
         .landing-page-root .hero__grid .hero__content { max-width: none; }
         .landing-page-root .hero__grid .hero__subtitle { max-width: 32rem; }
 
-        /* FULLY TRANSPARENT GLOBE WRAPPER */
         .landing-page-root .hero__globe {
           width: 100%;
           max-width: 820px;
@@ -360,7 +474,7 @@ export default function Home() {
         @keyframes scrollMarquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 
         .landing-page-root .section { padding: 4.5rem 2rem; max-width: 1200px; margin: 0 auto; scroll-margin-top: 112px; scroll-padding-top: 112px; }
-        .landing-page-root .section__label { font-family: var(--font-mono); font-size: 0.75rem; font-weight: 600; color: #6d28d9; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 0.8rem; }
+        .landing-page-root .section__label { font-family: var(--font-mono); font-size: 0.75rem; font-weight: 600; color: #a855f7; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 0.8rem; }
         .landing-page-root .section__title { font-family: var(--font-display); font-weight: 700; font-size: clamp(2.5rem, 5vw, 4rem); line-height: 1.05; letter-spacing: -0.01em; margin-bottom: 1rem; }
         .landing-page-root .section__desc { font-size: 1.05rem; color: rgba(31, 34, 51, 0.7); font-weight: 500; max-width: 560px; line-height: 1.7; margin-bottom: 3rem; }
 
@@ -393,12 +507,12 @@ export default function Home() {
           flex-shrink: 0;
         }
         .landing-page-root .product-card__icon svg { width: 22px; height: 22px; stroke: #fff; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-        .landing-page-root .product-card:nth-child(1) .product-card__icon { background: linear-gradient(135deg, #7c3aed, #9333ea); }
+        .landing-page-root .product-card:nth-child(1) .product-card__icon { background: linear-gradient(135deg, #7c3aed, #a855f7); }
         .landing-page-root .product-card:nth-child(2) .product-card__icon { background: linear-gradient(135deg, #0f2a4d, #1e4a8f); }
         .landing-page-root .product-card:nth-child(3) .product-card__icon { background: linear-gradient(135deg, #059669, #10b981); }
-        .landing-page-root .product-card:nth-child(4) .product-card__icon { background: linear-gradient(135deg, #9333ea, #6d28d9); }
+        .landing-page-root .product-card:nth-child(4) .product-card__icon { background: linear-gradient(135deg, #8b5cf6, #6366f1); }
         .landing-page-root .product-card:nth-child(5) .product-card__icon { background: linear-gradient(135deg, #0891b2, #22d3ee); }
-        .landing-page-root .product-card:nth-child(6) .product-card__icon { background: linear-gradient(135deg, #6d28d9, #a855f7); }
+        .landing-page-root .product-card:nth-child(6) .product-card__icon { background: linear-gradient(135deg, #7c3aed, #c084fc); }
 
         .landing-page-root .product-card__title { font-family: var(--font-display); font-weight: 600; font-size: 1.35rem; color: var(--dark); margin-bottom: 0.6rem; position: relative; z-index: 1; }
         .landing-page-root .product-card__desc { font-size: 0.9rem; font-weight: 500; color: rgba(31, 34, 51, 0.7); line-height: 1.6; position: relative; z-index: 1; flex-grow: 1; }
@@ -407,9 +521,9 @@ export default function Home() {
           font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
           text-transform: uppercase; letter-spacing: 0.08em; margin-top: 1.5rem; position: relative; z-index: 1;
           display: inline-block; align-self: flex-start; padding: 0.5rem 1rem;
-          color: #6d28d9;
-          background: rgba(147, 51, 234, 0.07);
-          border: 1px solid rgba(147, 51, 234, 0.18);
+          color: var(--blue);
+          background: rgba(168, 85, 247, 0.07);
+          border: 1px solid rgba(168, 85, 247, 0.18);
           border-radius: 8px;
           box-shadow: inset 1px 1px 2px rgba(255,255,255,0.6);
         }
@@ -429,15 +543,17 @@ export default function Home() {
         .landing-page-root .expand-row__chevron { width: 24px; height: 24px; transition: transform 0.4s var(--ease-out); flex-shrink: 0; margin-left: 1rem; }
         .landing-page-root .expand-row__chevron svg { width: 24px; height: 24px; stroke: var(--blue); fill: none; stroke-width: 2; }
         .landing-page-root .expand-row.is-open .expand-row__chevron { transform: rotate(180deg); }
-        .landing-page-root .expand-row__body { max-height: 0; overflow: hidden; transition: max-height 0.5s var(--ease-out); }
-        .landing-page-root .expand-row.is-open .expand-row__body { max-height: 300px; }
-        .landing-page-root .expand-row__answer { padding: 0 0 1.5rem; font-size: 0.95rem; font-weight: 500; color: rgba(31, 34, 51, 0.7); line-height: 1.7; max-width: 600px; }
+        
+        .landing-page-root .expand-row__body { display: grid; grid-template-rows: 0fr; overflow: hidden; transition: grid-template-rows 0.45s var(--ease-out); }
+        .landing-page-root .expand-row.is-open .expand-row__body { grid-template-rows: 1fr; }
+        .landing-page-root .expand-row__body > .expand-row__answer { min-height: 0; overflow: hidden; padding-bottom: 0; transition: padding-bottom 0.45s var(--ease-out); font-size: 0.95rem; font-weight: 500; color: rgba(31, 34, 51, 0.7); line-height: 1.7; max-width: 600px; }
+        .landing-page-root .expand-row.is-open .expand-row__body > .expand-row__answer { padding-bottom: 1.5rem; }
 
         .landing-page-root .tickets-section { padding: 4.5rem 2rem; max-width: 1200px; margin: 0 auto; }
         .landing-page-root .tickets-section__header { text-align: center; margin-bottom: 3rem; }
         .landing-page-root .tickets-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; cursor: pointer; }
         .landing-page-root .ticket:nth-child(3) { grid-column: 1 / -1; max-width: 580px; margin: 0 auto; width: 100%; }
-        .landing-page-root .ticket { position: relative; min-height: 300px; border-radius: 20px; padding: 1.8rem 1.9rem; background: radial-gradient(circle at 74% 24%, rgba(255,255,255,0.82) 0 3%, transparent 3.4%), radial-gradient(circle at 82% 29%, rgba(109,100,244,0.24) 0 5%, transparent 5.4%), radial-gradient(circle at 87% 17%, rgba(142,202,230,0.58) 0 3.5%, transparent 3.9%), linear-gradient(110deg, #e7effd 0%, #dceaff 45%, #eee9ff 100%); border: 1px solid rgba(255,255,255,0.76); overflow: hidden; transform-style: preserve-3d; perspective: 900px; transition: transform 0.45s var(--ease-out), box-shadow 0.45s var(--ease-out); box-shadow: 0 18px 40px rgba(31,38,135,0.12), inset 0 1px 0 rgba(255,255,255,0.8); }
+        .landing-page-root .ticket { position: relative; min-height: 300px; border-radius: 20px; padding: 1.8rem 1.9rem; background: radial-gradient(circle at 74% 24%, rgba(255,255,255,0.82) 0 3%, transparent 3.4%), radial-gradient(circle at 82% 29%, rgba(168,85,247,0.22) 0 5%, transparent 5.4%), radial-gradient(circle at 87% 17%, rgba(142,202,230,0.58) 0 3.5%, transparent 3.9%), linear-gradient(110deg, #e7effd 0%, #ece9ff 45%, #f3e8ff 100%); border: 1px solid rgba(255,255,255,0.76); overflow: hidden; transform-style: preserve-3d; perspective: 900px; transition: transform 0.45s var(--ease-out), box-shadow 0.45s var(--ease-out); box-shadow: 0 18px 40px rgba(31,38,135,0.12), inset 0 1px 0 rgba(255,255,255,0.8); }
         .landing-page-root .ticket::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 55% 60%, rgba(255,255,255,0.58), transparent 32%), linear-gradient(115deg, transparent 0 58%, rgba(255,255,255,0.28) 58.2% 68%, transparent 68.3%); pointer-events: none; }
         .landing-page-root .ticket::after { content: 'SHIPIN'; position: absolute; left: 43%; bottom: -2.4rem; color: rgba(255, 255, 255, 0.2); font-family: var(--font-display); font-size: 8.5rem; font-weight: 700; line-height: 1; letter-spacing: -0.04em; pointer-events: none; }
         .landing-page-root .ticket:hover { box-shadow: 0 24px 52px rgba(31,38,135,0.18), inset 0 1px 0 rgba(255,255,255,0.9); transform: translateY(-5px) rotateX(1deg); }
@@ -450,16 +566,16 @@ export default function Home() {
         .landing-page-root .ticket__content { position: relative; z-index: 3; display: grid; grid-template-columns: minmax(0, 1fr) 125px; align-items: stretch; gap: 1.3rem; min-height: 260px; }
         .landing-page-root .ticket__main { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; padding-right: 0.35rem; }
         .landing-page-root .ticket__topline { display: flex; align-items: center; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 1.25rem; color: rgba(31,34,51,0.7); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
-        .landing-page-root .ticket__access { padding: 0.42rem 0.72rem; color: #ffffff; background: linear-gradient(135deg, #5b21b6, #7c3aed); border-radius: 100px; letter-spacing: 0.05em; font-size: 0.6875rem; box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3), inset 1px 1px 1px rgba(255,255,255,0.25); }
-        .landing-page-root .ticket[data-plan="express"] .ticket__access { background: linear-gradient(135deg, #6d28d9, #7c3aed); }
-        .landing-page-root .ticket[data-plan="merchant"] .ticket__access { background: linear-gradient(135deg, #3b0764, #581c87); }
+        .landing-page-root .ticket__access { padding: 0.42rem 0.72rem; color: #ffffff; background: linear-gradient(135deg, #7c3aed, #a855f7); border-radius: 100px; letter-spacing: 0.05em; font-size: 0.6875rem; box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3), inset 1px 1px 1px rgba(255,255,255,0.25); }
+        .landing-page-root .ticket[data-plan="express"] .ticket__access { background: linear-gradient(135deg, #8b5cf6, #6366f1); }
+        .landing-page-root .ticket[data-plan="merchant"] .ticket__access { background: linear-gradient(135deg, #581c87, #7c3aed); }
         .landing-page-root .ticket__number { color: rgba(31,34,51,0.78); font-size: 0.6875rem; }
         .landing-page-root .ticket__number::after { content: ' ✦'; color: rgba(31,34,51,0.7); }
         .landing-page-root .ticket__title { max-width: 100%; font-family: var(--font-display); font-weight: 700; font-size: clamp(2.6rem, 4.2vw, 4.5rem); line-height: 0.84; letter-spacing: -0.035em; text-transform: uppercase; color: var(--dark); margin-bottom: 1.15rem; }
         .landing-page-root .ticket__subtitle { max-width: 100%; margin-top: auto; padding-top: 0.9rem; font-size: 0.82rem; color: rgba(31,34,51,0.85); font-weight: 600; line-height: 1.55; }
         .landing-page-root .ticket__side { display: flex; width: 125px; flex-direction: column; align-items: flex-start; justify-content: space-between; padding: 0.2rem 0 0.2rem 1.1rem; text-align: left; flex-shrink: 0; }
         .landing-page-root .ticket__side::before { content: 'ADMIT ONE'; color: rgba(31,34,51,0.7); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; }
-        .landing-page-root .ticket__price { display: block; max-width: 100%; padding-bottom: 0.12rem; font-family: var(--font-display); font-weight: 700; font-size: clamp(2.3rem, 4vw, 3.5rem); line-height: 1.05; background: var(--blue-grad); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; filter: drop-shadow(0 2px 4px rgba(109,100,244,0.1)); }
+        .landing-page-root .ticket__price { display: block; max-width: 100%; padding-bottom: 0.12rem; font-family: var(--font-display); font-weight: 700; font-size: clamp(2.3rem, 4vw, 3.5rem); line-height: 1.05; background: var(--blue-grad); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; filter: drop-shadow(0 2px 4px rgba(168,85,247,0.1)); }
         .landing-page-root .ticket__price-unit { display: block; max-width: 100%; margin-top: 0.35rem; font-size: 0.7rem; color: rgba(31,34,51,0.78); font-weight: 700; line-height: 1.3; letter-spacing: 0.08em; text-transform: uppercase; }
         .landing-page-root .ticket[data-plan="merchant"] .ticket__price { font-size: clamp(1.5rem, 2.5vw, 2.25rem); letter-spacing: -0.03em; }
         .landing-page-root .ticket__barcode { margin-top: auto; display: flex; align-items: flex-end; gap: 2px; justify-content: flex-start; }
@@ -469,9 +585,9 @@ export default function Home() {
         /* FIXED MODAL BACKDROP BLUR STYLING */
         .landing-page-root .modal-overlay { 
           position: fixed; inset: 0; z-index: 9999; padding: 1.5rem; 
-          background: rgba(15, 23, 42, 0.6); 
-          backdrop-filter: blur(16px); 
-          -webkit-backdrop-filter: blur(16px); 
+          background: rgba(15, 23, 42, 0.38); 
+          backdrop-filter: none; 
+          -webkit-backdrop-filter: none; 
           display: flex; align-items: center; justify-content: center; 
           opacity: 0; visibility: hidden; 
           transition: opacity 0.35s var(--ease-out), visibility 0.35s var(--ease-out); 
@@ -480,31 +596,43 @@ export default function Home() {
         
         .landing-page-root .modal-container { 
           position: relative; width: min(100%, 620px); max-height: min(760px, calc(100vh - 3rem)); overflow: hidden; 
-          background: linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(240, 245, 255, 0.90)); 
-          backdrop-filter: blur(24px); 
-          -webkit-backdrop-filter: blur(24px); 
-          border: 1px solid rgba(255, 255, 255, 0.95); 
+          background: linear-gradient(145deg, rgba(255,255,255,0.76) 0%, rgba(240,245,255,0.58) 100%); 
+          -webkit-backdrop-filter: blur(18px) saturate(160%); 
+          backdrop-filter: blur(18px) saturate(160%); 
+          border: 1px solid rgba(255, 255, 255, 0.85); 
           border-radius: 30px; padding: 2rem; 
-          box-shadow: 0 30px 90px rgba(15, 23, 42, 0.35), var(--glass-shadow-inner); 
+          box-shadow: 0 40px 100px rgba(15,23,42,0.40), 
+                    inset 1px 1px 0 rgba(255,255,255,0.80), 
+                    var(--glass-shadow-inner); 
           transform: translateY(24px) scale(0.96); 
           transition: transform 0.45s var(--ease-out); 
         }
         .landing-page-root .modal-overlay.is-active .modal-container { transform: translateY(0) scale(1); }
+
+        .landing-page-root .modal-close {
+          position: absolute; top: 1rem; right: 1rem; z-index: 2;
+          width: 36px; height: 36px; display: grid; place-items: center;
+          border-radius: 50%; color: var(--dark);
+          background: rgba(255,255,255,0.7); border: 1px solid rgba(255,255,255,0.85);
+          transition: background 0.2s ease, transform 0.2s var(--ease-out);
+        }
+        .landing-page-root .modal-close:hover { background: rgba(255,255,255,0.95); transform: rotate(90deg); }
+        .landing-page-root .modal-close svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; }
         
         .landing-page-root .modal-kicker { position: relative; z-index: 1; display: flex; align-items: center; gap: 0.65rem; margin-bottom: 1.5rem; color: rgba(31,34,51,0.7); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
         .landing-page-root .modal-kicker::before { content: ''; width: 28px; height: 1px; background: var(--blue); }
         .landing-page-root .modal-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 1.25rem; margin-bottom: 1.5rem; }
-        .landing-page-root .modal-badge { font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600; color: #fff; background: var(--blue-grad); padding: 0.42rem 0.8rem; border-radius: 100px; display: inline-flex; margin-bottom: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; box-shadow: 0 5px 14px rgba(109,100,244,0.24), inset 1px 1px 2px rgba(255,255,255,0.3); }
+        .landing-page-root .modal-badge { font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600; color: #fff; background: var(--blue-grad); padding: 0.42rem 0.8rem; border-radius: 100px; display: inline-flex; margin-bottom: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; box-shadow: 0 5px 14px rgba(168,85,247,0.24), inset 1px 1px 2px rgba(255,255,255,0.3); }
         .landing-page-root .modal-title { font-family: var(--font-display); font-weight: 700; font-size: clamp(2.2rem, 6vw, 3.3rem); line-height: 0.95; color: var(--dark); margin-bottom: 0.55rem; }
         .landing-page-root .modal-subtitle { max-width: 330px; font-size: 0.9rem; line-height: 1.55; font-weight: 500; color: rgba(31,34,51,0.78); }
         .landing-page-root .modal-price { flex-shrink: 0; text-align: right; padding-top: 0.4rem; }
         .landing-page-root .modal-price__value { font-family: var(--font-display); font-size: 2.35rem; font-weight: 700; line-height: 1; background: var(--blue-grad); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
         .landing-page-root .modal-price__unit { display: block; margin-top: 0.35rem; color: rgba(31,34,51,0.78); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-        .landing-page-root .modal-panel { position: relative; z-index: 1; padding: 1.15rem; background: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.8); border-radius: 18px; }
+        .landing-page-root .modal-panel { position: relative; z-index: 1; padding: 1.15rem; background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(255, 255, 255, 0.90); backdrop-filter: none; -webkit-backdrop-filter: none; border-radius: 18px; }
         .landing-page-root .modal-panel__label { margin-bottom: 0.8rem; color: rgba(31, 34, 51, 0.48); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
         .landing-page-root .modal-features { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.7rem; }
         .landing-page-root .modal-features li { display: flex; align-items: flex-start; gap: 0.7rem; color: rgba(31,34,51,0.9); font-size: 0.92rem; font-weight: 600; line-height: 1.45; }
-        .landing-page-root .modal-features li::before { content: '✓'; flex: 0 0 21px; width: 21px; height: 21px; display: grid; place-items: center; margin-top: 0.03rem; color: var(--blue); background: rgba(109,100,244,0.12); border-radius: 7px; font-size: 0.72rem; font-weight: 800; }
+        .landing-page-root .modal-features li::before { content: '✓'; flex: 0 0 21px; width: 21px; height: 21px; display: grid; place-items: center; margin-top: 0.03rem; color: var(--blue); background: rgba(168,85,247,0.12); border-radius: 7px; font-size: 0.72rem; font-weight: 800; }
         .landing-page-root .modal-footer { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.5rem; }
         .landing-page-root .modal-note { display: flex; align-items: center; gap: 0.45rem; color: rgba(31,34,51,0.78); font-size: 0.72rem; font-weight: 600; line-height: 1.35; }
         .landing-page-root .modal-note svg { flex: 0 0 16px; width: 16px; height: 16px; stroke: var(--blue); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -517,7 +645,7 @@ export default function Home() {
           white-space: nowrap; 
           transition: transform 0.25s var(--ease-out), box-shadow 0.25s ease, background 0.25s ease; 
         }
-        .landing-page-root .modal-action:hover { transform: translateY(-2px); background: #9333ea; box-shadow: 0 10px 22px rgba(109,100,244,0.28); }
+        .landing-page-root .modal-action:hover { transform: translateY(-2px); background: #7c3aed; box-shadow: 0 10px 22px rgba(168,85,247,0.28); }
 
         .landing-page-root .footer { background: rgba(255,255,255,0.4); backdrop-filter: blur(24px); border-top: 1px solid var(--glass-border); padding: 5rem 2rem 3rem; position: relative; overflow: hidden; }
         .landing-page-root .footer__big-word { font-family: var(--font-display); font-weight: 700; font-size: 19.5vw; line-height: 0.85; letter-spacing: -0.03em; color: var(--dark); text-transform: uppercase; user-select: none; opacity: 0.03; position: absolute; bottom: 0; right: 2rem; pointer-events: none; }
@@ -574,264 +702,309 @@ export default function Home() {
         </div>
       </header>
 
-      {/* HERO SECTION */}
-      <section className="hero" id="hero">
-        <div className="hero__grid">
-          <div className="hero__content">
-            <h1 className="hero__title">Ship Anything<br />From India</h1>
-            <p className="hero__subtitle">
-              The B2C SaaS platform that lets anyone in the world purchase Indian products
-              and have them delivered to their doorstep. Seamless, transparent, reliable.
-            </p>
-            <div className="hero__ctas">
-              <Link href={startHref} className="hero__cta-primary">
-                <span>Start Shipping &rarr;</span>
-              </Link>
-              <a href="#how-it-works" className="hero__cta-secondary">See How It Works</a>
+      <div className={`page-content ${activeModalPlan ? "is-blurred" : ""}`}>
+        {/* HERO SECTION */}
+        <section className="hero" id="hero">
+          <div className="hero__grid">
+            <div className="hero__content">
+              <h1 className="hero__title">Ship Anything<br />From India</h1>
+              <p className="hero__subtitle">
+                The B2C SaaS platform that lets anyone in the world purchase Indian products
+                and have them delivered to their doorstep. Seamless, transparent, reliable.
+              </p>
+              <div className="hero__ctas">
+                <Link href={startHref} className="hero__cta-primary">
+                  <span>Start Shipping &rarr;</span>
+                </Link>
+                <a href="#how-it-works" className="hero__cta-secondary">See How It Works</a>
+              </div>
+            </div>
+            <div className="hero__globe">
+              <GlobeDashboard
+                darkMode={false}
+                bgColor="transparent"
+              />
             </div>
           </div>
-          <div className="hero__globe">
-            <GlobeDashboard
-              darkMode={false}
-              bgColor="transparent"
-            />
-          </div>
-        </div>
-      </section>
+        </section>
 
-      {/* MARQUEE */}
-      <div className="marquee-band" id="marquee">
-        <div className="marquee-band__track">
-          <div className="marquee-band__group">
-            {["Purchase", "Warehouse", "Pack", "Consolidate", "Ship", "Track", "Deliver", "Support"].map((item, idx) => (
-              <div key={idx} className="marquee-band__item">
-                <span className="marquee-band__dot" />
-                <span className="marquee-band__text">{item}</span>
-              </div>
-            ))}
-            {["Purchase", "Warehouse", "Pack", "Consolidate", "Ship", "Track", "Deliver", "Support"].map((item, idx) => (
-              <div key={`dup-${idx}`} className="marquee-band__item">
-                <span className="marquee-band__dot" />
-                <span className="marquee-band__text">{item}</span>
-              </div>
-            ))}
+        {/* MARQUEE */}
+        <div className="marquee-band" id="marquee">
+          <div className="marquee-band__track">
+            <div className="marquee-band__group">
+              {["Purchase", "Warehouse", "Pack", "Consolidate", "Ship", "Track", "Deliver", "Support"].map((item, idx) => (
+                <div key={idx} className="marquee-band__item">
+                  <span className="marquee-band__dot" />
+                  <span className="marquee-band__text">{item}</span>
+                </div>
+              ))}
+              {["Purchase", "Warehouse", "Pack", "Consolidate", "Ship", "Track", "Deliver", "Support"].map((item, idx) => (
+                <div key={`dup-${idx}`} className="marquee-band__item">
+                  <span className="marquee-band__dot" />
+                  <span className="marquee-band__text">{item}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
+
+        {/* FEATURES */}
+        <section className="section" id="features">
+          <h2 className="section__title">Everything You Need,<br />Nothing You Don't</h2>
+          <p className="section__desc">From the moment you click "buy" in an Indian store to your doorstep halfway across the world, we handle every link in the chain.</p>
+          <div className="product-grid">
+            <div className="product-card">
+              <div className="product-card__icon"><svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div>
+              <h3 className="product-card__title">Purchase Anything</h3>
+              <p className="product-card__desc">From niche websites to major Indian stores - we buy it on your behalf and bring it to our warehouse.</p>
+              <span className="product-card__tag">Procurement</span>
+            </div>
+            <div className="product-card">
+              <div className="product-card__icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+              <h3 className="product-card__title">Ship Worldwide</h3>
+              <p className="product-card__desc">Reliable international delivery with clear tracking at every step to destinations worldwide.</p>
+              <span className="product-card__tag">Global Logistics</span>
+            </div>
+            <div className="product-card">
+              <div className="product-card__icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+              <h3 className="product-card__title">Secure &amp; Transparent</h3>
+              <p className="product-card__desc">Quotes, payments, and support in one place. No hidden surprises, ever.</p>
+              <span className="product-card__tag">Trust Layer</span>
+            </div>
+            <div className="product-card">
+              <div className="product-card__icon"><svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
+              <h3 className="product-card__title">End-to-End Handling</h3>
+              <p className="product-card__desc">Purchase, warehouse, pack, inspect, and ship - everything handled by the ShipIN team.</p>
+              <span className="product-card__tag">Full Stack</span>
+            </div>
+            <div className="product-card">
+              <div className="product-card__icon"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+              <h3 className="product-card__title">Live Tracking</h3>
+              <p className="product-card__desc">Real-time updates from pickup to delivery. Know exactly where your package is, always.</p>
+              <span className="product-card__tag">Visibility</span>
+            </div>
+            <div className="product-card">
+              <div className="product-card__icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+              <h3 className="product-card__title">24/7 Support</h3>
+              <p className="product-card__desc">Dedicated team available round the clock. Real people, real answers, zero bots.</p>
+              <span className="product-card__tag">Human</span>
+            </div>
+          </div>
+        </section>
+
+        {/* HOW IT WORKS */}
+        <section className="section" id="how-it-works">
+          <h2 className="section__title">Three Steps.<br />Zero Hassle.</h2>
+          <p className="section__desc">What looks like magic is just a clean system. Here's the flow.</p>
+          <div className="expand-section">
+            <h3 className="expand-section__title">How It Works</h3>
+            <div className="expand-row" data-expand>
+              <button className="expand-row__header">
+                <span className="expand-row__question">01 - Create a Request</span>
+                <span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
+              </button>
+              <div className="expand-row__body">
+                <p className="expand-row__answer">Paste the product link from any Indian e-commerce store. Tell us your quantity, preferred shipping method, and your delivery address. Our system ingests the request and starts the procurement pipeline automatically.</p>
+              </div>
+            </div>
+            <div className="expand-row" data-expand>
+              <button className="expand-row__header">
+                <span className="expand-row__question">02 - Approve the Quote</span>
+                <span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
+              </button>
+              <div className="expand-row__body">
+                <p className="expand-row__answer">We'll share a transparent quote covering product cost, domestic Indian transport, international shipping, and our service fee. Pay securely through our integrated payment system. No surprises, no hidden charges.</p>
+              </div>
+            </div>
+            <div className="expand-row" data-expand>
+              <button className="expand-row__header">
+                <span className="expand-row__question">03 - We Ship It to You</span>
+                <span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
+              </button>
+              <div className="expand-row__body">
+                <p className="expand-row__answer">Your item arrives at our Indian warehouse. We inspect, pack, and ship it internationally. Track every step in real-time. Estimated delivery: 7 to 14 business days depending on destination.</p>
+              </div>
+            </div>
+            <div className="expand-row" data-expand>
+              <button className="expand-row__header">
+                <span className="expand-row__question">04 - Consolidation (Optional)</span>
+                <span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
+              </button>
+              <div className="expand-row__body">
+                <p className="expand-row__answer">Have multiple purchases? We combine them into a single shipment, reducing your total shipping cost by up to 40%. Simply select "consolidate" in your dashboard.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* PRICING TICKETS */}
+        <section className="tickets-section" id="pricing">
+          <div className="tickets-section__header">
+            <h2 className="section__title">Choose Your Pass</h2>
+            <p className="section__desc" style={{ margin: "0 auto 0" }}>Pay per order. No monthly commitments.</p>
+          </div>
+          <div className="tickets-grid">
+            <div
+              className="ticket"
+              data-ticket
+              data-plan="explorer"
+              role="button"
+              tabIndex={0}
+              aria-haspopup="dialog"
+              onClick={() => setActiveModalPlan("explorer")}
+              onKeyDown={handleTicketKeyDown("explorer")}
+            >
+              <div className="ticket__sheen" /><div className="ticket__perforation" /><div className="ticket__notch-left" /><div className="ticket__notch-right" /><div className="ticket__tear-line" />
+              <div className="ticket__content">
+                <div className="ticket__main">
+                  <div className="ticket__topline"><span className="ticket__access">EARLY ACCESS</span><span className="ticket__number">NO. 001</span></div>
+                  <h3 className="ticket__title">Explorer Pass</h3>
+                  <p className="ticket__subtitle">For standard, simple orders. A reliable way to purchase and ship from India.</p>
+                </div>
+                <div className="ticket__side">
+                  <div><div className="ticket__price">$0</div><span className="ticket__price-unit">per order</span></div>
+                  <div><div className="ticket__barcode" /><div className="ticket__code">EX-2026</div></div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="ticket"
+              data-ticket
+              data-plan="express"
+              role="button"
+              tabIndex={0}
+              aria-haspopup="dialog"
+              onClick={() => setActiveModalPlan("express")}
+              onKeyDown={handleTicketKeyDown("express")}
+            >
+              <div className="ticket__sheen" /><div className="ticket__perforation" /><div className="ticket__notch-left" /><div className="ticket__notch-right" /><div className="ticket__tear-line" />
+              <div className="ticket__content">
+                <div className="ticket__main">
+                  <div className="ticket__topline"><span className="ticket__access">PRIORITY ACCESS</span><span className="ticket__number">NO. 002</span></div>
+                  <h3 className="ticket__title">Express Pass</h3>
+                  <p className="ticket__subtitle">For multi-store consolidation &amp; speed. Put your order at the front of the queue.</p>
+                </div>
+                <div className="ticket__side">
+                  <div><div className="ticket__price">$9</div><span className="ticket__price-unit">per order</span></div>
+                  <div><div className="ticket__barcode" /><div className="ticket__code">EX-2026</div></div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="ticket"
+              data-ticket
+              data-plan="merchant"
+              role="button"
+              tabIndex={0}
+              aria-haspopup="dialog"
+              onClick={() => setActiveModalPlan("merchant")}
+              onKeyDown={handleTicketKeyDown("merchant")}
+            >
+              <div className="ticket__sheen" /><div className="ticket__perforation" /><div className="ticket__notch-left" /><div className="ticket__notch-right" /><div className="ticket__tear-line" />
+              <div className="ticket__content">
+                <div className="ticket__main">
+                  <div className="ticket__topline"><span className="ticket__access">BULK ACCESS</span><span className="ticket__number">NO. 003</span></div>
+                  <h3 className="ticket__title">Merchant Pass</h3>
+                  <p className="ticket__subtitle">For resellers and massive hauls. Unlock a tailored procurement workflow.</p>
+                </div>
+                <div className="ticket__side">
+                  <div><div className="ticket__price">Custom</div><span className="ticket__price-unit">tailored quote</span></div>
+                  <div><div className="ticket__barcode" /><div className="ticket__code">ME-2026</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* FAQ */}
+        <section className="section" id="faq">
+          <div className="section__label">FAQ</div>
+          <h2 className="section__title">Common Questions,<br />Clear Answers</h2>
+          <p className="section__desc">Everything you need to know before making your first shipment.</p>
+          <div className="expand-section">
+            <div className="expand-row" data-expand>
+              <button className="expand-row__header"><span className="expand-row__question">What products can I purchase?</span><span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span></button>
+              <div className="expand-row__body"><p className="expand-row__answer">Almost anything available from Indian e-commerce platforms - electronics, fashion, home goods, artisan crafts, spices, books, automotive parts, and more. We support Amazon India, Flipkart, Meesho, and dozens of other Indian marketplaces.</p></div>
+            </div>
+            <div className="expand-row" data-expand>
+              <button className="expand-row__header"><span className="expand-row__question">How long does shipping take?</span><span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span></button>
+              <div className="expand-row__body"><p className="expand-row__answer">Standard international shipping takes 7 to 14 business days depending on your destination. Express options are available for select routes. All shipments include real-time tracking.</p></div>
+            </div>
+            <div className="expand-row" data-expand>
+              <button className="expand-row__header"><span className="expand-row__question">Is my payment secure?</span><span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span></button>
+              <div className="expand-row__body"><p className="expand-row__answer">Absolutely. We use bank-grade encryption and PCI-compliant payment processing. Payments are held in escrow until your order is confirmed.</p></div>
+            </div>
+            <div className="expand-row" data-expand>
+              <button className="expand-row__header" onClick={() => {}}><span className="expand-row__question">What if my package is damaged?</span><span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span></button>
+              <div className="expand-row__body"><p className="expand-row__answer">We inspect every package before shipping. In the rare event of damage, we offer full replacement or refund - no questions asked. Our insurance covers the full value of your order.</p></div>
+            </div>
+          </div>
+        </section>
+
+        {/* FOOTER */}
+        <footer className="footer">
+          <div className="footer__big-word">SHIPIN</div>
+          <div className="footer__inner">
+            <div className="footer__top">
+              <div className="footer__brand-block">
+                <h3>ShipIN</h3>
+                <p>The B2C SaaS platform connecting global shoppers with the best of India. Professional. Innovative. Trustworthy.</p>
+              </div>
+              <div className="footer__col">
+                <h4>Product</h4>
+                <ul>
+                  <li><a href="#features">Features</a></li>
+                  <li><a href="#pricing">Pricing</a></li>
+                </ul>
+              </div>
+              <div className="footer__col">
+                <h4>Company</h4>
+                <ul>
+                  <li><a href="#about">About</a></li>
+                </ul>
+              </div>
+              <div className="footer__col">
+                <h4>Support</h4>
+                <ul>
+                  <li><a href="#faq">Help Center</a></li>
+                </ul>
+              </div>
+            </div>
+            <div className="footer__bottom">
+              <p className="footer__copy">&copy; 2026 ShipIN Technologies Pvt. Ltd. All rights reserved.</p>
+              <p className="footer__disclaimer">ShipIN operates as a procurement and shipping intermediary. Product availability, pricing, and delivery times are subject to change.</p>
+            </div>
+          </div>
+        </footer>
       </div>
-
-      {/* FEATURES */}
-      <section className="section" id="features">
-        <h2 className="section__title">Everything You Need,<br />Nothing You Don't</h2>
-        <p className="section__desc">From the moment you click "buy" in an Indian store to your doorstep halfway across the world, we handle every link in the chain.</p>
-        <div className="product-grid">
-          <div className="product-card">
-            <div className="product-card__icon"><svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div>
-            <h3 className="product-card__title">Purchase Anything</h3>
-            <p className="product-card__desc">From niche websites to major Indian stores - we buy it on your behalf and bring it to our warehouse.</p>
-            <span className="product-card__tag">Procurement</span>
-          </div>
-          <div className="product-card">
-            <div className="product-card__icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
-            <h3 className="product-card__title">Ship Worldwide</h3>
-            <p className="product-card__desc">Reliable international delivery with clear tracking at every step to destinations worldwide.</p>
-            <span className="product-card__tag">Global Logistics</span>
-          </div>
-          <div className="product-card">
-            <div className="product-card__icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
-            <h3 className="product-card__title">Secure &amp; Transparent</h3>
-            <p className="product-card__desc">Quotes, payments, and support in one place. No hidden surprises, ever.</p>
-            <span className="product-card__tag">Trust Layer</span>
-          </div>
-          <div className="product-card">
-            <div className="product-card__icon"><svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
-            <h3 className="product-card__title">End-to-End Handling</h3>
-            <p className="product-card__desc">Purchase, warehouse, pack, inspect, and ship - everything handled by the ShipIN team.</p>
-            <span className="product-card__tag">Full Stack</span>
-          </div>
-          <div className="product-card">
-            <div className="product-card__icon"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-            <h3 className="product-card__title">Live Tracking</h3>
-            <p className="product-card__desc">Real-time updates from pickup to delivery. Know exactly where your package is, always.</p>
-            <span className="product-card__tag">Visibility</span>
-          </div>
-          <div className="product-card">
-            <div className="product-card__icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-            <h3 className="product-card__title">24/7 Support</h3>
-            <p className="product-card__desc">Dedicated team available round the clock. Real people, real answers, zero bots.</p>
-            <span className="product-card__tag">Human</span>
-          </div>
-        </div>
-      </section>
-
-      {/* HOW IT WORKS */}
-      <section className="section" id="how-it-works">
-        <h2 className="section__title">Three Steps.<br />Zero Hassle.</h2>
-        <p className="section__desc">What looks like magic is just a clean system. Here's the flow.</p>
-        <div className="expand-section">
-          <h3 className="expand-section__title">How It Works</h3>
-          <div className="expand-row" data-expand>
-            <button className="expand-row__header">
-              <span className="expand-row__question">01 - Create a Request</span>
-              <span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
-            </button>
-            <div className="expand-row__body">
-              <p className="expand-row__answer">Paste the product link from any Indian e-commerce store. Tell us your quantity, preferred shipping method, and your delivery address. Our system ingests the request and starts the procurement pipeline automatically.</p>
-            </div>
-          </div>
-          <div className="expand-row" data-expand>
-            <button className="expand-row__header">
-              <span className="expand-row__question">02 - Approve the Quote</span>
-              <span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
-            </button>
-            <div className="expand-row__body">
-              <p className="expand-row__answer">We'll share a transparent quote covering product cost, domestic Indian transport, international shipping, and our service fee. Pay securely through our integrated payment system. No surprises, no hidden charges.</p>
-            </div>
-          </div>
-          <div className="expand-row" data-expand>
-            <button className="expand-row__header">
-              <span className="expand-row__question">03 - We Ship It to You</span>
-              <span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
-            </button>
-            <div className="expand-row__body">
-              <p className="expand-row__answer">Your item arrives at our Indian warehouse. We inspect, pack, and ship it internationally. Track every step in real-time. Estimated delivery: 7 to 14 business days depending on destination.</p>
-            </div>
-          </div>
-          <div className="expand-row" data-expand>
-            <button className="expand-row__header">
-              <span className="expand-row__question">04 - Consolidation (Optional)</span>
-              <span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
-            </button>
-            <div className="expand-row__body">
-              <p className="expand-row__answer">Have multiple purchases? We combine them into a single shipment, reducing your total shipping cost by up to 40%. Simply select "consolidate" in your dashboard.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* PRICING TICKETS */}
-      <section className="tickets-section" id="pricing">
-        <div className="tickets-section__header">
-          <h2 className="section__title">Choose Your Pass</h2>
-          <p className="section__desc" style={{ margin: "0 auto 0" }}>Pay per order. No monthly commitments.</p>
-        </div>
-        <div className="tickets-grid">
-          <div className="ticket" data-ticket data-plan="explorer" onClick={() => setActiveModalPlan("explorer")}>
-            <div className="ticket__sheen" /><div className="ticket__perforation" /><div className="ticket__notch-left" /><div className="ticket__notch-right" /><div className="ticket__tear-line" />
-            <div className="ticket__content">
-              <div className="ticket__main">
-                <div className="ticket__topline"><span className="ticket__access">EARLY ACCESS</span><span className="ticket__number">NO. 001</span></div>
-                <h3 className="ticket__title">Explorer Pass</h3>
-                <p className="ticket__subtitle">For standard, simple orders. A reliable way to purchase and ship from India.</p>
-              </div>
-              <div className="ticket__side">
-                <div><div className="ticket__price">$0</div><span className="ticket__price-unit">per order</span></div>
-                <div><div className="ticket__barcode" /><div className="ticket__code">EX-2026</div></div>
-              </div>
-            </div>
-          </div>
-
-          <div className="ticket" data-ticket data-plan="express" onClick={() => setActiveModalPlan("express")}>
-            <div className="ticket__sheen" /><div className="ticket__perforation" /><div className="ticket__notch-left" /><div className="ticket__notch-right" /><div className="ticket__tear-line" />
-            <div className="ticket__content">
-              <div className="ticket__main">
-                <div className="ticket__topline"><span className="ticket__access">PRIORITY ACCESS</span><span className="ticket__number">NO. 002</span></div>
-                <h3 className="ticket__title">Express Pass</h3>
-                <p className="ticket__subtitle">For multi-store consolidation &amp; speed. Put your order at the front of the queue.</p>
-              </div>
-              <div className="ticket__side">
-                <div><div className="ticket__price">$9</div><span className="ticket__price-unit">per order</span></div>
-                <div><div className="ticket__barcode" /><div className="ticket__code">EX-2026</div></div>
-              </div>
-            </div>
-          </div>
-
-          <div className="ticket" data-ticket data-plan="merchant" onClick={() => setActiveModalPlan("merchant")}>
-            <div className="ticket__sheen" /><div className="ticket__perforation" /><div className="ticket__notch-left" /><div className="ticket__notch-right" /><div className="ticket__tear-line" />
-            <div className="ticket__content">
-              <div className="ticket__main">
-                <div className="ticket__topline"><span className="ticket__access">BULK ACCESS</span><span className="ticket__number">NO. 003</span></div>
-                <h3 className="ticket__title">Merchant Pass</h3>
-                <p className="ticket__subtitle">For resellers and massive hauls. Unlock a tailored procurement workflow.</p>
-              </div>
-              <div className="ticket__side">
-                <div><div className="ticket__price">Custom</div><span className="ticket__price-unit">tailored quote</span></div>
-                <div><div className="ticket__barcode" /><div className="ticket__code">ME-2026</div></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section className="section" id="faq">
-        <div className="section__label">FAQ</div>
-        <h2 className="section__title">Common Questions,<br />Clear Answers</h2>
-        <p className="section__desc">Everything you need to know before making your first shipment.</p>
-        <div className="expand-section">
-          <div className="expand-row" data-expand>
-            <button className="expand-row__header"><span className="expand-row__question">What products can I purchase?</span><span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span></button>
-            <div className="expand-row__body"><p className="expand-row__answer">Almost anything available from Indian e-commerce platforms - electronics, fashion, home goods, artisan crafts, spices, books, automotive parts, and more. We support Amazon India, Flipkart, Meesho, and dozens of other Indian marketplaces.</p></div>
-          </div>
-          <div className="expand-row" data-expand>
-            <button className="expand-row__header"><span className="expand-row__question">How long does shipping take?</span><span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span></button>
-            <div className="expand-row__body"><p className="expand-row__answer">Standard international shipping takes 7 to 14 business days depending on your destination. Express options are available for select routes. All shipments include real-time tracking.</p></div>
-          </div>
-          <div className="expand-row" data-expand>
-            <button className="expand-row__header"><span className="expand-row__question">Is my payment secure?</span><span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span></button>
-            <div className="expand-row__body"><p className="expand-row__answer">Absolutely. We use bank-grade encryption and PCI-compliant payment processing. Payments are held in escrow until your order is confirmed.</p></div>
-          </div>
-          <div className="expand-row" data-expand>
-            <button className="expand-row__header" onClick={() => {}}><span className="expand-row__question">What if my package is damaged?</span><span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span></button>
-            <div className="expand-row__body"><p className="expand-row__answer">We inspect every package before shipping. In the rare event of damage, we offer full replacement or refund - no questions asked. Our insurance covers the full value of your order.</p></div>
-          </div>
-        </div>
-      </section>
-
-      {/* FOOTER */}
-      <footer className="footer">
-        <div className="footer__big-word">SHIPIN</div>
-        <div className="footer__inner">
-          <div className="footer__top">
-            <div className="footer__brand-block">
-              <h3>ShipIN</h3>
-              <p>The B2C SaaS platform connecting global shoppers with the best of India. Professional. Innovative. Trustworthy.</p>
-            </div>
-            <div className="footer__col">
-              <h4>Product</h4>
-              <ul>
-                <li><a href="#features">Features</a></li>
-                <li><a href="#pricing">Pricing</a></li>
-              </ul>
-            </div>
-            <div className="footer__col">
-              <h4>Company</h4>
-              <ul>
-                <li><a href="#about">About</a></li>
-              </ul>
-            </div>
-            <div className="footer__col">
-              <h4>Support</h4>
-              <ul>
-                <li><a href="#faq">Help Center</a></li>
-              </ul>
-            </div>
-          </div>
-          <div className="footer__bottom">
-            <p className="footer__copy">&copy; 2026 ShipIN Technologies Pvt. Ltd. All rights reserved.</p>
-            <p className="footer__disclaimer">ShipIN operates as a procurement and shipping intermediary. Product availability, pricing, and delivery times are subject to change.</p>
-          </div>
-        </div>
-      </footer>
 
       {/* PRICING MODAL OVERLAY */}
       <div className={`modal-overlay ${activeModalPlan ? "is-active" : ""}`} onClick={() => setActiveModalPlan(null)}>
         {activePlanDetails && (
-          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-container"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pass-modal-title"
+            tabIndex={-1}
+            ref={containerRef}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="modal-close"
+              aria-label="Close pass details"
+              onClick={() => setActiveModalPlan(null)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
             <div className="modal-kicker">Pass details</div>
             <div className="modal-header">
               <div>
                 <span className="modal-badge">{activePlanDetails.badge}</span>
-                <h3 className="modal-title">{activePlanDetails.title}</h3>
+                <h3 className="modal-title" id="pass-modal-title">{activePlanDetails.title}</h3>
                 <p className="modal-subtitle">{activePlanDetails.subtitle}</p>
               </div>
               <div className="modal-price">
@@ -852,7 +1025,18 @@ export default function Home() {
                 <svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v5c0 4.7-3.4 7.7-8 8.5-4.6-.8-8-3.8-8-8.5v-5L12 3z"/><path d="M9 12l2 2 4-4"/></svg>
                 <span>Transparent pricing.<br />No monthly commitment.</span>
               </div>
-              <button className="modal-action" onClick={() => { setActiveModalPlan(null); document.getElementById("hero")?.scrollIntoView({ behavior: "smooth" }); }}>
+              <button
+                className="modal-action"
+                onClick={() => {
+                  setActiveModalPlan(null);
+                  const lenis = lenisRef.current;
+                  if (lenis) {
+                    lenis.scrollTo("#hero");
+                  } else {
+                    document.getElementById("hero")?.scrollIntoView({ behavior: "smooth" });
+                  }
+                }}
+              >
                 Choose this pass <svg viewBox="0 0 24 24"><path d="M5 12h13"/><path d="M13 6l6 6-6 6"/></svg>
               </button>
             </div>
