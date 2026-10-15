@@ -17,65 +17,123 @@ const DEFAULT_LOCATIONS = [
 
 function getTheme(dark) {
   return {
-    panelBg: dark ? "rgba(20, 28, 48, 0.55)" : "rgba(255, 255, 255, 0.72)",
-    panelBorder: dark ? "rgba(255, 255, 255, 0.08)" : "rgba(255, 255, 255, 0.55)",
-    textPrimary: dark ? "rgba(255,255,255,0.92)" : "#111827",
-    textMuted: dark ? "rgba(255,255,255,0.38)" : "#9CA3AF",
-    textSub: dark ? "rgba(255,255,255,0.55)" : "#374151",
-    divider: dark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)",
-    hoverBg: dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
+    // ── Enhanced Glassmorphism Palette ─────────────────────────────
+    panelBg: dark
+      ? "linear-gradient(135deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.30) 100%)"
+      : "linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.20) 100%)",
+    panelBorder: dark ? "rgba(255, 255, 255, 0.18)" : "rgba(255, 255, 255, 0.8)",
+    panelSheen: dark
+      ? "linear-gradient(120deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.02) 50%, rgba(255, 255, 255, 0) 100%)"
+      : "linear-gradient(120deg, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0) 100%)",
     panelShadow: dark
-      ? "0 2px 8px rgba(0,0,0,0.4), 0 16px 40px rgba(0,0,0,0.35)"
-      : "0 1px 1px rgba(0,0,0,0.02), 0 4px 16px rgba(0,0,0,0.06), 0 16px 40px rgba(0,0,0,0.07)",
+      ? "0 10px 30px 0 rgba(0, 0, 0, 0.4), inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 0 rgba(0, 0, 0, 0.4)"
+      : "0 10px 30px 0 rgba(31, 38, 135, 0.12), inset 0 1px 0 0 rgba(255, 255, 255, 0.9), inset 0 -1px 0 0 rgba(255, 255, 255, 0.4)",
+
+    // ── Rows ──────────────────────────────────────────────────────
+    rowHoverBg: dark ? "rgba(255, 255, 255, 0.08)" : "rgba(255, 255, 255, 0.45)",
+    rowHoverShadow: dark
+      ? "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)"
+      : "0 4px 12px rgba(31, 38, 135, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)",
+
+    textPrimary: dark ? "rgba(255, 255, 255, 0.95)" : "#0F172A",
+    textMuted: dark ? "rgba(255, 255, 255, 0.45)" : "#64748B",
+    textSub: dark ? "rgba(255, 255, 255, 0.7)" : "#334155",
   };
 }
 
 function LocationsPanel({ theme, locations, hoveredIdx, onEnter, onLeave, accentColor, highlightColor, rightPanelPadding }) {
   return (
     <div style={{
-      background: theme.panelBg,
-      backdropFilter: "blur(28px) saturate(160%)",
-      WebkitBackdropFilter: "blur(28px) saturate(160%)",
-      borderRadius: 18,
-      border: `1px solid ${theme.panelBorder}`,
-      boxShadow: theme.panelShadow,
+      position: "relative",
+      zIndex: 2,
       width: 220,
       flexShrink: 0,
-      padding: "20px 0 16px",
-      overflowY: "auto",
+      display: "flex",
+      flexDirection: "column",
       maxHeight: "100%",
+      borderRadius: 24,
+      overflow: "hidden",
+      marginLeft: -34, // overlaps globe edge to frost rotating textures
+
+      /* ── DEEP GLASSMORPHISM CORE ── */
+      background: theme.panelBg,
+      backdropFilter: "blur(24px) saturate(200%)",
+      WebkitBackdropFilter: "blur(24px) saturate(200%)",
+      border: `1px solid ${theme.panelBorder}`,
+      boxShadow: theme.panelShadow,
     }}>
-      <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: theme.textMuted, padding: `0 ${rightPanelPadding}px`, marginBottom: 12 }}>
+      {/* Specular light sheen overlay */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute", inset: 0, zIndex: 0,
+          pointerEvents: "none",
+          background: theme.panelSheen,
+        }}
+      />
+
+      <div style={{
+        position: "relative", zIndex: 1,
+        fontSize: 10, fontWeight: 700,
+        letterSpacing: "0.14em", textTransform: "uppercase",
+        color: theme.textMuted,
+        padding: `20px ${rightPanelPadding}px 10px`,
+      }}>
         Locations
       </div>
-      {locations.map((loc, i) => {
-        const active = hoveredIdx === i;
-        return (
-          <div
-            key={i}
-            onMouseEnter={() => onEnter(loc, i)}
-            onMouseLeave={onLeave}
-            style={{
-              padding: `9px ${rightPanelPadding}px`,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              cursor: "default",
-              background: active ? theme.hoverBg : "transparent",
-              transition: "background 0.15s ease",
-              borderBottom: i < locations.length - 1 ? `1px solid ${theme.divider}` : "none",
-            }}
-          >
-            <div style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, background: active ? highlightColor : accentColor, transition: "background 0.2s ease" }} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: active ? theme.textPrimary : theme.textSub, letterSpacing: "-0.01em", lineHeight: 1.2, transition: "color 0.15s ease" }}>
-                {loc.title}
+
+      <div
+        data-lenis-prevent
+        style={{
+          position: "relative", zIndex: 1,
+          flex: 1, minHeight: 0,
+          overflowY: "auto",
+          overscrollBehavior: "contain",
+          padding: "0 10px 16px",
+        }}
+      >
+        {locations.map((loc, i) => {
+          const active = hoveredIdx === i;
+          return (
+            <div
+              key={i}
+              onMouseEnter={() => onEnter(loc, i)}
+              onMouseLeave={onLeave}
+              style={{
+                padding: `10px ${Math.max(rightPanelPadding, 10)}px`,
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                cursor: "default",
+                borderRadius: 14,
+                background: active ? theme.rowHoverBg : "transparent",
+                boxShadow: active ? theme.rowHoverShadow : "none",
+                transform: active ? "translateX(3px)" : "none",
+                transition: "background 0.2s ease, box-shadow 0.25s ease, transform 0.25s cubic-bezier(0.22,1,0.36,1)",
+              }}
+            >
+              <div style={{
+                width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+                background: active ? highlightColor : accentColor,
+                boxShadow: active ? `0 0 8px ${highlightColor}` : "none",
+                transform: active ? "scale(1.4)" : "none",
+                transition: "background 0.2s ease, transform 0.25s cubic-bezier(0.22,1,0.36,1), box-shadow 0.25s ease",
+              }} />
+              <div>
+                <div style={{
+                  fontSize: 13, fontWeight: 600,
+                  color: active ? theme.textPrimary : theme.textSub,
+                  letterSpacing: "-0.01em", lineHeight: 1.2,
+                  transition: "color 0.15s ease",
+                }}>
+                  {loc.title}
+                </div>
+                <div style={{ fontSize: 10.5, color: theme.textMuted, marginTop: 2 }}>{loc.subtitle}</div>
               </div>
-              <div style={{ fontSize: 10.5, color: theme.textMuted, marginTop: 1 }}>{loc.subtitle}</div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -86,7 +144,7 @@ export default function GlobeDashboard({
   accentColor = "#3B82F6",
   highlightColor = "#F59E0B",
   darkMode = true,
-  rightPanelPadding = 18,
+  rightPanelPadding = 16,
   style = {},
   bgColor = "transparent",
 }) {
@@ -95,7 +153,7 @@ export default function GlobeDashboard({
   const [hoveredIdx, setHoveredIdx] = useState(null);
   const [mounted, setMounted] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
-  const [revealed, setRevealed] = useState(false);    // ← add
+  const [revealed, setRevealed] = useState(false);
   const reduceMotionRef = useRef(false);
 
   const theme = useMemo(() => getTheme(darkMode), [darkMode]);
@@ -105,7 +163,6 @@ export default function GlobeDashboard({
   const leaveTimerRef = useRef(null);
   const pinMeshesRef = useRef([]);
 
-  // Track system preference for reduced motion
   useEffect(() => {
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
     const handleChange = (e) => {
@@ -146,7 +203,6 @@ export default function GlobeDashboard({
     const width = container.clientWidth || 340;
     const height = container.clientHeight || 480;
 
-    // 1. Scene setup
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
     camera.position.set(0, 0, 3.2);
@@ -156,17 +212,14 @@ export default function GlobeDashboard({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(renderer.domElement);
 
-    // 2. Globe Group
     const globeGroup = new THREE.Group();
     scene.add(globeGroup);
 
     const sphereGeo = new THREE.SphereGeometry(1, 24, 24);
-
     const earthMat = new THREE.MeshBasicMaterial({ color: 0x2b4c7e });
     const earthMesh = new THREE.Mesh(sphereGeo, earthMat);
     globeGroup.add(earthMesh);
 
-    // Clouds Mesh
     const cloudsMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
@@ -177,7 +230,6 @@ export default function GlobeDashboard({
     const cloudsMesh = new THREE.Mesh(new THREE.SphereGeometry(1.008, 64, 64), cloudsMat);
     globeGroup.add(cloudsMesh);
 
-    // 3. Add Location Pins
     pinMeshesRef.current = [];
     const pinGeo = new THREE.SphereGeometry(0.022, 16, 16);
     const pinMatDefault = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -196,13 +248,10 @@ export default function GlobeDashboard({
       pinMeshesRef.current.push(pinMesh);
     });
 
-    // Load Textures safely
     const earthSrc = typeof earthTextureUrl === "string" ? earthTextureUrl : earthTextureUrl?.src;
     const cloudsSrc = typeof cloudsTextureUrl === "string" ? cloudsTextureUrl : cloudsTextureUrl?.src;
-
     const textureLoader = new THREE.TextureLoader();
 
-    // ── Entrance: reveal once the globe actually has pixels (handles late chunk loads) ──
     let disposed = false;
     let revealedOnce = false;
     let revealFallback;
@@ -214,11 +263,9 @@ export default function GlobeDashboard({
     };
 
     if (reduceMotionRef.current) {
-      // Respect reduced motion: show instantly, no transition.
       revealedOnce = true;
       setRevealed(true);
     } else {
-      // Safety net if the texture never resolves (offline / decode failure).
       revealFallback = setTimeout(reveal, 1200);
     }
 
@@ -247,7 +294,6 @@ export default function GlobeDashboard({
       });
     }
 
-    // 4. Animation loop & rotation
     let animId;
     const animate = () => {
       animId = requestAnimationFrame(animate);
@@ -288,7 +334,6 @@ export default function GlobeDashboard({
     };
   }, [mounted, locations]);
 
-  // Update pin colors when hover changes
   useEffect(() => {
     pinMeshesRef.current.forEach((pin, i) => {
       if (pin && pin.material) {
@@ -319,20 +364,12 @@ export default function GlobeDashboard({
     return <div style={{ width: "100%", height: "100%", minHeight: 480, background: "transparent", ...style }} />;
   }
 
-  // Reduced motion notice
   const reduceMotionNotice = reduceMotion ? (
     <div style={{
-      position: 'absolute',
-      bottom: 10,
-      left: 10,
-      background: 'rgba(0,0,0,0.6)',
-      color: '#fff',
-      padding: '4px 8px',
-      borderRadius: 4,
-      fontSize: 10,
-      fontFamily: 'system-ui, sans-serif',
-      pointerEvents: 'none',
-      zIndex: 10
+      position: 'absolute', bottom: 10, left: 10,
+      background: 'rgba(0,0,0,0.6)', color: '#fff',
+      padding: '4px 8px', borderRadius: 4, fontSize: 10,
+      fontFamily: 'system-ui, sans-serif', pointerEvents: 'none', zIndex: 10
     }}>
       Globe motion paused (reduce motion enabled)
     </div>
@@ -347,7 +384,7 @@ export default function GlobeDashboard({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        gap: 24,
+        gap: 16,
         background: bgColor,
         opacity: revealed ? 1 : 0,
         transform: revealed ? "translateY(0) scale(1)" : "translateY(28px) scale(0.94)",
@@ -358,13 +395,11 @@ export default function GlobeDashboard({
         ...style,
       }}
     >
-      {/* Globe Container */}
       <div ref={globeContainerRef} style={{ flex: 1, height: "100%", position: "relative", overflow: "hidden", background: "transparent", minHeight: 0, minWidth: 280 }}>
         <div ref={mountRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
         {reduceMotionNotice}
       </div>
 
-      {/* Locations Panel */}
       <LocationsPanel
         theme={theme}
         locations={locations}

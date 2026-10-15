@@ -27,23 +27,19 @@ export default function Home() {
     return onAuthStateChanged(auth, (user) => setLoggedIn(!!user));
   }, []);
 
-  // Handle background scroll lock & Lenis stop/start without layout shift
+  // Handle background scroll lock & Lenis stop/start without layout shift (using scrollbar-gutter: stable)
   useEffect(() => {
     const body = document.body;
     if (activeModalPlan) {
       lenisRef.current?.stop();
-      const scrollbar = window.innerWidth - document.documentElement.clientWidth;
       body.style.overflow = "hidden";
-      if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
     } else {
       lenisRef.current?.start();
       body.style.overflow = "";
-      body.style.paddingRight = "";
     }
     return () => {
       lenisRef.current?.start();
       body.style.overflow = "";
-      body.style.paddingRight = "";
     };
   }, [activeModalPlan]);
 
@@ -115,8 +111,8 @@ export default function Home() {
           mm.add("(prefers-reduced-motion: reduce)", () => {
             gsap.set(
               ["#header", ".hero__title", ".hero__subtitle", ".hero__ctas", ".hero__globe",
-               ".section__label", ".section__title", ".section__desc",
-               ".product-card", ".expand-section", ".ticket"],
+                ".section__label", ".section__title", ".section__desc",
+                ".product-card", ".expand-section", ".ticket"],
               { opacity: 1, clearProps: "transform" }
             );
           });
@@ -301,14 +297,14 @@ export default function Home() {
           --glass-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.1) 100%);
           --glass-border: rgba(255, 255, 255, 0.4);
           --glass-shadow-outer: 0 12px 32px rgba(31, 38, 135, 0.05), 0 2px 8px rgba(31, 38, 135, 0.03);
-          --glass-shadow-inner: inset 1.5px 1.5px 2px rgba(255, 255, 255, 0.95), inset -1.5px -1.5px 3px rgba(16, 17, 23, 0.04);
+          --glass-shadow-inner: inset 1.5px 1.5px 2px rgba(255, 255, 255, 0.95), inset -1.5px -1.5px 3px rgba(10, 17, 23, 0.04);
           --glass-shadow-hover: 0 16px 40px rgba(31, 38, 135, 0.08), 0 4px 12px rgba(31, 38, 135, 0.04);
 
           --pressed-bg: rgba(16, 17, 23, 0.02);
           --pressed-shadow: inset 1px 2px 5px rgba(16, 17, 23, 0.1), inset -1px -1px 3px rgba(255, 255, 255, 0.9);
         }
         .landing-page-root *, .landing-page-root *::before, .landing-page-root *::after { margin: 0; padding: 0; box-sizing: border-box; }
-        html { -webkit-font-smoothing: antialiased; overscroll-behavior: contain; }
+        html { -webkit-font-smoothing: antialiased; overscroll-behavior: contain; scrollbar-gutter: stable; }
         .landing-page-root {
           font-family: var(--font-body);
           color: var(--dark);
@@ -333,7 +329,7 @@ export default function Home() {
         .landing-page-root button:focus-visible,
         .landing-page-root [role="button"]:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 
-        /* FLOATING PILL HEADER WITH FROSTED BLUR */
+        /* FLOATING PILL HEADER — frosted glass: strong fill, strong blur */
         .landing-page-root .header {
           position: fixed; top: 1.5rem; left: 0; right: 0; margin: 0 auto;
           transform: translateY(-20px);
@@ -342,13 +338,30 @@ export default function Home() {
           display: flex; align-items: center; justify-content: space-between;
           padding: 0.75rem 1.25rem 0.75rem 2rem;
           border-radius: 100px;
-          background: var(--glass-bg);
-          backdrop-filter: blur(20px) saturate(120%);
-          -webkit-backdrop-filter: blur(20px) saturate(120%);
-          border: 1px solid var(--glass-border);
-          box-shadow: var(--glass-shadow-outer), var(--glass-shadow-inner);
+
+          background: linear-gradient(135deg, rgba(255,255,255,0.88) 0%, rgba(255,255,255,0.76) 100%);
+
+          -webkit-backdrop-filter: blur(28px) saturate(180%);
+          backdrop-filter: blur(28px) saturate(180%);
+
+          border: 1px solid rgba(255, 255, 255, 0.85);
+          box-shadow:
+            0 12px 34px rgba(31, 38, 135, 0.12),
+            inset 0 1px 0 rgba(255, 255, 255, 1),
+            inset 0 -1px 0 rgba(255, 255, 255, 0.4);
           opacity: 0;
         }
+
+        @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+          .landing-page-root .header {
+            background: linear-gradient(135deg, rgba(255,255,255,0.80) 0%, rgba(255,255,255,0.66) 100%);
+          }
+        }
+
+        @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+          .landing-page-root .header { background: rgba(255, 255, 255, 0.95); }
+        }
+
         .landing-page-root .header__brand { display: flex; align-items: center; gap: 0.7rem; }
         .landing-page-root .header__logo {
           width: 32px; height: 32px; background: transparent;
@@ -582,32 +595,61 @@ export default function Home() {
         .landing-page-root .ticket__barcode-line { height: 28px; background: var(--dark); opacity: 0.6; border-radius: 1px; }
         .landing-page-root .ticket__code { margin-top: 0.35rem; color: rgba(31,34,51,0.54); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; }
 
-        /* FIXED MODAL BACKDROP BLUR STYLING */
-        .landing-page-root .modal-overlay { 
-          position: fixed; inset: 0; z-index: 9999; padding: 1.5rem; 
-          background: rgba(15, 23, 42, 0.38); 
-          backdrop-filter: none; 
-          -webkit-backdrop-filter: none; 
-          display: flex; align-items: center; justify-content: center; 
-          opacity: 0; visibility: hidden; 
-          transition: opacity 0.35s var(--ease-out), visibility 0.35s var(--ease-out); 
+        /* FIXED MODAL BACKDROP — the scrim never fades IN. */
+        .landing-page-root .modal-overlay {
+          position: fixed; inset: 0; z-index: 9999; padding: 1.5rem;
+          display: flex; align-items: center; justify-content: center;
+          background: transparent;
+          visibility: hidden;
+          transition: visibility 0s linear 0.25s;
         }
-        .landing-page-root .modal-overlay.is-active { opacity: 1; visibility: visible; }
-        
-        .landing-page-root .modal-container { 
-          position: relative; width: min(100%, 620px); max-height: min(760px, calc(100vh - 3rem)); overflow: hidden; 
-          background: linear-gradient(145deg, rgba(255,255,255,0.76) 0%, rgba(240,245,255,0.58) 100%); 
-          -webkit-backdrop-filter: blur(18px) saturate(160%); 
-          backdrop-filter: blur(18px) saturate(160%); 
-          border: 1px solid rgba(255, 255, 255, 0.85); 
-          border-radius: 30px; padding: 2rem; 
-          box-shadow: 0 40px 100px rgba(15,23,42,0.40), 
-                    inset 1px 1px 0 rgba(255,255,255,0.80), 
-                    var(--glass-shadow-inner); 
-          transform: translateY(24px) scale(0.96); 
-          transition: transform 0.45s var(--ease-out); 
+        .landing-page-root .modal-overlay.is-active {
+          visibility: visible;
+          transition: visibility 0s;
         }
-        .landing-page-root .modal-overlay.is-active .modal-container { transform: translateY(0) scale(1); }
+
+        .landing-page-root .modal-overlay::before {
+          content: "";
+          position: absolute; inset: 0;
+          background: rgba(15, 23, 42, 0.38);
+          opacity: 0;
+          transition: opacity 0.25s var(--ease-out);
+        }
+        .landing-page-root .modal-overlay.is-active::before {
+          opacity: 1;
+          transition: none;
+        }
+
+        /* The card carries the animation now that the overlay doesn't fade. */
+        .landing-page-root .modal-container {
+          position: relative; width: min(100%, 620px); max-height: min(760px, calc(100vh - 3rem)); overflow: hidden;
+          background: linear-gradient(145deg, rgba(255,255,255,0.76) 0%, rgba(240,245,255,0.58) 100%);
+          -webkit-backdrop-filter: blur(18px) saturate(160%);
+          backdrop-filter: blur(18px) saturate(160%);
+          border: 1px solid rgba(255, 255, 255, 0.85);
+          border-radius: 30px; padding: 2rem;
+          box-shadow: 0 40px 100px rgba(15,23,42,0.40),
+                    inset 1px 1px 0 rgba(255,255,255,0.80),
+                    var(--glass-shadow-inner);
+          opacity: 0;
+          transform: translateY(24px) scale(0.96);
+          transition: transform 0.45s var(--ease-out), opacity 0.25s var(--ease-out);
+        }
+        .landing-page-root .modal-overlay.is-active .modal-container {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+
+        /* STOP ANIMATING THE PAGE BLUR */
+        .landing-page-root .page-content {
+          transition: filter 0.25s var(--ease-out), transform 0.25s var(--ease-out);
+        }
+        .landing-page-root .page-content.is-blurred {
+          filter: blur(9px) saturate(115%);
+          transform: scale(1.02);
+          pointer-events: none;
+          transition: none;
+        }
 
         .landing-page-root .modal-close {
           position: absolute; top: 1rem; right: 1rem; z-index: 2;
