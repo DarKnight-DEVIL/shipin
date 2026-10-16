@@ -7,6 +7,33 @@ import { ALL_LOCATIONS, INDIA_HUB } from "@/config/shippingDestinations";
 import earthTextureUrl from "./earth-texture.webp";
 import cloudsTextureUrl from "./clouds-texture.webp";
 
+// The globe's on-screen size is fixed by the camera, so its bounds can be
+// derived rather than guessed. With a radius of 1, this vertical FOV and the
+// camera at this distance, the globe spans exactly this fraction of the
+// container's height — the side column is sized from it so its top and bottom
+// edges line up with the globe's.
+const GLOBE_RADIUS = 1;
+const GLOBE_FOV = 45;
+const GLOBE_CAMERA_Z = 3.2;
+const GLOBE_PROJECTED_DIAMETER =
+  (GLOBE_RADIUS * 2) / (2 * Math.tan((GLOBE_FOV * Math.PI) / 360) * GLOBE_CAMERA_Z);
+
+// Optional optical nudge for the toggle + panel column. 0 keeps the column
+// exactly centred on the globe, which is where the alignment comes from.
+const SIDE_COLUMN_OFFSET = 0;
+
+// The list always shows exactly this many rows, so the panel never grows,
+// shrinks or scrolls as the search changes. Short result sets are padded with
+// the remaining destinations, drawn muted so it stays clear which ones matched.
+const LOCATION_ROW_COUNT = 5;
+const LOCATION_ROW_HEIGHT = 54;
+const LOCATION_LIST_PADDING_BOTTOM = 16;
+
+// The globe's animation is opt-in: it holds still for every visitor until they
+// press the button, regardless of the OS reduced-motion setting. Flip this to
+// true to have it animate for everyone instead (the button then stops it).
+const ANIMATION_STARTS_ON = false;
+
 function latLngToVector3(lat, lng, radius = 1) {
   const phi = (90 - lat) * (Math.PI / 180);
   const theta = (lng + 180) * (Math.PI / 180);
@@ -38,6 +65,81 @@ function getTheme(dark) {
   };
 }
 
+/**
+ * Opt-in control for the globe's animation.
+ *
+ * The OS reduced-motion setting is deliberately not consulted: every visitor
+ * gets the same starting state and the same button, so the behaviour never
+ * depends on a system preference that can change underneath us.
+ */
+function MotionToggle({ theme, accentColor, motionEnabled, onToggleMotion }) {
+  const active = motionEnabled;
+  const label = active ? "Animation on" : "Load the animation";
+  const hint = active
+    ? "The globe is animating. Turn this off to hold it still."
+    : "Start the globe's animation.";
+
+  return (
+    <button
+      type="button"
+      className="motion-toggle"
+      onClick={onToggleMotion}
+      aria-pressed={active}
+      title={hint}
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        width: "100%",
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        padding: "10px 14px",
+        borderRadius: 999,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        fontSize: 12,
+        fontWeight: 600,
+        letterSpacing: "0.01em",
+        color: active ? "#FFFFFF" : theme.textPrimary,
+        background: active ? accentColor : theme.rowHoverBg,
+        border: `1px solid ${active ? "rgba(255, 255, 255, 0.35)" : theme.panelBorder}`,
+        backdropFilter: "blur(14px) saturate(180%)",
+        WebkitBackdropFilter: "blur(14px) saturate(180%)",
+        boxShadow: active
+          ? "0 6px 18px rgba(15, 23, 42, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.45)"
+          : "inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 4px 14px rgba(31, 38, 135, 0.10)",
+        transition: "background 0.25s ease, box-shadow 0.25s ease, color 0.25s ease, border-color 0.25s ease",
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: theme.panelSheen,
+          opacity: active ? 0.5 : 1,
+          pointerEvents: "none",
+        }}
+      />
+      <span
+        aria-hidden="true"
+        style={{
+          position: "relative",
+          width: 6,
+          height: 6,
+          borderRadius: "50%",
+          flexShrink: 0,
+          background: active ? "#FFFFFF" : accentColor,
+          boxShadow: `0 0 8px ${active ? "#FFFFFF" : accentColor}`,
+        }}
+      />
+      <span style={{ position: "relative" }}>{label}</span>
+    </button>
+  );
+}
+
 function LocationsPanel({ theme, locations, selectedLocation, onSelect, accentColor, highlightColor, rightPanelPadding, onSearchChange, searchValue }) {
   return (
     <div 
@@ -45,14 +147,15 @@ function LocationsPanel({ theme, locations, selectedLocation, onSelect, accentCo
       style={{
         position: "relative",
         zIndex: 2,
-        width: 220,
-        flexShrink: 0,
+        // Hugs its five rows instead of stretching, so the locked list really
+        // does fix the panel's size.
+        flex: "0 1 auto",
+        minHeight: 0,
         display: "flex",
         flexDirection: "column",
         maxHeight: "100%",
         borderRadius: 24,
         overflow: "hidden",
-        marginLeft: -34,
         background: theme.panelBg,
         backdropFilter: "blur(24px) saturate(200%)",
         WebkitBackdropFilter: "blur(24px) saturate(200%)",
@@ -97,16 +200,20 @@ function LocationsPanel({ theme, locations, selectedLocation, onSelect, accentCo
         style={{ 
           position: "relative", 
           zIndex: 1, 
-          flex: 1, 
+          // Exactly five rows tall, so the list never grows, shrinks or scrolls.
+          // It can still shrink and scroll if a short viewport squeezes the panel.
+          flex: "0 1 auto",
+          height: LOCATION_ROW_HEIGHT * LOCATION_ROW_COUNT + LOCATION_LIST_PADDING_BOTTOM,
+          boxSizing: "border-box",
           minHeight: 0, 
           overflowY: "auto", 
           overscrollBehavior: "contain", 
-          padding: "0 10px 16px",
+          padding: `0 10px ${LOCATION_LIST_PADDING_BOTTOM}px`,
           scrollbarWidth: "none",
           msOverflowStyle: "none"
         }}
       >
-        {locations.map((loc) => {
+        {locations.map(({ location: loc, muted }) => {
           const selected = selectedLocation && selectedLocation.title === loc.title;
           const isSuspended = loc.status === "suspended";
           const dotBg = selected 
@@ -119,6 +226,10 @@ function LocationsPanel({ theme, locations, selectedLocation, onSelect, accentCo
               onClick={() => onSelect(loc)}
               style={{
                 padding: `10px ${Math.max(rightPanelPadding, 10)}px`,
+                height: LOCATION_ROW_HEIGHT,
+                boxSizing: "border-box",
+                overflow: "hidden",
+                opacity: muted && !selected ? 0.55 : 1,
                 display: "flex",
                 alignItems: "center",
                 gap: 12,
@@ -137,11 +248,11 @@ function LocationsPanel({ theme, locations, selectedLocation, onSelect, accentCo
                 transform: selected ? "scale(1.4)" : "none",
                 transition: "background 0.2s ease, transform 0.25s cubic-bezier(0.22,1,0.36,1), box-shadow 0.25s ease",
               }} />
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: selected ? theme.textPrimary : theme.textSub, letterSpacing: "-0.01em", lineHeight: 1.2 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: selected ? theme.textPrimary : theme.textSub, letterSpacing: "-0.01em", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {loc.title}
                 </div>
-                <div style={{ fontSize: 10.5, color: theme.textMuted, marginTop: 2 }}>{loc.subtitle}</div>
+                <div style={{ fontSize: 10.5, lineHeight: 1.3, color: theme.textMuted, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{loc.subtitle}</div>
               </div>
             </div>
           );
@@ -164,11 +275,13 @@ export default function GlobeDashboard({
   const mainWrapperRef = useRef(null);
   const globeGroupRef = useRef(null);
   const activePinsGroupRef = useRef(null);
-  const reduceMotionRef = useRef(false);
+  // The render loop reads this ref instead of state, so toggling the animation
+  // never requires tearing the loop down and rebuilding it.
+  const motionEnabledRef = useRef(ANIMATION_STARTS_ON);
   const arcLineRef = useRef(null);
 
   const [mounted, setMounted] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const [motionEnabled, setMotionEnabled] = useState(ANIMATION_STARTS_ON);
   const [revealed, setRevealed] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [selectedLocation, setSelectedLocation] = useState(null);
@@ -189,33 +302,65 @@ export default function GlobeDashboard({
 
   const visibleLocations = useMemo(() => {
     const trimmed = searchValue.trim().toLowerCase();
-    if (!trimmed) {
-      return ALL_LOCATIONS.filter(loc => loc.isDefault);
+    const searchActive = trimmed.length > 0;
+
+    const matched = searchActive
+      ? ALL_LOCATIONS.filter(loc =>
+          loc.title.toLowerCase().includes(trimmed) ||
+          (loc.keywords && loc.keywords.some(k => k.toLowerCase().includes(trimmed)))
+        )
+      : ALL_LOCATIONS.filter(loc => loc.isDefault);
+
+    const entries = matched
+      .slice(0, LOCATION_ROW_COUNT)
+      .map(location => ({ location, muted: false }));
+
+    // Pad back up to the fixed row count so the list is always the same height.
+    // Padding rows are only muted when they follow an actual search.
+    if (entries.length < LOCATION_ROW_COUNT) {
+      const taken = new Set(entries.map(entry => entry.location.title));
+      for (const location of ALL_LOCATIONS) {
+        if (entries.length >= LOCATION_ROW_COUNT) break;
+        if (taken.has(location.title)) continue;
+        taken.add(location.title);
+        entries.push({ location, muted: searchActive });
+      }
     }
-    return ALL_LOCATIONS.filter(loc =>
-      loc.title.toLowerCase().includes(trimmed) ||
-      (loc.keywords && loc.keywords.some(k => k.toLowerCase().includes(trimmed)))
-    );
+
+    return entries;
   }, [searchValue]);
 
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const handleChange = (e) => {
-      reduceMotionRef.current = e.matches;
-      setReduceMotion(e.matches);
-    };
-
-    reduceMotionRef.current = mq.matches;
-    setReduceMotion(mq.matches);
-
-    if (typeof mq.addEventListener === 'function') {
-      mq.addEventListener('change', handleChange);
-    }
-
     const handleClickOutside = (e) => {
-      if (mainWrapperRef.current && !mainWrapperRef.current.contains(e.target)) {
-        onLocationDeselect();
+      const target = e.target;
+
+      // Allow clicking the animation toggle or inside the UI panel without
+      // deselecting. The toggle lives outside the panel now, so it needs its
+      // own exemption.
+      if (target.closest && (target.closest('.locations-panel') || target.closest('.motion-toggle'))) {
+        return;
       }
+
+      // Check distance if clicking on the canvas
+      if (mountRef.current && target.tagName && target.tagName.toLowerCase() === 'canvas') {
+        const rect = mountRef.current.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        const distance = Math.hypot(e.clientX - centerX, e.clientY - centerY);
+        
+        // Exact projected radius rather than the old "about 38%" guess.
+        const globeRadius = rect.height * (GLOBE_PROJECTED_DIAMETER / 2);
+
+        // If click was outside the physical globe sphere radius, deselect
+        if (distance > globeRadius) {
+          onLocationDeselect();
+        }
+        return;
+      }
+
+      // Deselect for any other click outside
+      onLocationDeselect();
     };
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -231,14 +376,15 @@ export default function GlobeDashboard({
         .no-scrollbar::-webkit-scrollbar {
           display: none;
         }
+        .motion-toggle:focus-visible {
+          outline: 2px solid currentColor;
+          outline-offset: 3px;
+        }
       `;
       document.head.appendChild(styleEl);
     }
 
     return () => {
-      if (typeof mq.removeEventListener === 'function') {
-        mq.removeEventListener('change', handleChange);
-      }
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
@@ -253,8 +399,8 @@ export default function GlobeDashboard({
     const height = container.clientHeight || 480;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-    camera.position.set(0, 0, 3.2);
+    const camera = new THREE.PerspectiveCamera(GLOBE_FOV, width / height, 0.1, 1000);
+    camera.position.set(0, 0, GLOBE_CAMERA_Z);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(width, height);
@@ -265,7 +411,7 @@ export default function GlobeDashboard({
     scene.add(globeGroup);
     globeGroupRef.current = globeGroup;
 
-    const sphereGeo = new THREE.SphereGeometry(1, 24, 24);
+    const sphereGeo = new THREE.SphereGeometry(GLOBE_RADIUS, 24, 24);
     const earthMat = new THREE.MeshBasicMaterial({ color: 0x2b4c7e });
     const earthMesh = new THREE.Mesh(sphereGeo, earthMat);
     globeGroup.add(earthMesh);
@@ -277,7 +423,10 @@ export default function GlobeDashboard({
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
-    const cloudsMesh = new THREE.Mesh(new THREE.SphereGeometry(1.008, 64, 64), cloudsMat);
+    const cloudsMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(GLOBE_RADIUS * 1.008, 64, 64),
+      cloudsMat
+    );
     globeGroup.add(cloudsMesh);
 
     const activePinsGroup = new THREE.Group();
@@ -298,12 +447,8 @@ export default function GlobeDashboard({
       setRevealed(true);
     };
 
-    if (reduceMotionRef.current) {
-      revealedOnce = true;
-      setRevealed(true);
-    } else {
-      revealFallback = setTimeout(reveal, 1200);
-    }
+    // Unconditional: with no OS listener, the entrance is identical for everyone.
+    revealFallback = setTimeout(reveal, 1200);
 
     if (earthSrc) {
       textureLoader.load(earthSrc, (tex) => {
@@ -326,8 +471,8 @@ export default function GlobeDashboard({
     }
 
     const lineMat = new THREE.LineDashedMaterial({
-      color: 0x3B82F6,
-      linewidth: 2,
+      color: 0x38BDF8,
+      linewidth: 3,
       dashSize: 0.08,
       gapSize: 0.04,
       scale: 1,
@@ -341,30 +486,55 @@ export default function GlobeDashboard({
 
     let animId;
     const animate = () => {
-      if (!reduceMotionRef.current) {
+      // Reschedule first: the loop must outlive the animation being toggled,
+      // otherwise turning it back on could never restart it without a refresh.
+      animId = requestAnimationFrame(animate);
+
+      if (motionEnabledRef.current) {
         if (!isDraggingRef.current) {
-          // Auto rotate longitude horizontally
           targetLngRef.current += 0.03;
-          // Smoothly spring target latitude back to neutral horizon (0)
           targetLatRef.current += (0 - targetLatRef.current) * 0.08;
         }
 
         currentLngRef.current += (targetLngRef.current - currentLngRef.current) * 0.08;
         currentLatRef.current += (targetLatRef.current - currentLatRef.current) * 0.08;
 
-        globeGroup.rotation.y = THREE.MathUtils.degToRad(currentLngRef.current);
-        globeGroup.rotation.x = THREE.MathUtils.degToRad(currentLatRef.current);
         cloudsMesh.rotation.y += 0.0002;
 
         if (arcLineRef.current && arcLineRef.current.material.isLineDashedMaterial) {
           arcLineRef.current.material.dashOffset -= 0.004;
         }
+      } else {
+        // Animation held still: no ambient drift, but direct manipulation still
+        // works. The globe follows the pointer on both axes, and once the drag
+        // ends it repositions itself vertically the same way it does while the
+        // animation is running.
+        if (!isDraggingRef.current) {
+          targetLatRef.current += (0 - targetLatRef.current) * 0.08;
+        }
+        currentLngRef.current = targetLngRef.current;
+        currentLatRef.current = targetLatRef.current;
       }
+
+      globeGroup.rotation.y = THREE.MathUtils.degToRad(currentLngRef.current);
+      globeGroup.rotation.x = THREE.MathUtils.degToRad(currentLatRef.current);
+
+      // Always render: pins and arcs are only ever drawn from here.
       renderer.render(scene, camera);
-      if (reduceMotionRef.current) return;
-      animId = requestAnimationFrame(animate);
     };
     animate();
+
+    // Shared by the mouse and touch drag handlers. While the animation is held
+    // still the live rotation is updated here too, so dragging the globe never
+    // depends on the render loop's easing to take effect.
+    const applyDrag = (deltaX, deltaY) => {
+      targetLngRef.current += deltaX * 0.45;
+      targetLatRef.current = Math.max(-60, Math.min(60, targetLatRef.current + deltaY * 0.35));
+      if (!motionEnabledRef.current) {
+        currentLngRef.current = targetLngRef.current;
+        currentLatRef.current = targetLatRef.current;
+      }
+    };
 
     const handleResize = () => {
       if (!container) return;
@@ -382,12 +552,10 @@ export default function GlobeDashboard({
 
     const onMouseMove = (e) => {
       if (!isDraggingRef.current) return;
-      const deltaX = e.clientX - previousMousePositionRef.current.x;
-      const deltaY = e.clientY - previousMousePositionRef.current.y;
-
-      targetLngRef.current += deltaX * 0.45;
-      targetLatRef.current = Math.max(-60, Math.min(60, targetLatRef.current + deltaY * 0.35));
-
+      applyDrag(
+        e.clientX - previousMousePositionRef.current.x,
+        e.clientY - previousMousePositionRef.current.y
+      );
       previousMousePositionRef.current = { x: e.clientX, y: e.clientY };
     };
 
@@ -404,12 +572,10 @@ export default function GlobeDashboard({
 
     const onTouchMove = (e) => {
       if (!isDraggingRef.current || e.touches.length !== 1) return;
-      const deltaX = e.touches[0].clientX - previousMousePositionRef.current.x;
-      const deltaY = e.touches[0].clientY - previousMousePositionRef.current.y;
-
-      targetLngRef.current += deltaX * 0.45;
-      targetLatRef.current = Math.max(-60, Math.min(60, targetLatRef.current + deltaY * 0.35));
-
+      applyDrag(
+        e.touches[0].clientX - previousMousePositionRef.current.x,
+        e.touches[0].clientY - previousMousePositionRef.current.y
+      );
       previousMousePositionRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     };
 
@@ -451,7 +617,6 @@ export default function GlobeDashboard({
     };
   }, [mounted]);
 
-  // Clean Great-Circle Geographic Midpoint Calculation
   const focusCameraOnArcCenter = (targetLocation) => {
     if (!targetLocation) return;
 
@@ -461,7 +626,6 @@ export default function GlobeDashboard({
     const lng2 = (targetLocation.lng * Math.PI) / 180;
 
     const dLng = lng2 - lng1;
-
     const Bx = Math.cos(lat2) * Math.cos(dLng);
     const By = Math.cos(lat2) * Math.sin(dLng);
 
@@ -474,19 +638,15 @@ export default function GlobeDashboard({
     const midLat = (midLatRad * 180) / Math.PI;
     const midLng = (midLngRad * 180) / Math.PI;
 
-    // To bring midLng to camera view facing +Z (front):
-    // In Three.js geometry coordinates with rotation.y = degToRad(lngRef):
-    const desiredRotationY = -midLng;
+    const desiredRotationY = -(midLng + 180) + 60;
 
-    // Find shortest angular rotation path
     let currentDeg = currentLngRef.current;
     let diff = (desiredRotationY - currentDeg) % 360;
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
 
     targetLngRef.current = currentDeg + diff;
-    // Align pitch latitude directly to center the peak of the arc vertically
-    targetLatRef.current = Math.max(-30, Math.min(30, -midLat * 0.5));
+    targetLatRef.current = Math.max(-25, Math.min(25, -midLat * 0.45));
   };
 
   const renderActivePins = (targetLocation) => {
@@ -501,7 +661,6 @@ export default function GlobeDashboard({
 
     if (!targetLocation) return;
 
-    // 1. India Surface Dot (Blue)
     const hubPos = latLngToVector3(INDIA_HUB.lat, INDIA_HUB.lng, 1.008);
     const hubDotMesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.018, 16, 16),
@@ -510,7 +669,6 @@ export default function GlobeDashboard({
     hubDotMesh.position.copy(hubPos);
     activePinsGroupRef.current.add(hubDotMesh);
 
-    // 2. Destination Surface Dot (Green if serviceable, Red if suspended)
     const targetPos = latLngToVector3(targetLocation.lat, targetLocation.lng, 1.008);
     const isSuspended = targetLocation.status === "suspended";
     const destColor = isSuspended ? 0xEF4444 : 0x10B981;
@@ -567,16 +725,18 @@ export default function GlobeDashboard({
     clearArcAndPins();
   };
 
+  // Searching only filters the list. It deliberately does not select anything:
+  // auto-applying the first match meant a destination the visitor never chose
+  // got selected (and the globe flew to it) as soon as they typed.
   const onSearchChange = (value) => {
     setSearchValue(value);
-    if (!value.trim()) return;
+  };
 
-    const matchedLocation = ALL_LOCATIONS.find(loc => 
-      loc.title.toLowerCase().includes(value.trim().toLowerCase()) ||
-      (loc.keywords && loc.keywords.some(k => k.toLowerCase().includes(value.trim().toLowerCase())))
-    );
-
-    if (matchedLocation) onLocationSelect(matchedLocation);
+  const onToggleMotion = () => {
+    const next = !motionEnabledRef.current;
+    // Resolve immediately so the very next rendered frame reflects the choice.
+    motionEnabledRef.current = next;
+    setMotionEnabled(next);
   };
 
   if (!mounted) {
@@ -599,9 +759,7 @@ export default function GlobeDashboard({
         background: bgColor,
         opacity: revealed ? 1 : 0,
         transform: revealed ? "translateY(0) scale(1)" : "translateY(28px) scale(0.94)",
-        transition: reduceMotion
-          ? "none"
-          : "opacity 1.1s cubic-bezier(0.22, 1, 0.36, 1), transform 1.1s cubic-bezier(0.22, 1, 0.36, 1)",
+        transition: "opacity 1.1s cubic-bezier(0.22, 1, 0.36, 1), transform 1.1s cubic-bezier(0.22, 1, 0.36, 1)",
         willChange: "opacity, transform",
         ...style,
       }}
@@ -616,23 +774,58 @@ export default function GlobeDashboard({
           background: "transparent", 
           minHeight: 0, 
           minWidth: 280,
-          cursor: "grab"
         }}
       >
-        <div ref={mountRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+        <div 
+          ref={mountRef} 
+          style={{ 
+            position: "absolute", 
+            inset: 0, 
+            width: "100%", 
+            height: "100%", 
+            cursor: "grab" 
+          }} 
+        />
       </div>
 
-      <LocationsPanel
-        theme={theme}
-        locations={visibleLocations}
-        selectedLocation={selectedLocation}
-        onSelect={onLocationSelect}
-        accentColor={accentColor}
-        highlightColor={highlightColor}
-        rightPanelPadding={rightPanelPadding}
-        onSearchChange={onSearchChange}
-        searchValue={searchValue}
-      />
+      {/* The animation toggle is deliberately its own element, sitting above and
+          outside the locations panel, so the two never read as one control. */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          gap: 14,
+          width: 220,
+          flexShrink: 0,
+          // Span the globe's rendered bounds and centre the pair on the globe's
+          // middle, so the toggle and the panel sit level with the globe.
+          height: `${GLOBE_PROJECTED_DIAMETER * 100}%`,
+          maxHeight: "100%",
+          minHeight: 0,
+          marginLeft: -34,
+          transform: `translateY(${SIDE_COLUMN_OFFSET}px)`,
+        }}
+      >
+        <MotionToggle
+          theme={theme}
+          accentColor={accentColor}
+          motionEnabled={motionEnabled}
+          onToggleMotion={onToggleMotion}
+        />
+
+        <LocationsPanel
+          theme={theme}
+          locations={visibleLocations}
+          selectedLocation={selectedLocation}
+          onSelect={onLocationSelect}
+          accentColor={accentColor}
+          highlightColor={highlightColor}
+          rightPanelPadding={rightPanelPadding}
+          onSearchChange={onSearchChange}
+          searchValue={searchValue}
+        />
+      </div>
 
       {showServicePopup && selectedLocation && (
         <div style={{
