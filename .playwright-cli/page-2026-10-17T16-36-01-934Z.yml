@@ -1,0 +1,41 @@
+- generic [active] [ref=f24e1]:
+  - generic [ref=f24e2]:
+    - generic [ref=f24e4]:
+      - generic [ref=f24e8]: ShipIN
+      - paragraph [ref=f24e9]: Your global freight, simplified.
+    - generic [ref=f24e12]:
+      - heading "Sign in" [level=2] [ref=f24e13]
+      - paragraph [ref=f24e14]: Welcome back! Please sign in to continue.
+      - button "Continue with Google" [ref=f24e15]
+      - generic [ref=f24e21]: or
+      - generic [ref=f24e25]:
+        - generic [ref=f24e26]:
+          - generic [ref=f24e27]: Email address
+          - textbox "Email address" [ref=f24e28]:
+            - /placeholder: hello@gmail.com
+        - generic [ref=f24e29]:
+          - generic [ref=f24e30]:
+            - generic [ref=f24e31]: Password
+            - link "Forgot password?" [ref=f24e32] [cursor=pointer]:
+              - /url: "#"
+          - generic [ref=f24e33]:
+            - textbox "Password" [ref=f24e34]:
+              - /placeholder: Enter your password
+            - button "Show password" [ref=f24e35]
+        - button "Continue" [ref=f24e39]
+      - paragraph [ref=f24e40]:
+        - text: Don't have an account?
+        - link "Sign up" [ref=f24e41] [cursor=pointer]:
+          - /url: /
+      - paragraph [ref=f24e42]:
+        - link "© ShipIN" [ref=f24e43] [cursor=pointer]:
+          - /url: /
+        - text: ·
+        - link "Privacy" [ref=f24e44] [cursor=pointer]:
+          - /url: "#"
+        - text: ·
+        - link "Terms" [ref=f24e45] [cursor=pointer]:
+          - /url: "#"
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=f24e51] [cursor=pointer]
+  - alert [ref=f24e55]

@@ -1,0 +1,43 @@
+- generic [active] [ref=f14e1]:
+  - generic [ref=f14e2]:
+    - generic [ref=f14e3]:
+      - generic [ref=f14e10]:
+        - generic [ref=f14e14]: ShipIN
+        - paragraph [ref=f14e15]: Your global freight, simplified.
+      - paragraph [ref=f14e16]: © 2026 ShipIN · All rights reserved
+    - generic [ref=f14e19]:
+      - heading "Sign in" [level=2] [ref=f14e20]
+      - paragraph [ref=f14e21]: Welcome back! Please sign in to continue.
+      - button "Continue with Google" [ref=f14e22]
+      - generic [ref=f14e28]: or
+      - generic [ref=f14e32]:
+        - generic [ref=f14e33]:
+          - generic [ref=f14e34]: Email address
+          - textbox "Email address" [ref=f14e35]:
+            - /placeholder: hello@company.com
+        - generic [ref=f14e36]:
+          - generic [ref=f14e37]:
+            - generic [ref=f14e38]: Password
+            - link "Forgot password?" [ref=f14e39] [cursor=pointer]:
+              - /url: "#"
+          - generic [ref=f14e40]:
+            - textbox "Password" [ref=f14e41]:
+              - /placeholder: ••••••••
+            - button "Show password" [ref=f14e42]
+        - button "Continue" [ref=f14e46]
+      - paragraph [ref=f14e47]:
+        - text: Don't have an account?
+        - link "Contact us" [ref=f14e48] [cursor=pointer]:
+          - /url: /
+      - paragraph [ref=f14e49]:
+        - link "© ShipIN" [ref=f14e50] [cursor=pointer]:
+          - /url: /
+        - text: ·
+        - link "Privacy" [ref=f14e51] [cursor=pointer]:
+          - /url: "#"
+        - text: ·
+        - link "Terms" [ref=f14e52] [cursor=pointer]:
+          - /url: "#"
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=f14e58] [cursor=pointer]
+  - alert [ref=f14e62]

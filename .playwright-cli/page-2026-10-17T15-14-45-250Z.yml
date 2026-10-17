@@ -1,0 +1,41 @@
+- generic [active] [ref=e1]:
+  - generic [aria-hidden]:
+    - generic [aria-hidden]: SHIPIN
+  - banner [ref=e2]:
+    - link "S ShipIN" [ref=e3] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e4]: S
+      - generic [ref=e5]: ShipIN
+    - link "Back to home" [ref=e6] [cursor=pointer]:
+      - /url: /
+  - main [ref=e10]:
+    - generic [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e14]: S
+        - generic [ref=e15]: Member Access
+      - generic [ref=e16]: Sign in
+      - heading "Welcome back" [level=1] [ref=e19]
+      - paragraph [ref=e20]: Sign in to track orders, approve quotes, and manage your shipments.
+      - generic [ref=e21]:
+        - generic [ref=e22]:
+          - generic [ref=e23]: Email
+          - textbox "Email" [ref=e25]:
+            - /placeholder: you@company.com
+        - generic [ref=e26]:
+          - generic [ref=e27]: Password
+          - generic [ref=e28]:
+            - textbox "Password" [ref=e29]:
+              - /placeholder: ••••••••
+            - button "Show password" [ref=e30]
+        - generic [ref=e32]:
+          - generic [ref=e33] [cursor=pointer]:
+            - checkbox "Remember me" [ref=e34]
+            - generic [ref=e35]: Remember me
+          - link "Forgot password?" [ref=e36] [cursor=pointer]:
+            - /url: "#"
+        - button "Sign in" [ref=e37]
+      - generic [ref=e38]: or
+      - button "Continue with Google" [ref=e42]
+      - paragraph [ref=e48]: This is a demonstration login page. No credentials are stored or sent anywhere.
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e54] [cursor=pointer]

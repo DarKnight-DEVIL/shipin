@@ -1,0 +1,40 @@
+- generic [active] [ref=e1]:
+  - generic [aria-hidden]: SHIPIN
+  - banner [ref=e2]:
+    - link "S ShipIN" [ref=e3] [cursor=pointer]:
+      - /url: landing.html
+      - generic [ref=e4]: S
+      - generic [ref=e5]: ShipIN
+    - link "Back to home" [ref=e6] [cursor=pointer]:
+      - /url: landing.html
+  - main [ref=e10]:
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - generic [ref=e13]: S
+        - generic [ref=e14]: Member Access
+      - generic [ref=e15]: Sign in
+      - heading "Welcome back" [level=1] [ref=e16]
+      - paragraph [ref=e17]: Sign in to track orders, approve quotes, and manage your shipments.
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - generic [ref=e20]: Email
+          - textbox "Email" [ref=e22]:
+            - /placeholder: you@company.com
+        - generic [ref=e23]:
+          - generic [ref=e24]: Password
+          - generic [ref=e25]:
+            - textbox "Password" [ref=e26]:
+              - /placeholder: ••••••••
+            - button "Show password" [ref=e27] [cursor=pointer]
+        - generic [ref=e31]:
+          - generic [ref=e32] [cursor=pointer]:
+            - checkbox "Remember me" [checked] [ref=e33]: ✓
+            - text: Remember me
+          - link "Forgot password?" [ref=e34] [cursor=pointer]:
+            - /url: "#"
+        - button "Sign in" [ref=e35] [cursor=pointer]
+      - generic [ref=e39]: or
+      - paragraph [ref=e40]:
+        - text: New to ShipIN?
+        - button "Create an account" [ref=e41] [cursor=pointer]
+      - paragraph [ref=e42]: This is a demonstration login page. No credentials are stored or sent anywhere.
