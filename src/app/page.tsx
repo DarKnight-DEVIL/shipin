@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Bricolage_Grotesque } from "next/font/google";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import dynamic from "next/dynamic";
@@ -11,641 +12,1145 @@ import "./landing.css";
 
 const GlobeDashboard = dynamic(
   () => import("@/components/globe-dashboard/GlobeDashboard"),
-  { 
+  {
     ssr: false,
-    loading: () => <div className="w-full h-full min-h-[480px] bg-transparent" />
+    loading: () => <div className="globe-panel__loading" aria-hidden="true" />,
   }
 );
 
+const display = Bricolage_Grotesque({
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+type PlanId = "standard" | "express" | "merchant";
+
+type Plan = {
+  id: PlanId;
+  code: string;
+  name: string;
+  price: string;
+  unit: string;
+  description: string;
+  features: string[];
+  cta: string;
+  featured?: boolean;
+};
+
+const plans: Plan[] = [
+  {
+    id: "standard",
+    code: "Tier 01",
+    name: "Standard",
+    price: "$0",
+    unit: "per request",
+    description: "For a first order or a single item you cannot get shipped.",
+    features: [
+      "Standard inspection at the hub",
+      "Up to 3 SKUs per request",
+      "2 origin stores",
+      "Email support, Mon to Sat",
+    ],
+    cta: "Select Standard",
+  },
+  {
+    id: "express",
+    code: "Tier 02",
+    name: "Express",
+    price: "$9",
+    unit: "per request",
+    description: "For launches, samples and anything with a date attached.",
+    features: [
+      "Priority queue at every checkpoint",
+      "Photo QA before dispatch",
+      "30 days of free warehousing",
+      "Consolidation included",
+    ],
+    cta: "Select Express",
+    featured: true,
+  },
+  {
+    id: "merchant",
+    code: "Tier 03",
+    name: "Merchant",
+    price: "Freight",
+    unit: "quoted per lane",
+    description: "For teams moving 50 or more parcels a month.",
+    features: [
+      "Unlimited SKUs and stores",
+      "Negotiated freight rates",
+      "Dedicated account lead",
+      "Net 15 terms on approval",
+    ],
+    cta: "Request a quote",
+  },
+];
+
+const corridors = [
+  { route: "Mumbai to London", transit: "5 to 7 days", cutoff: "Tue, Fri" },
+  { route: "Mumbai to Dubai", transit: "3 to 4 days", cutoff: "Daily" },
+  { route: "Mumbai to Singapore", transit: "3 to 5 days", cutoff: "Mon, Wed, Fri" },
+  { route: "Mumbai to Berlin", transit: "6 to 8 days", cutoff: "Wed, Sat" },
+  { route: "Mumbai to New York", transit: "7 to 9 days", cutoff: "Tue, Thu" },
+  { route: "Mumbai to Toronto", transit: "8 to 10 days", cutoff: "Thu" },
+];
+
+const marketTicker = [
+  "London",
+  "Dubai",
+  "Singapore",
+  "New York",
+  "Toronto",
+  "Berlin",
+  "Sydney",
+  "Nairobi",
+  "Tokyo",
+  "São Paulo",
+];
+
+const metrics = [
+  {
+    value: "42",
+    label: "Shipping corridors",
+    detail: "Direct lanes from the Mumbai hub to six continents.",
+  },
+  {
+    value: "6.2",
+    label: "Median transit",
+    detail: "Door to door, customs cleared, last quarter.",
+  },
+  {
+    value: "40%",
+    label: "Freight saved",
+    detail: "Average reduction after consolidation and repacking.",
+  },
+  {
+    value: "99.2%",
+    label: "Manifest accuracy",
+    detail: "Units matched to the photo set before export.",
+  },
+];
+
+const steps = [
+  {
+    number: "01",
+    title: "Send the link",
+    body: "Paste a product URL from any Indian retailer. We confirm the seller, variant and live price before anything is charged.",
+    meta: "Any Indian marketplace",
+  },
+  {
+    number: "02",
+    title: "We inspect it",
+    body: "Every parcel stops at the Mumbai hub. Quantity, condition and serial numbers are checked against your order and photographed.",
+    meta: "Photo QA on arrival",
+  },
+  {
+    number: "03",
+    title: "We pack as one",
+    body: "Orders from different stores become a single manifest. Repacking cuts volumetric weight and one export filing covers the batch.",
+    meta: "One manifest per batch",
+  },
+  {
+    number: "04",
+    title: "It moves",
+    body: "Duties are quoted before dispatch, paperwork is pre-cleared, and the last mile is tracked to the address you gave us.",
+    meta: "DDP on every lane",
+  },
+];
+
+const faqs = [
+  {
+    question: "What can I order?",
+    answer:
+      "Anything sold by an Indian retailer that can be legally exported. Send the product URL. If the seller will not ship domestically, we arrange pickup from their store.",
+  },
+  {
+    question: "How does payment work?",
+    answer:
+      "We quote in your billing currency and you approve once. ShipIN settles with the seller in INR, then invoices the consolidated total with freight and duties itemised line by line.",
+  },
+  {
+    question: "Can I combine orders from different stores?",
+    answer:
+      "Yes. Orders that reach the hub inside the same seven day window ship as one manifest. Express includes consolidation; on Standard it is added per parcel.",
+  },
+  {
+    question: "What happens if an item arrives damaged?",
+    answer:
+      "Nothing leaves the hub without a photo set. If an item is wrong or damaged on arrival, we hold the shipment, send you the images, and replace or refund it before dispatch.",
+  },
+  {
+    question: "Do you handle customs and duties?",
+    answer:
+      "We file export documents from India and quote import duties before dispatch. DDP delivery is available on all corridors. If you use your own broker, choose DDU at checkout.",
+  },
+  {
+    question: "How long does a request take?",
+    answer:
+      "Median door to door is 6.2 days across our corridors. A quote is usually back within one business day, and inspection happens the day your parcel reaches the hub.",
+  },
+];
+
+function ArrowUpRight({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4.5 11.5L11.5 4.5" />
+      <path d="M5.5 4.5h6v6" />
+    </svg>
+  );
+}
+
+function Check() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2.5 7.5l3 3 6-7" />
+    </svg>
+  );
+}
+
 export default function Home() {
   const [loggedIn, setLoggedIn] = useState(false);
-  const [activeModalPlan, setActiveModalPlan] = useState<string | null>(null);
-  const [isMounted, setIsMounted] = useState(false);
+  const [activePlan, setActivePlan] = useState<Plan | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const lastFocusedRef = useRef<HTMLElement | null>(null);
   const lenisRef = useRef<Lenis | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
 
+  const startHref = loggedIn ? "/requests/new" : "/login?next=/requests/new";
+  const accountLabel = loggedIn ? "Dashboard" : "Sign in";
+
+  // Auth state is optional on marketing pages: if Firebase is not configured
+  // the page still renders with signed-out calls to action.
   useEffect(() => {
-    setIsMounted(true);
-    return onAuthStateChanged(auth, (user) => setLoggedIn(!!user));
+    if (!auth) return;
+    try {
+      return onAuthStateChanged(auth, (user) => setLoggedIn(Boolean(user)));
+    } catch {
+      setLoggedIn(false);
+      return;
+    }
   }, []);
 
+  // Smooth scrolling only when the visitor has not asked for reduced motion.
   useEffect(() => {
-    const body = document.body;
-    if (activeModalPlan) {
-      lenisRef.current?.stop();
-      body.style.overflow = "hidden";
-    } else {
-      lenisRef.current?.start();
-      body.style.overflow = "";
-    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    let cancelled = false;
+    let frame = 0;
+    let lenis: Lenis | null = null;
+
+    import("lenis").then(({ default: Lenis }) => {
+      if (cancelled) return;
+      lenis = new Lenis({
+        duration: 1.05,
+        smoothWheel: true,
+        anchors: true,
+      });
+      lenisRef.current = lenis;
+
+      const raf = (time: number) => {
+        lenis?.raf(time);
+        frame = requestAnimationFrame(raf);
+      };
+      frame = requestAnimationFrame(raf);
+    });
+
     return () => {
-      lenisRef.current?.start();
-      body.style.overflow = "";
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      lenis?.destroy();
+      lenisRef.current = null;
     };
-  }, [activeModalPlan]);
+  }, []);
 
+  const closePlan = useCallback(() => setActivePlan(null), []);
+
+  // Plan dialog: scroll lock, initial focus, focus trap, Escape to close,
+  // and focus returned to whichever tier button opened it.
   useEffect(() => {
-    if (!activeModalPlan) return;
+    if (!activePlan) return;
 
-    lastFocusedRef.current = document.activeElement as HTMLElement | null;
-    const node = containerRef.current;
-    node?.focus();
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const body = document.body;
+    const root = document.documentElement;
+
+    lenisRef.current?.stop();
+    body.style.overflow = "hidden";
+    root.classList.add("has-dialog");
+
+    const panel = dialogRef.current;
+    const getFocusable = () =>
+      Array.from(
+        panel?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      ).filter((element) => element.offsetParent !== null);
+
+    getFocusable()[0]?.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setActiveModalPlan(null);
+        event.preventDefault();
+        setActivePlan(null);
         return;
       }
-      if (event.key !== "Tab" || !node) return;
-      const focusables = node.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
-      if (focusables.length === 0) return;
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (event.key !== "Tab") return;
+
+      const items = getFocusable();
+      if (items.length === 0) return;
+
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+
+      if (event.shiftKey && (active === first || !panel?.contains(active))) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && active === last) {
         event.preventDefault();
         first.focus();
       }
     };
 
     document.addEventListener("keydown", onKeyDown);
+
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      lastFocusedRef.current?.focus();
+      body.style.overflow = "";
+      root.classList.remove("has-dialog");
+      lenisRef.current?.start();
+      previouslyFocused?.focus();
     };
-  }, [activeModalPlan]);
+  }, [activePlan]);
 
-  const startHref = loggedIn
-    ? "/requests/new"
-    : "/login?next=/requests/new";
-
-  const handleTicketKeyDown = (plan: string) => (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-      event.preventDefault();
-      setActiveModalPlan(plan);
-    }
-  };
-
+  // Mobile menu: lock the page, move focus into the sheet, trap Tab,
+  // close on Escape, and close if the viewport returns to desktop.
   useEffect(() => {
-    if (!isMounted) return;
-    let isCancelled = false;
+    if (!menuOpen) return;
 
-    let revertAnimations: (() => void) | null = null;
-    let stopSmoothScroll: (() => void) | null = null;
+    const body = document.body;
+    body.style.overflow = "hidden";
 
-    Promise.all([import("gsap"), import("gsap/ScrollTrigger")])
-      .then(([gsapMod, ScrollTriggerMod]) => {
-        if (isCancelled) return;
-        const gsap = gsapMod.default;
-        const ScrollTrigger = ScrollTriggerMod.default;
-        gsap.registerPlugin(ScrollTrigger);
+    const panel = menuRef.current;
+    const getFocusable = () =>
+      Array.from(
+        panel?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])') ?? []
+      ).filter((element) => element.offsetParent !== null);
 
-        const mm = gsap.matchMedia();
+    const focusTimer = window.setTimeout(() => getFocusable()[0]?.focus(), 60);
 
-        mm.add("(prefers-reduced-motion: reduce)", () => {
-          gsap.set(
-            ["#header", ".hero__title", ".hero__subtitle", ".hero__ctas", ".hero__globe",
-              ".section__label", ".section__title", ".section__desc",
-              ".product-card", ".expand-section", ".ticket"],
-            { opacity: 1, clearProps: "transform" }
-          );
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const items = getFocusable();
+      if (items.length === 0) return;
+
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+
+      if (event.shiftKey && (active === first || !panel?.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    const desktop = window.matchMedia("(min-width: 901px)");
+    const onChange = () => {
+      if (desktop.matches) setMenuOpen(false);
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    desktop.addEventListener("change", onChange);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("keydown", onKeyDown);
+      desktop.removeEventListener("change", onChange);
+      body.style.overflow = "";
+    };
+  }, [menuOpen]);
+
+  // Interaction layer: scroll progress, reveal on scroll, pointer parallax for
+  // the hero parcel, and tilt + spotlight on cards. Skips motion if the
+  // visitor prefers reduced motion.
+  useEffect(() => {
+    const root = document.querySelector<HTMLElement>(".shipin");
+    if (!root) return;
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const onScroll = () => {
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      root.style.setProperty("--sp", String(max > 0 ? window.scrollY / max : 0));
+      root.style.setProperty("--sy", String(window.scrollY));
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    let io: IntersectionObserver | undefined;
+    if (!calm) {
+      const observer = new IntersectionObserver(
+        (entries) =>
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            entry.target.classList.add("is-in");
+            observer.unobserve(entry.target);
+          }),
+        { threshold: 0.12 }
+      );
+      io = observer;
+      root
+        .querySelectorAll(
+          ".section-head, .steps, .proof__inner, .network__grid, .pricing__grid, .faq__grid, .cta__panel"
+        )
+        .forEach((el) => {
+          el.classList.add("js-reveal");
+          observer.observe(el);
         });
+    }
 
-        mm.add("(prefers-reduced-motion: no-preference)", () => {
-          gsap.fromTo("#header", { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" });
-          gsap.fromTo(".hero__title", { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" });
-          gsap.fromTo(".hero__subtitle", { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out", delay: 0.1 });
-          gsap.fromTo(".hero__ctas", { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out", delay: 0.2 });
-          gsap.fromTo(
-            ".hero__globe",
-            { opacity: 0, y: 20, scale: 0.98 },
-            { opacity: 1, y: 0, scale: 1, duration: 0.8, ease: "power3.out", delay: 0.1, clearProps: "transform" }
-          );
-
-          gsap.utils.toArray<HTMLElement>(".section__label, .section__title, .section__desc").forEach((el) => {
-            gsap.fromTo(el, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out", scrollTrigger: { trigger: el, start: "top 90%", once: true } });
-          });
-
-          ScrollTrigger.batch(".product-card", {
-            onEnter: (elements) => {
-              gsap.fromTo(elements, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.5, stagger: 0.08, ease: "power3.out", clearProps: "transform" });
-            },
-            start: "top 90%",
-            once: true
-          });
-
-          ScrollTrigger.batch(".expand-section", {
-            onEnter: (elements) => {
-              gsap.fromTo(elements, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out", clearProps: "transform" });
-            },
-            start: "top 90%",
-            once: true
-          });
-
-          ScrollTrigger.batch(".ticket", {
-            onEnter: (elements) => {
-              gsap.fromTo(elements, { opacity: 0, y: 30, rotateX: -3 }, { opacity: 1, y: 0, rotateX: 0, duration: 0.5, stagger: 0.08, ease: "power3.out", clearProps: "transform" });
-            },
-            start: "top 90%",
-            once: true
-          });
-        });
-
-        import("lenis")
-          .then(({ default: Lenis }) => {
-            if (isCancelled) return;
-            const lenis = new Lenis({
-              duration: 1.1,
-              smoothWheel: true,
-              anchors: { offset: 112 },
-              stopInertiaOnNavigate: true,
-            });
-            lenisRef.current = lenis;
-
-            lenis.on("scroll", ScrollTrigger.update);
-            const onTick = (time: number) => lenis.raf(time * 1000);
-            gsap.ticker.add(onTick);
-            gsap.ticker.lagSmoothing(0);
-
-            stopSmoothScroll = () => {
-              gsap.ticker.remove(onTick);
-              lenis.destroy();
-              lenisRef.current = null;
-            };
-          })
-          .catch(() => {});
-
-        revertAnimations = () => mm.revert();
-      })
-      .catch(() => {
-        document.documentElement.classList.add("anim-failed");
-      });
-
-    const tickets = document.querySelectorAll(".ticket[data-ticket]");
-    const cleanupListeners: (() => void)[] = [];
-
-    tickets.forEach((ticketEl) => {
-      const ticket = ticketEl as HTMLElement;
-      let rafId: number | null = null;
-      const onMouseMove = (e: MouseEvent) => {
-        if (rafId) return;
-        rafId = requestAnimationFrame(() => {
-          const rect = ticket.getBoundingClientRect();
-          const x = (e.clientX - rect.left) / rect.width;
-          const y = (e.clientY - rect.top) / rect.height;
-          ticket.style.transform = `perspective(800px) rotateX(${(y - 0.5) * -12}deg) rotateY(${(x - 0.5) * 12}deg) translateY(-4px)`;
-          ticket.style.setProperty("--sheen-x", `${x * 100}%`);
-          ticket.style.setProperty("--sheen-y", `${y * 100}%`);
-          rafId = null;
-        });
-      };
-      const onMouseLeave = () => {
-        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-        ticket.style.transform = "";
-      };
-
-      ticket.addEventListener("mousemove", onMouseMove as EventListener);
-      ticket.addEventListener("mouseleave", onMouseLeave);
-      cleanupListeners.push(() => {
-        ticket.removeEventListener("mousemove", onMouseMove as EventListener);
-        ticket.removeEventListener("mouseleave", onMouseLeave);
-      });
-    });
-
-    const expandRows = document.querySelectorAll("[data-expand]");
-    const expandCleanups: (() => void)[] = [];
-    expandRows.forEach((rowEl) => {
-      const row = rowEl as HTMLElement;
-      const btn = row.querySelector(".expand-row__header");
-      const onClick = () => {
-        const isOpen = row.classList.contains("is-open");
-        row.parentElement?.querySelectorAll(".expand-row.is-open").forEach((r) => r.classList.remove("is-open"));
-        if (!isOpen) row.classList.add("is-open");
-      };
-      btn?.addEventListener("click", onClick);
-      expandCleanups.push(() => btn?.removeEventListener("click", onClick));
-    });
-
-    const barcodePatterns = [
-      [3, 1, 2, 1, 3, 1, 1, 2, 3, 1, 2, 1, 3, 1, 2, 3, 1, 1, 2, 1, 3, 2, 1, 1, 3, 1, 2, 3, 1, 2, 1, 1, 3, 2],
-      [2, 1, 3, 2, 1, 1, 2, 3, 1, 2, 1, 3, 2, 1, 1, 3, 2, 1, 2, 3, 1, 1, 3, 2, 1, 2, 1, 3, 2, 1, 1, 3, 2, 1],
-      [1, 2, 1, 3, 2, 1, 3, 1, 2, 3, 1, 2, 1, 3, 2, 1, 2, 3, 1, 1, 3, 2, 1, 3, 2, 1, 1, 2, 3, 2, 1, 3, 2, 1],
-      [3, 2, 1, 1, 3, 2, 1, 2, 3, 1, 2, 1, 3, 2, 1, 1, 3, 2, 3, 1, 2, 1, 3, 2, 1, 1, 3, 2, 1, 2, 3, 1, 2, 3]
-    ];
-    document.querySelectorAll(".ticket__barcode").forEach((bc, i) => {
-      bc.innerHTML = "";
-      const pattern = barcodePatterns[i % barcodePatterns.length];
-      pattern.forEach((w) => {
-        const line = document.createElement("div");
-        line.className = "ticket__barcode-line";
-        line.style.width = `${w}px`;
-        bc.appendChild(line);
-      });
-    });
+    let last: HTMLElement | null = null;
+    const resetTilt = (el: HTMLElement | null) => {
+      el?.style.setProperty("--tx", "0deg");
+      el?.style.setProperty("--ty", "0deg");
+    };
+    const onMove = (event: PointerEvent) => {
+      if (!calm) {
+        root.style.setProperty("--px", String(event.clientX / window.innerWidth - 0.5));
+        root.style.setProperty("--py", String(event.clientY / window.innerHeight - 0.5));
+      }
+      const card = (event.target as HTMLElement).closest<HTMLElement>(
+        ".step, .plan, .metric, .telemetry"
+      );
+      if (card !== last) {
+        resetTilt(last);
+        last = card;
+      }
+      if (!card) return;
+      const box = card.getBoundingClientRect();
+      const x = (event.clientX - box.left) / box.width;
+      const y = (event.clientY - box.top) / box.height;
+      card.style.setProperty("--mx", `${x * 100}%`);
+      card.style.setProperty("--my", `${y * 100}%`);
+      if (!calm) {
+        card.style.setProperty("--tx", `${((0.5 - y) * 7).toFixed(2)}deg`);
+        card.style.setProperty("--ty", `${((x - 0.5) * 7).toFixed(2)}deg`);
+      }
+    };
+    root.addEventListener("pointermove", onMove);
 
     return () => {
-      isCancelled = true;
-      stopSmoothScroll?.();
-      revertAnimations?.();
-      cleanupListeners.forEach((fn) => fn());
-      expandCleanups.forEach((fn) => fn());
+      window.removeEventListener("scroll", onScroll);
+      root.removeEventListener("pointermove", onMove);
+      io?.disconnect();
     };
-  }, [isMounted]);
+  }, []);
 
-  const planDataMap: Record<string, any> = {
-    explorer: { badge: "Default", title: "Explorer Pass", subtitle: "A clear, flexible way to get your order moving.", price: "$0", unit: "per order", features: ["Standard purchasing & inspection.", "Maximum 3 items (SKUs).", "Maximum 2 different Indian stores."] },
-    express: { badge: "Priority", title: "Express Pass", subtitle: "Move faster with priority handling and consolidation.", price: "$9", unit: "per order", features: ["Priority purchasing (queue jump).", "Detailed inspection with photos.", "Multi-store consolidation (up to 5 stores).", "Maximum 10 items (SKUs).", "Up to 30 days of warehouse storage."] },
-    merchant: { badge: "Bulk", title: "Merchant Pass", subtitle: "A tailored workflow for resellers and larger hauls.", price: "Custom", unit: "tailored quote", features: ["Unlimited items and stores.", "Custom shipping rates for heavy/bulk freight.", "Dedicated procurement assistant."] }
+  const requestHref = (planId: PlanId) => {
+    const target = `/requests/new?plan=${planId}`;
+    return loggedIn ? target : `/login?next=${encodeURIComponent(target)}`;
   };
 
-  const activePlanDetails = activeModalPlan ? planDataMap[activeModalPlan] : null;
+  const closeMenu = () => setMenuOpen(false);
 
   return (
-    <main className="landing-page-root">
-      <noscript>
-        <style>{`
-          .landing-page-root .header,
-          .landing-page-root .hero__title,
-          .landing-page-root .hero__subtitle,
-          .landing-page-root .hero__ctas,
-          .landing-page-root .hero__globe { opacity: 1 !important; transform: none !important; }
-        `}</style>
-      </noscript>
+    <div className={`shipin ${display.variable}`}>
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
 
-      {/* HEADER */}
-      <header className="header" id="header">
-        <Link href="/" className="header__brand">
-          <div className="header__logo">S</div>
-          <span className="header__name">ShipIN</span>
-        </Link>
-        <nav className="header__nav">
-          <a href="#features" className="header__link">Features</a>
-          <a href="#how-it-works" className="header__link">How It Works</a>
-          <a href="#pricing" className="header__link">Pricing</a>
-          <a href="#faq" className="header__link">FAQ</a>
-        </nav>
-        <div className="header__meta">
-          <Link href="/login" className="header__login">
-            {loggedIn ? "Dashboard" : "Login"}
+      <header className="site-header">
+        <div className="shell site-header__inner">
+          <Link href="/" className="brand" aria-label="ShipIN home">
+            <span className="brand__mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="currentColor" />
+                <path
+                  d="M7 14.5h8.5M12 10.5l4 4-4 4"
+                  stroke="var(--paper)"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <circle cx="7" cy="9" r="1.5" fill="var(--rust)" />
+              </svg>
+            </span>
+            <span className="brand__name">
+              Ship<span>IN</span>
+            </span>
           </Link>
-          <Link href={startHref} className="header__pill">
-            <span>Get Started</span>
-          </Link>
-          <button className="header__mobile-menu" aria-label="Menu">
-            <span />
-            <span />
-            <span />
-          </button>
+
+          <nav className="nav" aria-label="Primary">
+            <a href="#platform">Pipeline</a>
+            <a href="#network">Network</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#faq">FAQ</a>
+          </nav>
+
+          <div className="site-header__actions">
+            <Link href="/login" className="text-link site-header__account">
+              {accountLabel}
+            </Link>
+            <Link href={startHref} className="btn btn--primary btn--sm">
+              Start a request
+              <ArrowUpRight />
+            </Link>
+            <button
+              ref={menuButtonRef}
+              type="button"
+              className="menu-button"
+              aria-expanded={menuOpen}
+              aria-controls="mobile-menu"
+              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <span className={menuOpen ? "menu-button__bars is-open" : "menu-button__bars"} aria-hidden="true">
+                <span />
+                <span />
+              </span>
+            </button>
+          </div>
         </div>
       </header>
 
-      <div className={`page-content ${activeModalPlan ? "is-blurred" : ""}`}>
-        {/* HERO SECTION */}
-        <section className="hero" id="hero">
-          <div className="hero__grid">
-            <div className="hero__content">
-              <h1 className="hero__title">Ship Anything<br />From India</h1>
-              <p className="hero__subtitle">
-                The B2C SaaS platform that lets anyone in the world purchase Indian products
-                and have them delivered to their doorstep. Seamless, transparent, reliable.
-              </p>
-              <div className="hero__ctas">
-                <Link href={startHref} className="hero__cta-primary">
-                  <span>Start Shipping &rarr;</span>
-                </Link>
-                <a href="#how-it-works" className="hero__cta-secondary">See How It Works</a>
-              </div>
-            </div>
-            <div className="hero__globe">
-              <GlobeDashboard
-                darkMode={false}
-                bgColor="transparent"
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* MARQUEE */}
-        <div className="marquee-band" id="marquee">
-          <div className="marquee-band__track">
-            <div className="marquee-band__group">
-              {["Purchase", "Warehouse", "Pack", "Consolidate", "Ship", "Track", "Deliver", "Support"].map((item, idx) => (
-                <div key={idx} className="marquee-band__item">
-                  <span className="marquee-band__dot" />
-                  <span className="marquee-band__text">{item}</span>
-                </div>
-              ))}
-              {["Purchase", "Warehouse", "Pack", "Consolidate", "Ship", "Track", "Deliver", "Support"].map((item, idx) => (
-                <div key={`dup-${idx}`} className="marquee-band__item">
-                  <span className="marquee-band__dot" />
-                  <span className="marquee-band__text">{item}</span>
-                </div>
-              ))}
-            </div>
+      {menuOpen && (
+        <div
+          ref={menuRef}
+          className="mobile-menu"
+          id="mobile-menu"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Site menu"
+        >
+          <nav aria-label="Mobile">
+            <a href="#platform" onClick={closeMenu}>
+              Pipeline
+            </a>
+            <a href="#network" onClick={closeMenu}>
+              Network
+            </a>
+            <a href="#pricing" onClick={closeMenu}>
+              Pricing
+            </a>
+            <a href="#faq" onClick={closeMenu}>
+              FAQ
+            </a>
+          </nav>
+          <div className="mobile-menu__foot">
+            <Link href="/login" className="btn btn--ghost" onClick={closeMenu}>
+              {accountLabel}
+            </Link>
+            <Link href={startHref} className="btn btn--primary" onClick={closeMenu}>
+              Start a request
+              <ArrowUpRight />
+            </Link>
+            <p className="mono-note">Mumbai hub · Replies within one business day</p>
           </div>
         </div>
+      )}
 
-        {/* FEATURES */}
-        <section className="section" id="features">
-          <h2 className="section__title">Everything You Need,<br />Nothing You Don't</h2>
-          <p className="section__desc">From the moment you click "buy" in an Indian store to your doorstep halfway across the world, we handle every link in the chain.</p>
-          <div className="product-grid">
-            <div className="product-card">
-              <div className="product-card__icon"><svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div>
-              <h3 className="product-card__title">Purchase Anything</h3>
-              <p className="product-card__desc">From niche websites to major Indian stores - we buy it on your behalf and bring it to our warehouse.</p>
-              <span className="product-card__tag">Procurement</span>
+      <main id="main">
+        <section className="hero">
+                  <div className="scene" aria-hidden="true">
+            <span className="scene__ring" />
+            <span className="scene__ring scene__ring--b" />
+            <div className="scene__card scene__card--a">
+              <div className="scene__k">Manifest SH-2048 <i>In transit</i></div>
+              <strong>Mumbai → Berlin</strong>
+              <small>ETA 20 Oct · Frankfurt handoff</small>
+              <div className="scene__bar" />
             </div>
-            <div className="product-card">
-              <div className="product-card__icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
-              <h3 className="product-card__title">Ship Worldwide</h3>
-              <p className="product-card__desc">Reliable international delivery with clear tracking at every step to destinations worldwide.</p>
-              <span className="product-card__tag">Global Logistics</span>
+            <div className="scene__card scene__card--b">
+              <div className="scene__k">Checked at hub <i>QA</i></div>
+              <strong>4 of 4 units matched</strong>
+              <div className="hub">
+                      <div className="hub__ring">
+                        <svg viewBox="0 0 52 52">
+                          <defs>
+                            <linearGradient id="hub-grad" x1="0" y1="0" x2="1" y2="1">
+                              <stop offset="0" stopColor="#ffc23d" />
+                              <stop offset="1" stopColor="#ff3d6e" />
+                            </linearGradient>
+                          </defs>
+                          <circle className="hub__track" cx="26" cy="26" r="18" />
+                          <circle className="hub__arc" cx="26" cy="26" r="18" />
+                        </svg>
+                        <span className="hub__num" />
+                      </div>
+                      <ul className="hub__list">
+                        <li><span className="hub__tick"><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" pathLength={1} /></svg></span>Item count</li>
+                        <li><span className="hub__tick"><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" pathLength={1} /></svg></span>Condition</li>
+                        <li><span className="hub__tick"><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" pathLength={1} /></svg></span>Photos taken</li>
+                      </ul>
+                    </div>
             </div>
-            <div className="product-card">
-              <div className="product-card__icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
-              <h3 className="product-card__title">Secure &amp; Transparent</h3>
-              <p className="product-card__desc">Quotes, payments, and support in one place. No hidden surprises, ever.</p>
-              <span className="product-card__tag">Trust Layer</span>
+            <div className="scene__card scene__card--c">
+              <div className="scene__k">Export cleared</div>
+              <strong>Duties prepaid</strong>
+              <small>15 Oct, 11:20 · Mumbai</small>
             </div>
-            <div className="product-card">
-              <div className="product-card__icon"><svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
-              <h3 className="product-card__title">End-to-End Handling</h3>
-              <p className="product-card__desc">Purchase, warehouse, pack, inspect, and ship - everything handled by the ShipIN team.</p>
-              <span className="product-card__tag">Full Stack</span>
+            <div className="scene__card scene__card--d">
+              <div className="scene__k">Freight saved</div>
+              <span className="scene__big">40%</span>
+              <small>after consolidation</small>
             </div>
-            <div className="product-card">
-              <div className="product-card__icon"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-              <h3 className="product-card__title">Live Tracking</h3>
-              <p className="product-card__desc">Real-time updates from pickup to delivery. Know exactly where your package is, always.</p>
-              <span className="product-card__tag">Visibility</span>
+          </div>
+          <div className="shell">
+
+            <div className="hero__split">
+              <div className="hero__text">
+                <h1 className="hero__title">
+                  <span className="hero__line">
+                    <span>Buy from India.</span>
+                  </span>
+                  <span className="hero__line">
+                    <span>
+                      Deliver <em>anywhere.</em>
+                    </span>
+                  </span>
+                </h1>
+
+                <p className="hero__lede">
+                  ShipIN buys on your behalf from any Indian store, inspects what
+                  arrives, packs it into one manifest, and forwards it to your
+                  address. You send a link. We handle the rest.
+                </p>
+
+                <a href="#platform" className="text-link text-link--arrow hero__more">
+                  See how the pipeline runs
+                  <span aria-hidden="true">↓</span>
+                </a>
+
+                <p className="mono-note hero__note">
+                  No account needed for a quote · Average reply in 1 business day
+                </p>
+              </div>
+
+              <div className="globe-panel">
+                <div className="globe-panel__bar">
+                  <span className="status">
+                    <span className="status__dot" aria-hidden="true" />
+                    Live network
+                  </span>
+                  <span className="globe-panel__count">42 nodes</span>
+                </div>
+                <div className="globe-panel__canvas">
+                  <GlobeDashboard darkMode={true} bgColor="#0c0a09" />
+                </div>
+                <div className="globe-panel__foot">
+                  <div>
+                    <span className="micro-label">Hub</span>
+                    <strong>Mumbai, IN</strong>
+                  </div>
+                  <div>
+                    <span className="micro-label">Manifest</span>
+                    <strong>SH-2048</strong>
+                  </div>
+                  <div>
+                    <span className="micro-label">Status</span>
+                    <strong className="globe-panel__status">In transit</strong>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="product-card">
-              <div className="product-card__icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-              <h3 className="product-card__title">24/7 Support</h3>
-              <p className="product-card__desc">Dedicated team available round the clock. Real people, real answers, zero bots.</p>
-              <span className="product-card__tag">Human</span>
+
+            <dl className="hero__stats">
+              <div className="stat">
+                <dt className="stat__label">Corridors</dt>
+                <dd className="stat__value">42</dd>
+              </div>
+              <div className="stat">
+                <dt className="stat__label">Median transit</dt>
+                <dd className="stat__value">6.2d</dd>
+              </div>
+              <div className="stat">
+                <dt className="stat__label">Freight saved</dt>
+                <dd className="stat__value">40%</dd>
+              </div>
+              <div className="stat">
+                <dt className="stat__label">Manifest accuracy</dt>
+                <dd className="stat__value">99.2%</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div className="market-strip" aria-label="Destinations we ship to">
+            <div className="market-strip__track">
+              {[...marketTicker, ...marketTicker].map((market, index) => (
+                <span className="market-strip__item" key={`${market}-${index}`} aria-hidden={index >= marketTicker.length}>
+                  {market}
+                </span>
+              ))}
             </div>
           </div>
         </section>
 
-        {/* HOW IT WORKS */}
-        <section className="section" id="how-it-works">
-          <h2 className="section__title">Three Steps.<br />Zero Hassle.</h2>
-          <p className="section__desc">What looks like magic is just a clean system. Here's the flow.</p>
-          <div className="expand-section">
-            <h3 className="expand-section__title">How It Works</h3>
-            <div className="expand-row" data-expand>
-              <button className="expand-row__header">
-                <span className="expand-row__question">01 - Create a Request</span>
-                <span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
-              </button>
-              <div className="expand-row__body">
-                <p className="expand-row__answer">Paste the product link from any Indian e-commerce store. Tell us your quantity, preferred shipping method, and your delivery address. Our system ingests the request and starts the procurement pipeline automatically.</p>
-              </div>
-            </div>
-            <div className="expand-row" data-expand>
-              <button className="expand-row__header">
-                <span className="expand-row__question">02 - Approve the Quote</span>
-                <span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
-              </button>
-              <div className="expand-row__body">
-                <p className="expand-row__answer">We'll share a transparent quote covering product cost, domestic Indian transport, international shipping, and our service fee. Pay securely through our integrated payment system. No surprises, no hidden charges.</p>
-              </div>
-            </div>
-            <div className="expand-row" data-expand>
-              <button className="expand-row__header">
-                <span className="expand-row__question">03 - We Ship It to You</span>
-                <span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
-              </button>
-              <div className="expand-row__body">
-                <p className="expand-row__answer">Your item arrives at our Indian warehouse. We inspect, pack, and ship it internationally. Track every step in real-time. Estimated delivery: 7 to 14 business days depending on destination.</p>
-              </div>
-            </div>
-            <div className="expand-row" data-expand>
-              <button className="expand-row__header">
-                <span className="expand-row__question">04 - Consolidation (Optional)</span>
-                <span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
-              </button>
-              <div className="expand-row__body">
-                <p className="expand-row__answer">Have multiple purchases? We combine them into a single shipment, reducing your total shipping cost by up to 40%. Simply select "consolidate" in your dashboard.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* PRICING TICKETS */}
-        <section className="tickets-section" id="pricing">
-          <div className="tickets-section__header">
-            <h2 className="section__title">Choose Your Pass</h2>
-            <p className="section__desc" style={{ margin: "0 auto 0" }}>Pay per order. No monthly commitments.</p>
-          </div>
-          <div className="tickets-grid">
-            <div
-              className="ticket"
-              data-ticket
-              data-plan="explorer"
-              role="button"
-              tabIndex={0}
-              aria-haspopup="dialog"
-              onClick={() => setActiveModalPlan("explorer")}
-              onKeyDown={handleTicketKeyDown("explorer")}
-            >
-              <div className="ticket__sheen" /><div className="ticket__perforation" /><div className="ticket__notch-left" /><div className="ticket__notch-right" /><div className="ticket__tear-line" />
-              <div className="ticket__content">
-                <div className="ticket__main">
-                  <div className="ticket__topline"><span className="ticket__access">EARLY ACCESS</span><span className="ticket__number">NO. 001</span></div>
-                  <h3 className="ticket__title">Explorer Pass</h3>
-                  <p className="ticket__subtitle">For standard, simple orders. A reliable way to purchase and ship from India.</p>
-                </div>
-                <div className="ticket__side">
-                  <div><div className="ticket__price">$0</div><span className="ticket__price-unit">per order</span></div>
-                  <div><div className="ticket__barcode" /><div className="ticket__code">EX-2026</div></div>
-                </div>
-              </div>
-            </div>
-
-            <div
-              className="ticket"
-              data-ticket
-              data-plan="express"
-              role="button"
-              tabIndex={0}
-              aria-haspopup="dialog"
-              onClick={() => setActiveModalPlan("express")}
-              onKeyDown={handleTicketKeyDown("express")}
-            >
-              <div className="ticket__sheen" /><div className="ticket__perforation" /><div className="ticket__notch-left" /><div className="ticket__notch-right" /><div className="ticket__tear-line" />
-              <div className="ticket__content">
-                <div className="ticket__main">
-                  <div className="ticket__topline"><span className="ticket__access">PRIORITY ACCESS</span><span className="ticket__number">NO. 002</span></div>
-                  <h3 className="ticket__title">Express Pass</h3>
-                  <p className="ticket__subtitle">For multi-store consolidation &amp; speed. Put your order at the front of the queue.</p>
-                </div>
-                <div className="ticket__side">
-                  <div><div className="ticket__price">$9</div><span className="ticket__price-unit">per order</span></div>
-                  <div><div className="ticket__barcode" /><div className="ticket__code">EX-2026</div></div>
-                </div>
-              </div>
-            </div>
-
-            <div
-              className="ticket"
-              data-ticket
-              data-plan="merchant"
-              role="button"
-              tabIndex={0}
-              aria-haspopup="dialog"
-              onClick={() => setActiveModalPlan("merchant")}
-              onKeyDown={handleTicketKeyDown("merchant")}
-            >
-              <div className="ticket__sheen" /><div className="ticket__perforation" /><div className="ticket__notch-left" /><div className="ticket__notch-right" /><div className="ticket__tear-line" />
-              <div className="ticket__content">
-                <div className="ticket__main">
-                  <div className="ticket__topline"><span className="ticket__access">BULK ACCESS</span><span className="ticket__number">NO. 003</span></div>
-                  <h3 className="ticket__title">Merchant Pass</h3>
-                  <p className="ticket__subtitle">For resellers and massive hauls. Unlock a tailored procurement workflow.</p>
-                </div>
-                <div className="ticket__side">
-                  <div><div className="ticket__price">Custom</div><span className="ticket__price-unit">tailored quote</span></div>
-                  <div><div className="ticket__barcode" /><div className="ticket__code">ME-2026</div></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* FAQ */}
-        <section className="section" id="faq">
-          <div className="section__label">FAQ</div>
-          <h2 className="section__title">Common Questions,<br />Clear Answers</h2>
-          <p className="section__desc">Everything you need to know before making your first shipment.</p>
-          <div className="expand-section">
-            <div className="expand-row" data-expand>
-              <button className="expand-row__header"><span className="expand-row__question">What products can I purchase?</span><span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span></button>
-              <div className="expand-row__body"><p className="expand-row__answer">Almost anything available from Indian e-commerce platforms - electronics, fashion, home goods, artisan crafts, spices, books, automotive parts, and more. We support Amazon India, Flipkart, Meesho, and dozens of other Indian marketplaces.</p></div>
-            </div>
-            <div className="expand-row" data-expand>
-              <button className="expand-row__header"><span className="expand-row__question">How long does shipping take?</span><span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span></button>
-              <div className="expand-row__body"><p className="expand-row__answer">Standard international shipping takes 7 to 14 business days depending on your destination. Express options are available for select routes. All shipments include real-time tracking.</p></div>
-            </div>
-            <div className="expand-row" data-expand>
-              <button className="expand-row__header"><span className="expand-row__question">Is my payment secure?</span><span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span></button>
-              <div className="expand-row__body"><p className="expand-row__answer">Absolutely. We use bank-grade encryption and PCI-compliant payment processing. Payments are held in escrow until your order is confirmed.</p></div>
-            </div>
-            <div className="expand-row" data-expand>
-              <button className="expand-row__header"><span className="expand-row__question">What if my package is damaged?</span><span className="expand-row__chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span></button>
-              <div className="expand-row__body"><p className="expand-row__answer">We inspect every package before shipping. In the rare event of damage, we offer full replacement or refund - no questions asked. Our insurance covers the full value of your order.</p></div>
-            </div>
-          </div>
-        </section>
-
-        {/* FOOTER */}
-        <footer className="footer">
-          <div className="footer__big-word">SHIPIN</div>
-          <div className="footer__inner">
-            <div className="footer__top">
-              <div className="footer__brand-block">
-                <h3>ShipIN</h3>
-                <p>The B2C SaaS platform connecting global shoppers with the best of India. Professional. Innovative. Trustworthy.</p>
-              </div>
-              <div className="footer__col">
-                <h4>Product</h4>
-                <ul>
-                  <li><a href="#features">Features</a></li>
-                  <li><a href="#pricing">Pricing</a></li>
-                </ul>
-              </div>
-              <div className="footer__col">
-                <h4>Company</h4>
-                <ul>
-                  <li><a href="#about">About</a></li>
-                </ul>
-              </div>
-              <div className="footer__col">
-                <h4>Support</h4>
-                <ul>
-                  <li><a href="#faq">Help Center</a></li>
-                </ul>
-              </div>
-            </div>
-            <div className="footer__bottom">
-              <p className="footer__copy">&copy; 2026 ShipIN Technologies Pvt. Ltd. All rights reserved.</p>
-              <p className="footer__disclaimer">ShipIN operates as a procurement and shipping intermediary. Product availability, pricing, and delivery times are subject to change.</p>
-            </div>
-          </div>
-        </footer>
-      </div>
-
-      {/* PRICING MODAL OVERLAY */}
-      <div className={`modal-overlay ${activeModalPlan ? "is-active" : ""}`} onClick={() => setActiveModalPlan(null)}>
-        {activePlanDetails && (
-          <div
-            className="modal-container"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="pass-modal-title"
-            tabIndex={-1}
-            ref={containerRef}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="modal-close"
-              aria-label="Close pass details"
-              onClick={() => setActiveModalPlan(null)}
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
-            </button>
-            <div className="modal-kicker">Pass details</div>
-            <div className="modal-header">
+        <section className="section" id="platform">
+          <div className="shell">
+            <div className="section-head">
               <div>
-                <span className="modal-badge">{activePlanDetails.badge}</span>
-                <h3 className="modal-title" id="pass-modal-title">{activePlanDetails.title}</h3>
-                <p className="modal-subtitle">{activePlanDetails.subtitle}</p>
+                <p className="eyebrow">01 / The pipeline</p>
+                <h2>One request. Four checkpoints.</h2>
               </div>
-              <div className="modal-price">
-                <div className="modal-price__value">{activePlanDetails.price}</div>
-                <span className="modal-price__unit">{activePlanDetails.unit}</span>
+              <p className="lede">
+                You do not need a seller, a freight desk and a customs broker on
+                separate threads. The same team owns the parcel from checkout to
+                doorstep.
+              </p>
+            </div>
+
+            <ol className="steps">
+              {steps.map((step) => (
+                <li className="step" key={step.number}>
+                  <span className="step__number">{step.number}</span>
+                  <h3>{step.title}</h3>
+                  <p>{step.body}</p>
+                  <span className="step__meta">{step.meta}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
+        <section className="proof">
+          <div className="shell proof__inner">
+            <div className="proof__statement">
+              <p className="eyebrow">Track record</p>
+              <h2>One accountable partner, from checkout to customs.</h2>
+              <p>
+                Most cross border orders fail in the handoffs. ShipIN keeps
+                purchasing, warehousing, export filing and delivery inside one
+                operating team, so a missing parcel has one place to go.
+              </p>
+            </div>
+
+            <div className="proof__grid">
+              {metrics.map((metric) => (
+                <div className="metric" key={metric.label}>
+                  <span className="metric__value">{metric.value}</span>
+                  <span className="metric__label">{metric.label}</span>
+                  <p className="metric__detail">{metric.detail}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="network" id="network">
+          <div className="shell">
+            <div className="section-head section-head--dark">
+              <div>
+                <p className="eyebrow">02 / Live network</p>
+                <h2>The route is visible while it happens.</h2>
+              </div>
+              <p className="lede">
+                Every request gets a manifest ID and an event log. Watch the
+                parcel move from the seller&apos;s counter to your address without
+                emailing an account manager for an update.
+              </p>
+            </div>
+
+            <div className="network__grid">
+              <div className="corridors">
+                <table className="corridors__table">
+                  <caption className="sr-only">
+                    Active shipping corridors from Mumbai
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Corridor</th>
+                      <th scope="col">Transit</th>
+                      <th scope="col">Cut off</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {corridors.map((corridor) => (
+                      <tr key={corridor.route}>
+                        <th scope="row" className="corridors__route">
+                          {corridor.route}
+                        </th>
+                        <td>{corridor.transit}</td>
+                        <td className="corridors__cutoff">{corridor.cutoff}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="corridors__note">
+                  Transit excludes customs holds. Freight is quoted per
+                  consolidated manifest, not per parcel.
+                </p>
+              </div>
+
+              <div className="telemetry">
+                <div className="telemetry__head">
+                  <div>
+                    <span className="micro-label">Manifest</span>
+                    <strong className="telemetry__id">SH-2048</strong>
+                  </div>
+                  <span className="chip chip--rust">In transit</span>
+                </div>
+
+                <div className="telemetry__route">
+                  <div>
+                    <span className="micro-label">From</span>
+                    <strong>Mumbai</strong>
+                  </div>
+                  <span className="telemetry__arrow" aria-hidden="true">
+                    →
+                  </span>
+                  <div>
+                    <span className="micro-label">To</span>
+                    <strong>Berlin</strong>
+                  </div>
+                  <span className="telemetry__eta">ETA 20 Oct</span>
+                </div>
+
+                <ol className="timeline">
+                  <li className="timeline__item timeline__item--done">
+                    <span className="timeline__dot" aria-hidden="true" />
+                    <div>
+                      <p className="timeline__title">Seller pickup</p>
+                      <p className="timeline__meta">12 Oct, 09:40 · Jaipur</p>
+                    </div>
+                  </li>
+                  <li className="timeline__item timeline__item--done">
+                    <span className="timeline__dot" aria-hidden="true" />
+                    <div>
+                      <p className="timeline__title">Checked at hub</p>
+                      <p className="timeline__meta">14 Oct, 16:05 · Mumbai</p>
+                      <p className="timeline__detail">
+                        4 of 4 units matched. Photo set attached.
+                      </p>
+                    </div>
+                  </li>
+                  <li className="timeline__item timeline__item--done">
+                    <span className="timeline__dot" aria-hidden="true" />
+                    <div>
+                      <p className="timeline__title">Export cleared</p>
+                      <p className="timeline__meta">15 Oct, 11:20 · Mumbai</p>
+                    </div>
+                  </li>
+                  <li className="timeline__item timeline__item--current">
+                    <span className="timeline__dot" aria-hidden="true" />
+                    <div>
+                      <p className="timeline__title">In transit</p>
+                      <p className="timeline__meta">17 Oct, 22:10 · Frankfurt</p>
+                      <p className="timeline__detail">
+                        Handed to the last mile partner. Duties prepaid.
+                      </p>
+                    </div>
+                  </li>
+                  <li className="timeline__item timeline__item--next">
+                    <span className="timeline__dot" aria-hidden="true" />
+                    <div>
+                      <p className="timeline__title">Delivery</p>
+                      <p className="timeline__meta">Expected 20 Oct · Berlin</p>
+                    </div>
+                  </li>
+                </ol>
+
+                <p className="telemetry__foot">
+                  <span>Sample manifest</span>
+                  <span>Updated 12s ago</span>
+                </p>
               </div>
             </div>
-            <div className="modal-panel">
-              <div className="modal-panel__label">Included with your pass</div>
-              <ul className="modal-features">
-                {activePlanDetails.features.map((feat: string, idx: number) => (
-                  <li key={idx}>{feat}</li>
-                ))}
+          </div>
+        </section>
+
+        <section className="section pricing" id="pricing">
+          <div className="shell">
+            <div className="section-head">
+              <div>
+                <p className="eyebrow">03 / Access</p>
+                <h2>Pricing that follows the work.</h2>
+              </div>
+              <p className="lede">
+                No subscription. Pay per request for small batches, or move to
+                freight rates once volume justifies a lane.
+              </p>
+            </div>
+
+            <div className="pricing__grid">
+              {plans.map((plan) => (
+                <article
+                  key={plan.id}
+                  className={plan.featured ? "plan plan--featured" : "plan"}
+                >
+                  <div className="plan__head">
+                    <span className="plan__code">{plan.code}</span>
+                    {plan.featured && (
+                      <span className="chip chip--outline">Most chosen</span>
+                    )}
+                  </div>
+                  <h3 className="plan__name">{plan.name}</h3>
+                  <p className="plan__price">
+                    {plan.price}
+                    <span>{plan.unit}</span>
+                  </p>
+                  <p className="plan__description">{plan.description}</p>
+
+                  <ul className="plan__features">
+                    {plan.features.map((feature) => (
+                      <li key={feature}>
+                        <span className="plan__check" aria-hidden="true">
+                          <Check />
+                        </span>
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <button
+                    type="button"
+                    className={
+                      plan.featured
+                        ? "btn btn--accent plan__cta"
+                        : "btn btn--ghost plan__cta"
+                    }
+                    onClick={() => setActivePlan(plan)}
+                  >
+                    {plan.cta}
+                  </button>
+                </article>
+              ))}
+            </div>
+
+            <div className="pricing__note">
+              <span>Duties, taxes and freight are quoted before you approve.</span>
+              <span>Cancel free before procurement starts.</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="section faq" id="faq">
+          <div className="shell faq__grid">
+            <div className="faq__intro">
+              <p className="eyebrow">04 / Details</p>
+              <h2 className="faq__title">Questions buyers ask first.</h2>
+              <p className="faq__lede">
+                Still unsure about a seller or a restricted item? Send the link
+                and we will tell you before you commit.
+              </p>
+              <Link href={startHref} className="text-link text-link--arrow">
+                Ask about your first order
+                <ArrowUpRight />
+              </Link>
+            </div>
+
+            <div className="faq__list">
+              {faqs.map((faq) => (
+                <details key={faq.question}>
+                  <summary>{faq.question}</summary>
+                  <p>{faq.answer}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="cta">
+          <div className="shell">
+            <div className="cta__panel">
+              <div>
+                <h2>Send the link. We handle the rest.</h2>
+                <p>
+                  Start with one order, then add stores, SKUs and delivery
+                  addresses as you grow.
+                </p>
+              </div>
+              <div className="cta__action">
+                <Link href={startHref} className="btn btn--ink">
+                  Start a request
+                  <ArrowUpRight />
+                </Link>
+                <p className="mono-note cta__note">
+                  No account needed for a quote
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer className="site-footer">
+        <div className="shell">
+          <div className="footer__grid">
+            <div className="footer__brand">
+              <Link href="/" className="brand brand--light" aria-label="ShipIN home">
+                <span className="brand__mark" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="currentColor" />
+                    <path
+                      d="M7 14.5h8.5M12 10.5l4 4-4 4"
+                      stroke="var(--ink)"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <circle cx="7" cy="9" r="1.5" fill="var(--rust)" />
+                  </svg>
+                </span>
+                <span className="brand__name">
+                  Ship<span>IN</span>
+                </span>
+              </Link>
+              <p>
+                Procurement, warehousing and freight from India, run by one team
+                in Mumbai.
+              </p>
+              <p className="footer__address">
+                Andheri East, Mumbai 400069 · Mon to Sat, 09:00 to 19:00 IST
+              </p>
+            </div>
+
+            <div className="footer__col">
+              <h2>Platform</h2>
+              <ul>
+                <li>
+                  <a href="#platform">Pipeline</a>
+                </li>
+                <li>
+                  <a href="#network">Network</a>
+                </li>
+                <li>
+                  <a href="#pricing">Pricing</a>
+                </li>
+                <li>
+                  <a href="#faq">FAQ</a>
+                </li>
               </ul>
             </div>
-            <div className="modal-footer">
-              <div className="modal-note">
-                <svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v5c0 4.7-3.4 7.7-8 8.5-4.6-.8-8-3.8-8-8.5v-5L12 3z"/><path d="M9 12l2 2 4-4"/></svg>
-                <span>Transparent pricing.<br />No monthly commitment.</span>
-              </div>
-              <button
-                className="modal-action"
-                onClick={() => {
-                  setActiveModalPlan(null);
-                  const lenis = lenisRef.current;
-                  if (lenis) {
-                    lenis.scrollTo("#hero");
-                  } else {
-                    document.getElementById("hero")?.scrollIntoView({ behavior: "smooth" });
-                  }
-                }}
-              >
-                Choose this pass <svg viewBox="0 0 24 24"><path d="M5 12h13"/><path d="M13 6l6 6-6 6"/></svg>
-              </button>
+
+            <div className="footer__col">
+              <h2>Account</h2>
+              <ul>
+                <li>
+                  <Link href="/login">{accountLabel}</Link>
+                </li>
+                <li>
+                  <Link href={startHref}>New request</Link>
+                </li>
+                <li>
+                  <a href="mailto:hello@shipin.co">hello@shipin.co</a>
+                </li>
+              </ul>
             </div>
           </div>
-        )}
-      </div>
-    </main>
+
+          <div className="footer__base">
+            <span>© 2026 ShipIN Logistics</span>
+            <span className="status status--footer">
+              <span className="status__dot" aria-hidden="true" />
+              All corridors operational
+            </span>
+            <span>Designed and run in Mumbai</span>
+          </div>
+        </div>
+      </footer>
+
+      {activePlan && (
+        <div
+          className="plan-dialog"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closePlan();
+          }}
+        >
+          <div
+            ref={dialogRef}
+            className="plan-dialog__panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="plan-dialog-title"
+          >
+            <div className="plan-dialog__head">
+              <div>
+                <span className="micro-label">{activePlan.code}</span>
+                <h2 id="plan-dialog-title" className="plan-dialog__title">
+                  {activePlan.name}
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="plan-dialog__close"
+                onClick={closePlan}
+                aria-label="Close plan details"
+              >
+                <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+                  <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
+                </svg>
+              </button>
+            </div>
+
+            <p className="plan-dialog__price">
+              {activePlan.price}
+              <span>{activePlan.unit}</span>
+            </p>
+            <p className="plan-dialog__description">{activePlan.description}</p>
+
+            <ul className="plan-dialog__features">
+              {activePlan.features.map((feature) => (
+                <li key={feature}>
+                  <span aria-hidden="true">
+                    <Check />
+                  </span>
+                  {feature}
+                </li>
+              ))}
+            </ul>
+
+            <div className="plan-dialog__actions">
+              <Link
+                href={requestHref(activePlan.id)}
+                className="btn btn--primary plan-dialog__cta"
+                onClick={closePlan}
+              >
+                Continue with {activePlan.name}
+                <ArrowUpRight />
+              </Link>
+              <button type="button" className="text-link" onClick={closePlan}>
+                Compare tiers again
+              </button>
+            </div>
+            <p className="mono-note plan-dialog__note">
+              Nothing is charged until you approve the quote.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

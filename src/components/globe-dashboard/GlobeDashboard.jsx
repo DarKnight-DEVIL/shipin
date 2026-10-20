@@ -764,56 +764,80 @@ export default function GlobeDashboard({
         ...style,
       }}
     >
-      <div 
-        ref={globeContainerRef} 
-        style={{ 
-          flex: 1, 
-          height: "100%", 
-          position: "relative", 
-          overflow: "hidden", 
-          background: "transparent", 
-          minHeight: 0, 
+      <div
+        ref={globeContainerRef}
+        style={{
+          flex: 1,
+          height: "100%",
+          position: "relative",
+          overflow: "hidden",
+          background: "transparent",
+          minHeight: 0,
           minWidth: 280,
         }}
       >
-        <div 
-          ref={mountRef} 
-          style={{ 
-            position: "absolute", 
-            inset: 0, 
-            width: "100%", 
-            height: "100%", 
-            cursor: "grab" 
-          }} 
+        <div
+          ref={mountRef}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            cursor: "grab"
+          }}
         />
+        {/* Footer with animation toggle - replaces where "42 nodes" would be */}
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 16,
+            left: 16,
+            right: 16,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 12,
+            pointerEvents: 'none'
+          }}
+        >
+          <span style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: theme.textMuted,
+            letterSpacing: "0.02em",
+            pointerEvents: 'auto'
+          }}>
+            Animation
+          </span>
+          <div style={{ pointerEvents: 'auto', width: 200 }}>
+            <MotionToggle
+              theme={theme}
+              accentColor={accentColor}
+              motionEnabled={motionEnabled}
+              onToggleMotion={onToggleMotion}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* The animation toggle is deliberately its own element, sitting above and
-          outside the locations panel, so the two never read as one control. */}
+      {/* Locations panel - now just contains the locations list */}
       <div
         style={{
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
           gap: 14,
-          width: 220,
+          width: 180,  // Reduced width to give globe more space
           flexShrink: 0,
-          // Span the globe's rendered bounds and centre the pair on the globe's
-          // middle, so the toggle and the panel sit level with the globe.
+          // Span the globe's rendered bounds and centre the panel on the globe's
+          // middle, so the panel sits level with the globe.
           height: `${GLOBE_PROJECTED_DIAMETER * 100}%`,
           maxHeight: "100%",
           minHeight: 0,
-          marginLeft: -34,
+          marginLeft: -20,  // Adjusted margin for narrower panel
           transform: `translateY(${SIDE_COLUMN_OFFSET}px)`,
         }}
       >
-        <MotionToggle
-          theme={theme}
-          accentColor={accentColor}
-          motionEnabled={motionEnabled}
-          onToggleMotion={onToggleMotion}
-        />
-
         <LocationsPanel
           theme={theme}
           locations={visibleLocations}
@@ -843,8 +867,8 @@ export default function GlobeDashboard({
             background: isSuspended ? '#FECACA' : '#86EFAC',
             boxShadow: `0 0 8px ${isSuspended ? '#EF4444' : '#22C55E'}`
           }} />
-          {isSuspended 
-            ? `Service to ${selectedLocation.title} currently suspended` 
+          {isSuspended
+            ? `Service to ${selectedLocation.title} currently suspended`
             : `Service available to ${selectedLocation.title}`}
         </div>
       )}
