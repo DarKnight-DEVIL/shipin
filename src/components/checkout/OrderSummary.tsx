@@ -1,136 +1,82 @@
 "use client";
 
 import type { Request } from "@/types/request";
-import {
-  Package,
-  ExternalLink,
-} from "lucide-react";
+import { Package, ExternalLink } from "lucide-react";
 
 interface Props {
   request: Request;
 }
 
-export default function OrderSummary({
-  request,
-}: Props) {
+export default function OrderSummary({ request }: Props) {
   return (
-    <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm dark:shadow-none">
-
-      <div className="border-b border-slate-200 dark:border-slate-800 p-8">
-
-        <h2 className="text-2xl font-bold">
-          Items in this Order
-        </h2>
-
-        <p className="mt-2 text-slate-400">
-          {request.items.length} item
-          {request.items.length !== 1 && "s"}
-        </p>
-
+    <section className="app-panel overflow-hidden">
+      <div className="flex items-baseline justify-between gap-3 border-b border-[var(--border)] px-5 py-3.5">
+        <div>
+          <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
+            Items in this order
+          </h2>
+          <p className="mt-0.5 text-[12px] text-[var(--muted)]">
+            {request.items.length} item
+            {request.items.length !== 1 && "s"}
+          </p>
+        </div>
       </div>
 
-      <div className="divide-y divide-slate-800">
-
+      <div className="divide-y divide-[var(--border)]">
         {request.items.map((item, index) => (
+          <div key={index} className="flex gap-4 p-5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-2)] text-[var(--muted)]">
+              <Package size={15} />
+            </span>
 
-          <div
-            key={index}
-            className="p-8"
-          >
+            <div className="min-w-0 flex-1">
+              <h3 className="text-[13px] font-medium text-[var(--foreground)]">
+                {item.name}
+              </h3>
 
-            <div className="flex justify-between">
+              <p className="mt-0.5 text-[12px] text-[var(--muted)]">
+                Quantity: {item.quantity}
+              </p>
 
-              <div>
-
-                <div className="flex items-center gap-3">
-
-                  <div className="rounded-xl bg-slate-800 p-3">
-
-                    <Package
-                      size={22}
-                    />
-
-                  </div>
-
-                  <div>
-
-                    <h3 className="font-semibold text-lg">
-                      {item.name}
-                    </h3>
-
-                    <p className="text-sm text-slate-400">
-                      Quantity: {item.quantity}
-                    </p>
-
-                  </div>
-
-                </div>
-
-                {item.url && (
-
-                  <a
-                    href={item.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-4 inline-flex items-center gap-2 text-blue-400 hover:text-blue-300"
-                  >
-
-                    View Product
-
-                    <ExternalLink
-                      size={16}
-                    />
-
-                  </a>
-
-                )}
-
-              </div>
-
-              <div className="text-right">
-
-                {item.unitPrice !== undefined && (
-
-                  <>
-
-                    <p className="text-sm text-slate-400">
-                      Unit Price
-                    </p>
-
-                    <p className="font-semibold">
-                      ${item.unitPrice.toFixed(2)}
-                    </p>
-
-                  </>
-
-                )}
-
-                {item.subtotal !== undefined && (
-
-                  <>
-
-                    <p className="mt-4 text-sm text-slate-400">
-                      Subtotal
-                    </p>
-
-                    <p className="text-xl font-bold">
-                      ${item.subtotal.toFixed(2)}
-                    </p>
-
-                  </>
-
-                )}
-
-              </div>
-
+              {item.url && (
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2.5 inline-flex items-center gap-1.5 text-[12px] font-medium text-blue-600 transition-colors hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
+                >
+                  View product
+                  <ExternalLink size={13} />
+                </a>
+              )}
             </div>
 
+            <div className="shrink-0 text-right">
+              {item.unitPrice !== undefined && (
+                <>
+                  <p className="text-[11px] uppercase tracking-[0.1em] text-[var(--muted)]">
+                    Unit price
+                  </p>
+                  <p className="mt-0.5 text-[13px] font-medium tabular-nums text-[var(--foreground)]">
+                    ${item.unitPrice.toFixed(2)}
+                  </p>
+                </>
+              )}
+
+              {item.subtotal !== undefined && (
+                <>
+                  <p className="mt-3 text-[11px] uppercase tracking-[0.1em] text-[var(--muted)]">
+                    Subtotal
+                  </p>
+                  <p className="mt-0.5 text-[16px] font-semibold tabular-nums text-[var(--foreground)]">
+                    ${item.subtotal.toFixed(2)}
+                  </p>
+                </>
+              )}
+            </div>
           </div>
-
         ))}
-
       </div>
-
     </section>
   );
 }

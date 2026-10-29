@@ -1,6 +1,13 @@
 "use client";
 
-import PayPalCheckout from "@/components/payment/PayPalCheckout";
+import dynamic from "next/dynamic";
+
+/* PayPal injects its own markup after mount — keep it off the server
+   render so React never hydrates against a different tree. */
+const PayPalCheckout = dynamic(
+  () => import("@/components/payment/PayPalCheckout"),
+  { ssr: false }
+);
 import type { AdditionalItemRequest } from "@/types/request";
 
 interface Props {
@@ -24,7 +31,7 @@ export default function AdditionalItemPaymentsCard({
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-slate-950 dark:text-white">
+        <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
           Additional item quote
         </h2>
         <p className="mt-0.5 text-sm text-slate-500">
@@ -52,7 +59,7 @@ export default function AdditionalItemPaymentsCard({
             <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 dark:border-slate-800 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-semibold text-slate-950 dark:text-white">
+                  <h3 className="text-[13px] font-semibold text-[var(--foreground)]">
                     {additionalRequest.item.name}
                   </h3>
                   <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-400 ring-1 ring-amber-500/20">
@@ -76,7 +83,7 @@ export default function AdditionalItemPaymentsCard({
 
               <div className="sm:text-right">
                 <p className="shipin-section-label">Amount due</p>
-                <p className="mt-0.5 text-2xl font-semibold text-emerald-500">
+                <p className="mt-0.5 text-[16px] font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                   ${totalDue.toFixed(2)}
                 </p>
               </div>

@@ -1,38 +1,64 @@
 "use client";
 
 import type { RequestStatus } from "@/lib/requestStatus";
+import { statusLabels } from "@/lib/statusLabels";
 
 interface Props {
   status: RequestStatus;
 }
 
-const styles: Record<RequestStatus, string> = {
-  submitted: "bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20",
-  review: "bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20",
-  awaiting_payment: "bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20",
-  paid: "bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20",
-  refund_requested: "bg-red-500/10 text-red-400 ring-1 ring-red-500/20",
-  refund_offered: "bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/20",
-  purchased: "bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/20",
-  warehouse_received: "bg-indigo-500/10 text-indigo-400 ring-1 ring-indigo-500/20",
-  ready_for_international_shipping:
-    "bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20",
-  packed: "bg-cyan-500/10 text-cyan-400 ring-1 ring-cyan-500/20",
-  shipped: "bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20",
-  out_for_delivery: "bg-pink-500/10 text-pink-400 ring-1 ring-pink-500/20",
-  delivered: "bg-lime-500/10 text-lime-400 ring-1 ring-lime-500/20",
-  refunded: "bg-red-500/10 text-red-400 ring-1 ring-red-500/20",
-  rejected: "bg-red-500/10 text-red-400 ring-1 ring-red-500/20",
+const meta: Record<RequestStatus, { dot: string; tone?: string }> = {
+  submitted: { dot: "bg-slate-400" },
+  review: {
+    dot: "bg-blue-500",
+    tone: "text-blue-700 dark:text-blue-300",
+  },
+  awaiting_payment: {
+    dot: "bg-amber-500",
+    tone: "text-amber-700 dark:text-amber-300",
+  },
+  paid: { dot: "bg-emerald-500" },
+  purchased: { dot: "bg-violet-500" },
+  warehouse_received: { dot: "bg-indigo-500" },
+  ready_for_international_shipping: { dot: "bg-teal-500" },
+  packed: { dot: "bg-cyan-500" },
+  shipped: { dot: "bg-sky-500" },
+  out_for_delivery: {
+    dot: "bg-sky-500",
+    tone: "text-sky-700 dark:text-sky-300",
+  },
+  delivered: { dot: "bg-emerald-500" },
+  refund_requested: {
+    dot: "bg-rose-500",
+    tone: "text-rose-700 dark:text-rose-300",
+  },
+  refund_offered: {
+    dot: "bg-violet-500",
+    tone: "text-violet-700 dark:text-violet-300",
+  },
+  refunded: { dot: "bg-slate-400" },
+  rejected: {
+    dot: "bg-rose-500",
+    tone: "text-rose-700 dark:text-rose-300",
+  },
 };
 
+/**
+ * Status is a dot plus a word. No pill soup, no colour-on-colour badges.
+ */
 export default function StatusBadge({ status }: Props) {
+  const item = meta[status];
+
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
-        styles[status] ?? "bg-slate-500/10 text-slate-400"
-      }`}
-    >
-      {status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[12px] font-medium leading-none">
+      <span
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${item?.dot ?? "bg-[var(--muted-soft)]"}`}
+        aria-hidden="true"
+      />
+      <span className={item?.tone ?? "text-[var(--foreground)] opacity-90"}>
+        {statusLabels[status] ??
+          status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+      </span>
     </span>
   );
 }

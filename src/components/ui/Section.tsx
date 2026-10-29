@@ -4,30 +4,20 @@ interface Props {
   children: React.ReactNode;
 }
 
-export default function Section({
-  title,
-  subtitle,
-  children,
-}: Props) {
+export default function Section({ title, subtitle, children }: Props) {
   return (
-    <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-
-      <div className="mb-6">
-
-        <h2 className="text-2xl font-bold text-white">
-          {title}
-        </h2>
+    <section className="app-panel p-5">
+      <div className="mb-4">
+        <h2 className="app-section-title">{title}</h2>
 
         {subtitle && (
-          <p className="text-slate-400 mt-1">
+          <p className="mt-1 text-[12px] leading-5 text-[var(--muted)]">
             {subtitle}
           </p>
         )}
-
       </div>
 
       {children}
-
     </section>
   );
 }

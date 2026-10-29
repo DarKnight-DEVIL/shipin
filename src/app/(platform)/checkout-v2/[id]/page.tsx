@@ -1,4 +1,8 @@
+import Link from "next/link";
+import { ReceiptText } from "lucide-react";
+
 import CheckoutHeader from "@/components/checkout/CheckoutHeader";
+import EmptyState from "@/components/ui/EmptyState";
 import OrderSummary from "@/components/checkout/OrderSummary";
 import CostBreakdown from "@/components/checkout/CostBreakdown";
 import PaymentCard from "@/components/checkout/PaymentCard";
@@ -16,13 +20,25 @@ export default async function CheckoutPage({
 }) {
   const { id } = await params;
 
-  const checkout = await getCheckoutData(id);
+  const checkout = await getCheckoutData(id).catch((error) => {
+    console.error("Checkout data failed:", error);
+    return null;
+  });
 
   if (!checkout) {
     return (
-      <main className="min-h-screen flex items-center justify-center text-white">
-        Request not found.
-      </main>
+      <div className="app-page">
+        <EmptyState
+          icon={<ReceiptText size={18} />}
+          title="Checkout unavailable"
+          description="This request doesn’t exist yet, or its quote hasn’t been issued. Open your requests to check its status."
+          action={
+            <Link href="/requests" className="app-btn app-btn-primary">
+              Back to requests
+            </Link>
+          }
+        />
+      </div>
     );
   }
 
@@ -35,17 +51,17 @@ export default async function CheckoutPage({
   });
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-slate-950 dark:to-slate-900">
-      <div className="mx-auto max-w-7xl px-6 py-8">
+    <div className="app-page">
+      <div>
 
         <CheckoutHeader
           requestId={request.id.slice(0, 6)}
           status={request.status}
         />
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-3">
+        <div className="mt-6 grid gap-5 lg:grid-cols-3">
 
-          <div className="space-y-6 lg:col-span-2">
+          <div className="space-y-5 lg:col-span-2">
 
             <OrderSummary request={request} />
 
@@ -55,7 +71,7 @@ export default async function CheckoutPage({
 
           </div>
 
-          <div className="space-y-6 lg:sticky lg:top-8 self-start">
+          <div className="space-y-5 self-start lg:sticky lg:top-6">
 
             <PaymentCard
               request={request}
@@ -68,15 +84,14 @@ export default async function CheckoutPage({
 
         </div>
 
-        <div className="mt-8">
+        <div className="mt-5">
           <Timeline />
         </div>
 
-        <div className="mt-8">
+        <div className="mt-5">
           <HelpCard />
         </div>
-
       </div>
-    </main>
+    </div>
   );
 }

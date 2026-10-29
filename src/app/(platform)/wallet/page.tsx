@@ -2,11 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowDownToLine, ArrowUpRight, Plus, ReceiptText } from "lucide-react";
+import {
+  ArrowDownToLine,
+  ArrowUpRight,
+  Plus,
+  ReceiptText,
+} from "lucide-react";
 
 import { auth } from "@/lib/firebase";
 import { getWallet, getWalletTransactions } from "@/lib/wallet";
 import EmptyState from "@/components/ui/EmptyState";
+import PageHeader from "@/components/ui/PageHeader";
 
 interface WalletData {
   balance: number;
@@ -99,160 +105,142 @@ export default function WalletPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-        <div className="mb-8 h-7 w-32 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
-        <div className="mb-8 h-36 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800/60" />
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-16 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/40"
-            />
-          ))}
+      <div className="app-page">
+        <div className="mb-6 h-7 w-32 animate-pulse rounded bg-[var(--surface-3)]" />
+        <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+          <div className="app-panel h-44 animate-pulse" />
+          <div className="app-panel h-64 animate-pulse" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      {/* Header */}
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
-            Wallet
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Balance and activity for ShipIN payments
-          </p>
-        </div>
+    <div className="app-page">
+      <PageHeader
+        title="Wallet"
+        subtitle="Balance and activity for ShipIN payments"
+        actions={
+          <Link href="/wallet/topup" className="app-btn app-btn-primary">
+            <Plus size={15} strokeWidth={2.5} />
+            Top up
+          </Link>
+        }
+      />
 
-        <Link
-          href="/wallet/topup"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
-        >
-          <Plus size={16} strokeWidth={2.5} />
-          Top up
-        </Link>
-      </div>
-
-      {/* Balance */}
-      <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 sm:p-7">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          Available
-        </p>
-        <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
-          {formatMoney(wallet.balance)}
-        </p>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          USD · used automatically at checkout when available
-        </p>
-
-        {wallet.balance <= 0 && (
-          <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Add funds with PayPal to pay for requests from your wallet.
-            </p>
-            <Link
-              href="/wallet/topup"
-              className="inline-flex items-center gap-1.5 self-start rounded-lg border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              <ArrowDownToLine size={15} />
-              Add funds
-            </Link>
+      <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
+        {/* Balance */}
+        <section>
+          <div className="mb-2.5 flex items-baseline justify-between gap-3">
+            <h2 className="app-section-title">Balance</h2>
           </div>
-        )}
-      </div>
 
-      {/* History */}
-      <div>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-medium text-slate-900 dark:text-white">
-            Activity
-          </h2>
-          {transactions.length > 0 && (
-            <span className="text-xs text-slate-400">
-              {transactions.length}{" "}
-              {transactions.length === 1 ? "entry" : "entries"}
-            </span>
-          )}
-        </div>
+          <div className="dash-card p-5">
+            <p className="app-kicker text-[var(--muted)]">
+              Available balance
+            </p>
 
-        {transactions.length === 0 ? (
-          <EmptyState
-            icon={<ReceiptText size={22} />}
-            title="No activity yet"
-            description="Top-ups, payments, and refunds will show up here."
-            action={
-              <Link
-                href="/wallet/topup"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
-              >
-                <Plus size={16} strokeWidth={2.5} />
-                Top up wallet
-              </Link>
-            }
-          />
-        ) : (
-          <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
-            {transactions.map((tx) => {
-              const amount = Number(tx.amount) || 0;
-              const credit = amount >= 0;
-              const date = tx.createdAt?.toDate?.();
+            <p className="mt-2 text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-[var(--foreground)]">
+              {formatMoney(wallet.balance)}
+            </p>
 
-              return (
-                <li
-                  key={tx.id}
-                  className="flex items-start justify-between gap-4 px-4 py-3.5 sm:px-5"
-                >
-                  <div className="flex min-w-0 items-start gap-3">
-                    <span
-                      className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                        credit
-                          ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
-                          : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-                      }`}
+            <p className="mt-1.5 text-[11px] text-[var(--muted)]">
+              USD · applied automatically at checkout
+            </p>
+
+            <div className="mt-4 border-t border-[var(--border)] pt-3.5">
+              {wallet.balance <= 0 ? (
+                <p className="text-[11px] leading-5 text-[var(--muted-soft)]">
+                  Add funds with PayPal to pay for requests from your wallet.
+                </p>
+              ) : (
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-[var(--muted)]">Status</span>
+                  <span className="text-[var(--foreground)]">Ready to use</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* Activity */}
+        <section>
+          <div className="mb-2.5 flex items-baseline justify-between gap-3">
+            <h2 className="app-section-title">Activity</h2>
+
+            {transactions.length > 0 && (
+              <span className="text-[11px] tabular-nums text-[var(--muted)]">
+                {transactions.length}{" "}
+                {transactions.length === 1 ? "entry" : "entries"}
+              </span>
+            )}
+          </div>
+
+          {transactions.length === 0 ? (
+            <EmptyState
+              icon={<ReceiptText size={18} />}
+              title="No activity yet"
+              description="Top-ups, payments and refunds will show up here. Add funds to pay for a request in one tap at checkout."
+            />
+          ) : (
+            <div className="app-panel app-panel-flush">
+              <div className="app-list">
+                {transactions.map((tx) => {
+                  const amount = Number(tx.amount) || 0;
+                  const credit = amount >= 0;
+                  const date = tx.createdAt?.toDate?.();
+
+                  return (
+                    <div
+                      key={tx.id}
+                      className="flex items-center justify-between gap-4 px-5 py-3.5"
                     >
-                      {credit ? (
-                        <ArrowDownToLine size={14} strokeWidth={2.25} />
-                      ) : (
-                        <ArrowUpRight size={14} strokeWidth={2.25} />
-                      )}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-900 dark:text-white">
-                        {txLabel(tx)}
-                      </p>
-                      {date && (
-                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                          {formatDate(date)}
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--surface-2)] text-[var(--muted)]">
+                          {credit ? (
+                            <ArrowDownToLine size={13} strokeWidth={2.25} />
+                          ) : (
+                            <ArrowUpRight size={13} strokeWidth={2.25} />
+                          )}
+                        </span>
+
+                        <div className="min-w-0">
+                          <p className="truncate text-[12px] font-medium text-[var(--foreground)]">
+                            {txLabel(tx)}
+                          </p>
+                          {date && (
+                            <p className="mt-0.5 text-[11px] text-[var(--muted)]">
+                              {formatDate(date)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        <p
+                          className={`text-[12px] font-medium tabular-nums ${
+                            credit
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-[var(--foreground)]"
+                          }`}
+                        >
+                          {credit ? "+" : "−"}
+                          {formatMoney(Math.abs(amount))}
                         </p>
-                      )}
-                    </div>
-                  </div>
 
-                  <div className="shrink-0 text-right">
-                    <p
-                      className={`text-sm font-medium tabular-nums ${
-                        credit
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : "text-slate-900 dark:text-white"
-                      }`}
-                    >
-                      {credit ? "+" : "−"}
-                      {formatMoney(Math.abs(amount))}
-                    </p>
-                    {typeof tx.balanceAfter === "number" && (
-                      <p className="mt-0.5 text-xs tabular-nums text-slate-400">
-                        {formatMoney(tx.balanceAfter)}
-                      </p>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                        {typeof tx.balanceAfter === "number" && (
+                          <p className="mt-0.5 text-[11px] tabular-nums text-[var(--muted-soft)]">
+                            {formatMoney(tx.balanceAfter)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

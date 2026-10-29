@@ -1,5 +1,7 @@
 "use client";
 
+import { Check } from "lucide-react";
+
 import { statusLabels } from "@/lib/statusLabels";
 import type { RequestStatus } from "@/lib/requestStatus";
 import { REQUEST_STATUS } from "@/lib/requestStatus";
@@ -22,72 +24,58 @@ interface Props {
   currentStatus: RequestStatus;
 }
 
-export default function Stepper({
-  currentStatus,
-}: Props) {
-  const currentIndex = REQUEST_WORKFLOW.indexOf(
-    currentStatus
-  );
+export default function Stepper({ currentStatus }: Props) {
+  const currentIndex = REQUEST_WORKFLOW.indexOf(currentStatus);
 
   return (
-    <div className="space-y-3">
+    <ol className="space-y-0">
+      {REQUEST_WORKFLOW.map((status, index) => {
+        const completed = index < currentIndex;
+        const current = index === currentIndex;
+        const last = index === REQUEST_WORKFLOW.length - 1;
 
-      {REQUEST_WORKFLOW.map(
-        (status, index) => {
-
-          const completed =
-            index < currentIndex;
-
-          const current =
-            index === currentIndex;
-
-          return (
-
-            <div
-              key={status}
-              className="flex items-center gap-4"
-            >
-
-              <div
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+        return (
+          <li key={status} className="flex gap-3">
+            <div className="flex flex-col items-center">
+              <span
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] ${
                   completed
-                    ? "bg-green-500 text-white"
-
+                    ? "border-transparent bg-[var(--accent-solid)] text-white"
                     : current
-                    ? "bg-purple-600 text-white"
-
-                    : "bg-slate-700 text-slate-400"
+                      ? "border-[var(--accent-solid)] bg-[var(--card)]"
+                      : "border-[var(--border-strong)] bg-[var(--card)]"
                 }`}
               >
-
-                {completed ? "✓" : ""}
-
-              </div>
-
-              <span
-                className={
-                  current
-                    ? "text-white font-semibold"
-
-                    : "text-slate-400"
-                }
-              >
-
-                {
-                  statusLabels[
-                    status
-                  ]
-                }
-
+                {completed ? (
+                  <Check size={11} strokeWidth={3} />
+                ) : current ? (
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent-solid)]" />
+                ) : null}
               </span>
 
+              {!last && (
+                <span
+                  className={`my-1 w-px flex-1 ${
+                    completed
+                      ? "bg-[var(--accent-solid)]/40"
+                      : "bg-[var(--border)]"
+                  }`}
+                />
+              )}
             </div>
 
-          );
-
-        }
-      )}
-
-    </div>
+            <span
+              className={`pb-4 text-[13px] leading-5 ${
+                current
+                  ? "font-medium text-[var(--foreground)]"
+                  : "text-[var(--muted)]"
+              }`}
+            >
+              {statusLabels[status]}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

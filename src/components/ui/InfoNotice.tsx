@@ -3,11 +3,7 @@
 interface Props {
   children: React.ReactNode;
 
-  variant?:
-    | "info"
-    | "warning"
-    | "success"
-    | "error";
+  variant?: "info" | "warning" | "success" | "error";
 }
 
 export default function InfoNotice({
@@ -16,21 +12,21 @@ export default function InfoNotice({
 }: Props) {
   const styles = {
     info:
-      "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+      "border-blue-200/80 bg-blue-50/70 text-blue-900 dark:border-blue-500/25 dark:bg-blue-500/10 dark:text-blue-200",
 
     warning:
-      "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+      "border-amber-200/80 bg-amber-50/70 text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200",
 
     success:
-      "border-green-500/20 bg-green-500/10 text-green-700 dark:text-green-300",
+      "border-emerald-200/80 bg-emerald-50/70 text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200",
 
     error:
-      "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300",
+      "border-rose-200/80 bg-rose-50/70 text-rose-900 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200",
   };
 
   return (
     <div
-      className={`rounded-xl border p-4 ${styles[variant]}`}
+      className={`rounded-lg border px-3.5 py-3 text-[13px] leading-6 ${styles[variant]}`}
     >
       {children}
     </div>

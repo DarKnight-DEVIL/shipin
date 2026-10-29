@@ -3,20 +3,16 @@ import CardSkeleton from "./CardSkeleton";
 
 export default function PageSkeleton() {
   return (
-    <div className="space-y-8">
-
-      <Skeleton className="h-10 w-72" />
-
-      <div className="grid gap-6">
-
-        <CardSkeleton />
-
-        <CardSkeleton />
-
-        <CardSkeleton />
-
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <Skeleton className="h-6 w-64" />
+        <Skeleton className="h-4 w-80 max-w-full" />
       </div>
 
+      <div className="grid gap-4">
+        <CardSkeleton />
+        <CardSkeleton />
+      </div>
     </div>
   );
 }

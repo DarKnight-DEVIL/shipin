@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { auth } from "@/lib/firebase";
+import PageHeader from "@/components/ui/PageHeader";
 import {
   getUserProfile,
   createUserProfile,
@@ -86,35 +87,81 @@ const WHATSAPP_COUNTRIES = [
   ["🇹🇷", "Turkey", "+90"],
 ] as const;
 
-const inputClass =
-  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-900/5 disabled:bg-slate-50 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-slate-500 dark:focus:ring-white/10 dark:disabled:bg-slate-900 dark:disabled:text-slate-500";
+const inputClass = "app-input";
 
-const labelClass =
-  "mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400";
+const labelClass = "app-label mb-1.5";
 
 function Section({
+  id,
   title,
   description,
   children,
 }: {
+  id?: string;
   title: string;
   description?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-      <div className="mb-5">
-        <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+    <section id={id} className="app-panel app-panel-flush scroll-mt-6">
+      <div className="border-b border-[var(--border)] px-5 py-3.5">
+        <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
           {title}
         </h2>
         {description && (
-          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-            {description}
-          </p>
+          <p className="mt-0.5 text-[12px] text-[var(--muted)]">{description}</p>
         )}
       </div>
-      {children}
+      <div className="p-5">{children}</div>
     </section>
+  );
+}
+
+function SwitchRow({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      className="app-row w-full text-left transition-colors hover:bg-[var(--surface-2)]"
+    >
+      <span className="min-w-0 flex-1">
+        <span className="block text-[12px] font-medium text-[var(--foreground)]">
+          {label}
+        </span>
+        {description && (
+          <span className="mt-0.5 block text-[11px] leading-4 text-[var(--muted)]">
+            {description}
+          </span>
+        )}
+      </span>
+
+      <span
+        aria-hidden
+        className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors ${
+          checked
+            ? "bg-[var(--accent-solid)]"
+            : "bg-[var(--surface-3)] ring-1 ring-inset ring-[var(--border)]"
+        }`}
+      >
+        <span
+          className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow-sm transition-transform ${
+            checked ? "translate-x-[16px]" : "translate-x-[2px]"
+          }`}
+        />
+      </span>
+    </button>
   );
 }
 
@@ -125,7 +172,7 @@ function PrimaryButton({
   return (
     <button
       {...props}
-      className={`rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 ${props.className ?? ""}`}
+      className={`app-btn app-btn-primary ${props.className ?? ""}`}
     >
       {children}
     </button>
@@ -139,7 +186,7 @@ function GhostButton({
   return (
     <button
       {...props}
-      className={`rounded-lg border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 ${props.className ?? ""}`}
+      className={`app-btn app-btn-secondary ${props.className ?? ""}`}
     >
       {children}
     </button>
@@ -514,21 +561,43 @@ export default function SettingsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
-          Settings
-        </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Account, security, and preferences
-        </p>
-      </div>
+    <div className="app-page">
+      <PageHeader
+        title="Settings"
+        subtitle="Account, security and preferences"
+      />
 
-      <div className="space-y-5">
+      <div className="grid gap-8 lg:grid-cols-[152px_minmax(0,1fr)]">
+        <nav aria-label="Settings sections" className="hidden lg:block">
+          <ul className="sticky top-6 space-y-px">
+            {[
+              ["account", "Account"],
+              ["security", "Security"],
+              ["appearance", "Appearance"],
+              ["dashboard", "Dashboard"],
+              ["channels", "Notifications"],
+            ].map(([id, label]) => (
+              <li key={id}>
+                <a
+                  href={`#${id}`}
+                  className="flex h-8 items-center rounded-md px-2.5 text-[12px] font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
+                >
+                  {label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div className="min-w-0 max-w-[760px] space-y-4">
         {/* Account */}
-        <Section title="Account" description="Your name and contact details">
+        <Section
+          id="account"
+          title="Account"
+          description="Your name and contact details"
+        >
           {profileLoading ? (
-            <div className="h-24 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/50" />
+            <div className="h-24 animate-pulse rounded-lg bg-[var(--surface-3)]" />
           ) : (
             <div className="space-y-4">
               <div>
@@ -594,15 +663,19 @@ export default function SettingsPage() {
         </Section>
 
         {/* Security */}
-        <Section title="Security" description="Password and sign-in methods">
+        <Section
+          id="security"
+          title="Security"
+          description="Password and sign-in methods"
+        >
           <div className="mb-4 flex flex-wrap gap-2">
             {hasPasswordProvider && (
-              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              <span className="rounded-full bg-[var(--surface-2)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--muted)]">
                 Email & password
               </span>
             )}
             {hasGoogleProvider && (
-              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              <span className="rounded-full bg-[var(--surface-2)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--muted)]">
                 Google
               </span>
             )}
@@ -643,12 +716,12 @@ export default function SettingsPage() {
                 </div>
               </div>
               {passwordError && (
-                <p className="text-sm text-red-600 dark:text-red-400">
+                <p className="text-[12px] text-rose-600 dark:text-rose-400">
                   {passwordError}
                 </p>
               )}
               {passwordMessage && (
-                <p className="text-sm text-emerald-600 dark:text-emerald-400">
+                <p className="text-[12px] text-emerald-600 dark:text-emerald-400">
                   {passwordMessage}
                 </p>
               )}
@@ -659,7 +732,7 @@ export default function SettingsPage() {
               </div>
             </form>
           ) : (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
+            <p className="text-[12px] leading-5 text-[var(--muted)]">
               You sign in with Google. Password changes aren’t available for
               this account.
             </p>
@@ -667,7 +740,7 @@ export default function SettingsPage() {
         </Section>
 
         {/* Appearance — theme only, no language */}
-        <Section title="Appearance" description="Color theme">
+        <Section id="appearance" title="Appearance" description="Color theme">
           <div className="flex flex-wrap gap-2">
             {themeOptions.map((opt) => {
               const active = theme === opt.id;
@@ -676,11 +749,8 @@ export default function SettingsPage() {
                   key={opt.id}
                   type="button"
                   onClick={() => setTheme(opt.id)}
-                  className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${
-                    active
-                      ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
-                      : "border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                  }`}
+                  data-active={active}
+                  className="app-chip"
                 >
                   {opt.label}
                 </button>
@@ -691,14 +761,15 @@ export default function SettingsPage() {
 
         {/* Dashboard */}
         <Section
+          id="dashboard"
           title="Dashboard"
           description={`Choose at least ${MIN_DASHBOARD_METRICS} metrics to show`}
         >
           {dashboardSettingsLoading ? (
-            <div className="h-20 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/50" />
+            <div className="h-20 animate-pulse rounded-lg bg-[var(--surface-3)]" />
           ) : (
             <>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="flex flex-wrap gap-1.5">
                 {dashboardMetrics.map((metric) => {
                   const selected = selectedDashboardMetrics.includes(metric.id);
                   return (
@@ -706,24 +777,12 @@ export default function SettingsPage() {
                       key={metric.id}
                       type="button"
                       onClick={() => toggleDashboardMetric(metric.id)}
-                      className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
-                        selected
-                          ? "border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-slate-800"
-                          : "border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
-                      }`}
+                      data-active={selected}
+                      aria-pressed={selected}
+                      className="app-chip"
                     >
-                      <span
-                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                          selected
-                            ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
-                            : "border-slate-300 dark:border-slate-600"
-                        }`}
-                      >
-                        {selected && <Check size={10} strokeWidth={3} />}
-                      </span>
-                      <span className="font-medium text-slate-800 dark:text-slate-200">
-                        {metric.label}
-                      </span>
+                      {selected && <Check size={11} strokeWidth={3} />}
+                      {metric.label}
                     </button>
                   );
                 })}
@@ -759,35 +818,41 @@ export default function SettingsPage() {
 
         {/* Notification channels */}
         <Section
+          id="channels"
           title="Notification channels"
           description="Where we can reach you"
         >
           {notificationSettingsLoading ? (
-            <div className="h-16 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/50" />
+            <div className="h-16 animate-pulse rounded-lg bg-[var(--surface-3)]" />
           ) : (
             <>
-              <div className="space-y-2">
+              <div className="divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
                 {(
                   [
-                    { key: "inApp" as const, label: "In-app" },
-                    { key: "email" as const, label: "Email" },
-                    { key: "whatsapp" as const, label: "WhatsApp" },
+                    {
+                      key: "inApp" as const,
+                      label: "In-app",
+                      description: "Updates inside your ShipIN dashboard",
+                    },
+                    {
+                      key: "email" as const,
+                      label: "Email",
+                      description: "Sent to your account email",
+                    },
+                    {
+                      key: "whatsapp" as const,
+                      label: "WhatsApp",
+                      description: "Transactional updates only",
+                    },
                   ] as const
                 ).map((ch) => (
-                  <label
+                  <SwitchRow
                     key={ch.key}
-                    className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 px-3 py-2.5 dark:border-slate-800"
-                  >
-                    <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                      {ch.label}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={notificationPreferences.channels[ch.key]}
-                      onChange={() => toggleNotificationChannel(ch.key)}
-                      className="h-4 w-4 accent-slate-900 dark:accent-white"
-                    />
-                  </label>
+                    label={ch.label}
+                    description={ch.description}
+                    checked={notificationPreferences.channels[ch.key]}
+                    onChange={() => toggleNotificationChannel(ch.key)}
+                  />
                 ))}
               </div>
               <div className="mt-4 flex justify-end">
@@ -818,28 +883,28 @@ export default function SettingsPage() {
                       onClick={() =>
                         setWhatsappCountryOpen((v) => !v)
                       }
-                      className="flex h-[42px] items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-sm dark:border-slate-700 dark:bg-slate-950"
+                      className="flex h-[38px] items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 text-[12px]"
                     >
                       <span>
                         {WHATSAPP_COUNTRIES.find(
                           (c) => c[2] === whatsappCountryCode
                         )?.[0] ?? "🌐"}
                       </span>
-                      <span className="tabular-nums text-slate-600 dark:text-slate-300">
+                      <span className="tabular-nums text-[var(--muted)]">
                         {whatsappCountryCode}
                       </span>
-                      <ChevronDown size={14} className="text-slate-400" />
+                      <ChevronDown size={13} className="text-[var(--muted-soft)]" />
                     </button>
                     {whatsappCountryOpen && (
-                      <div className="absolute left-0 top-full z-20 mt-1 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                        <div className="border-b border-slate-100 p-2 dark:border-slate-800">
+                      <div className="absolute left-0 top-full z-20 mt-1 w-64 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-lg shadow-slate-950/10 dark:shadow-black/40">
+                        <div className="border-b border-[var(--border)] p-2">
                           <input
                             value={whatsappCountrySearch}
                             onChange={(e) =>
                               setWhatsappCountrySearch(e.target.value)
                             }
                             placeholder="Search…"
-                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm outline-none dark:border-slate-700 dark:bg-slate-950"
+                            className="app-input py-1.5"
                           />
                         </div>
                         <ul className="max-h-48 overflow-y-auto py-1">
@@ -852,11 +917,11 @@ export default function SettingsPage() {
                                   setWhatsappCountryOpen(false);
                                   setWhatsappCountrySearch("");
                                 }}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-[var(--foreground)] hover:bg-[var(--surface-2)]"
                               >
                                 <span>{c[0]}</span>
                                 <span className="flex-1 truncate">{c[1]}</span>
-                                <span className="text-xs text-slate-400">
+                                <span className="text-[11px] text-[var(--muted-soft)]">
                                   {c[2]}
                                 </span>
                               </button>
@@ -877,7 +942,7 @@ export default function SettingsPage() {
                     className={`${inputClass} flex-1`}
                   />
                 </div>
-                <label className="flex cursor-pointer items-start gap-2.5 text-sm text-slate-600 dark:text-slate-300">
+                <label className="flex cursor-pointer items-start gap-2.5 text-[12px] leading-5 text-[var(--muted)]">
                   <input
                     type="checkbox"
                     checked={whatsappConsentChecked}
@@ -900,7 +965,7 @@ export default function SettingsPage() {
               </div>
             ) : (
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm tabular-nums text-slate-800 dark:text-slate-200">
+                <p className="text-[12px] tabular-nums text-[var(--foreground)]">
                   {whatsappCountryCode}
                   {whatsappLocalNumber}
                 </p>
@@ -917,34 +982,27 @@ export default function SettingsPage() {
 
         {/* Notification types */}
         <Section
+          id="types"
           title="Notification types"
           description="What you want to hear about"
         >
           {notificationSettingsLoading ? (
-            <div className="h-24 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/50" />
+            <div className="h-24 animate-pulse rounded-lg bg-[var(--surface-3)]" />
           ) : (
             <>
-              <div className="space-y-2">
+              <div className="divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
                 {(
                   Object.entries(notificationPreferences.categories) as [
                     keyof NotificationCategoryPreferences,
                     boolean,
                   ][]
                 ).map(([key, enabled]) => (
-                  <label
+                  <SwitchRow
                     key={key}
-                    className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 px-3 py-2.5 dark:border-slate-800"
-                  >
-                    <span className="text-sm font-medium capitalize text-slate-800 dark:text-slate-200">
-                      {key.replace(/([A-Z])/g, " $1").trim()}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={enabled}
-                      onChange={() => toggleNotificationCategory(key)}
-                      className="h-4 w-4 accent-slate-900 dark:accent-white"
-                    />
-                  </label>
+                    label={key.charAt(0).toUpperCase() + key.slice(1)}
+                    checked={enabled}
+                    onChange={() => toggleNotificationCategory(key)}
+                  />
                 ))}
               </div>
               <div className="mt-4 flex justify-end">
@@ -959,6 +1017,7 @@ export default function SettingsPage() {
             </>
           )}
         </Section>
+        </div>
       </div>
     </div>
   );

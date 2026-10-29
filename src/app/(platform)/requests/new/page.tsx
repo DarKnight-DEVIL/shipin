@@ -6,22 +6,19 @@ import {
   Link2,
   MapPin,
   MapPinOff,
-  Package,
   Plus,
   Trash2,
   Minus,
   Loader2,
-  StickyNote,
   AlertTriangle,
 } from "lucide-react";
-import { motion } from "framer-motion";
 import { toast } from "sonner";
 
 import AdditionalServices from "@/components/request/AdditionalServices";
 import AddressPicker from "@/components/address/AddressPicker";
 import AddressForm from "@/components/address/AddressForm";
 import Modal from "@/components/ui/Modal";
-import EmptyState from "@/components/ui/EmptyState";
+import PageHeader from "@/components/ui/PageHeader";
 import { auth } from "@/lib/firebase";
 import { addRequest } from "@/lib/firestore";
 import { getAddresses, addAddress } from "@/lib/addressBook";
@@ -158,75 +155,56 @@ export default function NewRequestPage() {
   const totalItems = items.reduce((sum, i) => sum + (i.quantity || 0), 0);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="shipin-page w-full px-6 py-8 pb-28 lg:px-10"
-    >
-      {/* Header */}
-      <div className="mb-8">
-        <p className="mb-1 text-sm font-medium text-purple-600 dark:text-purple-400">
-          New request
-        </p>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-4xl">
-          Create request
-        </h1>
-        <p className="mt-2 max-w-xl text-slate-600 dark:text-slate-400">
-          Paste product links from India. We'll purchase, inspect, and ship them to you.
-        </p>
-      </div>
+    <div className="app-page">
+      <PageHeader
+        eyebrow="New request"
+        title="Create request"
+        subtitle="Paste product links from India. We purchase, inspect and ship them to you."
+      />
 
-      <div className="grid gap-8 xl:grid-cols-[1fr_340px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
         {/* ── Main column ── */}
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* Items */}
-          <section className="shipin-card overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-800 sm:px-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
-                  <Package size={18} />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-950 dark:text-white">
-                    Items
-                  </h2>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {items.length} product{items.length === 1 ? "" : "s"} · {totalItems} total qty
-                  </p>
-                </div>
+          <section className="app-panel app-panel-flush">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-3.5">
+              <div>
+                <h2 className="app-section-title">Items</h2>
+                <p className="mt-0.5 text-[12px] text-[var(--muted)]">
+                  {items.length} product{items.length === 1 ? "" : "s"} ·{" "}
+                  {totalItems} total qty
+                </p>
               </div>
+
               <button
                 type="button"
                 onClick={addItem}
-                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-purple-600 transition hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-500/10"
+                className="app-btn app-btn-secondary app-btn-sm"
               >
-                <Plus size={16} />
+                <Plus size={14} />
                 Add item
               </button>
             </div>
 
-            <div className="divide-y divide-slate-200 dark:divide-slate-800">
+            <div className="divide-y divide-[var(--border)]">
               {items.map((item, index) => (
-                <div key={index} className="space-y-4 px-5 py-5 sm:px-6">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                      Item {index + 1}
-                    </span>
+                <div key={index} className="px-5 py-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="app-kicker">Item {index + 1}</span>
                     {items.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removeItem(index)}
-                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
+                        className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--muted)] transition-colors hover:text-rose-600 dark:hover:text-rose-400"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={12} />
                         Remove
                       </button>
                     )}
                   </div>
 
-                  <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-                    <div className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                    <div className="space-y-3">
                       <Field label="Product name">
                         <input
                           value={item.name}
@@ -253,22 +231,22 @@ export default function NewRequestPage() {
                     </div>
 
                     <Field label="Qty" className="sm:w-28">
-                      <div className="flex items-center gap-1 rounded-xl border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-950">
+                      <div className="flex items-center justify-between rounded-[9px] border border-[var(--border)] bg-[var(--card)] p-0.5">
                         <button
                           type="button"
                           onClick={() => adjustQuantity(index, -1)}
-                          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
                           aria-label="Decrease quantity"
                         >
                           <Minus size={14} />
                         </button>
-                        <span className="min-w-[2ch] text-center text-sm font-semibold tabular-nums text-slate-950 dark:text-white">
+                        <span className="min-w-[2ch] text-center text-[13px] font-semibold tabular-nums text-[var(--foreground)]">
                           {item.quantity}
                         </span>
                         <button
                           type="button"
                           onClick={() => adjustQuantity(index, 1)}
-                          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
                           aria-label="Increase quantity"
                         >
                           <Plus size={14} />
@@ -282,43 +260,36 @@ export default function NewRequestPage() {
           </section>
 
           {/* Delivery address */}
-          <section className="shipin-card overflow-hidden">
-            <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 sm:px-6">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
-                <MapPin size={18} />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-slate-950 dark:text-white">
-                  Delivery address
-                </h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Where we ship after warehouse processing
-                </p>
-              </div>
+          <section className="app-panel app-panel-flush">
+            <div className="border-b border-[var(--border)] px-5 py-3.5">
+              <h2 className="app-section-title">Delivery address</h2>
+              <p className="mt-0.5 text-[12px] text-[var(--muted)]">
+                Where we ship after warehouse processing
+              </p>
             </div>
 
-            <div className="p-5 sm:p-6">
+            <div className="p-5">
               {loadingAddresses ? (
-                <div className="flex h-24 items-center justify-center text-sm text-slate-500">
+                <div className="flex h-24 items-center justify-center text-sm text-[var(--muted)]">
                   Loading addresses…
                 </div>
               ) : selectedAddress ? (
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold text-slate-950 dark:text-white">
+                      <h3 className="text-[13px] font-semibold text-[var(--foreground)]">
                         {selectedAddress.label || "Address"}
                       </h3>
                       {selectedAddress.isDefault && (
-                        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                        <span className="rounded-full bg-[color-mix(in_srgb,var(--accent-solid)_12%,transparent)] px-2 py-0.5 text-xs font-medium text-[var(--accent)]">
                           Default
                         </span>
                       )}
                     </div>
-                    <p className="mt-2 text-sm text-slate-950 dark:text-white">
+                    <p className="mt-2 text-[13px] font-medium text-[var(--foreground)]">
                       {selectedAddress.recipientName}
                     </p>
-                    <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-400">
+                    <p className="mt-0.5 text-[12px] leading-5 text-[var(--muted)]">
                       {selectedAddress.addressLine1}
                       {selectedAddress.addressLine2 ? `, ${selectedAddress.addressLine2}` : ""}
                       <br />
@@ -332,34 +303,45 @@ export default function NewRequestPage() {
                     <button
                       type="button"
                       onClick={() => setShowAddressPicker(true)}
-                      className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800"
+                      className="app-btn app-btn-secondary app-btn-sm"
                     >
                       Change
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowEditAddress(true)}
-                      className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800"
+                      className="app-btn app-btn-secondary app-btn-sm"
                     >
                       Edit
                     </button>
                   </div>
                 </div>
               ) : (
-                <EmptyState
-                  icon={<MapPinOff size={26} />}
-                  title="No saved address"
-                  description="Add a shipping address before submitting this request."
-                  action={
-                    <button
-                      type="button"
-                      onClick={() => setShowAddAddress(true)}
-                      className="shipin-btn-primary px-5 py-3 text-sm"
-                    >
-                      Add address
-                    </button>
-                  }
-                />
+                <div className="flex flex-col items-start gap-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <MapPinOff
+                      size={16}
+                      className="mt-0.5 shrink-0 text-[var(--muted-soft)]"
+                    />
+                    <div>
+                      <p className="text-[13px] font-medium text-[var(--foreground)]">
+                        No saved address
+                      </p>
+                      <p className="mt-0.5 text-[12px] leading-5 text-[var(--muted)]">
+                        Add a shipping address before submitting this request.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowAddAddress(true)}
+                    className="app-btn app-btn-primary app-btn-sm shrink-0"
+                  >
+                    <MapPin size={13} />
+                    Add address
+                  </button>
+                </div>
               )}
             </div>
           </section>
@@ -373,27 +355,22 @@ export default function NewRequestPage() {
           />
 
           {/* Notes */}
-          <section className="shipin-card overflow-hidden">
-            <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 sm:px-6">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
-                <StickyNote size={18} />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-slate-950 dark:text-white">
-                  Notes
-                </h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Optional — size, color, alternatives, etc.
-                </p>
-              </div>
+          <section className="app-panel app-panel-flush">
+            <div className="border-b border-[var(--border)] px-5 py-3.5">
+              <h2 className="app-section-title">Notes</h2>
+              <p className="mt-0.5 text-[12px] text-[var(--muted)]">
+                Optional — size, colour, alternatives, anything else we should
+                know
+              </p>
             </div>
-            <div className="p-5 sm:p-6">
+
+            <div className="p-5">
               <textarea
                 rows={4}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Anything the team should know before purchasing…"
-                className="shipin-input min-h-[120px] resize-y"
+                className="app-textarea min-h-[110px]"
               />
             </div>
           </section>
@@ -402,55 +379,52 @@ export default function NewRequestPage() {
         {/* ── Sidebar summary (desktop) ── */}
         <aside className="hidden xl:block">
           <div className="sticky top-8 space-y-4">
-            <div className="shipin-card p-5">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                Summary
-              </h3>
-              <dl className="mt-4 space-y-3 text-sm">
+            <div className="app-panel p-5">
+              <h3 className="app-kicker">Summary</h3>
+
+              <dl className="mt-3.5 space-y-2.5 text-[12px]">
                 <div className="flex justify-between">
-                  <dt className="text-slate-500 dark:text-slate-400">Products</dt>
-                  <dd className="font-medium text-slate-950 dark:text-white">{items.length}</dd>
+                  <dt className="text-[var(--muted)]">Products</dt>
+                  <dd className="font-medium tabular-nums text-[var(--foreground)]">{items.length}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-slate-500 dark:text-slate-400">Total qty</dt>
-                  <dd className="font-medium text-slate-950 dark:text-white">{totalItems}</dd>
+                  <dt className="text-[var(--muted)]">Total qty</dt>
+                  <dd className="font-medium tabular-nums text-[var(--foreground)]">{totalItems}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-slate-500 dark:text-slate-400">Inspection</dt>
-                  <dd className="font-medium capitalize text-slate-950 dark:text-white">
+                  <dt className="text-[var(--muted)]">Inspection</dt>
+                  <dd className="font-medium capitalize text-[var(--foreground)]">
                     {inspection}
                   </dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-slate-500 dark:text-slate-400">Shipping</dt>
-                  <dd className="font-medium capitalize text-slate-950 dark:text-white">
+                  <dt className="text-[var(--muted)]">Shipping</dt>
+                  <dd className="font-medium capitalize text-[var(--foreground)]">
                     {shippingPreference === "approval" ? "Wait for approval" : shippingPreference}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500 dark:text-slate-400">Address</dt>
-                  <dd className="truncate text-right font-medium text-slate-950 dark:text-white">
+                  <dt className="text-[var(--muted)]">Address</dt>
+                  <dd className="truncate text-right font-medium text-[var(--foreground)]">
                     {selectedAddress?.label || selectedAddress?.city || "—"}
                   </dd>
                 </div>
               </dl>
 
-              <div className="mt-5 flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-5 text-amber-800 dark:text-amber-300">
-                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                <span>
-                  Requests lock after submit. Changes need support.
-                </span>
+              <div className="app-notice-warning mt-4 flex items-start gap-2 rounded-lg px-3 py-2.5 text-[11px] leading-5 text-amber-800 dark:text-amber-300">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                <span>Requests lock after submit. Changes need support.</span>
               </div>
 
               <button
                 type="button"
                 onClick={submitRequest}
                 disabled={submitting || !selectedAddress}
-                className="shipin-btn-primary mt-5 flex w-full items-center justify-center gap-2 px-5 py-3.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                className="app-btn app-btn-primary app-btn-lg app-btn-block mt-4"
               >
                 {submitting ? (
                   <>
-                    <Loader2 size={16} className="animate-spin" />
+                    <Loader2 size={15} className="animate-spin" />
                     Submitting…
                   </>
                 ) : (
@@ -462,14 +436,17 @@ export default function NewRequestPage() {
         </aside>
       </div>
 
+      {/* Spacer for the mobile submit bar */}
+      <div className="h-24 xl:hidden" />
+
       {/* Mobile sticky submit */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/95 xl:hidden">
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border)] bg-[var(--card)]/95 px-4 py-3 backdrop-blur-xl xl:hidden">
         <div className="mx-auto flex max-w-lg items-center gap-3">
-          <div className="min-w-0 flex-1 text-sm">
-            <p className="font-medium text-slate-950 dark:text-white">
+          <div className="min-w-0 flex-1 text-[12px]">
+            <p className="font-medium text-[var(--foreground)]">
               {items.length} item{items.length === 1 ? "" : "s"} · {totalItems} qty
             </p>
-            <p className="truncate text-slate-500 dark:text-slate-400">
+            <p className="truncate text-[var(--muted)]">
               {selectedAddress
                 ? selectedAddress.label || selectedAddress.city
                 : "No address selected"}
@@ -479,10 +456,10 @@ export default function NewRequestPage() {
             type="button"
             onClick={submitRequest}
             disabled={submitting || !selectedAddress}
-            className="shipin-btn-primary shrink-0 px-5 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+            className="app-btn app-btn-primary shrink-0"
           >
             {submitting ? (
-              <Loader2 size={16} className="animate-spin" />
+              <Loader2 size={15} className="animate-spin" />
             ) : (
               "Submit"
             )}
@@ -551,7 +528,7 @@ export default function NewRequestPage() {
           />
         )}
       </Modal>
-    </motion.div>
+    </div>
   );
 }
 
@@ -566,9 +543,7 @@ function Field({
 }) {
   return (
     <label className={`block ${className}`}>
-      <span className="mb-1.5 block text-xs font-medium text-slate-500 dark:text-slate-400">
-        {label}
-      </span>
+      <span className="app-label mb-1.5">{label}</span>
       {children}
     </label>
   );

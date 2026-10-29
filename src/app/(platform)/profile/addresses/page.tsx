@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MapPinOff } from "lucide-react";
+import { MapPinOff, Plus } from "lucide-react";
 
 import { auth } from "@/lib/firebase";
 import { getAddresses, addAddress } from "@/lib/addressBook";
@@ -11,6 +11,7 @@ import Modal from "@/components/ui/Modal";
 import AddressForm from "@/components/address/AddressForm";
 import PageSkeleton from "@/components/ui/PageSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
+import PageHeader from "@/components/ui/PageHeader";
 
 export default function AddressesPage() {
   const [addresses, setAddresses] = useState<any[]>([]);
@@ -23,11 +24,19 @@ export default function AddressesPage() {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(
       async (user) => {
-        if (!user) return;
+        if (!user) {
+          setLoading(false);
+          return;
+        }
 
-        const data = await getAddresses(user.uid);
-        setAddresses(data);
-        setLoading(false);
+        try {
+          const data = await getAddresses(user.uid);
+          setAddresses(data);
+        } catch (error) {
+          console.error("Address loading failed:", error);
+        } finally {
+          setLoading(false);
+        }
       }
     );
 
@@ -45,26 +54,28 @@ export default function AddressesPage() {
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto p-8">
+      <div className="app-page">
         <PageSkeleton />
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-4xl font-bold text-white">
-          Address Book
-        </h1>
-
-        <button
-          onClick={() => setShowModal(true)}
-          className="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-xl font-semibold text-white"
-        >
-          + Add Address
-        </button>
-      </div>
+    <div className="app-page">
+      <PageHeader
+        title="Address book"
+        subtitle="Saved shipping addresses used when you create a request"
+        actions={
+          <button
+            type="button"
+            onClick={() => setShowModal(true)}
+            className="app-btn app-btn-primary app-btn-sm"
+          >
+            <Plus size={14} strokeWidth={2.5} />
+            Add address
+          </button>
+        }
+      />
 
       {addresses.length === 0 ? (
         <EmptyState
@@ -78,14 +89,14 @@ export default function AddressesPage() {
                 setEditingAddress(null);
                 setShowModal(true);
               }}
-              className="rounded-xl bg-purple-600 px-5 py-3 font-semibold text-white transition hover:bg-purple-700"
+              className="app-btn app-btn-primary"
             >
               Add Address
             </button>
           }
         />
       ) : (
-        <div className="grid lg:grid-cols-2 gap-6 text-white">
+        <div className="grid gap-4 lg:grid-cols-2">
           {/* Step 5.8: Mapped out custom onRefresh and onEdit pipes onto the cards */}
           {addresses.map((address) => (
             <AddressCard

@@ -1,13 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { getRequestById } from "@/lib/firestore";
 
 import LoadingCard from "@/components/ui/LoadingCard";
+import EmptyState from "@/components/ui/EmptyState";
+import PageHeader from "@/components/ui/PageHeader";
 import InvoicePreview from "@/components/invoice/InvoicePreview";
-import PayPalCheckout from "@/components/payment/PayPalCheckout";
+import dynamic from "next/dynamic";
+
+/* PayPal injects its own markup after mount — keep it off the server
+   render so React never hydrates against a different tree. */
+const PayPalCheckout = dynamic(
+  () => import("@/components/payment/PayPalCheckout"),
+  { ssr: false }
+);
 import ApprovalCard from "@/components/request/ApprovalCard";
 
 import {
@@ -18,27 +28,70 @@ export default function InvoicePage() {
   const { id } = useParams();
 
   const [request, setRequest] = useState<any>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     async function load() {
-      if (!id) return;
+      if (!id) {
+        setLoaded(true);
+        return;
+      }
 
-      const data = await getRequestById(id as string);
-
-      setRequest(data);
+      try {
+        const data = await getRequestById(id as string);
+        setRequest(data);
+      } catch (error) {
+        console.error("Invoice loading failed:", error);
+        setRequest(null);
+      } finally {
+        setLoaded(true);
+      }
     }
 
     load();
   }, [id]);
 
+  if (!loaded) {
+    return (
+      <div className="app-page">
+        <LoadingCard />
+      </div>
+    );
+  }
+
   if (!request) {
-    return <LoadingCard />;
+    return (
+      <div className="app-page">
+        <EmptyState
+          title="Invoice not found"
+          description="This invoice could not be opened. The link may be incomplete, or the request may have been removed."
+          action={
+            <Link href="/requests" className="app-btn app-btn-primary">
+              Back to requests
+            </Link>
+          }
+        />
+      </div>
+    );
   }
 
   if (!request.quote) {
     return (
-      <div className="p-8 text-white">
-        Invoice not available yet.
+      <div className="app-page">
+        <div className="app-panel px-6 py-14 text-center">
+          <h1 className="text-[15px] font-semibold text-[var(--foreground)]">
+            Invoice not available yet
+          </h1>
+          <p className="mt-1 text-[12px] text-[var(--muted)]">
+            The invoice appears once your quote is ready.
+          </p>
+          <Link
+            href={`/requests/${id}`}
+            className="app-btn app-btn-secondary mt-5"
+          >
+            Back to request
+          </Link>
+        </div>
       </div>
     );
   }
@@ -59,55 +112,52 @@ export default function InvoicePage() {
     shippingPreference === "hold" ? 5 : 0;
 
   return (
-    <div className="max-w-6xl mx-auto p-8 space-y-8">
-
-      <InvoicePreview
-        invoice={invoice}
+    <div className="app-page">
+      <PageHeader
+        backHref={`/requests/${id}`}
+        backLabel="Request"
+        eyebrow="Invoice"
+        title="Purchase invoice"
       />
 
-      {/* Step 4: Add a heading if any extra fees apply */}
-      {(inspectionFee > 0 || holdFee > 0) && (
-        <div className="mt-8 mb-3">
-          <h3 className="text-lg font-semibold text-white">
-            Additional Services
-          </h3>
-        </div>
-      )}
+      <div className="max-w-3xl space-y-5">
+        <InvoicePreview invoice={invoice} />
 
-      {/* Step 3: Add an "Additional Services" data rows markup layout block */}
-      {inspectionFee > 0 && (
-        <div className="flex justify-between py-2 border-b border-slate-800 text-slate-300">
-          <span>Detailed Inspection</span>
-          <span>$5.00</span>
-        </div>
-      )}
+        {(inspectionFee > 0 || holdFee > 0) && (
+          <div className="mb-3 mt-6">
+            <h3 className="text-[13px] font-semibold text-[var(--foreground)]">
+              Additional services
+            </h3>
+          </div>
+        )}
 
-      {holdFee > 0 && (
-        <div className="flex justify-between py-2 border-b border-slate-800 text-slate-300">
-          <span>Hold Package</span>
-          <span>$5.00</span>
-        </div>
-      )}
+        {inspectionFee > 0 && (
+          <div className="flex justify-between border-b border-[var(--border)] py-2 text-[12px] text-[var(--muted)]">
+            <span>Detailed inspection</span>
+            <span className="tabular-nums">$5.00</span>
+          </div>
+        )}
 
-      <ApprovalCard
-        request={request}
-      />
+        {holdFee > 0 && (
+          <div className="flex justify-between border-b border-[var(--border)] py-2 text-[12px] text-[var(--muted)]">
+            <span>Hold package</span>
+            <span className="tabular-nums">$5.00</span>
+          </div>
+        )}
 
-      {request.status !== "purchase_invoice_paid" && (
-        <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6">
+        <ApprovalCard request={request} />
 
-          <h2 className="text-2xl font-bold text-white mb-4">
-            Secure Payment
-          </h2>
+        {request.status !== "purchase_invoice_paid" && (
+          <div className="app-panel p-5">
+            <h2 className="app-section-title mb-4">Secure payment</h2>
 
-          <PayPalCheckout
-            requestId={request.id}
-            amount={request.quote.grandTotal}
-          />
-
-        </div>
-      )}
-
+            <PayPalCheckout
+              requestId={request.id}
+              amount={request.quote.grandTotal}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -15,6 +15,7 @@ import AddressCard from "@/components/address/AddressCard";
 import AddressForm from "@/components/address/AddressForm";
 import Modal from "@/components/ui/Modal";
 import EmptyState from "@/components/ui/EmptyState";
+import PageHeader from "@/components/ui/PageHeader";
 import type { Address } from "@/types/address";
 
 export default function AddressesPage() {
@@ -100,13 +101,13 @@ export default function AddressesPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+      <div className="app-page">
         <div className="mb-8 h-8 w-48 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
         <div className="grid gap-4 sm:grid-cols-2">
           {[1, 2].map((i) => (
             <div
               key={i}
-              className="h-48 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800/60"
+              className="app-panel h-48 animate-pulse"
             />
           ))}
         </div>
@@ -116,30 +117,26 @@ export default function AddressesPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      {/* Header */}
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
-            Shipping addresses
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {addresses.length === 0
-              ? "Add an address to use on new requests."
-              : `${addresses.length} saved · default used for new requests`}
-          </p>
-        </div>
-
-        {addresses.length > 0 && (
-          <button
-            type="button"
-            onClick={openAddModal}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
-          >
-            <Plus size={16} strokeWidth={2.5} />
-            Add
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Shipping addresses"
+        subtitle={
+          addresses.length === 0
+            ? "Add an address to use on new requests."
+            : `${addresses.length} saved · default used for new requests`
+        }
+        actions={
+          addresses.length > 0 ? (
+            <button
+              type="button"
+              onClick={openAddModal}
+              className="app-btn app-btn-primary app-btn-sm"
+            >
+              <Plus size={14} strokeWidth={2.5} />
+              Add address
+            </button>
+          ) : undefined
+        }
+      />
 
       {/* Content */}
       {addresses.length === 0 ? (
@@ -151,9 +148,9 @@ export default function AddressesPage() {
             <button
               type="button"
               onClick={openAddModal}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+              className="app-btn app-btn-primary"
             >
-              <Plus size={16} strokeWidth={2.5} />
+              <Plus size={15} strokeWidth={2.5} />
               Add address
             </button>
           }

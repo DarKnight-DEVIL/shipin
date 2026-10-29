@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ShoppingCart } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
 interface Props {
@@ -8,69 +8,45 @@ interface Props {
   status: string;
 }
 
-export default function CheckoutHeader({
-  requestId,
-  status,
-}: Props) {
+export default function CheckoutHeader({ requestId, status }: Props) {
+  const statusLabel = status
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <section className="app-panel overflow-hidden">
+      <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
+        <div className="min-w-0">
+          <Link
+            href={`/requests/${requestId}`}
+            className="app-kicker inline-flex items-center gap-1.5 text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+          >
+            <ArrowLeft size={13} />
+            Back to request
+          </Link>
 
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-8 text-white">
-
-        <Link
-          href={`/requests/${requestId}`}
-          className="mb-6 inline-flex items-center gap-2 text-blue-100 hover:text-white transition"
-        >
-          <ArrowLeft size={18} />
-          Back to Request
-        </Link>
-
-        <div className="flex items-center gap-4">
-
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 backdrop-blur">
-
-            <ShoppingCart size={30} />
-
-          </div>
-
-          <div>
-
-            <h1 className="text-4xl font-bold">
-              Checkout
-            </h1>
-
-            <p className="mt-2 text-blue-100">
-              Review your quotation and complete payment securely.
-            </p>
-
-          </div>
-
+          <h1 className="app-h1 mt-2">Checkout</h1>
+          <p className="app-lead">
+            Review your quotation and complete payment securely.
+          </p>
         </div>
 
+        <div className="inline-flex shrink-0 items-center gap-2 self-start rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-1.5">
+          <span className="text-[11px] text-[var(--muted)]">Status</span>
+          <span className="text-[12px] font-medium text-[var(--foreground)]">
+            {statusLabel}
+          </span>
+        </div>
       </div>
 
-      <div className="flex items-center justify-between px-8 py-5">
-
-        <div>
-
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Request ID
-          </p>
-
-          <p className="font-semibold text-slate-900 dark:text-white">
-            #{requestId}
-          </p>
-
-        </div>
-
-        <span className="rounded-full bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
-
-          {status.replaceAll("_", " ")}
-
+      <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] px-5 py-3 sm:px-6">
+        <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
+          Request
         </span>
-
+        <span className="font-mono text-[13px] font-medium text-[var(--foreground)]">
+          #{requestId}
+        </span>
       </div>
-
     </section>
   );
 }

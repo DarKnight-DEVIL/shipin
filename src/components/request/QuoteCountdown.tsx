@@ -38,7 +38,7 @@ export default function QuoteCountdown({ expiresAt }: Props) {
       <div className="flex items-center justify-between gap-3">
         <p className="shipin-section-label">Quote expires in</p>
         <p
-          className={`font-mono text-xl font-semibold tracking-tight ${
+          className={`font-mono text-[16px] font-semibold tracking-tight ${
             urgent ? "text-amber-400" : "text-emerald-500"
           }`}
         >

@@ -1,0 +1,251 @@
+/* ShipIN app theme: the landing palette applied to the signed-in area.
+   Scoped to .shipin-app (set on the platform layout), so it re-themes the
+   dashboard, sidebar and every page inside that layout, and nothing else
+   (landing, login and any admin layout are untouched). Clean and flat: no 3D
+   or glow effects. Dark = landing ink + saffron; light = warm cream. */
+
+.shipin-app {
+  --background: #f7f3ec; --card: #ffffff; --sidebar: #fbf8f3;
+  --foreground: #1c1814; --muted: #6b6358; --muted-soft: #7c7468;
+  --border: #e7e0d4; --border-strong: #d6ccbc;
+  --surface: #ffffff; --surface-2: #f1ece3; --surface-3: #e8e1d5;
+  --accent: #c2410c; --accent-solid: #ff6b1a; --accent-solid-hover: #ea580c;
+  --display: var(--font-display), var(--font-geist-sans), system-ui, sans-serif;
+  background: var(--background); color: var(--foreground);
+}
+.dark .shipin-app {
+  --background: #0c0a09; --card: #141211; --sidebar: #0f0d0c;
+  --foreground: #f6f0e6; --muted: #9a9286; --muted-soft: #8f877b;
+  --border: #2a2622; --border-strong: #3d362d;
+  --surface: #141211; --surface-2: #1b1816; --surface-3: #26221e;
+  --accent: #ff8a3d; --accent-solid: #ff6b1a; --accent-solid-hover: #ff8a3d;
+}
+.shipin-app ::selection { background: rgba(255, 107, 26, .35); }
+.shipin-app :focus-visible { outline: 2px solid var(--accent-solid); outline-offset: 2px; }
+.shipin-app h1 { font-family: var(--display); letter-spacing: -.04em; }
+
+.shipin-app .app-page { width: 100%; max-width: 1240px; margin-inline: auto; padding: 28px 20px 64px; }
+@media (min-width: 768px) { .shipin-app .app-page { padding: 36px 36px 72px; } }
+
+.shipin-app .app-panel { background: var(--card); border: 1px solid var(--border); border-radius: 16px; }
+.shipin-app .app-panel-flush { padding: 0; overflow: hidden; }
+.shipin-app .app-section-title { font-family: var(--display); font-size: 15px; font-weight: 600; letter-spacing: -.02em; color: var(--foreground); }
+.shipin-app .app-kicker { font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted-soft); }
+
+.shipin-app .dash-title {
+  font-family: var(--display);
+  font-size: clamp(1.875rem, 3.5vw, 2.25rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+  color: var(--foreground);
+}
+
+.shipin-app .app-h1 {
+  font-family: var(--display);
+  font-size: clamp(1.25rem, 2.5vw, 1.5rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+  color: var(--foreground);
+}
+.shipin-app .app-lead {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.shipin-app .app-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 14px; border: 1px solid transparent; border-radius: 10px; font-size: 13px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; text-decoration: none; transition: background .2s, border-color .2s, color .2s, transform .15s; }
+.shipin-app .app-btn:active { transform: translateY(1px); }
+.shipin-app .app-btn:disabled { opacity: .55; cursor: not-allowed; }
+.shipin-app .app-btn-lg { height: 40px; padding: 0 18px; font-size: 13.5px; border-radius: 11px; }
+.shipin-app .app-btn-primary { background: var(--accent-solid); color: #1a0b02; font-weight: 600; }
+.shipin-app .app-btn-primary:hover:not(:disabled) { background: var(--accent-solid-hover); }
+.shipin-app .app-btn-secondary { background: var(--surface-2); border-color: var(--border); color: var(--foreground); }
+.shipin-app .app-btn-secondary:hover:not(:disabled) { background: var(--surface-3); border-color: var(--border-strong); }
+.shipin-app .app-btn-block { width: 100%; }
+.shipin-app .app-iconbtn { display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--muted); transition: background .2s, color .2s; }
+.shipin-app .app-iconbtn:hover { background: var(--surface-2); color: var(--foreground); }
+
+/* ── Dashboard ────────────────────────────────────────────── */
+
+/* Stagger fade-up entry */
+@keyframes dash-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+.shipin-app .dash-in {
+  animation: dash-in .55s cubic-bezier(.22, 1, .36, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 50ms);
+}
+
+/* Subtle entrance animation for modals / banners */
+@keyframes shipin-modal-in {
+  from { opacity: 0; transform: scale(0.97) translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.shipin-app .animate-modal-in {
+  animation: shipin-modal-in 250ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shipin-app .dash-in,
+  .shipin-app .animate-modal-in {
+    animation: none !important;
+  }
+}
+
+/* Base card */
+.shipin-app .dash-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  transition: border-color .25s, background .25s, transform .25s cubic-bezier(.22,1,.36,1), box-shadow .25s;
+}
+.shipin-app a.dash-card:focus-visible {
+  outline: 2px solid var(--accent-solid);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .shipin-app a.dash-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 28px rgba(0,0,0,.10);
+  }
+  .dark .shipin-app a.dash-card:hover { box-shadow: 0 8px 28px rgba(0,0,0,.35); }
+}
+
+/* Hot stat — awaiting payment */
+.shipin-app .dash-stat--hot {
+  border-color: rgba(255, 107, 26, .40);
+  background: linear-gradient(160deg, rgba(255,107,26,.10) 0%, transparent 55%), var(--card);
+}
+
+/* Attention banner tokens */
+.shipin-app .dash-attention {
+  position: relative;
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent-solid) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-solid) 6%, var(--card));
+}
+.shipin-app .dash-attention-rail {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 3px;
+  background: var(--accent-solid);
+}
+.shipin-app .dash-attention-divide {
+  border-color: color-mix(in srgb, var(--accent-solid) 15%, transparent);
+}
+.shipin-app .dash-attention-row {
+  transition: background .2s;
+}
+.shipin-app .dash-attention-row:hover {
+  background: color-mix(in srgb, var(--accent-solid) 8%, transparent);
+}
+
+/* Chip — icon badge */
+.shipin-app .dash-chip {
+  display: grid; place-items: center; flex: none;
+  width: 34px; height: 34px; border-radius: 10px;
+  background: var(--surface-2); color: var(--muted);
+  transition: background .25s, color .25s, transform .25s cubic-bezier(.22,1,.36,1);
+}
+@media (hover: hover) {
+  .shipin-app a:hover > .dash-chip,
+  .shipin-app a:hover .dash-chip {
+    background: rgba(255, 107, 26, .15);
+    color: var(--accent);
+    transform: scale(1.08);
+  }
+}
+
+/* Large number */
+.shipin-app .dash-num {
+  font-family: var(--display);
+  font-size: 2.4rem; font-weight: 700; line-height: 1;
+  letter-spacing: -.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Avatar tile */
+.shipin-app .dash-tile {
+  display: grid; place-items: center; flex: none;
+  width: 38px; height: 38px; border-radius: 11px;
+  background: rgba(255, 107, 26, .12);
+  color: var(--accent);
+  font-family: var(--display); font-size: .9rem; font-weight: 700;
+  transition: background .25s;
+}
+@media (hover: hover) {
+  .shipin-app a:hover .dash-tile { background: rgba(255, 107, 26, .22); }
+}
+
+/* Brand mark */
+.shipin-app .dash-brandmark {
+  background: linear-gradient(135deg, #ffc23d, #ff6b1a, #ff3d6e);
+  color: #1a0b02;
+}
+
+/* Notice containers */
+.shipin-app .app-notice-danger {
+  border: 1px solid color-mix(in srgb, #f43f5e 30%, var(--border));
+  background: color-mix(in srgb, #f43f5e 7%, var(--card));
+}
+.shipin-app .app-notice-warning {
+  border: 1px solid color-mix(in srgb, var(--accent-solid) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent-solid) 7%, var(--card));
+}
+
+/* Arrow nudge */
+.shipin-app .dash-arrow {
+  transition: transform .25s cubic-bezier(.22,1,.36,1);
+}
+@media (hover: hover) {
+  .shipin-app a:hover .dash-arrow { transform: translateX(3px); }
+}
+
+/* Letter-roll CTA label */
+.shipin-app .roll { display: inline-grid; overflow: clip; }
+.shipin-app .roll > span { grid-area: 1 / 1; transition: translate .45s cubic-bezier(.165,.84,.44,1); }
+.shipin-app .roll > span + span { translate: 0 105%; }
+@media (hover: hover) {
+  .shipin-app .app-btn:hover .roll > span,
+  .shipin-app .roll:hover > span { translate: 0 -105%; }
+  .shipin-app .app-btn:hover .roll > span + span,
+  .shipin-app .roll:hover > span + span { translate: 0 0; }
+}
+.shipin-app .app-btn:focus-visible .roll > span,
+.shipin-app .roll:focus-visible > span { translate: 0 -105%; }
+.shipin-app .app-btn:focus-visible .roll > span + span,
+.shipin-app .roll:focus-visible > span + span { translate: 0 0; }
+
+/* Attention pulse */
+@keyframes dash-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .35; }
+}
+.shipin-app .dash-pulse { animation: dash-pulse 2s ease-in-out infinite; }
+
+/* Progress fill */
+.shipin-app .dash-progress-fill {
+  transition: width .6s cubic-bezier(.22, 1, .36, 1);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .shipin-app .dash-in    { animation: none; }
+  .shipin-app .dash-pulse { animation: none; }
+  .shipin-app .dash-progress-fill { transition: none; }
+  .shipin-app .roll > span           { transition: none; translate: none !important; }
+  .shipin-app .roll > span + span    { visibility: hidden; }
+  @media (hover: hover) {
+    .shipin-app a.dash-card:hover    { transform: none; box-shadow: none; }
+    .shipin-app a:hover > .dash-chip,
+    .shipin-app a:hover .dash-chip   { transform: none; }
+    .shipin-app a:hover .dash-arrow  { transform: none; }
+  }
+}

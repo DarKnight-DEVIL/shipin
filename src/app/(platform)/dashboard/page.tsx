@@ -1,29 +1,36 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
-  PackageOpen,
-  Truck,
-  Plus,
-  AlertCircle,
-  CreditCard,
-  Package,
-  CheckCircle2,
-  MapPin,
-  Bell,
-  WalletCards,
-  MessageCircle,
-  ArrowRight,
   Activity,
-  Clock,
+  AlertCircle,
+  ArrowRight,
+  ArrowUpRight,
+  Boxes,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardList,
+  CreditCard,
+  FileText,
+  MapPin,
+  MessageCircle,
+  Package,
+  PackageOpen,
+  Plane,
+  Plus,
+  Send,
+  ShoppingBag,
+  Truck,
+  Undo2,
+  Wallet,
+  type LucideIcon,
 } from "lucide-react";
-import { motion } from "framer-motion";
 
 import { auth } from "@/lib/firebase";
 import { getRequests } from "@/lib/firestore";
 import type { Request } from "@/types/request";
+import type { RequestStatus } from "@/lib/requestStatus";
 
 import {
   ACTIVE_REQUEST_STATUSES,
@@ -34,8 +41,38 @@ import {
 } from "@/lib/dashboardMetrics";
 import { getUserPreferences } from "@/lib/userPreferences";
 
+import StatusBadge from "@/components/ui/StatusBadge";
+
+/* =========================================
+   COUNT-UP HOOK
+   Animates a number from 0 → target on mount.
+========================================= */
+function useCountUp(target: number, duration = 650) {
+  const [value, setValue] = useState(0);
+  const raf = useRef<number>(0);
+
+  useEffect(() => {
+    if (target === 0) { setValue(0); return; }
+    // Respect reduced-motion preference
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setValue(target);
+      return;
+    }
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min((now - start) / duration, 1);
+      const ease = t === 1 ? 1 : 1 - Math.pow(2, -10 * t); // expo out
+      setValue(Math.round(ease * target));
+      if (t < 1) raf.current = requestAnimationFrame(tick);
+    };
+    raf.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf.current);
+  }, [target, duration]);
+
+  return value;
+}
+
 export default function DashboardPage() {
-  const router = useRouter();
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("there");
@@ -84,112 +121,109 @@ export default function DashboardPage() {
 
   const metricValues = useMemo<Record<DashboardMetricId, number>>(() => {
     return {
-      active: requests.filter((request) =>
-        ACTIVE_REQUEST_STATUSES.includes(request.status)
+      active: requests.filter((r) =>
+        ACTIVE_REQUEST_STATUSES.includes(r.status)
       ).length,
-
-      submitted: requests.filter((request) => request.status === "submitted")
-        .length,
-
-      quote_ready: requests.filter((request) => request.status === "review")
-        .length,
-
-      awaiting_payment: requests.filter((request) => {
-        const mainPayment =
-          request.status === "awaiting_payment" && !request.payment;
-
-        const additionalPayment =
-          request.additionalItemRequests?.some(
-            (item) => item.status === "awaiting_payment"
-          ) ?? false;
-
-        return mainPayment || additionalPayment;
+      submitted: requests.filter((r) => r.status === "submitted").length,
+      quote_ready: requests.filter((r) => r.status === "review").length,
+      awaiting_payment: requests.filter((r) => {
+        const main  = r.status === "awaiting_payment" && !r.payment;
+        const extra = r.additionalItemRequests?.some(
+          (i) => i.status === "awaiting_payment"
+        ) ?? false;
+        return main || extra;
       }).length,
-
-      paid: requests.filter((request) => request.status === "paid").length,
-
-      purchased: requests.filter((request) => request.status === "purchased")
-        .length,
-
+      paid:             requests.filter((r) => r.status === "paid").length,
+      purchased:        requests.filter((r) => r.status === "purchased").length,
       warehouse_received: requests.filter(
-        (request) => request.status === "warehouse_received"
+        (r) => r.status === "warehouse_received"
       ).length,
-
       ready_for_international_shipping: requests.filter(
-        (request) => request.status === "ready_for_international_shipping"
+        (r) => r.status === "ready_for_international_shipping"
       ).length,
-
-      packed: requests.filter((request) => request.status === "packed").length,
-
-      shipped: requests.filter((request) => request.status === "shipped")
-        .length,
-
-      in_transit: requests.filter((request) =>
-        IN_TRANSIT_STATUSES.includes(request.status)
+      packed:           requests.filter((r) => r.status === "packed").length,
+      shipped:          requests.filter((r) => r.status === "shipped").length,
+      in_transit:       requests.filter((r) =>
+        IN_TRANSIT_STATUSES.includes(r.status)
       ).length,
-
       out_for_delivery: requests.filter(
-        (request) => request.status === "out_for_delivery"
+        (r) => r.status === "out_for_delivery"
       ).length,
-
-      delivered: requests.filter((request) => request.status === "delivered")
-        .length,
-
-      refunded: requests.filter((request) => request.status === "refunded")
-        .length,
+      delivered: requests.filter((r) => r.status === "delivered").length,
+      refunded:  requests.filter((r) => r.status === "refunded").length,
     };
   }, [requests]);
 
   const visibleMetrics = selectedMetrics
-    .map((metricId) =>
-      dashboardMetrics.find((metric) => metric.id === metricId)
-    )
-    .filter(
-      (metric): metric is (typeof dashboardMetrics)[number] => Boolean(metric)
-    );
+    .map((id) => dashboardMetrics.find((m) => m.id === id))
+    .filter((m): m is (typeof dashboardMetrics)[number] => Boolean(m));
 
   const attentionRequired = useMemo(() => {
-    return requests.filter((request) => {
-      const quoteReady = request.status === "review";
-      const paymentRequired =
-        request.status === "awaiting_payment" && !request.payment;
-      const additionalPaymentRequired =
-        request.additionalItemRequests?.some(
-          (item) => item.status === "awaiting_payment"
-        ) ?? false;
-      return quoteReady || paymentRequired || additionalPaymentRequired;
+    return requests.filter((r) => {
+      const quoteReady        = r.status === "review";
+      const paymentRequired   = r.status === "awaiting_payment" && !r.payment;
+      const additionalPayment = r.additionalItemRequests?.some(
+        (i) => i.status === "awaiting_payment"
+      ) ?? false;
+      return quoteReady || paymentRequired || additionalPayment;
     });
   }, [requests]);
 
-  const recentRequests = requests.slice(0, 5);
-  const latestShipment = requests.find(
-    (request) => request.tracking?.internalTrackingId
-  );
+  const recentRequests  = requests.slice(0, 5);
+  const latestShipment  = requests.find((r) => r.tracking?.internalTrackingId);
 
   const greeting = useMemo(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Good morning";
-    if (hour < 17) return "Good afternoon";
+    const h = new Date().getHours();
+    if (h < 12) return "Good morning";
+    if (h < 17) return "Good afternoon";
     return "Good evening";
   }, []);
 
+  const today = useMemo(
+    () =>
+      new Date().toLocaleDateString(undefined, {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      }),
+    []
+  );
+
+  const statusLine = useMemo(() => {
+    if (requests.length === 0)
+      return "Your requests, payments and shipments will appear here.";
+    const facts: string[] = [];
+    if (metricValues.in_transit > 0)
+      facts.push(`${metricValues.in_transit} in transit`);
+    if (attentionRequired.length > 0)
+      facts.push(
+        `${attentionRequired.length} ${attentionRequired.length === 1 ? "needs" : "need"} your input`
+      );
+    if (metricValues.delivered > 0)
+      facts.push(`${metricValues.delivered} delivered`);
+    if (facts.length === 0)
+      facts.push(
+        `${requests.length} request${requests.length === 1 ? "" : "s"} so far`
+      );
+    return facts.join(" · ");
+  }, [requests.length, metricValues, attentionRequired.length]);
+
   if (loading) {
     return (
-      <div className="shipin-page w-full px-6 py-8 lg:px-10">
-        <div className="space-y-8">
-          <div className="space-y-3">
-            <div className="h-4 w-32 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
-            <div className="h-10 w-80 max-w-full animate-pulse rounded-xl bg-slate-200 dark:bg-slate-800" />
-            <div className="h-5 w-96 max-w-full animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
+      <div className="app-page">
+        <div className="space-y-7">
+          <div className="space-y-2.5">
+            <div className="h-3 w-32 animate-pulse rounded bg-[var(--surface-3)]" />
+            <div className="h-9 w-72 max-w-full animate-pulse rounded bg-[var(--surface-3)]" />
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="shipin-card h-36 animate-pulse" />
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="dash-card h-[140px] animate-pulse" />
             ))}
           </div>
           <div className="grid gap-6 xl:grid-cols-3">
-            <div className="shipin-card h-80 xl:col-span-2" />
-            <div className="shipin-card h-80" />
+            <div className="dash-card h-96 animate-pulse xl:col-span-2" />
+            <div className="dash-card h-80 animate-pulse" />
           </div>
         </div>
       </div>
@@ -197,253 +231,156 @@ export default function DashboardPage() {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-      className="shipin-page w-full px-6 py-8 lg:px-10"
-    >
-      {/* HEADER */}
-      <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="mb-1 text-sm font-medium text-purple-600 dark:text-purple-400">
-            {greeting}
-          </p>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-4xl">
-            Welcome back, {userName}
+    <div className="app-page">
+
+      {/* ── HEADER ─────────────────────────────────────── */}
+      <header
+        className="dash-in mb-7 flex flex-wrap items-end justify-between gap-4"
+        style={{ "--i": 0 } as CSSProperties}
+      >
+        <div className="min-w-0">
+          <p className="app-kicker">{today}</p>
+          <h1 className="dash-title mt-1.5">
+            {greeting},{" "}
+            <span className="text-[var(--accent)]">{userName}</span>
           </h1>
-          <p className="mt-2 max-w-xl text-slate-600 dark:text-slate-400">
-            Track requests, payments, and shipments from one place.
-          </p>
+          <p className="mt-1.5 text-[13px] text-[var(--muted)]">{statusLine}</p>
         </div>
 
-        <Link
-          href="/requests/new"
-          className="shipin-btn-primary inline-flex items-center justify-center gap-2 px-5 py-3 text-sm"
-        >
-          <Plus size={18} />
-          Create Request
+        {/* Letter-roll primary CTA */}
+        <Link href="/requests/new" className="app-btn app-btn-primary app-btn-lg">
+          <Plus size={15} strokeWidth={2.5} aria-hidden="true" />
+          <span className="roll">
+            <span>New request</span>
+            <span aria-hidden="true">New request</span>
+          </span>
         </Link>
-      </div>
+      </header>
 
-      {/* STATS */}
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {visibleMetrics.map((metric, i) => (
-          <motion.div
-            key={metric.id}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05, duration: 0.4 }}
-          >
-            <StatCard
-              id={metric.id}
-              title={metric.label}
-              value={metricValues[metric.id]}
-              description={metric.description}
-              highlight={
-                metric.id === "awaiting_payment" &&
-                metricValues[metric.id] > 0
-              }
-            />
-          </motion.div>
-        ))}
-      </div>
-
-      {/* ATTENTION REQUIRED */}
+      {/* ── NEEDS ATTENTION ────────────────────────────── */}
       {attentionRequired.length > 0 && (
-        <section className="mb-8">
-          <div className="mb-4 flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            <div>
-              <h2 className="text-xl font-bold text-slate-950 dark:text-white">
-                Needs your attention
-              </h2>
-              <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-                {attentionRequired.length} request
-                {attentionRequired.length === 1 ? "" : "s"} waiting on you
-              </p>
-            </div>
+        <section
+          className="dash-in dash-attention"
+          style={{ "--i": 1 } as CSSProperties}
+        >
+          {/* Left accent rail */}
+          <span className="dash-attention-rail" />
+
+          <div className="flex items-center gap-2.5 px-5 py-3">
+            {/* Pulsing live dot */}
+            <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
+              <span className="dash-pulse absolute inline-flex h-full w-full rounded-full bg-[var(--accent-solid)] opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--accent-solid)]" />
+            </span>
+            <h2 className="app-kicker text-[var(--accent)]">
+              Needs your attention
+            </h2>
+            <span className="ml-auto text-[11px] font-medium tabular-nums text-[var(--accent)] opacity-80">
+              {attentionRequired.length} waiting
+            </span>
           </div>
 
-          <div className="space-y-3">
-            {attentionRequired.slice(0, 4).map((request) => (
-              <AttentionCard key={request.id} request={request} />
+          <div className="dash-attention-divide divide-y border-t">
+            {attentionRequired.slice(0, 4).map((r) => (
+              <AttentionRow key={r.id} request={r} />
             ))}
           </div>
         </section>
       )}
 
-      {/* MAIN GRID */}
-      <div className="grid gap-6 xl:grid-cols-3">
-        {/* RECENT REQUESTS */}
-        <section className="xl:col-span-2">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-bold text-slate-950 dark:text-white">
-                Recent requests
-              </h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Your latest ShipIN activity
-              </p>
-            </div>
+      {/* ── METRICS ────────────────────────────────────── */}
+      <div className="mb-7 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {visibleMetrics.map((metric, i) => (
+          <MetricCard
+            key={metric.id}
+            index={i + 2}
+            id={metric.id}
+            label={metric.label}
+            description={metric.description}
+            value={metricValues[metric.id]}
+            highlight={
+              metric.id === "awaiting_payment" && metricValues[metric.id] > 0
+            }
+          />
+        ))}
+      </div>
 
+      {/* ── MAIN GRID ──────────────────────────────────── */}
+      <div className="grid gap-6 lg:grid-cols-3">
+
+        {/* Recent requests */}
+        <section
+          className="dash-in min-w-0 lg:col-span-2"
+          style={{ "--i": 6 } as CSSProperties}
+        >
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h2 className="app-section-title">Recent requests</h2>
             <Link
               href="/requests"
-              className="inline-flex items-center gap-1 text-sm font-medium text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300"
+              className="group -mr-2.5 inline-flex items-center gap-1 px-2.5 py-2 text-[12px] font-medium text-[var(--muted)] transition-colors hover:text-[var(--accent)]"
             >
-              View all
-              <ArrowRight size={14} />
+              All requests
+              <ArrowRight size={12} className="dash-arrow" />
             </Link>
           </div>
 
-          <div className="shipin-card overflow-hidden">
+          <div className="dash-card overflow-hidden">
             {recentRequests.length === 0 ? (
-              <div className="flex min-h-[300px] items-center justify-center p-8">
-                <div className="text-center">
-                  <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
-                    <PackageOpen size={26} />
-                  </div>
-                  <h3 className="text-xl font-semibold text-slate-950 dark:text-white">
-                    No requests yet
-                  </h3>
-                  <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500 dark:text-slate-400">
-                    Create your first request to start shopping from India.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => router.push("/requests/new")}
-                    className="shipin-btn-primary mt-6 inline-flex items-center gap-2 px-5 py-3 text-sm"
-                  >
-                    <Plus size={16} />
-                    Create Request
-                  </button>
-                </div>
+              <div className="px-6 py-16 text-center">
+                <span className="dash-chip mx-auto h-11 w-11 rounded-xl">
+                  <PackageOpen size={20} />
+                </span>
+                <h3 className="mt-4 text-[14px] font-semibold text-[var(--foreground)]">
+                  No requests yet
+                </h3>
+                <p className="mx-auto mt-1.5 max-w-xs text-[12.5px] leading-5 text-[var(--muted)]">
+                  Create a request with a product link and track it from quote
+                  to doorstep.
+                </p>
+                <Link href="/requests/new" className="app-btn app-btn-primary mt-5">
+                  <Plus size={14} strokeWidth={2.5} />
+                  New request
+                </Link>
               </div>
             ) : (
-              recentRequests.map((request) => {
-                const itemPreview = request.items
-                  .slice(0, 2)
-                  .map((item) => item.name)
-                  .join(", ");
-                const extra =
-                  request.items.length > 2
-                    ? ` +${request.items.length - 2} more`
-                    : "";
-
-                return (
-                  <Link
-                    key={request.id}
-                    href={`/requests/${request.id}`}
-                    className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4 transition hover:bg-slate-50 last:border-b-0 dark:border-slate-800 dark:hover:bg-slate-800/40 sm:px-6 sm:py-5"
-                  >
-                    <div className="flex min-w-0 items-start gap-3">
-                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
-                        <Package size={18} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-semibold text-slate-950 dark:text-white">
-                          Request #{request.id.slice(0, 6).toUpperCase()}
-                        </div>
-                        <p className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">
-                          {itemPreview}
-                          {extra}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                          {request.items.length}{" "}
-                          {request.items.length === 1 ? "item" : "items"}
-                          {request.createdAt && (
-                            <>
-                              {" · "}
-                              {request.createdAt.toDate().toLocaleDateString()}
-                            </>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="shrink-0 text-right">
-                      <StatusLabel status={request.status} />
-                    </div>
-                  </Link>
-                );
-              })
+              <>
+                <div className="hidden bg-[var(--surface-2)] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--muted-soft)] sm:flex sm:items-center sm:gap-4">
+                  <span className="flex-1 pl-[52px]">Request</span>
+                  <span className="w-16 text-right">Created</span>
+                  <span className="w-[124px] text-right">Status</span>
+                  <span className="w-3.5" />
+                </div>
+                <div className="border-t border-[var(--border)]">
+                  {recentRequests.map((r) => (
+                    <RequestRow key={r.id} request={r} />
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </section>
 
-        {/* RIGHT COLUMN */}
-        <div className="space-y-6">
-          {/* LATEST SHIPMENT */}
+        {/* Right column */}
+        <div
+          className="dash-in min-w-0 space-y-6"
+          style={{ "--i": 7 } as CSSProperties}
+        >
           <section>
-            <h2 className="mb-4 text-xl font-bold text-slate-950 dark:text-white">
-              Latest shipment
-            </h2>
-
+            <h2 className="app-section-title mb-3">Latest shipment</h2>
             {latestShipment ? (
-              <div className="shipin-card p-6">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                    <Truck size={20} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                      ShipIN tracking
-                    </p>
-                    <p className="mt-0.5 truncate font-bold text-slate-950 dark:text-white">
-                      {latestShipment.tracking?.internalTrackingId}
-                    </p>
-                  </div>
-                </div>
-
-                <StatusLabel status={latestShipment.status} />
-
-                {latestShipment.tracking?.carrier && (
-                  <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-                    Carrier:{" "}
-                    <span className="font-medium text-slate-800 dark:text-slate-200">
-                      {String(latestShipment.tracking.carrier)}
-                    </span>
-                  </p>
-                )}
-
-                {latestShipment.tracking?.estimatedDelivery && (
-                  <div className="mt-4 flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
-                    <Clock
-                      size={16}
-                      className="mt-0.5 shrink-0 text-slate-400"
-                    />
-                    <div>
-                      <p className="text-xs text-slate-500">Estimated delivery</p>
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                        {latestShipment.tracking.estimatedDelivery}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <Link
-                  href={`/requests/${latestShipment.id}`}
-                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-700 transition hover:border-purple-400 hover:text-purple-600 dark:border-slate-700 dark:text-slate-300 dark:hover:border-purple-500 dark:hover:text-purple-400"
-                >
-                  View shipment
-                  <ArrowRight size={14} />
-                </Link>
-              </div>
+              <ShipmentCard request={latestShipment} />
             ) : (
-              <div className="shipin-card border-dashed p-6">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
-                    <Truck
-                      size={22}
-                      className="text-slate-500 dark:text-slate-400"
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-semibold text-slate-900 dark:text-white">
-                      No active shipment
-                    </h3>
-                    <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                      Tracking appears here once your order is dispatched.
+              <div className="dash-card border-dashed px-5 py-6">
+                <div className="flex items-start gap-3">
+                  <span className="dash-chip">
+                    <Truck size={16} />
+                  </span>
+                  <div>
+                    <p className="text-[13px] font-medium text-[var(--foreground)]">
+                      Nothing in transit
+                    </p>
+                    <p className="mt-0.5 text-[12px] leading-5 text-[var(--muted)]">
+                      Tracking appears here once a request ships.
                     </p>
                   </div>
                 </div>
@@ -451,157 +388,144 @@ export default function DashboardPage() {
             )}
           </section>
 
-          {/* QUICK ACTIONS */}
           <section>
-            <h2 className="mb-4 text-xl font-bold text-slate-950 dark:text-white">
-              Quick actions
-            </h2>
-
-            <div className="grid grid-cols-2 gap-3">
-              <QuickActionTile
-                href="/requests/new"
-                title="New request"
-                icon={<Plus size={18} />}
-              />
-              <QuickActionTile
-                href="/requests"
-                title="My requests"
-                icon={<Package size={18} />}
-              />
-              <QuickActionTile
-                href="/wallet"
-                title="Wallet"
-                icon={<WalletCards size={18} />}
-              />
-              <QuickActionTile
-                href="/addresses"
-                title="Addresses"
-                icon={<MapPin size={18} />}
-              />
-              <QuickActionTile
-                href="/notifications"
-                title="Notifications"
-                icon={<Bell size={18} />}
-              />
-              <QuickActionTile
-                href="/support"
-                title="Support"
-                icon={<MessageCircle size={18} />}
-              />
+            <h2 className="app-section-title mb-3">Shortcuts</h2>
+            <div className="dash-card p-1.5">
+              {SHORTCUTS.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-[var(--surface-2)]"
+                >
+                  <span className="dash-chip">
+                    <item.icon size={16} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium text-[var(--foreground)]">
+                      {item.label}
+                    </span>
+                    <span className="block truncate text-[11.5px] text-[var(--muted)]">
+                      {item.description}
+                    </span>
+                  </span>
+                  <ChevronRight
+                    size={14}
+                    className="dash-arrow shrink-0 text-[var(--muted-soft)]"
+                  />
+                </Link>
+              ))}
             </div>
           </section>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
+
+const SHORTCUTS: {
+  href: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}[] = [
+  { href: "/requests/new", label: "New request",  description: "Start with a product link",                     icon: Plus          },
+  { href: "/wallet",       label: "Wallet",        description: "Funds and payments",                            icon: Wallet        },
+  { href: "/addresses",    label: "Addresses",     description: "Where we deliver",                              icon: MapPin        },
+  { href: "/support",      label: "Support",       description: "Questions about a quote, payment or delivery",  icon: MessageCircle },
+];
 
 /* =========================================
    METRIC HREF
 ========================================= */
 function getMetricHref(id: DashboardMetricId): string {
   switch (id) {
-    case "active":
-      return "/requests";
-    case "submitted":
-      return "/requests?status=submitted";
-    case "quote_ready":
-      return "/requests?status=review";
-    case "awaiting_payment":
-      return "/requests?status=awaiting_payment";
-    case "paid":
-      return "/requests?status=paid";
-    case "purchased":
-      return "/requests?status=purchased";
-    case "warehouse_received":
-      return "/requests?status=warehouse_received";
-    case "ready_for_international_shipping":
-      return "/requests?status=ready_for_international_shipping";
-    case "packed":
-      return "/requests?status=packed";
-    case "shipped":
-      return "/requests?status=shipped";
-    case "in_transit":
-      return "/requests?status=in_transit";
-    case "out_for_delivery":
-      return "/requests?status=out_for_delivery";
-    case "delivered":
-      return "/requests?status=delivered";
-    case "refunded":
-      return "/requests?status=refunded";
-    default:
-      return "/requests";
+    case "active":                           return "/requests";
+    case "submitted":                        return "/requests?status=submitted";
+    case "quote_ready":                      return "/requests?status=review";
+    case "awaiting_payment":                 return "/requests?status=awaiting_payment";
+    case "paid":                             return "/requests?status=paid";
+    case "purchased":                        return "/requests?status=purchased";
+    case "warehouse_received":               return "/requests?status=warehouse_received";
+    case "ready_for_international_shipping": return "/requests?status=ready_for_international_shipping";
+    case "packed":                           return "/requests?status=packed";
+    case "shipped":                          return "/requests?status=shipped";
+    case "in_transit":                       return "/requests?status=in_transit";
+    case "out_for_delivery":                 return "/requests?status=out_for_delivery";
+    case "delivered":                        return "/requests?status=delivered";
+    case "refunded":                         return "/requests?status=refunded";
+    default:                                 return "/requests";
   }
 }
 
-function metricIcon(id: DashboardMetricId) {
-  switch (id) {
-    case "active":
-      return <Activity size={18} />;
-    case "awaiting_payment":
-      return <CreditCard size={18} />;
-    case "in_transit":
-    case "shipped":
-    case "out_for_delivery":
-      return <Truck size={18} />;
-    case "delivered":
-      return <CheckCircle2 size={18} />;
-    default:
-      return <Package size={18} />;
-  }
-}
+const METRIC_ICONS: Partial<Record<DashboardMetricId, LucideIcon>> = {
+  active:                           Activity,
+  submitted:                        ClipboardList,
+  quote_ready:                      FileText,
+  awaiting_payment:                 CreditCard,
+  paid:                             CheckCircle2,
+  purchased:                        ShoppingBag,
+  warehouse_received:               Boxes,
+  ready_for_international_shipping: Package,
+  packed:                           Package,
+  shipped:                          Send,
+  in_transit:                       Plane,
+  out_for_delivery:                 Truck,
+  delivered:                        CheckCircle2,
+  refunded:                         Undo2,
+};
 
 /* =========================================
-   STAT CARD
+   METRIC CARD  (with count-up animation)
 ========================================= */
-function StatCard({
+function MetricCard({
   id,
-  title,
+  label,
   value,
   description,
   highlight = false,
+  index,
 }: {
   id: DashboardMetricId;
-  title: string;
+  label: string;
   value: number;
   description: string;
   highlight?: boolean;
+  index: number;
 }) {
+  const Icon     = METRIC_ICONS[id] ?? Activity;
+  const animated = useCountUp(value, 700);
+
   return (
     <Link
       href={getMetricHref(id)}
-      className={`group block shipin-card p-5 transition-all hover:shadow-md ${
-        highlight
-          ? "border-amber-300/80 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/5"
-          : ""
+      aria-label={`${value} ${label}`}
+      className={`dash-card dash-in group block p-4 sm:p-5 ${
+        highlight ? "dash-stat--hot" : ""
       }`}
+      style={{ "--i": index } as CSSProperties}
     >
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-          {title}
-        </p>
-        <span
-          className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-            highlight
-              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-              : "bg-purple-500/10 text-purple-600 dark:text-purple-400"
-          }`}
-        >
-          {metricIcon(id)}
+      <div className="flex items-center justify-between">
+        <span className="dash-chip">
+          <Icon size={16} />
         </span>
+        <ArrowUpRight
+          size={14}
+          aria-hidden="true"
+          className="text-[var(--muted-soft)] opacity-0 transition-opacity group-hover:opacity-100"
+        />
       </div>
 
       <p
-        className={`mt-3 text-4xl font-bold tracking-tight ${
-          highlight
-            ? "text-amber-600 dark:text-amber-400"
-            : "text-slate-950 dark:text-white"
+        className={`dash-num mt-4 ${
+          highlight ? "text-[var(--accent)]" : "text-[var(--foreground)]"
         }`}
       >
-        {value}
+        {animated}
       </p>
-
-      <p className="mt-2 text-xs leading-5 text-slate-400 dark:text-slate-500">
+      <p className="mt-1.5 text-[12.5px] font-medium text-[var(--foreground)]">
+        {label}
+      </p>
+      <p className="mt-0.5 line-clamp-1 text-[11px] text-[var(--muted)]">
         {description}
       </p>
     </Link>
@@ -609,146 +533,249 @@ function StatCard({
 }
 
 /* =========================================
-   ATTENTION CARD
+   REQUEST ROW
 ========================================= */
-function AttentionCard({ request }: { request: Request }) {
-  const mainPayment =
-    request.status === "awaiting_payment" && !request.payment;
-  const additionalPayment = request.additionalItemRequests?.some(
-    (item) => item.status === "awaiting_payment"
-  );
-
-  let title = "Action required";
-  let description = "Open this request to continue.";
-  let cta = "Open";
-
-  if (request.status === "review") {
-    title = "Quote ready";
-    description = "Review and approve your quote to continue.";
-    cta = "Review quote";
-  } else if (mainPayment) {
-    title = "Payment required";
-    description = "Your approved request is waiting for payment.";
-    cta = "Pay now";
-  } else if (additionalPayment) {
-    title = "Additional item payment";
-    description = "An approved extra item needs payment.";
-    cta = "Pay now";
-  }
+function RequestRow({ request }: { request: Request }) {
+  const preview = request.items
+    .slice(0, 2)
+    .map((item) => item.name)
+    .join(", ");
+  const extra   = request.items.length > 2 ? ` +${request.items.length - 2}` : "";
+  const initial = (preview.trim().charAt(0) || "#").toUpperCase();
 
   return (
     <Link
       href={`/requests/${request.id}`}
-      className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 transition hover:border-amber-300 dark:border-amber-500/20 dark:bg-amber-500/5 dark:hover:border-amber-500/40 sm:flex-row sm:items-center sm:justify-between sm:p-5"
+      className="group flex items-center gap-3.5 border-t border-[var(--border)] px-4 py-3.5 transition-colors first:border-t-0 hover:bg-[var(--surface-2)] sm:px-5"
     >
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-400">
-          {mainPayment || additionalPayment ? (
-            <CreditCard size={18} />
-          ) : (
-            <AlertCircle size={18} />
+      <span className="dash-tile">{initial}</span>
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13px] font-medium text-[var(--foreground)]">
+          {preview || "No items listed"}
+          {extra}
+        </p>
+        <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[var(--muted)]">
+          <span className="font-mono tracking-tight">
+            #{request.id.slice(0, 6).toUpperCase()}
+          </span>
+          <span className="text-[var(--border-strong)]">/</span>
+          <span>
+            {request.items.length}{" "}
+            {request.items.length === 1 ? "item" : "items"}
+          </span>
+          {request.tracking?.internalTrackingId && (
+            <>
+              <span className="text-[var(--border-strong)]">/</span>
+              <span className="truncate font-mono">
+                {request.tracking.internalTrackingId}
+              </span>
+            </>
           )}
-        </div>
-        <div>
-          <div className="font-semibold text-slate-950 dark:text-white">
-            {title}
-          </div>
-          <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
-            Request #{request.id.slice(0, 6).toUpperCase()} · {description}
-          </p>
-        </div>
+        </p>
       </div>
 
-      <span className="inline-flex shrink-0 items-center gap-1 self-start text-sm font-semibold text-amber-700 dark:text-amber-400 sm:self-center">
-        {cta}
-        <ArrowRight size={14} />
+      {request.createdAt && (
+        <span className="hidden w-16 shrink-0 text-right text-[11px] tabular-nums text-[var(--muted)] sm:block">
+          {request.createdAt.toDate().toLocaleDateString(undefined, {
+            day: "numeric",
+            month: "short",
+          })}
+        </span>
+      )}
+
+      <span className="flex shrink-0 items-center justify-end sm:w-[124px]">
+        <StatusBadge status={request.status} />
       </span>
+
+      <ChevronRight
+        size={14}
+        className="dash-arrow hidden shrink-0 text-[var(--muted-soft)] sm:block"
+      />
     </Link>
   );
 }
 
 /* =========================================
-   STATUS
+   SHIPMENT CARD
 ========================================= */
-function StatusLabel({ status }: { status: string }) {
-  const labels: Record<string, string> = {
-    submitted: "Submitted",
-    review: "Quote Ready",
-    awaiting_payment: "Awaiting Payment",
-    paid: "Paid",
-    purchased: "Purchased",
-    warehouse_received: "At Warehouse",
-    ready_for_international_shipping: "Ready to Ship",
-    packed: "Packed",
-    shipped: "Shipped",
-    out_for_delivery: "Out for Delivery",
-    delivered: "Delivered",
-    refunded: "Refunded",
-    rejected: "Rejected",
-  };
+const SHIPMENT_PHASES: { label: string; statuses: RequestStatus[] }[] = [
+  { label: "Requested",    statuses: ["submitted", "review", "awaiting_payment"] },
+  { label: "Paid",         statuses: ["paid"] },
+  { label: "Purchased",    statuses: ["purchased"] },
+  { label: "At warehouse", statuses: ["warehouse_received", "ready_for_international_shipping", "packed"] },
+  { label: "In transit",   statuses: ["shipped", "out_for_delivery"] },
+  { label: "Delivered",    statuses: ["delivered"] },
+];
 
-  const styles: Record<string, string> = {
-    submitted:
-      "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-    review:
-      "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300",
-    awaiting_payment:
-      "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300",
-    paid: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300",
-    purchased:
-      "bg-purple-50 text-purple-700 dark:bg-purple-500/10 dark:text-purple-300",
-    warehouse_received:
-      "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300",
-    ready_for_international_shipping:
-      "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300",
-    packed:
-      "bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300",
-    shipped:
-      "bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300",
-    out_for_delivery:
-      "bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300",
-    delivered:
-      "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300",
-    refunded:
-      "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300",
-    rejected:
-      "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300",
-  };
+function ShipmentCard({ request }: { request: Request }) {
+  const phaseIndex = SHIPMENT_PHASES.findIndex((p) =>
+    p.statuses.includes(request.status)
+  );
+
+  const delivered = request.status === "delivered";
+  const carrier   = request.tracking?.carrier;
+  const eta       = request.tracking?.estimatedDelivery;
+
+  const dotColor  = delivered ? "bg-emerald-500" : "bg-[var(--accent-solid)]";
+  const ringColor = delivered
+    ? "ring-4 ring-emerald-500/20"
+    : "ring-4 ring-[color-mix(in_srgb,var(--accent-solid)_25%,transparent)]";
+
+  // Progress bar percentage
+  const pct =
+    phaseIndex < 0
+      ? 0
+      : Math.round(((phaseIndex + 1) / SHIPMENT_PHASES.length) * 100);
 
   return (
-    <span
-      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-        styles[status] ??
-        "bg-purple-50 text-purple-700 dark:bg-purple-500/10 dark:text-purple-300"
-      }`}
-    >
-      {labels[status] ?? status}
-    </span>
+    <div className="dash-card p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="app-kicker text-[var(--muted)]">
+            ShipIN tracking
+          </p>
+          <p className="mt-1 truncate font-mono text-[13px] font-medium tracking-tight text-[var(--foreground)]">
+            {request.tracking?.internalTrackingId}
+          </p>
+        </div>
+        <Link
+          href={`/requests/${request.id}`}
+          aria-label="View shipment details"
+          className="app-iconbtn -mr-1 -mt-1 h-9 w-9 text-[var(--muted)] hover:text-[var(--foreground)]"
+        >
+          <ArrowUpRight size={15} />
+        </Link>
+      </div>
+
+      {/* Progress bar */}
+      <div className="mt-4 h-[3px] w-full overflow-hidden rounded-full bg-[var(--surface-3)]">
+        <div
+          className="h-full rounded-full bg-[var(--accent-solid)] dash-progress-fill"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      <ol className="mt-4">
+        {SHIPMENT_PHASES.map((phase, i) => {
+          const reached = phaseIndex >= 0 && i <= phaseIndex;
+          const current = i === phaseIndex;
+          return (
+            <li key={phase.label} className="relative flex items-center gap-3 pb-3 last:pb-0">
+              {i < SHIPMENT_PHASES.length - 1 && (
+                <span
+                  className={`absolute left-[5px] top-[15px] h-[18px] w-px ${
+                    i < phaseIndex ? dotColor : "bg-[var(--border)]"
+                  }`}
+                />
+              )}
+              <span
+                className={`relative z-[1] h-[11px] w-[11px] shrink-0 rounded-full ${
+                  reached ? dotColor : "bg-[var(--border-strong)]"
+                } ${current ? ringColor : ""}`}
+              />
+              <span
+                className={`text-[12px] ${
+                  current
+                    ? "font-semibold text-[var(--foreground)]"
+                    : reached
+                    ? "text-[var(--foreground)] opacity-85"
+                    : "text-[var(--muted)]"
+                }`}
+              >
+                {phase.label}
+              </span>
+              {current && (
+                <span className="ml-auto text-[10px] font-medium text-[var(--accent)]">Now</span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+
+      {(carrier || eta) && (
+        <dl className="mt-4 space-y-1.5 border-t border-[var(--border)] pt-4 text-[11px]">
+          {carrier && (
+            <div className="flex items-baseline justify-between gap-3">
+              <dt className="text-[var(--muted)]">Carrier</dt>
+              <dd className="truncate font-medium text-[var(--foreground)]">{String(carrier)}</dd>
+            </div>
+          )}
+          {eta && (
+            <div className="flex items-baseline justify-between gap-3">
+              <dt className="text-[var(--muted)]">Estimated delivery</dt>
+              <dd className="font-medium text-[var(--foreground)]">{String(eta)}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+
+      <Link
+        href={`/requests/${request.id}`}
+        className="app-btn app-btn-secondary mt-4 w-full justify-center"
+      >
+        View shipment
+        <ArrowRight size={12} className="dash-arrow" />
+      </Link>
+    </div>
   );
 }
 
 /* =========================================
-   QUICK ACTION TILE
+   ATTENTION ROW
 ========================================= */
-function QuickActionTile({
-  href,
-  title,
-  icon,
-}: {
-  href: string;
-  title: string;
-  icon: React.ReactNode;
-}) {
+function AttentionRow({ request }: { request: Request }) {
+  const mainPayment =
+    request.status === "awaiting_payment" && !request.payment;
+  const additionalPayment =
+    request.additionalItemRequests?.some(
+      (i) => i.status === "awaiting_payment"
+    ) ?? false;
+
+  let title       = "Action required";
+  let description = "Open this request to continue.";
+  let cta         = "Open";
+
+  if (request.status === "review") {
+    title       = "Quote ready to review";
+    description = "Approve your quote to move this request forward.";
+    cta         = "Review";
+  } else if (mainPayment) {
+    title       = "Payment due";
+    description = "Your approved request is waiting for payment.";
+    cta         = "Pay now";
+  } else if (additionalPayment) {
+    title       = "Extra item needs payment";
+    description = "An approved additional item is awaiting payment.";
+    cta         = "Pay now";
+  }
+
+  const Icon = mainPayment || additionalPayment ? CreditCard : AlertCircle;
+
   return (
     <Link
-      href={href}
-      className="shipin-card flex flex-col items-start gap-3 p-4 transition hover:border-purple-400/40 hover:shadow-md"
+      href={`/requests/${request.id}`}
+      className="dash-attention-row group flex items-center gap-3.5 px-5 py-3 transition-colors"
     >
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
-        {icon}
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[color-mix(in_srgb,var(--accent-solid)_14%,transparent)] text-[var(--accent)]">
+        <Icon size={15} />
       </span>
-      <span className="text-sm font-medium text-slate-900 dark:text-white">
-        {title}
+
+      <div className="min-w-0 flex-1">
+        <p className="flex items-baseline gap-2 text-[13px] font-medium text-[var(--foreground)]">
+          <span className="truncate">{title}</span>
+          <span className="shrink-0 font-mono text-[10px] font-normal text-[var(--muted)]">
+            #{request.id.slice(0, 6).toUpperCase()}
+          </span>
+        </p>
+        <p className="mt-0.5 truncate text-[11.5px] text-[var(--muted)]">
+          {description}
+        </p>
+      </div>
+
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--accent-solid)] px-3 py-1.5 text-[11px] font-semibold text-[#1a0b02]">
+        {cta}
+        <ArrowRight size={12} className="dash-arrow" />
       </span>
     </Link>
   );

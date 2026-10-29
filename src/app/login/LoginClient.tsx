@@ -3,29 +3,49 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Bricolage_Grotesque } from "next/font/google";
 import {
   GoogleAuthProvider,
   signInWithPopup,
 } from "firebase/auth";
 import { motion } from "framer-motion";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowUpRight } from "lucide-react";
 import { toast } from "sonner";
 
 import { auth } from "@/lib/firebase";
 import { getUserProfile } from "@/lib/userProfile";
 
+import "./login.css";
+
+const display = Bricolage_Grotesque({
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+});
+
 const fadeUp = {
-  hidden: { opacity: 0, y: 24 },
+  hidden: { opacity: 0, y: 16 },
   show: (i: number) => ({
     opacity: 1,
     y: 0,
     transition: {
-      delay: i * 0.1,
-      duration: 0.55,
+      delay: 0.08 + i * 0.08,
+      duration: 0.5,
       ease: [0.22, 1, 0.36, 1] as const,
     },
   }),
 };
+
+function Logo({ small = false }: { small?: boolean }) {
+  return (
+    <div className={`login__logo${small ? " login__logo--sm" : ""}`}>
+      <span className="login__mark" aria-hidden="true">
+        <ArrowUpRight className={small ? "h-5 w-5" : "h-8 w-8"} strokeWidth={2.6} />
+      </span>
+      <span className="login__word">ShipIN</span>
+    </div>
+  );
+}
 
 export default function LoginClient() {
   const router = useRouter();
@@ -80,84 +100,48 @@ export default function LoginClient() {
   }
 
   return (
-    <main className="relative min-h-screen shipin-mesh text-slate-900 dark:text-white overflow-hidden flex items-center justify-center px-4">
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="animate-glow-pulse absolute -top-24 left-1/2 h-[380px] w-[380px] -translate-x-1/2 rounded-full bg-purple-500/20 blur-[100px]" />
-        <div className="animate-float absolute bottom-10 right-10 h-[220px] w-[220px] rounded-full bg-blue-500/10 blur-[70px]" />
-        <div className="animate-float absolute top-1/3 left-8 h-[160px] w-[160px] rounded-full bg-fuchsia-500/10 blur-[60px]" style={{ animationDelay: "1.5s" }} />
-      </div>
+    <main className={`login ${display.variable}`}>
+      <aside className="login__brand">
+        <div className="login__art" aria-hidden="true" />
+        <div className="login__brandbody">
+          <Logo />
+          <p className="login__tag">
+            Buy from any Indian store. We inspect, pack and forward it to your
+            address.
+          </p>
+          <p className="login__list">
+            Requests · Quotes · Worldwide shipments
+          </p>
+        </div>
+      </aside>
 
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="absolute top-6 left-6 z-20 md:top-8 md:left-8"
-      >
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-sm text-slate-600 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
-        >
+      <section className="login__panel">
+        <Link href="/" className="login__back">
           <ArrowLeft className="h-4 w-4" />
           Back to home
         </Link>
-      </motion.div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 28, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="relative z-10 w-full max-w-[420px]"
-      >
-        <div className="shipin-card shipin-glass overflow-hidden p-8 md:p-10">
-          <motion.div
-            custom={0}
-            variants={fadeUp}
-            initial="hidden"
-            animate="show"
-            className="mb-6 flex justify-center"
-          >
-            <span className="inline-flex items-center gap-2 rounded-full border border-purple-500/25 bg-purple-500/10 px-3.5 py-1 text-xs font-medium text-purple-700 dark:text-purple-300">
-              <Sparkles className="h-3.5 w-3.5" />
-              Secure sign-in
-            </span>
-          </motion.div>
+        <div className="login__form">
+          <Logo small />
 
-          <motion.div
-            custom={1}
-            variants={fadeUp}
-            initial="hidden"
-            animate="show"
-            className="text-center"
-          >
-            <Link
-              href="/"
-              className="text-3xl font-bold tracking-tight text-purple-600 dark:text-purple-400 md:text-4xl"
-            >
-              ShipIN
-            </Link>
-            <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-400 md:text-base">
-              Sign in to manage your shopping requests,
-              <br className="hidden sm:block" />
-              quotes, and worldwide shipments.
+          <motion.div custom={0} variants={fadeUp} initial="hidden" animate="show">
+            <h1 className="login__title">Sign in</h1>
+            <p className="login__sub">
+              Sign in to manage your shopping requests, quotes, and worldwide
+              shipments.
             </p>
           </motion.div>
 
-          <motion.div
-            custom={2}
-            variants={fadeUp}
-            initial="hidden"
-            animate="show"
-            className="mt-8"
-          >
+          <motion.div custom={1} variants={fadeUp} initial="hidden" animate="show">
             <button
               type="button"
               onClick={handleGoogleLogin}
               disabled={loading}
-              className="group relative flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-3.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-purple-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:hover:border-purple-500/50"
+              className="login__google"
             >
               {loading ? (
                 <>
-                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-purple-600 dark:border-slate-600 dark:border-t-purple-400" />
+                  <span className="login__spin" />
                   Signing in...
                 </>
               ) : (
@@ -174,17 +158,11 @@ export default function LoginClient() {
             </button>
           </motion.div>
 
-          <motion.p
-            custom={3}
-            variants={fadeUp}
-            initial="hidden"
-            animate="show"
-            className="mt-6 text-center text-xs text-slate-500 dark:text-slate-500"
-          >
+          <motion.p custom={2} variants={fadeUp} initial="hidden" animate="show" className="login__terms">
             By continuing, you agree to ShipIN&apos;s terms of service.
           </motion.p>
         </div>
-      </motion.div>
+      </section>
     </main>
   );
 }

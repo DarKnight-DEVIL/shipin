@@ -1,5 +1,7 @@
 "use client";
 
+import { Check } from "lucide-react";
+
 import {
   REQUEST_STATUS,
   type RequestStatus,
@@ -71,17 +73,17 @@ const REJECTED_TIMELINE: TimelineStep[] = [
 
 const timelineLabels: Record<TimelineStep, string> = {
   [REQUEST_STATUS.submitted]: "Received",
-  [REQUEST_STATUS.review]: "Quote Ready",
-  [REQUEST_STATUS.awaiting_payment]: "Awaiting Pay",
+  [REQUEST_STATUS.review]: "Quote ready",
+  [REQUEST_STATUS.awaiting_payment]: "Awaiting payment",
   [REQUEST_STATUS.paid]: "Paid",
-  [REQUEST_STATUS.refund_offered]: "Refund Offered",
-  [REQUEST_STATUS.refund_requested]: "Refund Requested",
+  [REQUEST_STATUS.refund_offered]: "Refund offered",
+  [REQUEST_STATUS.refund_requested]: "Refund requested",
   [REQUEST_STATUS.purchased]: "Purchased",
   [REQUEST_STATUS.warehouse_received]: "Warehouse",
-  [REQUEST_STATUS.ready_for_international_shipping]: "Ready to Ship",
+  [REQUEST_STATUS.ready_for_international_shipping]: "Ready to ship",
   [REQUEST_STATUS.packed]: "Packed",
   [REQUEST_STATUS.shipped]: "Shipped",
-  [REQUEST_STATUS.out_for_delivery]: "Out for Delivery",
+  [REQUEST_STATUS.out_for_delivery]: "Out for delivery",
   [REQUEST_STATUS.delivered]: "Delivered",
   [REQUEST_STATUS.refunded]: "Refunded",
   [REQUEST_STATUS.rejected]: "Rejected",
@@ -151,98 +153,97 @@ export default function RequestTimeline({
       isRejected && step === REQUEST_STATUS.rejected;
     const refundStep = step === "refund_requested";
     const refundedStep = step === REQUEST_STATUS.refunded;
+    const deliveredStep =
+      step === REQUEST_STATUS.delivered && (active || completed);
 
     if (rejectedStep || refundStep) {
       return {
-        dot: "border border-red-500/40 bg-red-500/10 text-red-400",
-        label: "text-red-400",
-        line: "bg-red-500/30",
+        dot: "border border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300",
+        label: "text-rose-600 dark:text-rose-400",
+        line: "bg-rose-200 dark:bg-rose-500/30",
       };
     }
-    if (refundedStep) {
+
+    if (refundedStep || deliveredStep) {
       return {
-        dot: "bg-emerald-500 text-white",
-        label: "text-emerald-400",
-        line: "bg-emerald-500/60",
+        dot: "border border-transparent bg-emerald-500 text-white",
+        label: "text-emerald-700 dark:text-emerald-400",
+        line: "bg-emerald-500/40",
       };
     }
+
     if (completed) {
       return {
-        dot: "bg-emerald-500 text-white",
-        label: "text-slate-700 dark:text-slate-200",
-        line: "bg-emerald-500/60",
+        dot: "border border-transparent bg-[var(--foreground)] text-[var(--card)]",
+        label: "text-[var(--foreground)]",
+        line: "bg-[var(--foreground)]/25",
       };
     }
+
     if (active) {
       return {
-        dot: "bg-purple-500/20 text-purple-300 ring-2 ring-purple-500/40",
-        label: "text-purple-300",
-        line: "bg-slate-700",
+        dot: "border border-[var(--accent-solid)] bg-[var(--card)] text-[var(--accent)]",
+        label: "font-medium text-[var(--accent)]",
+        line: "bg-[var(--border)]",
       };
     }
+
     return {
-      dot: "bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-500",
-      label: "text-slate-400 dark:text-slate-500",
-      line: "bg-slate-200 dark:bg-slate-800",
+      dot: "border border-[var(--border-strong)] bg-[var(--card)] text-[var(--muted)]",
+      label: "text-[var(--muted)]",
+      line: "bg-[var(--border)]",
     };
   }
 
+  const statusTone = isRejected
+    ? "text-rose-600 dark:text-rose-400"
+    : refundCompleted
+      ? "text-emerald-700 dark:text-emerald-400"
+      : refundRequested
+        ? "text-rose-600 dark:text-rose-400"
+        : "text-[var(--muted)]";
+
   return (
-    <section className="shipin-surface px-4 py-5 sm:px-6">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <section className="app-panel px-5 py-5 sm:px-6">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-medium text-slate-800 dark:text-slate-100">
-            Progress
-          </h2>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <h2 className="app-section-title">Progress</h2>
+          <p className="mt-0.5 text-[12px] text-[var(--muted)]">
             {timelineLabels[currentTimelineStep]}
             {waitingForAdditionalItems &&
               !isRejected &&
               !refundRequested &&
               !refundCompleted &&
-              " · Paused for additional items"}
+              " · paused for additional items"}
           </p>
         </div>
 
-        {isRejected && (
-          <span className="rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-xs font-semibold text-red-400">
-            Rejected
-          </span>
-        )}
-        {!isRejected && !refundCompleted && refundRequested && (
-          <span className="rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-xs font-semibold text-red-400">
-            Refund requested
-          </span>
-        )}
-        {!isRejected && refundCompleted && (
-          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-400">
-            Refunded
-          </span>
-        )}
-        {!isRejected &&
-          !refundRequested &&
-          !refundProcessing &&
-          !refundCompleted &&
-          waitingForAdditionalItems && (
-            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-300">
-              Waiting for items
-            </span>
-          )}
+        <span className={`text-[11px] font-medium ${statusTone}`}>
+          {isRejected
+            ? "Rejected"
+            : refundCompleted
+              ? "Refunded"
+              : refundRequested
+                ? "Refund requested"
+                : waitingForAdditionalItems
+                  ? "Waiting for items"
+                  : `${Math.max(currentIndex + 1, 0)} of ${timeline.length}`}
+        </span>
       </div>
 
       {/* Alert banners */}
       {isRejected && (
-        <div className="mb-5 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-slate-400">
+        <div className="mb-5 rounded-lg border border-rose-200/80 bg-rose-50/70 px-3.5 py-2.5 text-[12px] text-rose-800 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200">
           This purchase request could not be processed. See the rejection
           reason above.
         </div>
       )}
 
       {!isRejected && refundRequested && (
-        <div className="mb-5 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-slate-400">
+        <div className="mb-5 rounded-lg border border-rose-200/80 bg-rose-50/70 px-3.5 py-2.5 text-[12px] text-rose-800 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200">
           Refund request submitted
           {refundRequest?.preference && (
-            <span className="mt-1 block text-xs text-red-400/80">
+            <span className="mt-0.5 block text-[11px] text-rose-600/80 dark:text-rose-300/80">
               Preference:{" "}
               {refundRequest.preference === "wallet"
                 ? "ShipIN Wallet"
@@ -259,10 +260,10 @@ export default function RequestTimeline({
         !refundProcessing &&
         !refundCompleted &&
         waitingForAdditionalItems && (
-          <div className="mb-5 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-slate-400">
+          <div className="mb-5 rounded-lg border border-amber-200/80 bg-amber-50/70 px-3.5 py-2.5 text-[12px] text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
             Shipment is paused while additional items are handled.
             {orderChange?.requiresRepacking && (
-              <span className="mt-1 block text-xs text-slate-500">
+              <span className="mt-0.5 block text-[11px] text-amber-700/80 dark:text-amber-300/80">
                 Original parcel will be repacked with the new item.
               </span>
             )}
@@ -275,33 +276,37 @@ export default function RequestTimeline({
           const c = stepClasses(index, step);
           const completed =
             index < currentIndex || (isRejected && index === 0);
-          const active = index === currentIndex;
           const rejectedStep =
             isRejected && step === REQUEST_STATUS.rejected;
           const refundStep = step === "refund_requested";
+          const refundedStep = step === REQUEST_STATUS.refunded;
 
           return (
             <li key={step} className="flex min-w-0 flex-1 items-start">
               <div className="flex w-full flex-col items-center">
                 <div
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${c.dot}`}
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold ${c.dot}`}
                 >
-                  {rejectedStep || refundStep
-                    ? "!"
-                    : completed
-                      ? "✓"
-                      : index + 1}
+                  {rejectedStep || refundStep ? (
+                    "!"
+                  ) : completed || refundedStep ? (
+                    <Check size={11} strokeWidth={3} />
+                  ) : (
+                    index + 1
+                  )}
                 </div>
+
                 <span
-                  className={`mt-2 max-w-[4.5rem] text-center text-[10px] leading-tight ${c.label}`}
+                  className={`mt-2 max-w-[4.75rem] text-center text-[10px] leading-[13px] ${c.label}`}
                 >
                   {timelineLabels[step]}
                 </span>
               </div>
+
               {index < timeline.length - 1 && (
                 <div
-                  className={`mt-3.5 h-px min-w-[8px] flex-1 ${
-                    index < currentIndex ? c.line : "bg-slate-200 dark:bg-slate-800"
+                  className={`mt-2.5 h-px min-w-[8px] flex-1 ${
+                    index < currentIndex ? c.line : "bg-[var(--border)]"
                   }`}
                 />
               )}
@@ -311,7 +316,7 @@ export default function RequestTimeline({
       </ol>
 
       {/* Mobile vertical — show completed + current + next only when long */}
-      <ol className="space-y-0 md:hidden">
+      <ol className="md:hidden">
         {timeline.map((step, index) => {
           const c = stepClasses(index, step);
           const completed =
@@ -330,7 +335,6 @@ export default function RequestTimeline({
 
           const formatted = formatTimestamp(stepTimestamp);
 
-          // Collapse far-future steps on mobile for long timelines
           if (
             timeline.length > 6 &&
             index > currentIndex + 1 &&
@@ -340,37 +344,45 @@ export default function RequestTimeline({
           }
 
           return (
-            <li key={step} className="relative flex gap-3 pb-5 last:pb-0">
+            <li key={step} className="relative flex gap-3 pb-4 last:pb-0">
               {index < timeline.length - 1 && (
                 <div
-                  className={`absolute left-[13px] top-7 bottom-0 w-px ${
+                  className={`absolute bottom-0 left-[9px] top-6 w-px ${
                     index < currentIndex
-                      ? "bg-emerald-500/50"
-                      : "bg-slate-200 dark:bg-slate-800"
+                      ? c.line
+                      : "bg-[var(--border)]"
                   }`}
                 />
               )}
+
               <div
-                className={`relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${c.dot}`}
+                className={`relative z-10 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold ${c.dot}`}
               >
-                {rejectedStep || refundStep
-                  ? "!"
-                  : completed || refundedStep
-                    ? "✓"
-                    : index + 1}
+                {rejectedStep || refundStep ? (
+                  "!"
+                ) : completed || refundedStep ? (
+                  <Check size={11} strokeWidth={3} />
+                ) : (
+                  index + 1
+                )}
               </div>
-              <div className="min-w-0 pt-0.5">
-                <p className={`text-sm font-medium ${c.label}`}>
+
+              <div className="min-w-0 pt-px">
+                <p className={`text-[12px] leading-5 ${c.label}`}>
                   {timelineLabels[step]}
                 </p>
+
                 {formatted && (
-                  <p className="mt-0.5 text-xs text-slate-500">{formatted}</p>
+                  <p className="text-[11px] text-[var(--muted)]">
+                    {formatted}
+                  </p>
                 )}
+
                 {active &&
                   !isRejected &&
                   !refundStep &&
                   waitingForAdditionalItems && (
-                    <p className="mt-0.5 text-xs font-medium text-amber-400">
+                    <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
                       Paused for additional items
                     </p>
                   )}
@@ -382,27 +394,34 @@ export default function RequestTimeline({
 
       {/* Partial refunds */}
       {partialRefunds && partialRefunds.length > 0 && (
-        <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-800">
-          <p className="shipin-section-label mb-3">Refund history</p>
-          <div className="space-y-3">
+        <div className="mt-5 border-t border-[var(--border)] pt-4">
+          <p className="app-kicker mb-3">Refund history</p>
+
+          <div className="space-y-2.5">
             {partialRefunds.map((refund) => {
               const ts = formatTimestamp(refund.createdAt);
+
               return (
-                <div key={refund.id} className="flex gap-3">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white">
+                <div key={refund.id} className="flex gap-2.5">
+                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--surface-3)] text-[10px] font-semibold text-[var(--muted)]">
                     $
                   </div>
+
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-amber-500">
+                    <p className="text-[12px] font-medium text-[var(--foreground)]">
                       Partial refund · ${Number(refund.amount).toFixed(2)}
                     </p>
+
                     {refund.reason && (
-                      <p className="mt-0.5 text-sm text-slate-500">
+                      <p className="mt-0.5 text-[12px] leading-5 text-[var(--muted)]">
                         {refund.reason}
                       </p>
                     )}
+
                     {ts && (
-                      <p className="mt-0.5 text-xs text-slate-500">{ts}</p>
+                      <p className="mt-0.5 text-[11px] text-[var(--muted-soft)]">
+                        {ts}
+                      </p>
                     )}
                   </div>
                 </div>

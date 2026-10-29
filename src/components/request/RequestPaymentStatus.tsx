@@ -103,7 +103,7 @@ export default function RequestPaymentStatus({
             <CheckCircle2 size={20} className="text-emerald-500" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-slate-950 dark:text-white">
+            <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
               Payment received
             </h2>
             <p className="text-xs text-emerald-500">Completed successfully</p>
@@ -148,7 +148,7 @@ export default function RequestPaymentStatus({
             <span className="font-semibold text-slate-900 dark:text-white">
               Total paid
             </span>
-            <span className="text-lg font-semibold text-slate-900 dark:text-white">
+            <span className="text-[16px] font-semibold tabular-nums text-[var(--foreground)]">
               ${totalPaid.toFixed(2)}
             </span>
           </div>
@@ -165,7 +165,7 @@ export default function RequestPaymentStatus({
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500/10">
             <AlertCircle size={18} className="text-red-400" />
           </div>
-          <h2 className="text-base font-semibold text-slate-950 dark:text-white">
+          <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
             Quote expired
           </h2>
         </div>
@@ -202,7 +202,7 @@ export default function RequestPaymentStatus({
   if (request.status === "review") {
     return (
       <div className="shipin-surface p-5">
-        <h2 className="text-base font-semibold text-slate-950 dark:text-white">
+        <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
           Quote ready
         </h2>
         <p className="mt-1 text-sm text-slate-500">
@@ -224,7 +224,7 @@ export default function RequestPaymentStatus({
   if (request.status === "awaiting_payment" && !request.payment) {
     return (
       <div className="shipin-surface p-5">
-        <h2 className="text-base font-semibold text-slate-950 dark:text-white">
+        <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
           Payment required
         </h2>
         <p className="mt-1 text-sm text-slate-500">

@@ -116,7 +116,7 @@ export default function AddItemRequest({ request }: Props) {
     <section className="shipin-surface p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-slate-950 dark:text-white">
+          <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
             Need another item?
           </h2>
           <p className="mt-0.5 text-sm text-slate-500">

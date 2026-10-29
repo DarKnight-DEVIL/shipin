@@ -1,14 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Wallet,
-  PlusCircle,
-} from "lucide-react";
+import { Wallet } from "lucide-react";
 import { toast } from "sonner";
 
 import type { Request } from "@/types/request";
-import PayPalCheckout from "@/components/payment/PayPalCheckout";
+import dynamic from "next/dynamic";
+
+/* PayPal injects its own markup after mount — keep it off the server
+   render so React never hydrates against a different tree. */
+const PayPalCheckout = dynamic(
+  () => import("@/components/payment/PayPalCheckout"),
+  { ssr: false }
+);
 import { calculatePayment } from "@/features/finance/calculatePayment";
 
 interface Props {
@@ -16,10 +20,7 @@ interface Props {
   walletBalance: number;
 }
 
-export default function PaymentCard({
-  request,
-  walletBalance,
-}: Props) {
+export default function PaymentCard({ request, walletBalance }: Props) {
   const [useWallet, setUseWallet] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -35,245 +36,175 @@ export default function PaymentCard({
     try {
       setLoading(true);
 
-      const response = await fetch(
-        "/api/payment/complete-wallet",
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type": "application/json",
-          },
-
-          body: JSON.stringify({
-            requestId: request.id,
-            amount: payment.walletApplied,
-          }),
-        }
-      );
+      const response = await fetch("/api/payment/complete-wallet", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          requestId: request.id,
+          amount: payment.walletApplied,
+        }),
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.error ||
-            "Unable to complete wallet payment."
-        );
+        throw new Error(data.error || "Unable to complete wallet payment.");
       }
 
       window.location.reload();
     } catch (err) {
       console.error(err);
 
-      toast.error(
-        "Unable to complete payment.",
-        {
-          description:
-            "Please try again in a few moments.",
-        }
-      );
+      toast.error("Unable to complete payment.", {
+        description: "Please try again in a few moments.",
+      });
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm dark:shadow-none hover:shadow-md transition-all duration-200">
-
+    <section className="app-panel overflow-hidden">
       {/* ========================================
           HEADER
-          ======================================== */}
-
-      <div className="border-b border-slate-200 dark:border-slate-800 p-8">
-        <h2 className="text-2xl font-bold">
-          Payment Method
+      ======================================== */}
+      <div className="border-b border-[var(--border)] px-5 py-3.5">
+        <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
+          Payment method
         </h2>
-
-        <p className="mt-2 text-slate-400">
-          Choose how you'd like to pay.
+        <p className="mt-0.5 text-[12px] text-[var(--muted)]">
+          Choose how you&apos;d like to pay.
         </p>
       </div>
 
-      <div className="space-y-6 p-8">
-
+      <div className="space-y-5 p-5">
         {/* ========================================
             PAYMENT SUMMARY
-            ======================================== */}
-
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 p-8 space-y-4">
-
-          {/* ShipIN quotation amount */}
-          <Row
-            title="ShipIN Quote Total"
-            value={
-              request.quote!.breakdown.grandTotal
-            }
-          />
-
-          {/* PayPal processing fee */}
-          {payment.processingFee > 0 && (
+        ======================================== */}
+        <div className="rounded-[14px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+          <div className="space-y-3">
             <Row
-              title="PayPal Processing Fee"
-              value={payment.processingFee}
+              title="ShipIN quote total"
+              value={request.quote!.breakdown.grandTotal}
             />
-          )}
 
-          {/* Complete amount before wallet */}
-          <div className="border-t border-slate-200 dark:border-slate-800 pt-4">
-            <Row
-              title="Total Payment"
-              value={payment.grandTotal}
-              bold
-            />
-          </div>
-
-          {/* Wallet deduction */}
-          {useWallet &&
-            payment.walletApplied > 0 && (
+            {payment.processingFee > 0 && (
               <Row
-                title="Wallet Applied"
-                value={
-                  -payment.walletApplied
-                }
-                green
+                title="PayPal processing fee"
+                value={payment.processingFee}
               />
             )}
 
-          {/* PayPal amount */}
-          {payment.paypalAmount > 0 && (
-            <div className="border-t border-slate-200 dark:border-slate-800 pt-4">
-              <Row
-                title="Pay Now with PayPal"
-                value={payment.paypalAmount}
-                bold
-              />
+            <div className="border-t border-[var(--border)] pt-3">
+              <Row title="Total payment" value={payment.grandTotal} bold />
             </div>
-          )}
 
-          {/* Fully wallet-paid */}
-          {payment.paypalAmount === 0 &&
-            payment.walletApplied > 0 && (
-              <div className="border-t border-slate-200 dark:border-slate-800 pt-4">
+            {useWallet && payment.walletApplied > 0 && (
+              <Row title="Wallet applied" value={-payment.walletApplied} credit />
+            )}
+
+            {payment.paypalAmount > 0 && (
+              <div className="border-t border-[var(--border)] pt-3">
                 <Row
-                  title="Remaining PayPal Payment"
-                  value={0}
+                  title="Pay now with PayPal"
+                  value={payment.paypalAmount}
                   bold
                 />
               </div>
             )}
 
+            {payment.paypalAmount === 0 && payment.walletApplied > 0 && (
+              <div className="border-t border-[var(--border)] pt-3">
+                <Row
+                  title="Remaining PayPal payment"
+                  value={0}
+                  bold
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ========================================
             WALLETS
-            ======================================== */}
-
+        ======================================== */}
         {hasWallet && (
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-blue-50/50 dark:bg-slate-950/40 p-8">
+          <div className="rounded-[14px] border border-[var(--border)] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-2)] text-[var(--muted)]">
+                  <Wallet size={15} />
+                </span>
 
-            <div className="flex items-center justify-between">
-
-              <div className="flex items-center gap-3">
-
-                <Wallet
-                  className="text-blue-600 dark:text-blue-400"
-                  size={22}
-                />
-
-                <div>
-                  <p className="font-semibold">
-                    Apply Wallet Balance
+                <div className="min-w-0">
+                  <p className="text-[13px] font-medium text-[var(--foreground)]">
+                    Apply wallet balance
                   </p>
-
-                  <p className="text-sm text-slate-400">
-                    Available Balance
+                  <p className="text-[12px] text-[var(--muted)]">
+                    Available balance
                   </p>
                 </div>
-
               </div>
 
-              <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+              <p className="shrink-0 text-[18px] font-semibold tabular-nums text-[var(--foreground)]">
                 ${walletBalance.toFixed(2)}
               </p>
-
             </div>
 
             {/* Wallet toggle */}
-
             <button
               type="button"
-              onClick={() =>
-                setUseWallet(
-                  (current) => !current
-                )
-              }
-              className={`mt-5 flex w-full items-center justify-between rounded-xl border px-5 py-4 transition ${
-                useWallet
-                  ? "border-blue-500 bg-blue-600/10"
-                  : "border-slate-200 dark:border-slate-700 bg-white dark:bg-transparent"
-              }`}
+              role="switch"
+              aria-checked={useWallet}
+              onClick={() => setUseWallet((current) => !current)}
+              className="mt-4 flex w-full items-center justify-between rounded-[14px] border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 transition hover:border-[var(--border-strong)]"
             >
-
-              <span className="font-medium">
-                Use Wallet
+              <span className="text-[13px] font-medium text-[var(--foreground)]">
+                Use wallet for this payment
               </span>
 
-              <div
-                className={`h-6 w-11 rounded-full transition ${
+              <span
+                aria-hidden
+                className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors ${
                   useWallet
-                    ? "bg-blue-500"
-                    : "bg-slate-300 dark:bg-slate-700"
+                    ? "bg-[var(--accent-solid)]"
+                    : "bg-[var(--surface-3)] ring-1 ring-inset ring-[var(--border)]"
                 }`}
               >
-                <div
-                  className={`m-1 h-4 w-4 rounded-full bg-white transition ${
-                    useWallet
-                      ? "translate-x-5"
-                      : ""
+                <span
+                  className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow-sm transition-transform ${
+                    useWallet ? "translate-x-[16px]" : "translate-x-[2px]"
                   }`}
                 />
-              </div>
-
+              </span>
             </button>
-
           </div>
         )}
 
         {/* ========================================
             PAYPAL / WALLET-ONLY PAYMENT
-            ======================================== */}
-
+        ======================================== */}
         {payment.paypalAmount === 0 ? (
-
           <button
             type="button"
-            onClick={
-              completeWalletPayment
-            }
-            className="w-full rounded-2xl bg-blue-600 text-white py-4 text-lg font-semibold transition hover:bg-blue-700 disabled:opacity-50"
-            disabled={
-              loading ||
-              payment.walletApplied <= 0
-            }
+            onClick={completeWalletPayment}
+            className="app-btn app-btn-primary app-btn-lg app-btn-block"
+            disabled={loading || payment.walletApplied <= 0}
           >
-            {loading
-              ? "Processing..."
-              : "Complete with Wallet"}
+            {loading ? "Processing…" : "Complete with wallet"}
           </button>
-
         ) : (
-
-          <div className="space-y-4">
+          <div>
             <PayPalCheckout
               requestId={request.id}
               amount={payment.paypalAmount}
               paymentType="main"
-              onSuccess={() =>
-                window.location.reload()
-              }
+              onSuccess={() => window.location.reload()}
             />
           </div>
         )}
-
       </div>
     </section>
   );
@@ -289,41 +220,28 @@ function Row({
   title,
   value,
   bold,
-  green,
+  credit,
 }: {
   title: string;
   value: number;
   bold?: boolean;
-  green?: boolean;
+  credit?: boolean;
 }) {
   return (
-    <div className="flex justify-between items-center">
-
-      <span
-        className={
-          bold
-            ? "font-semibold text-slate-900 dark:text-white"
-            : "text-slate-600 dark:text-slate-400"
-        }
-      >
+    <div className="flex items-center justify-between gap-4 text-[13px]">
+      <span className={bold ? "font-medium text-[var(--foreground)]" : "text-[var(--muted)]"}>
         {title}
       </span>
 
       <span
-        className={`${
-          bold
-            ? "text-xl font-bold text-slate-900 dark:text-white"
-            : "font-medium"
+        className={`tabular-nums ${
+          bold ? "font-semibold text-[var(--foreground)]" : "font-medium"
         } ${
-          green
-            ? "text-green-600 dark:text-green-400"
-            : "text-slate-900 dark:text-white"
+          credit ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--foreground)]"
         }`}
       >
-        {value < 0 ? "-" : ""}$
-        {Math.abs(value).toFixed(2)}
+        {value < 0 ? "-" : ""}${Math.abs(value).toFixed(2)}
       </span>
-
     </div>
   );
 }

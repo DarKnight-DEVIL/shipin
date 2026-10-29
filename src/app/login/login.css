@@ -1,0 +1,51 @@
+/* ShipIN login: clean split-screen. Brand panel on the left, form on the right. */
+.login {
+  --fg: #f6f0e6; --fg-soft: #9a9284; --muted: #6f685c; --line: #2c2723;
+  --display: var(--font-display), var(--font-geist-sans), system-ui, sans-serif;
+  display: grid; grid-template-columns: 1fr 1fr; min-height: 100vh; min-height: 100dvh;
+  background: #141211; color: var(--fg); font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+.login--boot { display: block; }
+
+/* Left: brand panel with soft faceted background */
+.login__brand { position: relative; display: grid; place-items: center; padding: 48px; overflow: hidden; border-right: 1px solid var(--line); }
+.login__art { position: absolute; inset: 0; background:
+  radial-gradient(60% 50% at 15% 105%, rgba(255,107,26,.15), transparent 70%),
+  linear-gradient(115deg, transparent 0 36%, rgba(255,255,255,.028) 36% 60%, transparent 60%),
+  linear-gradient(155deg, transparent 0 56%, rgba(255,255,255,.022) 56% 82%, transparent 82%),
+  linear-gradient(72deg, rgba(255,255,255,.018) 0 24%, transparent 24%),
+  #0c0b0a; }
+.login__brandbody { position: relative; max-width: 460px; }
+.login__logo { display: flex; align-items: center; gap: 16px; }
+.login__mark { display: grid; place-items: center; flex: none; width: 60px; height: 60px; border-radius: 18px; background: linear-gradient(135deg, #ffc23d, #ff6b1a 55%, #ff3d6e); color: #1a0b02; }
+.login__word { font-family: var(--display); font-size: clamp(3rem, 5.4vw, 4.8rem); font-weight: 600; line-height: 1; letter-spacing: -.045em; color: #fff; }
+.login__tag { margin: 22px 0 0; max-width: 24rem; color: var(--fg-soft); font-size: 1.05rem; line-height: 1.6; }
+.login__list { margin: 22px 0 0; color: var(--muted); font-size: .85rem; letter-spacing: .02em; }
+
+/* Right: form panel */
+.login__panel { position: relative; display: grid; place-items: center; padding: 72px 24px 48px; }
+.login__back { position: absolute; top: 24px; left: 28px; display: inline-flex; align-items: center; gap: 8px; color: var(--fg-soft); font-size: .86rem; text-decoration: none; transition: color .2s; }
+.login__back:hover { color: var(--fg); }
+.login__form { width: 100%; max-width: 392px; text-align: center; }
+.login__logo--sm { display: none; justify-content: center; margin-bottom: 28px; }
+.login__logo--sm .login__mark { width: 40px; height: 40px; border-radius: 12px; }
+.login__logo--sm .login__word { font-size: 2rem; }
+.login__title { margin: 0; font-family: var(--display); font-size: 2.4rem; font-weight: 700; line-height: 1.05; letter-spacing: -.04em; color: #fff; }
+.login__sub { margin: 12px 0 32px; color: var(--fg-soft); font-size: .95rem; line-height: 1.6; }
+
+.login__google { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; height: 52px; border: 0; border-radius: 10px; background: #f6f0e6; color: #1a0b02; font: 600 .95rem var(--font-geist-sans), system-ui, sans-serif; cursor: pointer; transition: background .2s, transform .15s; }
+.login__google:hover:not(:disabled) { background: #fff; }
+.login__google:active:not(:disabled) { transform: translateY(1px); }
+.login__google:focus-visible { outline: 2px solid #ff6b1a; outline-offset: 3px; }
+.login__google:disabled { opacity: .6; cursor: not-allowed; }
+.login__spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(26,11,2,.25); border-top-color: #1a0b02; animation: login-spin .7s linear infinite; }
+@keyframes login-spin { to { transform: rotate(360deg); } }
+.login__terms { margin: 28px 0 0; color: var(--muted); font-size: .78rem; line-height: 1.6; }
+
+@media (max-width: 900px) {
+  .login { grid-template-columns: 1fr; }
+  .login__brand { display: none; }
+  .login__logo--sm { display: flex; }
+  .login__panel { padding-top: 88px; }
+}
+@media (prefers-reduced-motion: reduce) { .login__spin { animation: none; } }

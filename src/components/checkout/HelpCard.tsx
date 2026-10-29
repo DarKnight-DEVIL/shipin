@@ -11,108 +11,73 @@ import {
 
 export default function HelpCard() {
   return (
-    <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 backdrop-blur-xl shadow-sm dark:shadow-none">
-
+    <section className="app-panel overflow-hidden">
       {/* Header */}
-
-      <div className="border-b border-slate-200 dark:border-slate-800 p-8">
-
-        <div className="flex items-center gap-3">
-
-          <LifeBuoy
-            className="text-blue-400"
-            size={26}
-          />
-
+      <div className="border-b border-[var(--border)] px-5 py-3.5">
+        <div className="flex items-center gap-2.5">
+          <LifeBuoy size={16} className="text-[var(--muted)]" />
           <div>
-
-            <h2 className="text-2xl font-bold">
-              Need Help?
+            <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
+              Need a hand?
             </h2>
-
-            <p className="mt-1 text-sm text-slate-400">
-              Our support team is here to help before and after your payment.
+            <p className="mt-0.5 text-[12px] text-[var(--muted)]">
+              Our team is here before and after your payment.
             </p>
-
           </div>
-
         </div>
-
       </div>
 
       {/* Body */}
-
-      <div className="grid gap-5 p-8 md:grid-cols-2">
-
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-950/60 p-8">
-
-          <div className="flex items-center gap-3">
-
+      <div className="grid gap-4 p-5 md:grid-cols-2">
+        <div className="flex flex-col rounded-[14px] border border-[var(--border)] bg-[var(--surface-2)] p-5">
+          <div className="flex items-start gap-3">
             <MessageCircle
-              className="text-blue-400"
-              size={22}
+              size={16}
+              className="mt-0.5 shrink-0 text-blue-600 dark:text-blue-400"
             />
 
-            <div>
-
-              <h3 className="font-semibold">
-                Support Ticket
+            <div className="min-w-0">
+              <h3 className="text-[13px] font-medium text-[var(--foreground)]">
+                Support ticket
               </h3>
-
-              <p className="text-sm text-slate-400">
-                Create a ticket and we'll assist you.
+              <p className="mt-0.5 text-[12px] leading-5 text-[var(--muted)]">
+                Open a thread and we&apos;ll pick it up from there.
               </p>
-
             </div>
-
           </div>
 
           <Link
             href="/support"
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-medium hover:bg-blue-700 transition"
+            className="app-btn app-btn-primary mt-4 self-start"
           >
-            Open Support
-
-            <ArrowRight size={18} />
+            Open support
+            <ArrowRight size={14} />
           </Link>
-
         </div>
 
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-950/60 p-8">
-
-          <div className="flex items-center gap-3">
-
+        <div className="flex flex-col rounded-[14px] border border-[var(--border)] bg-[var(--surface-2)] p-5">
+          <div className="flex items-start gap-3">
             <Mail
-              className="text-green-400"
-              size={22}
+              size={16}
+              className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400"
             />
 
-            <div>
-
-              <h3 className="font-semibold">
-                Email Support
+            <div className="min-w-0">
+              <h3 className="text-[13px] font-medium text-[var(--foreground)]">
+                Email support
               </h3>
-
-              <p className="text-sm text-slate-400">
+              <p className="mt-0.5 break-all text-[12px] text-[var(--muted)]">
                 contact.shipin@gmail.com
               </p>
-
             </div>
-
           </div>
 
-          <div className="mt-5 flex items-center gap-2 text-sm text-slate-400">
-
-            <Clock3 size={16} />
-
-            Average response time: under 24 hours
-
+          <div className="mt-4 flex items-center gap-2 text-[12px] text-[var(--muted)]">
+            <Clock3 size={14} className="shrink-0" />
+            Average reply under 24 hours
           </div>
-
         </div>
-
       </div>
-
     </section>
   );
 }

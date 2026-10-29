@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, updateDoc, onSnapshot } from "firebase/firestore";
-import { AlertCircle, RotateCcw, ArrowLeft } from "lucide-react";
+import { AlertCircle, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -133,7 +133,7 @@ export default function RequestDetailsPage() {
       });
       return;
     }
-    
+
     setApproving(true);
 
     try {
@@ -145,8 +145,7 @@ export default function RequestDetailsPage() {
     } catch (error) {
       console.error(error);
       toast.error("Unable to approve quote.", {
-        description:
-          error instanceof Error ? error.message : undefined,
+        description: error instanceof Error ? error.message : undefined,
       });
     } finally {
       setApproving(false);
@@ -155,7 +154,7 @@ export default function RequestDetailsPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
+      <div className="app-page">
         <PageSkeleton />
       </div>
     );
@@ -163,15 +162,18 @@ export default function RequestDetailsPage() {
 
   if (!request) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
-        <p className="text-slate-500">Request not found.</p>
-        <Link
-          href="/requests"
-          className="mt-4 inline-flex items-center gap-1.5 text-sm text-purple-400 hover:text-purple-300"
-        >
-          <ArrowLeft size={14} />
-          Back to My Requests
-        </Link>
+      <div className="app-page">
+        <div className="app-panel px-6 py-14 text-center">
+          <h1 className="text-[15px] font-semibold text-[var(--foreground)]">
+            Request not found
+          </h1>
+          <p className="mt-1 text-[13px] text-[var(--muted)]">
+            It may have been removed, or the link is incorrect.
+          </p>
+          <Link href="/requests" className="app-btn app-btn-secondary mt-5">
+            Back to requests
+          </Link>
+        </div>
       </div>
     );
   }
@@ -179,65 +181,73 @@ export default function RequestDetailsPage() {
   /* ─── Rejected ─── */
   if (request.status === "rejected") {
     return (
-      <div className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="app-page">
         <RequestHeader request={request} />
 
-        <section className="shipin-surface p-6">
-          <div className="flex items-start gap-4">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10">
-              <AlertCircle size={22} className="text-red-400" />
+        <section className="app-panel p-5 sm:p-6">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400">
+              <AlertCircle size={16} />
             </div>
+
             <div className="min-w-0">
-              <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
+              <h2 className="text-[14px] font-semibold text-[var(--foreground)]">
                 Request rejected
               </h2>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-0.5 text-[12px] text-[var(--muted)]">
                 We were unable to process this purchase request.
               </p>
             </div>
           </div>
 
-          <div className="mt-5 rounded-xl border border-red-500/15 bg-red-500/5 p-4">
-            <p className="shipin-section-label text-red-400/80">
+          <div className="app-notice-danger mt-4 rounded-lg p-3.5">
+            <p className="app-kicker text-rose-700 dark:text-rose-400">
               Reason
             </p>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-200">
+            <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-6 text-[var(--foreground)]">
               {request.rejectionReason ||
                 "No rejection reason was provided."}
             </p>
           </div>
         </section>
 
-        <RequestTimeline
-          status={request.status}
-          history={request.statusHistory}
-          orderChange={request.orderChange}
-          refundRequest={request.refundRequest}
-          partialRefunds={request.partialRefunds}
-        />
+        <div className="mt-5">
+          <RequestTimeline
+            status={request.status}
+            history={request.statusHistory}
+            orderChange={request.orderChange}
+            refundRequest={request.refundRequest}
+            partialRefunds={request.partialRefunds}
+          />
+        </div>
 
-        <ProductsCard request={request} />
+        <div className="mt-5">
+          <ProductsCard request={request} />
+        </div>
 
-        <SupportCenter
-          requestId={request.id}
-          customerId={request.userId}
-          canCreateTicket={canCreateSupportTicket(request)}
-        />
+        <div className="mt-5">
+          <SupportCenter
+            requestId={request.id}
+            customerId={request.userId}
+            canCreateTicket={canCreateSupportTicket(request)}
+          />
+        </div>
 
-        <section className="shipin-surface flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <section className="app-panel mt-5 flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-950 dark:text-white">
+            <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
               Want to try again?
             </h2>
-            <p className="mt-0.5 text-sm text-slate-500">
+            <p className="mt-0.5 text-[12px] text-[var(--muted)]">
               Create a new request with different products.
             </p>
           </div>
+
           <Link
             href="/requests/new"
-            className="shipin-btn-primary inline-flex shrink-0 items-center justify-center gap-2 px-5 py-2.5 text-sm"
+            className="app-btn app-btn-secondary shrink-0 self-start sm:self-center"
           >
-            <RotateCcw size={16} />
+            <RotateCcw size={14} />
             Create new request
           </Link>
         </section>
@@ -249,28 +259,29 @@ export default function RequestDetailsPage() {
   const quoteExpired = isQuoteExpired(request.quote?.expiresAt);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="app-page">
       <RequestHeader request={request} />
 
       {/* Refund offer banner */}
       {request.status === "refund_offered" &&
         request.refundOffer?.offered === true &&
         !request.refundRequest && (
-          <section className="mt-6 shipin-surface border-red-500/20 bg-red-500/5 p-5">
+          <section className="app-panel app-notice-danger mt-5 p-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-base font-semibold text-slate-950 dark:text-white">
+                <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
                   Refund offered
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-0.5 text-[12px] text-[var(--muted)]">
                   Review the offer and choose your preferred refund method.
                 </p>
                 {request.refundOffer?.reason && (
-                  <p className="mt-3 rounded-lg border border-red-500/10 bg-white/50 px-3 py-2 text-sm text-slate-600 dark:bg-slate-950/40 dark:text-slate-300">
+                  <p className="mt-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-[12px] leading-5 text-[var(--muted)]">
                     {request.refundOffer.reason}
                   </p>
                 )}
               </div>
+
               <button
                 type="button"
                 onClick={() => {
@@ -281,7 +292,7 @@ export default function RequestDetailsPage() {
                       block: "center",
                     });
                 }}
-                className="shrink-0 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
+                className="app-btn app-btn-danger shrink-0 self-start sm:self-center"
               >
                 Review offer
               </button>
@@ -289,7 +300,7 @@ export default function RequestDetailsPage() {
           </section>
         )}
 
-      <div className="mt-8">
+      <div className="mt-5">
         <RequestTimeline
           status={request.status}
           history={request.statusHistory}
@@ -300,28 +311,32 @@ export default function RequestDetailsPage() {
       </div>
 
       {/* Main + sticky sidebar */}
-      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
-        <div className="space-y-6">
+      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+        <div className="space-y-5">
           {/* Shipment */}
-          <section className="shipin-surface p-5">
-            <p className="shipin-section-label mb-3">Shipment</p>
+          <section className="app-panel p-5">
+            <p className="app-kicker mb-2.5">Shipment</p>
+
             {request.tracking?.internalTrackingId ? (
               <div className="flex flex-wrap items-baseline justify-between gap-3">
                 <div>
-                  <p className="text-xs text-slate-500">ShipIN tracking ID</p>
-                  <p className="mt-0.5 font-mono text-lg font-medium tracking-wide text-slate-950 dark:text-white">
+                  <p className="text-[11px] text-[var(--muted)]">
+                    ShipIN tracking ID
+                  </p>
+                  <p className="mt-0.5 font-mono text-[15px] font-medium tracking-tight text-[var(--foreground)]">
                     {request.tracking.internalTrackingId}
                   </p>
                 </div>
+
                 <Link
                   href={`/shipment/${request.id}`}
-                  className="text-sm font-medium text-purple-400 hover:text-purple-300"
+                  className="text-[12px] font-medium text-[var(--foreground)] transition-colors hover:text-[var(--accent)]"
                 >
                   Track →
                 </Link>
               </div>
             ) : (
-              <p className="text-sm text-slate-500">
+              <p className="text-[12px] text-[var(--muted)]">
                 Not dispatched yet.
               </p>
             )}
@@ -333,17 +348,16 @@ export default function RequestDetailsPage() {
 
           <AdditionalItemPaymentsCard
             requestId={request.id}
-            additionalItemRequests={
-              request.additionalItemRequests || []
-            }
+            additionalItemRequests={request.additionalItemRequests || []}
           />
 
           {inspectionUrls.length > 0 && (
-            <section className="shipin-surface p-5 sm:p-6">
-              <h2 className="mb-4 text-base font-semibold text-slate-950 dark:text-white">
+            <section className="app-panel p-5 sm:p-6">
+              <h2 className="app-section-title mb-3.5">
                 Inspection photos
               </h2>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+
+              <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3">
                 {inspectionUrls.map((photo, index) => (
                   <button
                     key={photo}
@@ -352,16 +366,17 @@ export default function RequestDetailsPage() {
                       setSelectedPhoto(index);
                       setLightboxOpen(true);
                     }}
-                    className="group overflow-hidden rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/50"
+                    className="group overflow-hidden rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50"
                   >
                     <img
                       src={photo}
                       alt={`Inspection ${index + 1}`}
-                      className="aspect-video w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                      className="aspect-video w-full object-cover transition duration-300 group-hover:scale-[1.02]"
                     />
                   </button>
                 ))}
               </div>
+
               <Lightbox
                 open={lightboxOpen}
                 close={() => setLightboxOpen(false)}
@@ -380,10 +395,8 @@ export default function RequestDetailsPage() {
 
         {/* Sticky actions column */}
         <aside className="space-y-4 lg:sticky lg:top-6">
-          {/* Note: Remember to add `compact?: boolean` to the Props interface in your QuoteCard.tsx! */}
           <QuoteCard request={request} compact />
-          
-          {/* Countdown only while the quote is still valid */}
+
           {request.quote?.expiresAt &&
             !quoteExpired &&
             (request.status === "review" ||

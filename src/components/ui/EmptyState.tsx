@@ -16,29 +16,24 @@ export default function EmptyState({
   action,
 }: Props) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-900">
-      
+    <div className="app-panel border-dashed px-6 py-14 text-center">
       {icon && (
-        <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+        <div className="mx-auto mb-4 flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--surface-2)] text-[var(--muted)]">
           {icon}
         </div>
       )}
 
-      <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+      <h3 className="text-[15px] font-semibold text-[var(--foreground)]">
         {title}
       </h3>
 
       {description && (
-        <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
+        <p className="mx-auto mt-1.5 max-w-sm text-[13px] leading-6 text-[var(--muted)]">
           {description}
         </p>
       )}
 
-      {action && (
-        <div className="mt-6">
-          {action}
-        </div>
-      )}
+      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }

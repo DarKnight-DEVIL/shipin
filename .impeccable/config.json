@@ -73,6 +73,15 @@
         ],
         "createdAt": "2026-10-14T06:30:13.097Z",
         "reason": "Core design feature: logistics ribbon animation representing continuous flow"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/app/landing.css"
+        ],
+        "createdAt": "2026-10-28T16:44:12.700Z",
+        "reason": "sanctioned accent rail on landing feature card"
       }
     ]
   }

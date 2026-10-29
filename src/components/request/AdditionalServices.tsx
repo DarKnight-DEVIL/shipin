@@ -23,20 +23,17 @@ export default function AdditionalServices({
       title="Additional services"
       subtitle="Customize how ShipIN handles your package."
     >
-      <div className="space-y-8">
+      <div className="space-y-6">
         {/* Inspection */}
         <div>
-          <div className="mb-4 flex items-center gap-2">
-            <PackageSearch
-              size={18}
-              className="text-purple-600 dark:text-purple-400"
-            />
-            <h3 className="text-base font-semibold text-slate-950 dark:text-white">
+          <div className="mb-3 flex items-center gap-1.5">
+            <PackageSearch size={14} className="text-[var(--muted)]" />
+            <h3 className="text-[13px] font-semibold text-[var(--foreground)]">
               Inspection
             </h3>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-2.5 md:grid-cols-3">
             <SelectionCard
               title="No inspection"
               description="Package stays sealed and ships without opening."
@@ -74,14 +71,14 @@ export default function AdditionalServices({
 
         {/* Shipping preference */}
         <div>
-          <div className="mb-4 flex items-center gap-2">
-            <Truck size={18} className="text-purple-600 dark:text-purple-400" />
-            <h3 className="text-base font-semibold text-slate-950 dark:text-white">
+          <div className="mb-3 flex items-center gap-1.5">
+            <Truck size={14} className="text-[var(--muted)]" />
+            <h3 className="text-[13px] font-semibold text-[var(--foreground)]">
               Shipping preference
             </h3>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-2.5 md:grid-cols-3">
             <SelectionCard
               title="Auto ship"
               description="Ship immediately after warehouse processing."
@@ -112,7 +109,7 @@ export default function AdditionalServices({
 
         <InfoNotice variant="info">
           <p className="font-medium">Shipping rules</p>
-          <ul className="mt-3 space-y-2 text-sm">
+          <ul className="mt-2 space-y-1.5 text-[12px]">
             <li>• Wait for approval requires Standard or Detailed inspection.</li>
             <li>• Auto ship is only available with No inspection.</li>
             <li>

@@ -9,74 +9,50 @@ import {
 
 export default function SecurityCard() {
   return (
-    <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 backdrop-blur-xl shadow-sm dark:shadow-none">
-
+    <section className="app-panel overflow-hidden">
       {/* Header */}
-
-      <div className="border-b border-slate-200 dark:border-slate-800 p-8">
-
-        <div className="flex items-center gap-3">
-
-          <ShieldCheck
-            className="text-green-400"
-            size={26}
-          />
-
+      <div className="border-b border-[var(--border)] px-5 py-3.5">
+        <div className="flex items-center gap-2.5">
+          <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-400" />
           <div>
-
-            <h2 className="text-2xl font-bold">
-              Secure Checkout
+            <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
+              Secure checkout
             </h2>
-
-            <p className="mt-1 text-sm text-slate-400">
+            <p className="mt-0.5 text-[12px] text-[var(--muted)]">
               Your payment is protected with industry-standard security.
             </p>
-
           </div>
-
         </div>
-
       </div>
 
       {/* Features */}
-
-      <div className="space-y-5 p-8">
-
+      <div className="divide-y divide-[var(--border)]">
         <Feature
-          icon={<Lock size={22} />}
-          title="256-bit SSL Encryption"
-          description="All payment information is securely encrypted during transmission."
+          icon={<Lock size={15} />}
+          title="256-bit SSL encryption"
+          description="Payment information is encrypted during transmission."
         />
 
         <Feature
-          icon={<BadgeCheck size={22} />}
+          icon={<BadgeCheck size={15} />}
           title="PayPal Buyer Protection"
-          description="Eligible purchases are protected under PayPal's Buyer Protection policy."
+          description="Eligible purchases are covered by PayPal’s Buyer Protection policy."
         />
 
         <Feature
-          icon={<FileCheck size={22} />}
-          title="Verified Transactions"
-          description="Every payment is verified before your order enters the purchasing stage."
+          icon={<FileCheck size={15} />}
+          title="Verified transactions"
+          description="Every payment is verified before your order enters purchasing."
         />
-
       </div>
 
       {/* Footer */}
-
-      <div className="border-t border-slate-200 dark:border-slate-800 bg-green-50 dark:bg-green-500/10 p-8">
-
-        <div className="rounded-2xl border border-green-500/20 bg-green-500/10 p-4">
-
-          <p className="text-center text-sm text-green-300">
-            🔒 Your financial information is never stored on ShipIN.
-            Payments are securely processed by PayPal.
-          </p>
-
-        </div>
-
+      <div className="border-t border-[var(--border)] bg-[var(--surface-2)] px-5 py-3.5">
+        <p className="text-[12px] leading-5 text-[var(--muted)]">
+          Your financial information is never stored on ShipIN — payments are
+          processed by PayPal.
+        </p>
       </div>
-
     </section>
   );
 }
@@ -91,26 +67,19 @@ function Feature({
   description: string;
 }) {
   return (
-    <div className="flex gap-4">
-
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600/10 text-blue-400">
-
+    <div className="flex gap-3 px-5 py-4">
+      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-2)] text-[var(--muted)]">
         {icon}
+      </span>
 
-      </div>
-
-      <div>
-
-        <h3 className="font-semibold">
+      <div className="min-w-0">
+        <h3 className="text-[13px] font-medium text-[var(--foreground)]">
           {title}
         </h3>
-
-        <p className="mt-1 text-sm leading-6 text-slate-400">
+        <p className="mt-0.5 text-[12px] leading-5 text-[var(--muted)]">
           {description}
         </p>
-
       </div>
-
     </div>
   );
 }

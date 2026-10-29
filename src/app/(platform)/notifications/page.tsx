@@ -7,6 +7,7 @@ import { BellOff, MoreHorizontal } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
+import PageHeader from "@/components/ui/PageHeader";
 
 import {
   getNotifications,
@@ -187,21 +188,21 @@ export default function NotificationsPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-        <div className="mb-8 h-7 w-40 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
+      <div className="app-page">
+        <div className="mb-6 h-6 w-40 animate-pulse rounded bg-[var(--surface-3)]" />
         <div className="mb-4 flex gap-2">
           {[1, 2, 3, 4].map((i) => (
             <div
               key={i}
-              className="h-8 w-16 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800/60"
+              className="h-7 w-16 animate-pulse rounded-full bg-[var(--surface-3)]"
             />
           ))}
         </div>
-        <div className="space-y-2">
+        <div className="app-panel app-panel-flush">
           {[1, 2, 3, 4].map((i) => (
             <div
               key={i}
-              className="h-16 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/40"
+              className="h-16 animate-pulse border-t border-[var(--border)] first:border-t-0"
             />
           ))}
         </div>
@@ -210,44 +211,38 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      {/* Header */}
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
-            Notifications
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {unreadCount > 0
-              ? `${unreadCount} unread`
-              : "You're up to date"}
-          </p>
-        </div>
-
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          {unreadCount > 0 && (
-            <button
-              type="button"
-              onClick={handleMarkAllRead}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              Mark all read
-            </button>
-          )}
-          {hasRead && (
-            <button
-              type="button"
-              onClick={() => setShowDeleteConfirm(true)}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-500 transition hover:border-red-200 hover:text-red-600 dark:border-slate-700 dark:text-slate-400 dark:hover:border-red-500/40 dark:hover:text-red-400"
-            >
-              Clear read
-            </button>
-          )}
-        </div>
-      </div>
+    <div className="app-page">
+      <PageHeader
+        title="Notifications"
+        subtitle={
+          unreadCount > 0 ? `${unreadCount} unread` : "You're up to date"
+        }
+        actions={
+          <>
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={handleMarkAllRead}
+                className="app-btn app-btn-secondary app-btn-sm"
+              >
+                Mark all read
+              </button>
+            )}
+            {hasRead && (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="app-btn app-btn-ghost app-btn-sm"
+              >
+                Clear read
+              </button>
+            )}
+          </>
+        }
+      />
 
       {/* Filters */}
-      <div className="mb-5 flex flex-wrap gap-1.5">
+      <div className="mb-4 flex flex-wrap gap-1.5">
         {FILTERS.map((f) => {
           const active = filter === f.id;
           const count =
@@ -262,20 +257,13 @@ export default function NotificationsPage() {
               key={f.id}
               type="button"
               onClick={() => setFilter(f.id)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                active
-                  ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
-                  : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              }`}
+              data-active={active}
+              className="app-chip"
             >
               {f.label}
               {count !== undefined && (
                 <span
-                  className={`ml-1.5 tabular-nums ${
-                    active
-                      ? "text-slate-400 dark:text-slate-500"
-                      : "text-slate-400"
-                  }`}
+                  className="ml-1.5 tabular-nums opacity-70"
                 >
                   {count}
                 </span>
@@ -297,7 +285,7 @@ export default function NotificationsPage() {
           }
         />
       ) : (
-        <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
+        <ul className="app-panel app-panel-flush app-list">
           {filteredNotifications.map((notification) => {
             const href = notification.requestId
               ? `/requests/${notification.requestId}`
@@ -306,14 +294,12 @@ export default function NotificationsPage() {
             return (
               <li
                 key={notification.id}
-                className={`relative flex gap-3 px-4 py-3.5 sm:px-5 ${
-                  !notification.read
-                    ? "bg-slate-50/80 dark:bg-slate-800/30"
-                    : ""
+                className={`relative flex gap-3 px-5 py-3.5 transition-colors ${
+                  !notification.read ? "bg-[var(--surface-2)]" : ""
                 }`}
               >
                 {!notification.read && (
-                  <span className="absolute left-0 top-3 bottom-3 w-0.5 rounded-full bg-slate-900 dark:bg-white" />
+                  <span className="absolute bottom-3 left-0 top-3 w-[2px] rounded-full bg-[var(--accent-solid)]" />
                 )}
 
                 <Link
@@ -324,29 +310,29 @@ export default function NotificationsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
                           {typeLabel(notification.type)}
                         </span>
                         {!notification.read && (
-                          <span className="h-1.5 w-1.5 rounded-full bg-slate-900 dark:bg-white" />
+                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent-solid)]" />
                         )}
                       </div>
                       <p
-                        className={`mt-0.5 text-sm ${
+                        className={`mt-1 text-[13px] ${
                           notification.read
-                            ? "font-medium text-slate-700 dark:text-slate-300"
-                            : "font-semibold text-slate-900 dark:text-white"
+                            ? "font-medium text-[var(--muted)]"
+                            : "font-semibold text-[var(--foreground)]"
                         }`}
                       >
                         {notification.title}
                       </p>
                       {notification.message && (
-                        <p className="mt-0.5 line-clamp-2 text-sm leading-5 text-slate-500 dark:text-slate-400">
+                        <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-[var(--muted)]">
                           {notification.message}
                         </p>
                       )}
                     </div>
-                    <span className="shrink-0 pt-0.5 text-xs tabular-nums text-slate-400">
+                    <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-[var(--muted-soft)]">
                       {formatDate(notification.createdAt)}
                     </span>
                   </div>
@@ -361,7 +347,7 @@ export default function NotificationsPage() {
                         openMenu === notification.id ? null : notification.id
                       );
                     }}
-                    className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    className="app-iconbtn -mr-1.5 h-7 w-7"
                     aria-label="Options"
                   >
                     <MoreHorizontal size={16} />
@@ -369,7 +355,7 @@ export default function NotificationsPage() {
 
                   {openMenu === notification.id && (
                     <div
-                      className="absolute right-0 top-8 z-50 w-40 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+                      className="absolute right-0 top-8 z-50 w-40 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg shadow-slate-950/10 dark:shadow-black/40"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {!notification.read && (
@@ -379,7 +365,7 @@ export default function NotificationsPage() {
                             await handleMarkRead(notification);
                             setOpenMenu(null);
                           }}
-                          className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                          className="w-full px-3 py-2 text-left text-[12px] text-[var(--foreground)] hover:bg-[var(--surface-2)]"
                         >
                           Mark as read
                         </button>
@@ -387,7 +373,7 @@ export default function NotificationsPage() {
                       <button
                         type="button"
                         onClick={() => handleDelete(notification.id)}
-                        className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
+                        className="w-full px-3 py-2 text-left text-[12px] text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10"
                       >
                         Delete
                       </button>

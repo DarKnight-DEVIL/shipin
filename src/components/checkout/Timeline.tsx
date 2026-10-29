@@ -50,80 +50,66 @@ const steps = [
 
 export default function Timeline() {
   return (
-    <section className="rounded-3xl border border-slate-800 bg-slate-900/70 backdrop-blur-xl shadow-xl">
-
-      <div className="border-b border-slate-800 p-6">
-        <h2 className="text-2xl font-bold">
-          Order Progress
+    <section className="app-panel overflow-hidden">
+      <div className="border-b border-[var(--border)] px-5 py-3.5">
+        <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
+          Order progress
         </h2>
-
-        <p className="mt-2 text-sm text-slate-400">
-          Track your shipment journey.
+        <p className="mt-0.5 text-[12px] text-[var(--muted)]">
+          What happens after this payment.
         </p>
       </div>
 
       <div className="overflow-x-auto">
-
-        <div className="flex min-w-[850px] justify-between px-8 py-10">
-
+        <div className="flex min-w-[800px] px-6 py-7">
           {steps.map((step, index) => {
-
             const Icon = step.icon;
+            const isLast = index === steps.length - 1;
 
             return (
               <div
                 key={step.title}
-                className="relative flex flex-col items-center flex-1"
+                className="relative flex flex-1 flex-col items-center"
               >
-                {index !== steps.length - 1 && (
+                {!isLast && (
                   <div
-                    className={`absolute top-6 left-1/2 w-full h-[2px]
-                    ${
+                    className={`absolute left-1/2 top-[18px] h-px w-full ${
                       step.completed
-                        ? "bg-green-500"
-                        : "bg-slate-700"
+                        ? "bg-emerald-500/70"
+                        : "bg-[var(--border)]"
                     }`}
+                    aria-hidden
                   />
                 )}
 
                 <div
-                  className={`relative z-10 flex h-12 w-12 items-center justify-center rounded-full border transition
-
-                  ${
+                  className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${
                     step.completed
-                      ? "border-green-500 bg-green-500 text-white"
+                      ? "border-emerald-500 bg-emerald-500 text-white"
                       : step.active
-                      ? "border-blue-500 bg-blue-600 text-white"
-                      : "border-slate-700 bg-slate-900 text-slate-400"
-                  }
-                  `}
+                        ? "border-[var(--accent-solid)] bg-[var(--accent-solid)] text-white"
+                        : "border-[var(--border)] bg-[var(--surface-2)] text-[var(--muted)]"
+                  }`}
                 >
-                  <Icon size={22} />
+                  <Icon size={15} strokeWidth={2.25} />
                 </div>
 
                 <p
-                  className={`mt-4 text-sm font-medium
-
-                  ${
+                  className={`mt-3 text-[12px] ${
                     step.completed
-                      ? "text-green-400"
+                      ? "font-medium text-emerald-700 dark:text-emerald-400"
                       : step.active
-                      ? "text-blue-400"
-                      : "text-slate-400"
-                  }
-                  `}
+                        ? "font-semibold text-[var(--foreground)]"
+                        : "text-[var(--muted)]"
+                  }`}
                 >
                   {step.title}
                 </p>
-
               </div>
             );
           })}
-
         </div>
-
       </div>
-
     </section>
   );
 }

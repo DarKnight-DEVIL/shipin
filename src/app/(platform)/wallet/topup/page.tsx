@@ -1,14 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { motion } from "framer-motion";
 import { PayPalButtons } from "@paypal/react-paypal-js";
-import { ArrowLeft, WalletCards } from "lucide-react";
 import { toast } from "sonner";
 
 import { auth } from "@/lib/firebase";
 import { getWallet } from "@/lib/wallet";
+import PageHeader from "@/components/ui/PageHeader";
 
 const PRESET_AMOUNTS = [25, 50, 100, 250];
 
@@ -64,122 +62,115 @@ export default function WalletTopupPage() {
     currentBalance !== null ? currentBalance + amount : null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-      className="shipin-page w-full px-6 py-8 lg:px-10"
-    >
-      <div className="mx-auto max-w-2xl">
-        {/* Back */}
-        <Link
-          href="/wallet"
-          className="mb-6 inline-flex items-center gap-2 text-sm text-slate-600 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to wallet
-        </Link>
+    <div className="app-page">
+      <PageHeader
+        backHref="/wallet"
+        backLabel="Wallet"
+        title="Top up"
+        subtitle="Add funds securely with PayPal. They are available immediately."
+      />
 
-        {/* Header */}
-        <div className="mb-8 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
-            <WalletCards size={22} />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-slate-950 dark:text-white">
-              Top Up Wallet
-            </h1>
-            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-              Add funds securely with PayPal
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+        {/* Amount */}
+        <section className="app-panel app-panel-flush">
+          <div className="border-b border-[var(--border)] px-5 py-3.5">
+            <h2 className="app-section-title">Amount</h2>
+            <p className="mt-0.5 text-[12px] text-[var(--muted)]">
+              Choose a preset or enter your own
             </p>
           </div>
-        </div>
 
-        <div className="shipin-card p-6 md:p-8">
-          <h2 className="mb-4 text-lg font-semibold text-slate-950 dark:text-white">
-            Select amount
-          </h2>
+          <div className="p-5">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {PRESET_AMOUNTS.map((value) => {
+                const selected = amount === value;
 
-          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {PRESET_AMOUNTS.map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setAmount(value)}
-                className={`rounded-xl py-3.5 text-sm font-semibold transition ${
-                  amount === value
-                    ? "bg-purple-600 text-white shadow-md shadow-purple-600/25"
-                    : "border border-slate-200 bg-slate-50 text-slate-700 hover:border-purple-300 hover:bg-purple-50 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 dark:hover:border-purple-500/40 dark:hover:bg-purple-500/10"
-                }`}
-              >
-                ${value}
-              </button>
-            ))}
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setAmount(value)}
+                    className={`h-11 rounded-lg border text-[13px] font-semibold tabular-nums transition-colors ${
+                      selected
+                        ? "border-[var(--accent-solid)] bg-[var(--accent-soft)] text-[var(--foreground)]"
+                        : "border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
+                    }`}
+                  >
+                    ${value}
+                  </button>
+                );
+              })}
+            </div>
+
+            <label
+              htmlFor="wallet-amount"
+              className="app-label mt-5 mb-1.5"
+            >
+              Custom amount
+            </label>
+
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-[var(--muted-soft)]">
+                $
+              </span>
+
+              <input
+                id="wallet-amount"
+                type="number"
+                min={1}
+                max={10000}
+                step="0.01"
+                value={amount || ""}
+                onChange={(e) => handleAmountChange(Number(e.target.value))}
+                className="app-input pl-7 text-[14px] tabular-nums"
+              />
+            </div>
+
+            {!amountValid && (
+              <div className="app-notice-danger mt-3 rounded-lg px-3.5 py-2.5 text-[12px] text-rose-800 dark:text-rose-200">
+                Enter an amount between $1 and $10,000.
+              </div>
+            )}
           </div>
+        </section>
 
-          <label
-            htmlFor="wallet-amount"
-            className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-400"
-          >
-            Custom amount
-          </label>
+        {/* Summary */}
+        <aside className="lg:sticky lg:top-6">
+          <div className="app-panel p-5">
+            <h2 className="app-section-title">Summary</h2>
 
-          <div className="relative mb-6">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-              $
-            </span>
-            <input
-              id="wallet-amount"
-              type="number"
-              min={1}
-              max={10000}
-              step="0.01"
-              value={amount || ""}
-              onChange={(e) => handleAmountChange(Number(e.target.value))}
-              className="w-full rounded-xl border border-slate-200 bg-white p-4 pl-9 text-slate-950 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-            />
-          </div>
-
-          {amountValid ? (
-            <>
-              {/* Summary */}
-              <div className="mb-6 space-y-3 rounded-xl border border-purple-500/20 bg-purple-500/10 px-5 py-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600 dark:text-slate-400">
-                    You will add
-                  </span>
-                  <span className="text-xl font-bold text-slate-950 dark:text-white">
-                    ${amount.toFixed(2)}
-                  </span>
-                </div>
-
-                {currentBalance !== null && (
-                  <>
-                    <div className="border-t border-purple-500/15" />
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-600 dark:text-slate-400">
-                        Current balance
-                      </span>
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        ${currentBalance.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Total after top-up
-                      </span>
-                      <span className="text-lg font-bold text-emerald-500">
-                        ${projectedBalance!.toFixed(2)}
-                      </span>
-                    </div>
-                  </>
-                )}
+            <dl className="mt-3.5 space-y-2.5 text-[12px]">
+              <div className="flex items-baseline justify-between gap-4">
+                <dt className="text-[var(--muted)]">You will add</dt>
+                <dd className="font-semibold tabular-nums text-[var(--foreground)]">
+                  ${amount.toFixed(2)}
+                </dd>
               </div>
 
+              {currentBalance !== null && (
+                <>
+                  <div className="flex items-baseline justify-between gap-4">
+                    <dt className="text-[var(--muted)]">Current balance</dt>
+                    <dd className="tabular-nums text-[var(--foreground)]">
+                      ${currentBalance.toFixed(2)}
+                    </dd>
+                  </div>
+
+                  <div className="flex items-baseline justify-between gap-4 border-t border-[var(--border)] pt-2.5">
+                    <dt className="text-[var(--muted)]">After top-up</dt>
+                    <dd className="text-[15px] font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                      ${projectedBalance!.toFixed(2)}
+                    </dd>
+                  </div>
+                </>
+              )}
+            </dl>
+
+            {amountValid && (
               <div
-                className={
-                  processing ? "pointer-events-none opacity-60" : undefined
-                }
+                className={`mt-4 ${
+                  processing ? "pointer-events-none opacity-60" : ""
+                }`}
               >
                 <PayPalButtons
                   style={{
@@ -187,7 +178,7 @@ export default function WalletTopupPage() {
                     color: "gold",
                     shape: "rect",
                     label: "paypal",
-                    height: 48,
+                    height: 44,
                     tagline: false,
                   }}
                   createOrder={async () => {
@@ -257,14 +248,15 @@ export default function WalletTopupPage() {
                   }}
                 />
               </div>
-            </>
-          ) : (
-            <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
-              Enter an amount between $1 and $10,000.
-            </div>
-          )}
-        </div>
+            )}
+
+            <p className="mt-3 text-[11px] leading-5 text-[var(--muted)]">
+              Payments are processed by PayPal. ShipIN never stores your card
+              details.
+            </p>
+          </div>
+        </aside>
       </div>
-    </motion.div>
+    </div>
   );
 }

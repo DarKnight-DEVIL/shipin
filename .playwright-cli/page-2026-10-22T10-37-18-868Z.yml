@@ -1,0 +1,251 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - navigation [ref=e4]:
+        - link "ShipIN" [ref=e6] [cursor=pointer]:
+          - /url: /
+        - button "Toggle navigation" [ref=e7]: Menu
+    - main [ref=e8]:
+      - generic [ref=e11]:
+        - paragraph [ref=e12]: One checkout. Many borders.
+        - heading "Tap your cross-border shopping without a seller account, ongoing subscription or credit card." [level=1] [ref=e13]
+        - paragraph [ref=e14]: Upload link, choose lane. We handle warehousing, sourcing, export clearance and customs duty upfront. Reduce zero-order rates to zero.
+        - generic [ref=e15]:
+          - link "Start a request" [ref=e16] [cursor=pointer]:
+            - /url: /request/new
+          - link "See how it works" [ref=e17] [cursor=pointer]:
+            - /url: "#platform"
+            - generic [aria-hidden] [ref=e19]: →
+      - generic [ref=e22]:
+        - generic [ref=e23]:
+          - generic [ref=e24]:
+            - paragraph [ref=e25]: 01 / The pipeline
+            - heading "One request. Four checkpoints." [level=2] [ref=e26]
+          - paragraph [ref=e27]: You do not need a seller, a freight desk and a customs broker on separate threads. The same team owns the parcel from checkout to doorstep.
+        - list [ref=e28]:
+          - listitem [ref=e29]:
+            - generic [ref=e30]: "01"
+            - heading "Send the link" [level=3] [ref=e31]
+            - paragraph [ref=e32]: Paste a product URL from any Indian retailer. We confirm the seller, variant and live price before anything is charged.
+            - generic [ref=e33]: Any Indian marketplace
+          - listitem [ref=e34]:
+            - generic [ref=e35]: "02"
+            - heading "We inspect it" [level=3] [ref=e36]
+            - paragraph [ref=e37]: Every parcel stops at the Mumbai hub. Quantity, condition and serial numbers are checked against your order and photographed.
+            - generic [ref=e38]: Photo QA on arrival
+          - listitem [ref=e39]:
+            - generic [ref=e40]: "03"
+            - heading "We pack as one" [level=3] [ref=e41]
+            - paragraph [ref=e42]: Orders from different stores become a single manifest. Repacking cuts volumetric weight and one export filing covers the batch.
+            - generic [ref=e43]: One manifest per batch
+          - listitem [ref=e44]:
+            - generic [ref=e45]: "04"
+            - heading "It moves" [level=3] [ref=e46]
+            - paragraph [ref=e47]: Duties are quoted before dispatch, paperwork is pre-cleared, and the last mile is tracked to the address you gave us.
+            - generic [ref=e48]: DDP on every lane
+      - generic [ref=e50]:
+        - generic [ref=e51]:
+          - generic [ref=e52]:
+            - paragraph [ref=e53]: 02 / Live network
+            - heading "The route is visible while it happens." [level=2] [ref=e54]
+          - paragraph [ref=e55]: Every request gets a manifest ID and an event log. Watch the parcel move from the seller's counter to your address without emailing an account manager for an update.
+        - generic [ref=e56]:
+          - generic [ref=e57]:
+            - table [ref=e58]:
+              - caption [ref=e59]: Active shipping corridors from Mumbai
+              - rowgroup [ref=e60]:
+                - row [ref=e61]:
+                  - columnheader "Corridor" [ref=e62]
+                  - columnheader "Transit" [ref=e63]
+                  - columnheader "Cut off" [ref=e64]
+              - rowgroup [ref=e65]:
+                - row [ref=e66]:
+                  - rowheader "Mumbai to London" [ref=e67]
+                  - cell "5 to 7 days" [ref=e68]
+                  - cell "Tue, Fri" [ref=e69]
+                - row [ref=e70]:
+                  - rowheader "Mumbai to Dubai" [ref=e71]
+                  - cell "3 to 4 days" [ref=e72]
+                  - cell "Daily" [ref=e73]
+                - row [ref=e74]:
+                  - rowheader "Mumbai to Singapore" [ref=e75]
+                  - cell "3 to 5 days" [ref=e76]
+                  - cell "Mon, Wed, Fri" [ref=e77]
+                - row [ref=e78]:
+                  - rowheader "Mumbai to Berlin" [ref=e79]
+                  - cell "6 to 8 days" [ref=e80]
+                  - cell "Wed, Sat" [ref=e81]
+                - row [ref=e82]:
+                  - rowheader "Mumbai to New York" [ref=e83]
+                  - cell "7 to 9 days" [ref=e84]
+                  - cell "Tue, Thu" [ref=e85]
+                - row [ref=e86]:
+                  - rowheader "Mumbai to Toronto" [ref=e87]
+                  - cell "8 to 10 days" [ref=e88]
+                  - cell "Thu" [ref=e89]
+            - paragraph [ref=e90]: Transit excludes customs holds. Freight is quoted per consolidated manifest, not per parcel.
+          - generic [ref=e91]:
+            - generic [ref=e92]:
+              - generic [ref=e93]:
+                - generic [ref=e94]: Manifest
+                - strong [ref=e95]: SH-2048
+              - generic [ref=e96]: In transit
+            - generic [ref=e97]:
+              - generic [ref=e98]:
+                - generic [ref=e99]: From
+                - strong [ref=e100]: Mumbai
+              - generic [aria-hidden] [ref=e101]: →
+              - generic [ref=e102]:
+                - generic [ref=e103]: To
+                - strong [ref=e104]: Berlin
+              - generic [ref=e105]: ETA 20 Oct
+            - list [ref=e106]:
+              - listitem [ref=e107]:
+                - generic [ref=e109]:
+                  - paragraph [ref=e110]: Seller pickup
+                  - paragraph [ref=e111]: 12 Oct, 09:40 · Jaipur
+              - listitem [ref=e112]:
+                - generic [ref=e114]:
+                  - paragraph [ref=e115]: Checked at hub
+                  - paragraph [ref=e116]: 14 Oct, 16:05 · Mumbai
+                  - paragraph [ref=e117]: 4 of 4 units matched. Photo set attached.
+              - listitem [ref=e118]:
+                - generic [ref=e120]:
+                  - paragraph [ref=e121]: Export cleared
+                  - paragraph [ref=e122]: 15 Oct, 11:20 · Mumbai
+              - listitem [ref=e123]:
+                - generic [ref=e125]:
+                  - paragraph [ref=e126]: In transit
+                  - paragraph [ref=e127]: 17 Oct, 22:10 · Frankfurt
+                  - paragraph [ref=e128]: Handed to the last mile partner. Duties prepaid.
+              - listitem [ref=e129]:
+                - generic [ref=e131]:
+                  - paragraph [ref=e132]: Delivery
+                  - paragraph [ref=e133]: Expected 20 Oct · Berlin
+            - paragraph [ref=e134]:
+              - generic [ref=e135]: Sample manifest
+              - generic [ref=e136]: Updated 12s ago
+      - generic [ref=e138]:
+        - generic [ref=e139]:
+          - paragraph [ref=e140]: Track record
+          - heading "One accountable partner, from checkout to customs." [level=2] [ref=e141]
+          - paragraph [ref=e142]: Most cross border orders fail in the handoffs. ShipIN keeps purchasing, warehousing, and export filing under one roof so order has a place to go.
+        - generic [ref=e143]:
+          - generic [ref=e144]:
+            - generic [ref=e145]: "42"
+            - generic [ref=e146]: Shipping corridors
+            - paragraph [ref=e147]: Direct lanes from the Mumbai hub to six continents.
+          - generic [ref=e148]:
+            - generic [ref=e149]: "6.2"
+            - generic [ref=e150]: Median transit
+            - paragraph [ref=e151]: Door to door, customs cleared, last quarter.
+          - generic [ref=e152]:
+            - generic [ref=e153]: 40%
+            - generic [ref=e154]: Freight saved
+            - paragraph [ref=e155]: Average reduction after consolidation and repacking.
+          - generic [ref=e156]:
+            - generic [ref=e157]: 99.2%
+            - generic [ref=e158]: Manifest accuracy
+            - paragraph [ref=e159]: Units matched to the photo set before export.
+      - generic [ref=e161]:
+        - generic [ref=e162]:
+          - generic [ref=e163]:
+            - paragraph [ref=e164]: 03 / Access
+            - heading "Pricing that follows the work." [level=2] [ref=e165]
+          - paragraph [ref=e166]: No subscription. Pay per request for small batches, or move to freight rates once volume justifies a lane.
+        - generic [ref=e167]:
+          - article [ref=e168]:
+            - generic [ref=e169]: Tier 01
+            - heading "Standard" [level=3] [ref=e171]
+            - paragraph [ref=e172]:
+              - text: $0
+              - generic [ref=e173]: per request
+            - paragraph [ref=e174]: For a first order or a single item you cannot get shipped.
+            - list [ref=e175]:
+              - listitem [ref=e176]: Standard inspection at the hub
+              - listitem [ref=e180]: Up to 3 SKUs per request
+              - listitem [ref=e184]: 2 origin stores
+              - listitem [ref=e188]: Email support, Mon to Sat
+            - button "Select Standard" [ref=e192] [cursor=pointer]
+          - article [ref=e193]:
+            - generic [ref=e194]:
+              - generic [ref=e195]: Tier 02
+              - generic [ref=e196]: Most chosen
+            - heading "Express" [level=3] [ref=e197]
+            - paragraph [ref=e198]:
+              - text: $9
+              - generic [ref=e199]: per request
+            - paragraph [ref=e200]: For launches, samples and anything with a date attached.
+            - list [ref=e201]:
+              - listitem [ref=e202]: Priority queue at every checkpoint
+              - listitem [ref=e206]: Photo QA before dispatch
+              - listitem [ref=e210]: 30 days of free warehousing
+              - listitem [ref=e214]: Consolidation included
+            - button "Select Express" [ref=e218] [cursor=pointer]
+          - article [ref=e219]:
+            - generic [ref=e220]: Tier 03
+            - heading "Merchant" [level=3] [ref=e222]
+            - paragraph [ref=e223]:
+              - text: Freight
+              - generic [ref=e224]: quoted per lane
+            - paragraph [ref=e225]: For teams moving 50 or more parcels a month.
+            - list [ref=e226]:
+              - listitem [ref=e227]: Unlimited SKUs and stores
+              - listitem [ref=e231]: Negotiated freight rates
+              - listitem [ref=e235]: Dedicated account lead
+              - listitem [ref=e239]: Net 15 terms on approval
+            - button "Request a quote" [ref=e243] [cursor=pointer]
+        - generic [ref=e244]:
+          - generic [ref=e245]: Duties, taxes and freight are quoted before you approve.
+          - generic [ref=e246]: Cancel free before procurement starts.
+      - generic [ref=e248]:
+        - generic [ref=e249]:
+          - paragraph [ref=e250]: 04 / Details
+          - heading "Questions buyers ask first." [level=2] [ref=e251]
+          - paragraph [ref=e252]: Still unsure about a seller or a restricted item? Send the link and we will tell you before you commit.
+          - link "Ask about your first order" [ref=e253] [cursor=pointer]:
+            - /url: /
+            - text: Ask about your first order
+            - generic [aria-hidden] [ref=e254]: ↓
+        - generic [ref=e255]:
+          - group [ref=e256]:
+            - generic "What can I order? +" [ref=e257] [cursor=pointer]
+          - group [ref=e258]:
+            - generic "How does payment work? +" [ref=e259] [cursor=pointer]
+          - group [ref=e260]:
+            - generic "Can I combine orders from different stores? +" [ref=e261] [cursor=pointer]
+          - group [ref=e262]:
+            - generic "What happens if an item arrives damaged? +" [ref=e263] [cursor=pointer]
+          - group [ref=e264]:
+            - generic "Do you handle customs and duties? +" [ref=e265] [cursor=pointer]
+          - group [ref=e266]:
+            - generic "How long does a request take? +" [ref=e267] [cursor=pointer]
+      - generic [ref=e269]:
+        - generic [ref=e270]:
+          - heading "Your first request is live in 90 seconds." [level=2] [ref=e271]
+          - paragraph [ref=e272]: Paste a product link, choose the lane, and we handle the rest. No seller account needed.
+        - generic [ref=e273]:
+          - link "Start a request" [ref=e274] [cursor=pointer]:
+            - /url: /request/new
+          - link "I have a manifest ID" [ref=e275] [cursor=pointer]:
+            - /url: /login
+    - contentinfo [ref=e276]:
+      - generic [ref=e277]:
+        - generic [ref=e278]:
+          - generic [ref=e279]:
+            - link "ShipIN" [ref=e280] [cursor=pointer]:
+              - /url: /
+            - paragraph [ref=e281]: Simplified cross-border shipping.
+          - navigation [ref=e282]:
+            - generic [ref=e283]:
+              - link "App" [ref=e284] [cursor=pointer]:
+                - /url: https://app.shipin.com
+              - link "Support" [ref=e285] [cursor=pointer]:
+                - /url: https://support.shipin.com
+              - link "Terms" [ref=e286] [cursor=pointer]:
+                - /url: https://legal.shipin.com
+              - link "Privacy" [ref=e287] [cursor=pointer]:
+                - /url: https://legal.shipin.com/privacy
+        - paragraph [ref=e289]: © 2026 ShipIN Inc. All rights reserved.
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e295] [cursor=pointer]

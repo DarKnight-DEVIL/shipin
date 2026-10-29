@@ -3,19 +3,20 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Bricolage_Grotesque } from "next/font/google";
 
 import {
+  ArrowUpRight,
   Bell,
-  ChevronRight,
-  CirclePlus,
-  LayoutDashboard,
+  LayoutGrid,
   LogOut,
   MapPin,
   Menu,
-  PackageSearch,
-  Settings,
-  WalletCards,
   MessageCircle,
+  Package,
+  Plus,
+  Settings,
+  Wallet,
   X,
 } from "lucide-react";
 
@@ -23,6 +24,14 @@ import { signOut } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
 import { subscribeToNotifications } from "@/lib/firestore";
+
+import "./app-theme.css";
+
+const display = Bricolage_Grotesque({
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+});
 
 export default function PlatformLayout({
   children,
@@ -58,17 +67,11 @@ export default function PlatformLayout({
       }
 
       setUserName(
-        user.displayName ||
-          user.email?.split("@")[0] ||
-          "ShipIN Customer"
+        user.displayName || user.email?.split("@")[0] || "ShipIN customer"
       );
 
       setUserEmail(user.email || "");
 
-      /*
-       * Clean up any previous notification
-       * listener before creating another.
-       */
       if (unsubscribeNotifications) {
         unsubscribeNotifications();
       }
@@ -101,9 +104,6 @@ export default function PlatformLayout({
     setMobileOpen(false);
   }, [pathname]);
 
-  /*
-   * LOGOUT
-   */
   async function handleLogout() {
     try {
       await signOut(auth);
@@ -113,26 +113,29 @@ export default function PlatformLayout({
     }
   }
 
+  const initials = getInitials(userName);
+
   return (
-    <main className="min-h-screen bg-[var(--background)] text-slate-950 dark:text-white">
+    <main className={`shipin-app ${display.variable} min-h-screen bg-[var(--background)] text-[var(--foreground)]`}>
       {/* MOBILE HEADER */}
-      <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-slate-200/80 bg-white/90 px-5 backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/90 md:hidden">
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-[var(--border)] bg-[var(--card)]/95 px-4 backdrop-blur md:hidden">
         <Link
           href="/dashboard"
-          className="text-2xl font-bold text-slate-950 dark:text-white"
+          className="text-[17px] font-semibold tracking-[-0.03em] text-[var(--foreground)]"
         >
-          Ship<span className="text-purple-600 dark:text-purple-400">IN</span>
+          <Brand />
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <Link
             href="/notifications"
-            className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+            aria-label="Notifications"
+            className="app-iconbtn relative h-9 w-9"
           >
-            <Bell size={20} />
+            <Bell size={18} />
             {unreadCount > 0 && (
-              <span className="absolute right-0 top-0 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-purple-600 px-1 text-[10px] font-bold text-white">
-                {unreadCount > 99 ? "99+" : unreadCount}
+              <span className="absolute right-1 top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[var(--accent-solid)] px-1 text-[9px] font-semibold leading-none text-white">
+                {unreadCount > 9 ? "9+" : unreadCount}
               </span>
             )}
           </Link>
@@ -140,9 +143,10 @@ export default function PlatformLayout({
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+            aria-label="Open navigation"
+            className="app-iconbtn h-9 w-9"
           >
-            <Menu size={22} />
+            <Menu size={19} />
           </button>
         </div>
       </header>
@@ -153,139 +157,157 @@ export default function PlatformLayout({
           type="button"
           aria-label="Close navigation"
           onClick={() => setMobileOpen(false)}
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px] md:hidden"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px] md:hidden"
         />
       )}
 
       {/* SIDEBAR */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-slate-200/80 bg-white/95 shadow-[4px_0_24px_-12px_rgba(147,51,234,0.12)] backdrop-blur-xl transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] dark:border-slate-800/80 dark:bg-slate-950/90 dark:shadow-[4px_0_32px_-12px_rgba(168,85,247,0.2)] md:w-64 md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[264px] flex-col border-r border-[var(--border)] bg-[var(--sidebar)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:w-[248px] md:translate-x-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {/* LOGO */}
-        <div className="flex h-20 items-center justify-between border-b border-slate-100 px-6 dark:border-slate-800/60">
+        <div className="flex h-16 items-center justify-between px-5">
           <Link
             href="/dashboard"
-            className="text-3xl font-bold text-slate-950 dark:text-white"
+            className="text-[18px] font-semibold tracking-[-0.03em] text-[var(--foreground)]"
           >
-            Ship<span className="text-purple-600 dark:text-purple-400">IN</span>
+            <Brand />
           </Link>
 
           <button
             type="button"
             onClick={() => setMobileOpen(false)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 md:hidden"
+            aria-label="Close navigation"
+            className="-mr-2 flex h-9 w-9 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--foreground)] md:hidden"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
-        {/* NAVIGATION */}
-        <nav className="flex-1 overflow-y-auto px-4 py-4">
-          <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-600">
-            Overview
-          </p>
+        <div className="px-3 pb-1">
+          <Link
+            href="/requests/new"
+            className="app-btn app-btn-secondary app-btn-block justify-start gap-2 px-2.5 font-medium text-[var(--muted)] hover:text-[var(--foreground)]"
+          >
+            <Plus size={15} className="text-[var(--muted)]" />
+            New request
+          </Link>
+        </div>
 
-          <div className="space-y-1">
+        <nav
+          aria-label="Main"
+          className="flex-1 overflow-y-auto px-3 py-4"
+        >
+          <p className="app-kicker px-2.5 pb-2">Workspace</p>
+
+          <div className="space-y-0.5">
             <NavItem
               href="/dashboard"
               label="Dashboard"
-              icon={<LayoutDashboard size={19} />}
-              pathname={pathname}
-            />
-            <NavItem
-              href="/requests"
-              label="My Requests"
-              icon={<PackageSearch size={19} />}
+              icon={<LayoutGrid size={16} />}
               pathname={pathname}
               exact
             />
             <NavItem
-              href="/requests/new"
-              label="Create Request"
-              icon={<CirclePlus size={19} />}
+              href="/requests"
+              label="Requests"
+              icon={<Package size={16} />}
               pathname={pathname}
-            />
-          </div>
-
-          <p className="mb-3 mt-8 px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-600">
-            Account
-          </p>
-
-          <div className="space-y-1">
-            <NavItem
-              href="/addresses"
-              label="Addresses"
-              icon={<MapPin size={19} />}
-              pathname={pathname}
+              exact
             />
             <NavItem
               href="/wallet"
               label="Wallet"
-              icon={<WalletCards size={19} />}
+              icon={<Wallet size={16} />}
               pathname={pathname}
             />
             <NavItem
-              href="/support"
-              label="Support"
-              icon={<MessageCircle size={19} />}
+              href="/addresses"
+              label="Addresses"
+              icon={<MapPin size={16} />}
               pathname={pathname}
             />
+          </div>
+
+          <p className="app-kicker mt-6 px-2.5 pb-2">Account</p>
+
+          <div className="space-y-0.5">
             <NavItem
               href="/notifications"
               label="Notifications"
-              icon={<Bell size={19} />}
+              icon={<Bell size={16} />}
               pathname={pathname}
               badge={unreadCount}
             />
             <NavItem
+              href="/support"
+              label="Support"
+              icon={<MessageCircle size={16} />}
+              pathname={pathname}
+            />
+            <NavItem
               href="/settings"
               label="Settings"
-              icon={<Settings size={19} />}
+              icon={<Settings size={16} />}
               pathname={pathname}
             />
           </div>
         </nav>
 
-        {/* USER AREA */}
-        <div className="border-t border-slate-200 p-4 dark:border-slate-800">
-          <div className="mb-2 flex items-center gap-3 rounded-xl border border-transparent px-3 py-3 transition hover:border-slate-200 hover:bg-slate-50 dark:hover:border-slate-800 dark:hover:bg-slate-900/60">
-            {/* AVATAR */}
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-purple-100 font-bold text-purple-700 dark:bg-purple-500/10 dark:text-purple-300">
-              {getInitials(userName)}
+        <div className="border-t border-[var(--border)] p-3">
+          <div className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-3)] text-[11px] font-semibold text-[var(--foreground)]">
+              {initials}
             </div>
 
-            {/* USER INFO */}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
-                {userName || "ShipIN Customer"}
+              <p className="truncate text-[12px] font-medium text-[var(--foreground)]">
+                {userName || "ShipIN customer"}
               </p>
-              <p className="truncate text-xs text-slate-500 dark:text-slate-500">
+              <p className="truncate text-[11px] text-[var(--muted)]">
                 {userEmail}
               </p>
             </div>
-          </div>
 
-          {/* LOGOUT */}
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-red-50 hover:text-red-600 dark:text-slate-400 dark:hover:bg-red-500/10 dark:hover:text-red-400"
-          >
-            <LogOut size={18} />
-            Logout
-          </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              aria-label="Sign out"
+              title="Sign out"
+              className="app-iconbtn h-8 w-8 hover:text-rose-600 dark:hover:text-rose-400"
+            >
+              <LogOut size={15} />
+            </button>
+          </div>
         </div>
       </aside>
 
       {/* PAGE CONTENT */}
-      <section className="min-h-screen md:ml-64">
-        <div className="shipin-page">
-          {children}
-        </div>
+      <section className="min-h-screen md:pl-[248px]">
+        <div className="shipin-page">{children}</div>
       </section>
     </main>
+  );
+}
+
+/* =========================================
+   BRAND
+========================================= */
+
+function Brand() {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span
+        aria-hidden="true"
+        className="dash-brandmark flex h-[22px] w-[22px] items-center justify-center rounded-[7px]"
+      >
+        <ArrowUpRight size={14} strokeWidth={2.8} />
+      </span>
+      <span style={{ fontFamily: "var(--display)" }}>
+        Ship<span className="text-[var(--accent)]">IN</span>
+      </span>
+    </span>
   );
 }
 
@@ -308,10 +330,6 @@ function NavItem({
   badge?: number;
   exact?: boolean;
 }) {
-  /*
-   * /requests should NOT remain selected
-   * when /requests/new is active.
-   */
   const active = exact
     ? pathname === href
     : pathname === href || pathname.startsWith(`${href}/`);
@@ -319,32 +337,33 @@ function NavItem({
   return (
     <Link
       href={href}
-      className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+      aria-current={active ? "page" : undefined}
+      className={`group relative flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] transition-colors ${
         active
-          ? "bg-purple-50 text-purple-700 shadow-sm ring-1 ring-purple-500/20 dark:bg-purple-500/15 dark:text-purple-300 dark:ring-purple-400/25"
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 transition-all duration-200 dark:text-slate-400 dark:hover:bg-slate-800/80 dark:hover:text-white"
+          ? "bg-[var(--surface-2)] font-medium text-[var(--foreground)]"
+          : "text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
       }`}
     >
+      {active && (
+        <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-[var(--accent-solid)]" />
+      )}
+
       <span
         className={
           active
-            ? "text-purple-600 dark:text-purple-400"
-            : "text-slate-400 group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-300"
+            ? "text-[var(--accent)]"
+            : "text-[var(--muted-soft)] transition-colors group-hover:text-[var(--foreground)]"
         }
       >
         {icon}
       </span>
 
-      <span className="flex-1">{label}</span>
+      <span className="flex-1 truncate">{label}</span>
 
       {badge !== undefined && badge > 0 && (
-        <span className="flex min-h-5 min-w-5 items-center justify-center rounded-full bg-purple-600 px-1.5 text-[10px] font-bold text-white">
+        <span className="rounded-full bg-[var(--surface-3)] px-1.5 py-0.5 text-[10px] font-semibold leading-none tabular-nums text-[var(--muted)]">
           {badge > 99 ? "99+" : badge}
         </span>
-      )}
-
-      {active && !badge && (
-        <ChevronRight size={15} className="text-purple-400" />
       )}
     </Link>
   );

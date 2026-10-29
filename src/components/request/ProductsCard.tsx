@@ -25,7 +25,7 @@ export default function ProductsCard({ request }: Props) {
   return (
     <section className="shipin-surface p-5 sm:p-6">
       <div className="mb-5 flex items-baseline justify-between gap-3">
-        <h2 className="text-base font-semibold text-slate-950 dark:text-white">
+        <h2 className="app-section-title">
           Products
         </h2>
         <span className="text-xs text-slate-500">
@@ -110,7 +110,7 @@ function AdditionalProductRow({
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h3 className="text-base font-medium text-slate-950 dark:text-white">
+          <h3 className="text-[13px] font-medium text-[var(--foreground)]">
             {additionalItem.item.name}
           </h3>
           <p className="mt-1 text-sm text-slate-500">
@@ -208,7 +208,7 @@ function AdditionalItemTracker({
 function ProductMeta({ item }: { item: RequestItem }) {
   return (
     <div className="min-w-0">
-      <h3 className="text-base font-medium text-slate-950 dark:text-white">
+      <h3 className="text-[13px] font-medium text-[var(--foreground)]">
         {item.name}
       </h3>
       <p className="mt-1 text-sm text-slate-500">Qty {item.quantity}</p>

@@ -2,65 +2,61 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { AlertTriangle, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { getRequestById } from "@/lib/firestore";
 import { getWallet } from "@/lib/wallet";
 import { isQuoteExpired } from "@/lib/quoteExpiry";
 import PageSkeleton from "@/components/ui/PageSkeleton";
+import PageHeader from "@/components/ui/PageHeader";
 import type { Request } from "@/types/request";
 
 import PaymentCard from "@/components/checkout/PaymentCard";
 
 export default function PaymentPage() {
-
   const { id } = useParams();
 
   const router = useRouter();
 
-  const [request, setRequest] =
-    useState<Request | null>(null);
+  const [request, setRequest] = useState<Request | null>(null);
 
-  const [walletBalance, setWalletBalance] =
-    useState(0);
+  const [walletBalance, setWalletBalance] = useState(0);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-
     async function load() {
+      try {
+        const data = await getRequestById(id as string);
 
-      const data =
-        await getRequestById(id as string);
+        if (!data) {
+          router.push("/requests");
+          return;
+        }
 
-      if (!data) {
+        if (data.status === "paid") {
+          router.push(`/requests/${data.id}`);
+          return;
+        }
+
+        const wallet = await getWallet(data.userId);
+
+        setWalletBalance(wallet.balance);
+        setRequest(data);
+      } catch (error) {
+        console.error("Payment loading failed:", error);
         router.push("/requests");
-        return;
+      } finally {
+        setLoading(false);
       }
-
-      if (data.status === "paid") {
-        router.push(`/requests/${data.id}`);
-        return;
-      }
-
-      const wallet =
-        await getWallet(data.userId);
-
-      setWalletBalance(wallet.balance);
-
-      setRequest(data);
-
-      setLoading(false);
-
     }
 
     load();
-
   }, [id]);
 
   if (loading) {
     return (
-      <div className="p-8">
+      <div className="app-page">
         <PageSkeleton />
       </div>
     );
@@ -68,104 +64,76 @@ export default function PaymentPage() {
 
   if (!request) return null;
 
-  const quoteExpired = isQuoteExpired(
-    request.quote?.expiresAt
-  );
+  const quoteExpired = isQuoteExpired(request.quote?.expiresAt);
 
-  return (
-    <div className="max-w-5xl mx-auto p-8">
+  if (quoteExpired) {
+    return (
+      <div className="app-page">
+        <PageHeader
+          backHref={`/requests/${request.id}`}
+          backLabel="Request"
+          eyebrow="Payment"
+          title="Quote expired"
+          subtitle="This quotation is no longer valid."
+        />
 
-      {quoteExpired ? (
-
-        <div className="rounded-3xl border border-red-200 bg-white shadow-sm dark:border-red-900/40 dark:bg-slate-900">
-
-          <div className="border-b border-slate-200 dark:border-slate-800 p-8">
-
-            <div className="flex items-center gap-4">
-
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-100 dark:bg-red-500/15">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-7 w-7 text-red-600 dark:text-red-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 9v4m0 4h.01M10.29 3.86L1.82 18A2 2 0 003.53 21h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
-                  />
-                </svg>
-              </div>
-
-              <div>
-
-                <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
-                  Quote Expired
-                </h1>
-
-                <p className="mt-1 text-slate-500 dark:text-slate-400">
-                  This quotation is no longer valid.
-                </p>
-
-              </div>
-
+        <section className="app-panel max-w-2xl p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400">
+              <AlertTriangle size={15} />
             </div>
 
-          </div>
-
-          <div className="space-y-6 p-8">
-
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-500/20 dark:bg-amber-500/10">
-
-              <p className="font-semibold text-amber-700 dark:text-amber-300">
-                Why?
-              </p>
-
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+            <div>
+              <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
+                Prices need to be refreshed
+              </h2>
+              <p className="mt-1 text-[12px] leading-5 text-[var(--muted)]">
                 Product prices, domestic shipping and international shipping
                 costs may have changed since this quotation was generated.
               </p>
-
             </div>
-
-            <button
-              onClick={async () => {
-                const response = await fetch(
-                  `/api/requests/${request.id}/request-new-quote`,
-                  {
-                    method: "POST",
-                  }
-                );
-
-                if (!response.ok) {
-                  toast.error("Unable to request a new quote.");
-                  return;
-                }
-
-                router.push(`/requests/${request.id}`);
-              }}
-              className="w-full rounded-2xl bg-blue-600 py-4 text-lg font-semibold text-white transition hover:bg-blue-700"
-            >
-              Request New Quote
-            </button>
-
           </div>
 
-        </div>
+          <button
+            type="button"
+            onClick={async () => {
+              const response = await fetch(
+                `/api/requests/${request.id}/request-new-quote`,
+                {
+                  method: "POST",
+                }
+              );
 
-      ) : (
+              if (!response.ok) {
+                toast.error("Unable to request a new quote.");
+                return;
+              }
 
-        <PaymentCard
-          request={request}
-          walletBalance={walletBalance}
-        />
+              router.push(`/requests/${request.id}`);
+            }}
+            className="app-btn app-btn-primary mt-5"
+          >
+            Request new quote
+            <ArrowRight size={14} />
+          </button>
+        </section>
+      </div>
+    );
+  }
 
-      )}
+  return (
+    <div className="app-page">
+      <PageHeader
+        backHref={`/requests/${request.id}`}
+        backLabel="Request"
+        eyebrow="Payment"
+        title="Payment"
+        subtitle="Review your quote and choose how to pay"
+      />
 
+      <div className="max-w-2xl">
+        <PaymentCard request={request} walletBalance={walletBalance} />
+      </div>
     </div>
   );
-
 }
