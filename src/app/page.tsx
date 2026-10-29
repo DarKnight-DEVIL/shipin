@@ -245,8 +245,6 @@ export default function Home() {
   const accountHref = loggedIn ? "/dashboard" : "/login";
   const accountLabel = loggedIn ? "Dashboard" : "Sign in";
 
-  // Auth state is optional on marketing pages: if Firebase is not configured
-  // the page still renders with signed-out calls to action.
   useEffect(() => {
     if (!auth) return;
     try {
@@ -257,7 +255,6 @@ export default function Home() {
     }
   }, []);
 
-  // Smooth scrolling only when the visitor has not asked for reduced motion.
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
@@ -291,8 +288,6 @@ export default function Home() {
 
   const closePlan = useCallback(() => setActivePlan(null), []);
 
-  // Plan dialog: scroll lock, initial focus, focus trap, Escape to close,
-  // and focus returned to whichever tier button opened it.
   useEffect(() => {
     if (!activePlan) return;
 
@@ -349,8 +344,6 @@ export default function Home() {
     };
   }, [activePlan]);
 
-  // Mobile menu: lock the page, move focus into the sheet, trap Tab,
-  // close on Escape, and close if the viewport returns to desktop.
   useEffect(() => {
     if (!menuOpen) return;
 
@@ -405,9 +398,6 @@ export default function Home() {
     };
   }, [menuOpen]);
 
-  // Interaction layer: scroll progress, reveal on scroll, pointer parallax for
-  // the hero parcel, and tilt + spotlight on cards. Skips motion if the
-  // visitor prefers reduced motion.
   useEffect(() => {
     const root = document.querySelector<HTMLElement>(".shipin");
     if (!root) return;
@@ -585,7 +575,7 @@ export default function Home() {
 
       <main id="main">
         <section className="hero">
-                  <div className="scene" aria-hidden="true">
+          <div className="scene" aria-hidden="true">
             <span className="scene__ring" />
             <span className="scene__ring scene__ring--b" />
             <div className="scene__card scene__card--a">
@@ -598,25 +588,25 @@ export default function Home() {
               <div className="scene__k">Checked at hub <i>QA</i></div>
               <strong>4 of 4 units matched</strong>
               <div className="hub">
-                      <div className="hub__ring">
-                        <svg viewBox="0 0 52 52">
-                          <defs>
-                            <linearGradient id="hub-grad" x1="0" y1="0" x2="1" y2="1">
-                              <stop offset="0" stopColor="#ffc23d" />
-                              <stop offset="1" stopColor="#ff3d6e" />
-                            </linearGradient>
-                          </defs>
-                          <circle className="hub__track" cx="26" cy="26" r="18" />
-                          <circle className="hub__arc" cx="26" cy="26" r="18" />
-                        </svg>
-                        <span className="hub__num" />
-                      </div>
-                      <ul className="hub__list">
-                        <li><span className="hub__tick"><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" pathLength={1} /></svg></span>Item count</li>
-                        <li><span className="hub__tick"><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" pathLength={1} /></svg></span>Condition</li>
-                        <li><span className="hub__tick"><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" pathLength={1} /></svg></span>Photos taken</li>
-                      </ul>
-                    </div>
+                <div className="hub__ring">
+                  <svg viewBox="0 0 52 52">
+                    <defs>
+                      <linearGradient id="hub-grad" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0" stopColor="#ffc23d" />
+                        <stop offset="1" stopColor="#ff3d6e" />
+                      </linearGradient>
+                    </defs>
+                    <circle className="hub__track" cx="26" cy="26" r="18" />
+                    <circle className="hub__arc" cx="26" cy="26" r="18" />
+                  </svg>
+                  <span className="hub__num" />
+                </div>
+                <ul className="hub__list">
+                  <li><span className="hub__tick"><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" pathLength={1} /></svg></span>Item count</li>
+                  <li><span className="hub__tick"><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" pathLength={1} /></svg></span>Condition</li>
+                  <li><span className="hub__tick"><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" pathLength={1} /></svg></span>Photos taken</li>
+                </ul>
+              </div>
             </div>
             <div className="scene__card scene__card--c">
               <div className="scene__k">Export cleared</div>
@@ -630,7 +620,6 @@ export default function Home() {
             </div>
           </div>
           <div className="shell">
-
             <div className="hero__split">
               <div className="hero__text">
                 <h1 className="hero__title">
