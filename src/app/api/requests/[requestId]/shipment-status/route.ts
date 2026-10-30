@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin, getAdminAuthError } from "@/lib/adminAuth";
+
+import {
+  requestIdSchema,
+  validateBody,
+  idSchema,
+} from "@/lib/validation";
+
 import { adminDb } from "@/lib/firebaseAdmin";
 
 import {
@@ -17,6 +25,22 @@ export async function PATCH(
   context: RouteContext
 ) {
   try {
+    /*
+     * AUTHENTICATION: shipment status changes are an
+     * operational action — only verified admins may
+     * change the lifecycle status of a request.
+     */
+    let admin;
+    try {
+      admin = await requireAdmin(request);
+    } catch (error) {
+      const authError = getAdminAuthError(error);
+      return NextResponse.json(
+        { error: authError.error },
+        { status: authError.status }
+      );
+    }
+
     const { requestId } =
       await context.params;
 

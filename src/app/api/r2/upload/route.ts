@@ -211,9 +211,7 @@ export async function POST(
       {
         success: false,
         error:
-          error instanceof Error
-            ? error.message
-            : "Unable to upload image.",
+          "Unable to upload image.",
       },
       {
         status: 500,

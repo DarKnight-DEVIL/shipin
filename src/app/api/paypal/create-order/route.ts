@@ -760,10 +760,7 @@ export async function POST(
       {
         success: false,
 
-        error:
-          error instanceof Error
-            ? error.message
-            : "Something went wrong while creating the PayPal order.",
+        error: "Internal server error",
       },
       { status: 500 }
     );

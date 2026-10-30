@@ -1,0 +1,65 @@
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read, create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    match /supportTickets/{ticketId} {
+      allow read, update: if request.auth != null && (
+        resource.data.customerId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+      );
+      allow create: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /supportMessages/{messageId} {
+      allow read: if request.auth != null && (
+        resource.data.customerId == request.auth.uid ||
+        resource.data.adminId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+      );
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+    }
+
+    match /requests/{requestId} {
+      allow read, create, update: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow delete: if false;
+    }
+
+    match /wallets/{userId} {
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /walletTransactions/{transactionId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /paypalPaymentOrders/{orderId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /quotes/{quoteId} {
+      allow read, create, update: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow delete: if false;
+    }
+
+    match /refundRequests/{refundId} {
+      allow read, update: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+      );
+      allow create: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /admin/{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

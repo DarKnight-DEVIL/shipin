@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+*.zip
+patch*.js
+fix*.py
+write_emails.js

@@ -1,4 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+
+import { requireAuthWithProfile } from "@/lib/auth";
+
+import {
+  requestIdSchema,
+  validateBody,
+  idSchema,
+} from "@/lib/validation";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 
@@ -11,6 +19,12 @@ export async function POST(
   }
 ) {
   try {
+    /*
+     * AUTHENTICATION
+     */
+    const auth = await requireAuthWithProfile(req);
+    if (auth instanceof NextResponse) return auth;
+
     const { requestId } = await params;
 
     const body = await req.json();
@@ -18,7 +32,7 @@ export async function POST(
     const preference = body.preference;
 
     const initiatedBy =
-      body.initiatedBy === "admin"
+      auth.profile.role === "admin"
         ? "admin"
         : "customer";
 
@@ -67,6 +81,22 @@ export async function POST(
 
     const request =
       snapshot.data();
+
+    /*
+     * AUTHORIZATION: only the owner may request a refund.
+     * (Admin-initiated refunds go through the admin API
+     * which verifies the admin role explicitly.)
+     */
+    if (initiatedBy !== "admin" && request?.userId !== auth.profile.uid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "You do not have permission to update this request.",
+        },
+        { status: 403 }
+      );
+    }
 
     /*
      * ========================================

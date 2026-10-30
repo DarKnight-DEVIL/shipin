@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
 import "./globals.css";
 
 import PayPalProvider from "@/components/PayPalProvider";
 import ThemeProvider from "@/components/ThemeProvider";
+import AuthRedirectHandler from "@/components/AuthRedirectHandler";
 import { Toaster } from "sonner";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
@@ -38,6 +40,9 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
           <PayPalProvider>
+            <Suspense fallback={null}>
+              <AuthRedirectHandler />
+            </Suspense>
             {children}
           </PayPalProvider>
         </ThemeProvider>

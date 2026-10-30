@@ -605,10 +605,7 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Something went wrong while processing the wallet top-up.",
+        error: "Internal server error",
       },
       { status: 500 }
     );

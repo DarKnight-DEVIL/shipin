@@ -4,7 +4,8 @@ type EmailType =
   | "shipped"
   | "delivered"
   | "refunded"
-  | "support";
+  | "support"
+  | "shipment";
 
 interface EmailData {
   requestId: string;
@@ -151,6 +152,28 @@ margin-top:16px;
 ${data.supportMessage}
 </div>
 `
+        ),
+      };
+
+    case "shipment":
+      return {
+        subject: "Shipment Update",
+        html: baseTemplate(
+          "Shipment Status Update",
+          `
+<p>Your shipment status has been updated.</p>
+`
+        ),
+      };
+
+    default:
+      // Exhaustiveness check - this should never be reached
+      const _exhaustive: never = type;
+      return {
+        subject: "ShipIN Update",
+        html: baseTemplate(
+          "Update",
+          "<p>You have a new update from ShipIN.</p>"
         ),
       };
   }

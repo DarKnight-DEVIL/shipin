@@ -5,17 +5,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Bricolage_Grotesque } from "next/font/google";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import dynamic from "next/dynamic";
 import type Lenis from "lenis";
 import "lenis/dist/lenis.css";
 import "./landing.css";
+import dynamic from "next/dynamic";
 
 const GlobeDashboard = dynamic(
   () => import("@/components/globe-dashboard/GlobeDashboard"),
-  {
-    ssr: false,
-    loading: () => <div className="globe-panel__loading" aria-hidden="true" />,
-  }
+  { ssr: false }
 );
 
 const display = Bricolage_Grotesque({

@@ -3,6 +3,12 @@ import { FieldValue } from "firebase-admin/firestore";
 
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 
+import {
+  completePartialRefundBodySchema,
+  requestIdSchema,
+  validateBody,
+} from "@/lib/validation";
+
 function roundMoney(value: number) {
   return Number(value.toFixed(2));
 }
@@ -29,16 +35,31 @@ export async function POST(
       return NextResponse.json(
         { success: false, error: "Invalid authentication token." },
         { status: 401 }
-     );
+      );
     }
 
-    const { requestId } = await context.params;
-    const body = await request.json();
+    /*
+     * Validate params (requestId) and body together.
+     */
+    const validatedParams = requestIdSchema.safeParse(await context.params);
+    if (!validatedParams.success) {
+      return NextResponse.json(
+        { success: false, error: "Invalid request ID." },
+        { status: 400 }
+      );
+    }
 
-    const paypalRefundTransactionId =
-      typeof body.paypalRefundTransactionId === "string"
-        ? body.paypalRefundTransactionId.trim()
-        : "";
+    const { requestId } = validatedParams.data;
+
+    const parseResult = validateBody(await request.json(), completePartialRefundBodySchema);
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { success: false, error: "Invalid request body." },
+        { status: 400 }
+      );
+    }
+
+    const { paypalRefundTransactionId } = parseResult.data;
 
     const requestRef = adminDb.collection("requests").doc(requestId);
     const snapshot = await requestRef.get();

@@ -271,10 +271,7 @@ export async function POST(
 
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to complete payment.",
+        error: "Internal server error",
       },
       { status: 500 }
     );

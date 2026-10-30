@@ -1,0 +1,20 @@
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Default: no access without an authenticated user.
+    // Path-scoped rules below grant access per use-case.
+    match /images/{userId}/{fileName} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    match /inspection/{requestId}/{fileName} {
+      // Inspection images are written by warehouse/admin tooling
+      // via the Admin SDK. Regular users may read images on
+      // requests they own (enforced by the calling API route).
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+  }
+}

@@ -5,9 +5,31 @@ const PAYPAL_BASE =
 
 export { PAYPAL_BASE };
 
+/*
+ * PayPal OAuth token exchange — SERVER ONLY.
+ *
+ * This module MUST NOT be imported in client components.
+ * It is imported only by Next.js server-side route
+ * handlers (API routes), so process.env is not bundled
+ * to the browser.
+ *
+ * SECURITY: Uses PAYPAL_CLIENT_ID + PAYPAL_CLIENT_SECRET
+ * (server-only vars).  Never use NEXT_PUBLIC_* here —
+ * those would be bundled into client JS and leak the
+ * secret.
+ */
 export async function getPayPalAccessToken() {
+  const clientId = process.env.PAYPAL_CLIENT_ID;
+  const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      "PayPal credentials are not configured."
+    );
+  }
+
   const auth = Buffer.from(
-    `${process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`
+    `${clientId}:${clientSecret}`
   ).toString("base64");
 
   const response = await fetch(
@@ -24,7 +46,9 @@ export async function getPayPalAccessToken() {
   );
 
   if (!response.ok) {
-    throw new Error("Unable to authenticate with PayPal.");
+    throw new Error(
+      "Unable to authenticate with PayPal."
+    );
   }
 
   const data = await response.json();
@@ -34,6 +58,7 @@ export async function getPayPalAccessToken() {
 
 /*
  * Verify a captured PayPal order.
+ * SERVER ONLY — must not be imported in client code.
  */
 export async function verifyPayPalOrder(
   orderID: string

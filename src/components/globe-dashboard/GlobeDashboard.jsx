@@ -415,6 +415,12 @@ export default function GlobeDashboard({
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    // FIX for Next.js strict mode: Face camera before render
+    renderer.autoClear = false;
+    renderer.setScissorTest(false);
+    renderer.clearDepth();
+
     container.appendChild(renderer.domElement);
 
     const globeGroup = new THREE.Group();
@@ -750,7 +756,26 @@ export default function GlobeDashboard({
   };
 
   if (!mounted) {
-    return <div style={{ width: "100%", height: "100%", minHeight: 480, background: "transparent", ...style }} />;
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          width: "100%",
+          height: "100%",
+          minHeight: 480,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: theme.textMuted,
+          fontSize: 12,
+          background: "transparent",
+          ...style,
+        }}
+      >
+        Loading globe...
+      </div>
+    );
   }
 
   const isSuspended = selectedLocation?.status === "suspended";

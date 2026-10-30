@@ -250,10 +250,7 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to create wallet top-up order.",
+        error: "Internal server error",
       },
       { status: 500 }
     );

@@ -7,6 +7,13 @@ import {
   getAdminAuthError,
 } from "@/lib/adminAuth";
 
+import {
+  requestIdSchema,
+  validateBody,
+  idSchema,
+  partialRefundBodySchema,
+} from "@/lib/validation";
+
 export async function POST(
   req: NextRequest,
   {
@@ -22,7 +29,31 @@ export async function POST(
      * ========================================
      */
 
-    const admin = await requireAdmin(req);
+    let admin;
+    try {
+      admin = await requireAdmin(req);
+    } catch (error) {
+      const authErr = getAdminAuthError(error);
+      if (
+        authErr.status !== 500 ||
+        (error instanceof Error &&
+          [
+            "AUTHENTICATION_REQUIRED",
+            "INVALID_AUTHENTICATION",
+            "USER_PROFILE_NOT_FOUND",
+            "ADMIN_ACCESS_REQUIRED",
+          ].includes(error.message))
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: authErr.error,
+          },
+          { status: authErr.status }
+        );
+      }
+      throw error;
+    }
 
     /*
      * ========================================
@@ -30,7 +61,18 @@ export async function POST(
      * ========================================
      */
 
-    const { requestId } = await params;
+    const validatedParams = requestIdSchema.safeParse(await params);
+    if (!validatedParams.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid request ID.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const { requestId } = validatedParams.data;
 
     if (!requestId) {
       return NextResponse.json(
@@ -117,14 +159,21 @@ export async function POST(
      * by the customer.
      */
 
-    const body = await req.json();
+    /*
+     * Validate and sanitize the request body.
+     */
+    const parseResult = validateBody(await req.json(), partialRefundBodySchema);
+    if (!parseResult.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid request body.",
+        },
+        { status: 400 }
+      );
+    }
 
-    const amount = Number(body.amount);
-
-    const reason =
-      typeof body.reason === "string"
-        ? body.reason.trim()
-        : "";
+    const { amount, reason } = parseResult.data;
 
     /*
      * ========================================
@@ -132,10 +181,7 @@ export async function POST(
      * ========================================
      */
 
-    if (
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json(
         {
           success: false,
@@ -145,8 +191,7 @@ export async function POST(
       );
     }
 
-    const roundedAmount =
-      Number(amount.toFixed(2));
+    const roundedAmount = Number(amount.toFixed(2));
 
     /*
      * ========================================

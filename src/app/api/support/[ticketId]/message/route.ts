@@ -293,10 +293,7 @@ export async function POST(
       {
         success: false,
 
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to send support message.",
+        error: "Internal server error",
       },
       {
         status: 500,

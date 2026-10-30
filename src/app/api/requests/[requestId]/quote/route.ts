@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
 
+import { requireAuthWithProfile } from "@/lib/auth";
+
+import {
+  requestIdSchema,
+  validateBody,
+  idSchema,
+} from "@/lib/validation";
+
 import { adminDb } from "@/lib/firebaseAdmin";
 
 import {
@@ -17,6 +25,15 @@ export async function POST(
   context: RouteContext
 ) {
   try {
+    /*
+     * AUTHENTICATION + OWNERSHIP
+     *
+     * The caller must be authenticated and must own
+     * the request being updated.
+     */
+    const auth = await requireAuthWithProfile(request);
+    if (auth instanceof NextResponse) return auth;
+
     const { requestId } =
       await context.params;
 
@@ -26,30 +43,6 @@ export async function POST(
     const quote = body.quote;
     const quoteRegenerationRequested =
       body.quoteRegenerationRequested;
-
-    /*
-     * Dates arrive from the client as ISO
-     * strings because the quote is sent
-     * through JSON.
-     *
-     * Convert them back to Date objects
-     * before saving to Firestore so they
-     * are stored as Firestore Timestamps.
-     */
-    const normalizedQuote = {
-      ...quote,
-
-      createdAt: quote?.createdAt
-        ? new Date(quote.createdAt)
-        : new Date(),
-
-      expiresAt: quote?.expiresAt
-        ? new Date(quote.expiresAt)
-        : new Date(
-            Date.now() +
-              24 * 60 * 60 * 1000
-          ),
-    };
 
     if (!requestId || !quote) {
       return NextResponse.json(
@@ -95,6 +88,37 @@ export async function POST(
     }
 
     /*
+     * AUTHORIZATION: only the owner may save a quote
+     */
+    if (requestData.userId !== auth.profile.uid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "You do not have permission to update this request.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    const normalizedQuote = {
+      ...quote,
+
+      createdAt: quote?.createdAt
+        ? new Date(quote.createdAt)
+        : new Date(),
+
+      expiresAt: quote?.expiresAt
+        ? new Date(quote.expiresAt)
+        : new Date(
+            Date.now() +
+              24 * 60 * 60 * 1000
+          ),
+    };
+
+    /*
      * SAVE QUOTE
      */
     await requestRef.update({
@@ -119,11 +143,6 @@ export async function POST(
 
     /*
      * QUOTE READY NOTIFICATION
-     *
-     * Notification preferences, channel
-     * settings and WhatsApp consent are
-     * enforced centrally by
-     * notificationService.ts.
      */
     try {
       const userId =
@@ -203,9 +222,7 @@ export async function POST(
         success: false,
 
         error:
-          error instanceof Error
-            ? error.message
-            : "Unable to save quote.",
+          "Unable to save quote.",
       },
       {
         status: 500,

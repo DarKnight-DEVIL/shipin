@@ -145,10 +145,7 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to access inspection photo.",
+        error: "Internal server error",
       },
       {
         status: 500,

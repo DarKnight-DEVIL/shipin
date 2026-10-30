@@ -22,7 +22,7 @@ export interface AdminUser {
  * users/{uid}.role === "admin"
  */
 export async function requireAdmin(
-  request: NextRequest
+  request: Request
 ): Promise<AdminUser> {
   /*
    * ========================================
