@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Lightweight in-memory sliding-window rate limiter.
  *
  * Limits are per runtime instance, not global across serverless instances.
@@ -7,6 +7,8 @@
 
 type IpHistoryEntry = { timestamp: number };
 type IpHistory = Record<string, IpHistoryEntry[]>;
+
+import { createSharedRateLimiter } from "./redisRateLimiter";
 
 export interface RateLimitPolicy {
   maxRequests: number;
@@ -94,19 +96,60 @@ const DEFAULT_POLICY: RateLimitPolicy = {
   message: "Too many requests, please try again later.",
 };
 
-export const webRateLimiter = new InMemoryRateLimiter(DEFAULT_POLICY);
-
-export const apiRateLimiter = new InMemoryRateLimiter({
+// In-memory instances (used as fallback when Redis is not configured)
+const webLimiterMemory = new InMemoryRateLimiter(DEFAULT_POLICY);
+const apiLimiterMemory = new InMemoryRateLimiter({
   maxRequests: 30,
   windowMs: 60_000,
   message: "Too many requests, please try again later.",
 });
-
-export const strictRateLimiter = new InMemoryRateLimiter({
+const strictLimiterMemory = new InMemoryRateLimiter({
   maxRequests: 10,
   windowMs: 60_000,
   message: "Too many requests, please try again later.",
 });
+const loginLimiterMemory = new InMemoryRateLimiter({
+  maxRequests: 5,
+  windowMs: 60_000,
+  message: "Too many sign-in attempts, please wait a moment and try again.",
+});
+
+// Shared (Redis-backed) wrappers — fall back to in-memory if no Redis config
+export const webRateLimiter = createSharedRateLimiter(
+  "web",
+  DEFAULT_POLICY.maxRequests,
+  DEFAULT_POLICY.windowMs,
+  webLimiterMemory
+);
+
+export const apiRateLimiter = createSharedRateLimiter(
+  "api",
+  30,
+  60_000,
+  apiLimiterMemory
+);
+
+export const strictRateLimiter = createSharedRateLimiter(
+  "strict",
+  10,
+  60_000,
+  strictLimiterMemory
+);
+
+/**
+ * Sign-in attempt limiter.
+ *
+ * Each Google popup/redirect attempt is gated through
+ * POST /api/auth/login-intent. 5 attempts per IP per
+ * minute is plenty for legitimate use and stops
+ * credential-stuffing / popup-spam loops.
+ */
+export const loginRateLimiter = createSharedRateLimiter(
+  "login",
+  5,
+  60_000,
+  loginLimiterMemory
+);
 
 export function isRateLimited(result: RateLimitResult): boolean {
   return !result.ok;
