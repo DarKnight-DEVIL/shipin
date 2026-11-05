@@ -39,14 +39,18 @@ function isValidRedisUrl(url: string | undefined): url is string {
   }
 }
 
-const redis =
-  isValidRedisUrl(serverEnv.UPSTASH_REDIS_REST_URL) &&
-  serverEnv.UPSTASH_REDIS_REST_TOKEN
-    ? new Redis({
-        url: serverEnv.UPSTASH_REDIS_REST_URL,
-        token: serverEnv.UPSTASH_REDIS_REST_TOKEN,
-      })
-    : null;
+// Lazily initialize Redis client to avoid triggering env validation at module load time
+let redis: Redis | null = null;
+function getRedis(): Redis | null {
+  if (redis === null) {
+    const url = serverEnv.UPSTASH_REDIS_REST_URL;
+    const token = serverEnv.UPSTASH_REDIS_REST_TOKEN;
+    if (isValidRedisUrl(url) && token) {
+      redis = new Redis({ url, token });
+    }
+  }
+  return redis;
+}
 
 export function createSharedRateLimiter(
   name: string,
@@ -54,20 +58,10 @@ export function createSharedRateLimiter(
   windowMs: number,
   fallback: { record: (req: Request) => Promise<RateLimitResult> }
 ) {
-  const limiter = redis
-    ? new Ratelimit({
-        redis,
-        limiter: Ratelimit.slidingWindow(
-          maxRequests,
-          `${Math.round(windowMs / 1000)} s`
-        ),
-        prefix: `shipin:${name}`,
-      })
-    : null;
-
   return {
     async record(request: Request): Promise<RateLimitResult> {
-      if (!limiter) {
+      const client = getRedis();
+      if (!client) {
         // No Redis configured → use in-memory fallback
         return fallback.record(request);
       }
@@ -79,6 +73,15 @@ export function createSharedRateLimiter(
         "127.0.0.1";
 
       try {
+        const limiter = new Ratelimit({
+          redis: client,
+          limiter: Ratelimit.slidingWindow(
+            maxRequests,
+            `${Math.round(windowMs / 1000)} s`
+          ),
+          prefix: `shipin:${name}`,
+        });
+
         const result = await limiter.limit(ip);
         const reset = result.reset;
 
