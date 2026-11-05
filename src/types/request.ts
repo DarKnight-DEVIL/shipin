@@ -1,5 +1,5 @@
 import { Timestamp } from "firebase/firestore";
-import type { RequestStatus } from "@/lib/requestStatus";
+import type { RequestStatus } from "@/features/requests/services/requestStatus";
 // Import remains safely as relative path
 import type { Address } from "./address";
 import type { Carrier } from "./carrier";

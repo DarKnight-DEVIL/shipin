@@ -42,6 +42,17 @@
 @keyframes login-spin { to { transform: rotate(360deg); } }
 .login__terms { margin: 28px 0 0; color: var(--muted); font-size: .78rem; line-height: 1.6; }
 
+  /* Email/password form */
+  .login__email-form { margin-top: 24px; display: flex; flex-direction: column; gap: 16px; text-align: left; }
+  .login__field { display: flex; flex-direction: column; gap: 6px; }
+  .login__label { font-size: .82rem; color: var(--fg-soft); font-weight: 500; }
+  .login__input { width: 100%; height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0,0,0,.25); color: var(--fg); font: 400 .95rem var(--font-geist-sans), system-ui, sans-serif; outline: none; transition: border-color .2s, background .2s; }
+  .login__input::placeholder { color: rgba(154,146,132,.5); }
+  .login__input:focus { border-color: #ff6b1a; background: rgba(0,0,0,.35); }
+  .login__link { background: none; border: 0; color: var(--fg-soft); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .login__link:hover { color: var(--fg); }
+  .login__switch { margin: 22px 0 0; text-align: center; color: var(--muted); font-size: .82rem; }
+
 @media (max-width: 900px) {
   .login { grid-template-columns: 1fr; }
   .login__brand { display: none; }

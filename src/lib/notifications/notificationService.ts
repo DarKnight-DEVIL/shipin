@@ -19,6 +19,8 @@ interface NotificationChannels {
 type NotificationCategory =
   keyof NotificationCategoryPreferences;
 
+export type { NotificationCategory };
+
 interface WhatsAppTemplate {
   templateName: string;
   languageCode?: string;
@@ -54,9 +56,19 @@ interface SendNotificationParams {
   whatsapp?: WhatsAppTemplate;
 }
 
-async function getUserNotificationPreferences(
-  userId: string
-): Promise<NotificationPreferences> {
+interface UserData {
+  email?: string;
+  preferences?: {
+    notifications?: Partial<NotificationPreferences>;
+  };
+}
+
+/**
+ * Fetch user document ONCE and extract both preferences and email.
+ * The previous implementation performed two separate Firestore reads
+ * (one for preferences, one for email), doubling latency.
+ */
+async function getUserData(userId: string): Promise<UserData | null> {
   try {
     const snapshot =
       await adminDb
@@ -65,51 +77,49 @@ async function getUserNotificationPreferences(
         .get();
 
     if (!snapshot.exists) {
-      return DEFAULT_NOTIFICATION_PREFERENCES;
+      return null;
     }
-
-    const saved =
-      snapshot.data()
-        ?.preferences
-        ?.notifications;
-
-    if (!saved) {
-      return DEFAULT_NOTIFICATION_PREFERENCES;
-    }
-
-    /*
-     * Merge with defaults so older
-     * users continue working if new
-     * settings are added later.
-     */
-    return {
-      channels: {
-        ...DEFAULT_NOTIFICATION_PREFERENCES.channels,
-        ...(saved.channels ?? {}),
-      },
-
-      whatsapp: {
-        ...DEFAULT_NOTIFICATION_PREFERENCES.whatsapp,
-        ...(saved.whatsapp ?? {}),
-      },
-
-      categories: {
-        ...DEFAULT_NOTIFICATION_PREFERENCES.categories,
-        ...(saved.categories ?? {}),
-      },
-    };
+    return snapshot.data() as UserData;
   } catch (error) {
     console.error(
-      "Failed to load notification preferences:",
+      "Failed to load user data:",
       error
     );
+    return null;
+  }
+}
 
-    /*
-     * Fall back to safe defaults rather
-     * than breaking the order operation.
-     */
+async function resolvePreferences(
+  userData: UserData | null
+): Promise<NotificationPreferences> {
+  const saved =
+    userData?.preferences?.notifications;
+
+  if (!saved) {
     return DEFAULT_NOTIFICATION_PREFERENCES;
   }
+
+  /*
+   * Merge with defaults so older
+   * users continue working if new
+   * settings are added later.
+   */
+  return {
+    channels: {
+      ...DEFAULT_NOTIFICATION_PREFERENCES.channels,
+      ...(saved.channels ?? {}),
+    },
+
+    whatsapp: {
+      ...DEFAULT_NOTIFICATION_PREFERENCES.whatsapp,
+      ...(saved.whatsapp ?? {}),
+    },
+
+    categories: {
+      ...DEFAULT_NOTIFICATION_PREFERENCES.categories,
+      ...(saved.categories ?? {}),
+    },
+  };
 }
 
 export async function sendNotification({
@@ -128,27 +138,10 @@ export async function sendNotification({
 
   whatsapp,
 }: SendNotificationParams) {
-  const preferences =
-    await getUserNotificationPreferences(
-      userId
-    );
-
-  let userEmail = "";
-  try {
-    const userSnapshot =
-      await adminDb
-        .collection("users")
-        .doc(userId)
-        .get();
-
-    userEmail =
-      userSnapshot.data()?.email || "";
-  } catch (error) {
-    console.error(
-      "Failed to load user email:",
-      error
-    );
-  }
+  // Single Firestore read — extracts both preferences and email
+  const userData = await getUserData(userId);
+  const preferences = await resolvePreferences(userData);
+  const userEmail = userData?.email ?? "";
 
   /*
    * First check whether the customer

@@ -1,4 +1,14 @@
 export const PRICING = {
+  // Service fee calculation
+  FREE_SERVICE_LIMIT: 10,
+  FLAT_FEE_LIMIT: 30,
+  FLAT_FEE: 5,
+
+  PERCENTAGE_LIMIT: 500,
+  PERCENTAGE: 0.1,
+  MIN_PERCENTAGE_FEE: 10,
+
+  // Inspection options
   inspection: {
     none: {
       id: "none",
@@ -24,6 +34,7 @@ export const PRICING = {
     },
   },
 
+  // Shipping preferences
   shipping: {
     auto: {
       id: "auto",
@@ -50,6 +61,7 @@ export const PRICING = {
     },
   },
 
+  // Storage fees
   storage: {
     graceHours: 48,
 

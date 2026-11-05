@@ -23,7 +23,7 @@ import {
 import { signOut } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
-import { subscribeToNotifications } from "@/lib/firestore";
+import { subscribeToNotifications } from "@/features/notifications/services";
 
 import "./app-theme.css";
 
@@ -71,6 +71,14 @@ export default function PlatformLayout({
       );
 
       setUserEmail(user.email || "");
+
+      // Email verification enforcement (#4).
+      // Unverified users are redirected to /verify-email so they can't
+      // reach the dashboard until they confirm their email address.
+      if (!user.emailVerified && !pathname.startsWith("/verify-email")) {
+        router.replace("/verify-email");
+        return;
+      }
 
       if (unsubscribeNotifications) {
         unsubscribeNotifications();

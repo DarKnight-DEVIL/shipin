@@ -20,8 +20,8 @@ import AddressForm from "@/components/address/AddressForm";
 import Modal from "@/components/ui/Modal";
 import PageHeader from "@/components/ui/PageHeader";
 import { auth } from "@/lib/firebase";
-import { addRequest } from "@/lib/firestore";
-import { getAddresses, addAddress } from "@/lib/addressBook";
+import { addRequest } from "@/features/requests/services/requests";
+import { getAddresses, addAddress } from "@/features/requests/services/addressesLegacy";
 import type { Address } from "@/types/address";
 
 type ItemDraft = {
@@ -126,7 +126,7 @@ export default function NewRequestPage() {
             shippingPreference,
           },
           notes: notes.trim(),
-          email: user.email,
+          email: user.email ?? "",
           customerName: user.displayName || "Customer",
         },
         user.uid

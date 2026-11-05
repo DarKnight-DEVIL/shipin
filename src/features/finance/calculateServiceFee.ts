@@ -1,4 +1,4 @@
-import { PRICING } from "@/constants/pricing";
+import { PRICING } from "@/config/pricing";
 
 export interface ServiceFeeResult {
   fee: number;

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import Section from "@/components/ui/Section";
 import ActionButton from "@/components/ui/ActionButton";
-import { approveInternationalShipment } from "@/lib/firestore";
+import { approveInternationalShipment } from "@/features/requests/services/warehouse";
 
 interface Props {
   request: {

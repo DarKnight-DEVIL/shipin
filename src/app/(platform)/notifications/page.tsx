@@ -15,7 +15,7 @@ import {
   deleteNotification,
   markAllNotificationsRead,
   clearReadNotifications,
-} from "@/lib/firestore";
+} from "@/features/notifications/services";
 
 type Filter =
   | "all"

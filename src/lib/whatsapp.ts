@@ -1,3 +1,8 @@
+import { serverEnv } from "@/config/env";
+import { createShipINError } from "@/utils/errors";
+
+const FETCH_TIMEOUT_MS = 15000;
+
 interface SendWhatsAppTemplateParams {
   to: string;
   templateName: string;
@@ -17,24 +22,23 @@ export async function sendWhatsAppTemplate({
   languageCode = "en_US",
   components = [],
 }: SendWhatsAppTemplateParams) {
-  const accessToken =
-    process.env.WHATSAPP_ACCESS_TOKEN;
-
-  const phoneNumberId =
-    process.env.WHATSAPP_PHONE_NUMBER_ID;
-
-  const apiVersion =
-    process.env.WHATSAPP_API_VERSION || "v25.0";
+  const accessToken = serverEnv.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = serverEnv.WHATSAPP_PHONE_NUMBER_ID;
+  const apiVersion = serverEnv.WHATSAPP_API_VERSION;
 
   if (!accessToken) {
-    throw new Error(
-      "WHATSAPP_ACCESS_TOKEN is not configured."
+    throw createShipINError(
+      "WHATSAPP_ACCESS_TOKEN is not configured.",
+      "CONFIG_ERROR",
+      500
     );
   }
 
   if (!phoneNumberId) {
-    throw new Error(
-      "WHATSAPP_PHONE_NUMBER_ID is not configured."
+    throw createShipINError(
+      "WHATSAPP_PHONE_NUMBER_ID is not configured.",
+      "CONFIG_ERROR",
+      500
     );
   }
 
@@ -44,12 +48,14 @@ export async function sendWhatsAppTemplate({
   const recipient = to.replace(/\D/g, "");
 
   if (!recipient) {
-    throw new Error(
-      "A valid WhatsApp recipient number is required."
+    throw createShipINError(
+      "A valid WhatsApp recipient number is required.",
+      "VALIDATION_ERROR",
+      400
     );
   }
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`,
     {
       method: "POST",
@@ -89,11 +95,20 @@ export async function sendWhatsAppTemplate({
       data
     );
 
-    throw new Error(
+    throw createShipINError(
       data?.error?.message ||
-        "Failed to send WhatsApp message."
+        "Failed to send WhatsApp message.",
+      "EXTERNAL_SERVICE_ERROR",
+      502
     );
   }
 
   return data;
+}
+
+function fetchWithTimeout(url: string, options: RequestInit = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(timeout));
 }

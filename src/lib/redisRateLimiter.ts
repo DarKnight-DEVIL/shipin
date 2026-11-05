@@ -20,14 +20,32 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
-import type { RateLimitResult } from "./rateLimiter";
+import { serverEnv } from "@/config/env";
 
-const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
-const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+export interface RateLimitResult {
+  ok: boolean;
+  limit: number;
+  remaining: number;
+  reset: number;
+}
+
+function isValidRedisUrl(url: string | undefined): url is string {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 const redis =
-  redisUrl && redisToken
-    ? new Redis({ url: redisUrl, token: redisToken })
+  isValidRedisUrl(serverEnv.UPSTASH_REDIS_REST_URL) &&
+  serverEnv.UPSTASH_REDIS_REST_TOKEN
+    ? new Redis({
+        url: serverEnv.UPSTASH_REDIS_REST_URL,
+        token: serverEnv.UPSTASH_REDIS_REST_TOKEN,
+      })
     : null;
 
 export function createSharedRateLimiter(
@@ -71,12 +89,19 @@ export function createSharedRateLimiter(
           reset,
         };
       } catch (error) {
-        // Fail open: a Redis outage must not lock everyone out of the app.
+        // Fail CLOSED: a Redis outage must not silently allow excess requests.
+        // Instead, reject the request and let the fallback be used ONLY when
+        // Redis is explicitly not configured (not on transient errors).
         console.error(
-          `Shared rate limiter (${name}) failed, falling back to in-memory:`,
+          `Shared rate limiter (${name}) failed, rejecting request:`,
           error instanceof Error ? error.message : error
         );
-        return fallback.record(request);
+        return {
+          ok: false,
+          limit: maxRequests,
+          remaining: 0,
+          reset: Date.now() + windowMs,
+        };
       }
     },
   };

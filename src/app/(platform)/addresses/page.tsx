@@ -9,7 +9,7 @@ import {
   addAddress,
   getAddresses,
   updateAddress,
-} from "@/lib/addressBook";
+} from "@/features/requests/services/addressesLegacy";
 
 import AddressCard from "@/components/address/AddressCard";
 import AddressForm from "@/components/address/AddressForm";

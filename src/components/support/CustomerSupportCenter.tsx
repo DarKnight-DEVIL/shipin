@@ -488,6 +488,7 @@ export default function CustomerSupportCenter({ customerId }: Props) {
                           subject: "Refund offer",
                           firstMessage:
                             "Hi — I have a question about the refund offered on this request.",
+                          ticketNumber: `TKT-${Date.now()}`,
                         });
                         if (ticketId) {
                           openCreatedTicket(ticketId);

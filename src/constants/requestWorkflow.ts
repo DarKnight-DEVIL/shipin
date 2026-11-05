@@ -1,7 +1,7 @@
 import {
   REQUEST_STATUS,
   type RequestStatus,
-} from "@/lib/requestStatus";
+} from "@/features/requests/services/requestStatus";
 
 export const REQUEST_WORKFLOW: RequestStatus[] = [
   REQUEST_STATUS.submitted,

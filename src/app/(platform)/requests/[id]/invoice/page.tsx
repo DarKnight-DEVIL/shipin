@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
-import { getRequestById } from "@/lib/firestore";
+import { getRequestById } from "@/features/requests/services/requests";
 
 import LoadingCard from "@/components/ui/LoadingCard";
 import EmptyState from "@/components/ui/EmptyState";

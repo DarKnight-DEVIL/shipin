@@ -1,0 +1,46 @@
+/* ShipIN 404: flat, on-brand "parcel not found" page. */
+.nf {
+  --fg: #f6f0e6; --fg-soft: #9a9284; --muted: #6f685c; --line: #2c2723;
+  --display: var(--font-display), var(--font-geist-sans), system-ui, sans-serif;
+  position: relative; display: grid; place-items: center; min-height: 100vh; min-height: 100dvh; padding: 88px 20px 48px; overflow: hidden;
+  background: radial-gradient(60% 45% at 50% 0%, rgba(255,107,26,.16), transparent 70%), #0c0a09;
+  color: var(--fg); font-family: var(--font-geist-sans), system-ui, sans-serif; text-align: center;
+}
+.nf::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .6;
+  background-image: radial-gradient(rgba(246,240,230,.22) 1px, transparent 1.3px); background-size: 26px 26px;
+  -webkit-mask-image: radial-gradient(55% 50% at 50% 40%, #000, transparent 80%); mask-image: radial-gradient(55% 50% at 50% 40%, #000, transparent 80%); }
+
+.nf__brand { position: absolute; top: 24px; left: 28px; z-index: 2; display: inline-flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; font-family: var(--display); font-size: 1.25rem; font-weight: 600; letter-spacing: -.03em; }
+.nf__mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; background: linear-gradient(135deg, #ffc23d, #ff6b1a 55%, #ff3d6e); color: #1a0b02; }
+.nf__brand em { font-style: normal; color: #ff8a3d; }
+
+.nf__body { position: relative; z-index: 1; width: 100%; max-width: 560px; }
+.nf__stamp { display: inline-flex; padding: 5px 11px; border: 1.5px dashed #ff6b1a; border-radius: 4px; transform: rotate(-1.5deg); color: #ffc23d; font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; }
+
+.nf__code { display: flex; align-items: center; justify-content: center; gap: clamp(4px, 1.5vw, 14px); margin: 28px 0 8px; font-family: var(--display); font-size: clamp(6rem, 24vw, 11rem); font-weight: 700; line-height: .9; letter-spacing: -.06em; }
+.nf__digit { color: transparent; background-image: linear-gradient(100deg, #ffc23d, #ff6b1a 55%, #ff3d6e); -webkit-background-clip: text; background-clip: text; }
+.nf__ring { width: .82em; height: .82em; flex: none; }
+
+.nf__title { margin: 0; font-family: var(--display); font-size: clamp(1.7rem, 4.5vw, 2.3rem); font-weight: 700; letter-spacing: -.04em; line-height: 1.1; color: #fff; }
+.nf__sub { margin: 14px auto 0; max-width: 28rem; color: var(--fg-soft); font-size: 1rem; line-height: 1.65; }
+
+.nf__card { margin: 32px auto 0; max-width: 420px; padding: 4px 18px; text-align: left; border: 1px solid #2a2622; border-radius: 16px; background: #141211; }
+.nf__row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 0; font-size: .82rem; }
+.nf__row + .nf__row { border-top: 1px solid #2a2622; }
+.nf__row dt { color: var(--muted); font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; }
+.nf__row dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font-family: var(--font-geist-mono), ui-monospace, monospace; }
+.nf__status { display: inline-flex; align-items: center; gap: 8px; color: #ffc23d; }
+.nf__status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #ff6b1a; }
+
+.nf__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 32px; }
+.nf__btn { display: inline-flex; align-items: center; gap: 8px; height: 48px; padding: 0 22px; border-radius: 999px; font-size: .92rem; font-weight: 600; text-decoration: none; transition: background .2s, border-color .2s, transform .15s; }
+.nf__btn:active { transform: translateY(1px); }
+.nf__btn--primary { background: #ff6b1a; color: #1a0b02; }
+.nf__btn--primary:hover { background: #ff8a3d; }
+.nf__btn--ghost { border: 1px solid #3d362d; color: var(--fg); }
+.nf__btn--ghost:hover { border-color: #ff6b1a; background: rgba(255,107,26,.08); }
+.nf__btn:focus-visible { outline: 2px solid #ffc23d; outline-offset: 3px; }
+.nf__help { margin-top: 28px; color: var(--muted); font-size: .85rem; }
+.nf__help a { color: var(--fg-soft); text-underline-offset: 3px; }
+.nf__help a:hover { color: #ff8a3d; }
+@media (max-width: 520px) { .nf__brand { left: 20px; } .nf__btn { width: 100%; justify-content: center; } }

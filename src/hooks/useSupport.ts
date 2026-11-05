@@ -2,13 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import {
-  createSupportTicket,
-  resolveSupportTicket,
-  subscribeToSupportMessages,
-  subscribeToSupportTickets,
-  markSupportTicketRead,
-} from "@/lib/firestore";
+import { createSupportTicket, resolveSupportTicket, subscribeToSupportMessages, subscribeToSupportTickets, markSupportTicketRead } from "@/features/support/services";
 
 import {
   SupportMessage,

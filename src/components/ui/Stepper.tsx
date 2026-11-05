@@ -1,10 +1,7 @@
-"use client";
-
 import { Check } from "lucide-react";
-
-import { statusLabels } from "@/lib/statusLabels";
-import type { RequestStatus } from "@/lib/requestStatus";
-import { REQUEST_STATUS } from "@/lib/requestStatus";
+import type { RequestStatus } from "@/features/requests/services/requestStatus";
+import { REQUEST_STATUS } from "@/features/requests/services/requestStatus";
+import { statusLabels } from "@/features/requests/services/statusLabels";
 
 const REQUEST_WORKFLOW: RequestStatus[] = [
   REQUEST_STATUS.submitted,

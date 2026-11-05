@@ -15,7 +15,7 @@ import {
   saveWarehouseInspection,
   updateWarehouseChecklist,
   startStorageTimer,
-} from "@/lib/firestore";
+} from "@/features/requests/services/warehouse";
 
 interface Props {
   request: Request;

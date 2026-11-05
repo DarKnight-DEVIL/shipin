@@ -1,21 +1,20 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
+﻿import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import { clientEnv } from "@/config/env";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDo5qUJ_ho1Bp0qjKp_1IYAHUFW3nsmfb4",
-  authDomain: "shipin-9576a.firebaseapp.com",
-  projectId: "shipin-9576a",
-  storageBucket: "shipin-9576a.firebasestorage.app",
-  messagingSenderId: "1088532314053",
-  appId: "1:1088532314053:web:28fb6afe2726ef4c46fdac",
+  apiKey: clientEnv.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: clientEnv.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: clientEnv.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: clientEnv.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: clientEnv.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: clientEnv.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const storage = getStorage(app);
 
 export default app;

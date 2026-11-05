@@ -366,8 +366,17 @@ export default function useCustomerSupport(
     createTicket: async (data: {
       requestId: string;
       customerId: string;
-      category: string;
+      category:
+        | "Shipment"
+        | "Tracking"
+        | "Payment"
+        | "Refund"
+        | "Customs"
+        | "Missing Item"
+        | "Wrong Item"
+        | "Other";
       subject: string;
+      ticketNumber: string;
       firstMessage: string;
     }) => {
       return await createSupportTicket(data);

@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 import { auth } from "@/lib/firebase";
-import { getWallet, getWalletTransactions } from "@/lib/wallet";
+import { getWallet, getWalletTransactions } from "@/features/wallet/services/wallet";
 import EmptyState from "@/components/ui/EmptyState";
 import PageHeader from "@/components/ui/PageHeader";
 

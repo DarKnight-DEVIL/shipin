@@ -13,7 +13,8 @@ class PaymentService {
     requestId: string,
     amount: number,
     paymentType: "main" | "additional_item" = "main",
-    additionalItemRequestId?: string
+    additionalItemRequestId?: string,
+    authToken?: string
   ) {
     if (
       !Number.isFinite(amount) ||
@@ -24,14 +25,19 @@ class PaymentService {
       );
     }
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+
     const response = await fetch(
       "/api/paypal/create-order",
       {
         method: "POST",
 
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
 
         body: JSON.stringify({
           requestId,
@@ -77,7 +83,8 @@ class PaymentService {
     paymentType:
       | "main"
       | "additional_item" = "main",
-    additionalItemRequestId?: string
+    additionalItemRequestId?: string,
+    authToken?: string
   ) {
     if (
       !Number.isFinite(amount) ||
@@ -88,14 +95,19 @@ class PaymentService {
       );
     }
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+
     const response = await fetch(
       "/api/paypal/capture-order",
       {
         method: "POST",
 
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
 
         body: JSON.stringify({
           requestId,

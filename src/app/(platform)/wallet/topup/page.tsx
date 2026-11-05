@@ -5,7 +5,7 @@ import { PayPalButtons } from "@paypal/react-paypal-js";
 import { toast } from "sonner";
 
 import { auth } from "@/lib/firebase";
-import { getWallet } from "@/lib/wallet";
+import { getWallet } from "@/features/wallet/services/wallet";
 import PageHeader from "@/components/ui/PageHeader";
 
 const PRESET_AMOUNTS = [25, 50, 100, 250];

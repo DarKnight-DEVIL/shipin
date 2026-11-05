@@ -19,7 +19,7 @@ import {
   subscribeToRequest,
   markSupportTicketRead,
   resolveSupportTicket,
-} from "@/lib/firestore";
+} from "@/features/support/services";
 
 interface SupportTicket {
   id: string;
@@ -36,7 +36,6 @@ interface SupportTicket {
 
 interface SupportMessage {
   id: string;
-  ticketId: string;
   sender: "customer" | "admin";
   message: string;
   createdAt?: any;
@@ -133,7 +132,7 @@ export default function AdminSupportSidebar() {
 
     const unsubscribe = subscribeToSupportMessages(
       selectedTicket.id,
-      setMessages
+      (messages: SupportMessage[]) => setMessages(messages)
     );
 
     return unsubscribe;

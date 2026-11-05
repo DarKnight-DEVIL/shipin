@@ -5,9 +5,6 @@
  * Use an edge/WAF or shared store for production-wide enforcement.
  */
 
-type IpHistoryEntry = { timestamp: number };
-type IpHistory = Record<string, IpHistoryEntry[]>;
-
 import { createSharedRateLimiter } from "./redisRateLimiter";
 
 export interface RateLimitPolicy {
@@ -18,15 +15,8 @@ export interface RateLimitPolicy {
   skipRoutes?: string[];
 }
 
-export interface RateLimitResult {
-  ok: boolean;
-  limit: number;
-  remaining: number;
-  reset: number;
-}
-
 class InMemoryRateLimiter {
-  private readonly store: IpHistory = Object.create(null) as IpHistory;
+  private readonly store: Record<string, { timestamp: number }[]> = {};
   private readonly policy: RateLimitPolicy;
 
   constructor(policy: RateLimitPolicy) {
@@ -58,7 +48,7 @@ class InMemoryRateLimiter {
     }
   }
 
-  async record(request: Request): Promise<RateLimitResult> {
+  async record(request: Request): Promise<import("./redisRateLimiter").RateLimitResult> {
     const now = Date.now();
     const pathname = new URL(request.url).pathname;
     if (this.policy.skipRoutes?.includes(pathname)) {
@@ -151,11 +141,11 @@ export const loginRateLimiter = createSharedRateLimiter(
   loginLimiterMemory
 );
 
-export function isRateLimited(result: RateLimitResult): boolean {
+export function isRateLimited(result: import("./redisRateLimiter").RateLimitResult): boolean {
   return !result.ok;
 }
 
-export function addRateLimitHeaders(headers: Headers, result: RateLimitResult): void {
+export function addRateLimitHeaders(headers: Headers, result: import("./redisRateLimiter").RateLimitResult): void {
   headers.set("X-RateLimit-Limit", String(result.limit));
   headers.set("X-RateLimit-Remaining", String(result.remaining));
   headers.set("X-RateLimit-Reset", String(Math.floor(result.reset / 1000)));

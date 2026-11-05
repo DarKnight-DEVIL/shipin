@@ -14,6 +14,19 @@ interface EmailData {
   supportMessage?: string;
 }
 
+/**
+ * Escape HTML special characters to prevent XSS.
+ */
+function escapeHtml(input: string): string {
+  const a = String.fromCharCode(38);
+  return input
+    .replace(/&/g, a + "amp;")
+    .replace(/</g, a + "lt;")
+    .replace(/>/g, a + "gt;")
+    .replace(/"/g, a + "quot;")
+    .replace(/'/g, "&#039;");
+}
+
 const baseTemplate = (
   title: string,
   body: string
@@ -27,7 +40,7 @@ const baseTemplate = (
 <div style="padding:32px">
 
 <h2 style="margin-top:0;color:#111827">
-${title}
+${escapeHtml(title)}
 </h2>
 
 ${body}
@@ -56,10 +69,7 @@ export function generateEmail(
           `
 <p>Your quote has been prepared.</p>
 
-<p><strong>Request:</strong> #${data.requestId.slice(
-            0,
-            6
-          )}</p>
+<p><strong>Request:</strong> #${escapeHtml(data.requestId.slice(0, 6))}</p>
 
 <p><strong>Total:</strong> $${Number(
             data.amount
@@ -78,10 +88,7 @@ export function generateEmail(
           `
 <p>We've successfully received your payment.</p>
 
-<p><strong>Request:</strong> #${data.requestId.slice(
-            0,
-            6
-          )}</p>
+<p><strong>Request:</strong> #${escapeHtml(data.requestId.slice(0, 6))}</p>
 
 <p><strong>Amount:</strong> $${Number(
             data.amount
@@ -103,7 +110,7 @@ export function generateEmail(
 <p><strong>Tracking Number:</strong></p>
 
 <p style="font-size:18px;font-weight:bold;">
-${data.trackingNumber}
+${escapeHtml(data.trackingNumber ?? "")}
 </p>
 `
         ),
@@ -149,7 +156,7 @@ padding:16px;
 border-radius:8px;
 margin-top:16px;
 ">
-${data.supportMessage}
+${escapeHtml(data.supportMessage ?? "")}
 </div>
 `
         ),

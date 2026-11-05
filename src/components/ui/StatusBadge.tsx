@@ -1,6 +1,6 @@
 "use client";
 
-import type { RequestStatus } from "@/lib/requestStatus";
+import type { RequestStatus } from "@/features/requests/services/requestStatus";
 import { statusLabels } from "@/lib/statusLabels";
 
 interface Props {

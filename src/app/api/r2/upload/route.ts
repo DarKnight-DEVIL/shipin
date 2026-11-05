@@ -5,8 +5,8 @@ import {
 } from "@aws-sdk/client-s3";
 
 import {
-  r2,
-  R2_BUCKET_NAME,
+  getR2Client,
+  getR2BucketName,
 } from "@/lib/r2";
 
 import {
@@ -165,10 +165,10 @@ export async function POST(
     const body =
       Buffer.from(arrayBuffer);
 
-    await r2.send(
+    await getR2Client().send(
       new PutObjectCommand({
         Bucket:
-          R2_BUCKET_NAME,
+          getR2BucketName(),
 
         Key:
           objectKey,

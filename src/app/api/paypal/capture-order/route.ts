@@ -4,6 +4,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import {
   sendNotification,
 } from "@/lib/notifications/notificationService";
+import { requireAuthWithProfile } from "@/lib/auth";
+import { getPayPalAccessToken } from "@/lib/paypal";
 
 type PaymentType = "main" | "additional_item";
 
@@ -13,59 +15,13 @@ function toNumber(value: unknown): number {
   return Number.isFinite(number) ? number : 0;
 }
 
-async function getPayPalAccessToken() {
-  const clientId = process.env.PAYPAL_CLIENT_ID;
-
-  const clientSecret =
-    process.env.PAYPAL_CLIENT_SECRET;
-
-  const baseUrl =
-    process.env.PAYPAL_API_URL ||
-    "https://api-m.sandbox.paypal.com";
-
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      "PayPal credentials are not configured."
-    );
-  }
-
-  const auth = Buffer.from(
-    `${clientId}:${clientSecret}`
-  ).toString("base64");
-
-  const response = await fetch(
-    `${baseUrl}/v1/oauth2/token`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type":
-          "application/x-www-form-urlencoded",
-      },
-      body: "grant_type=client_credentials",
-      cache: "no-store",
-    }
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    console.error(
-      "PayPal access token error:",
-      data
-    );
-
-    throw new Error(
-      "Failed to authenticate with PayPal."
-    );
-  }
-
-  return data.access_token as string;
-}
-
 export async function POST(
   request: NextRequest
 ) {
+  // --- 1. Authenticate the caller ---
+  const auth = await requireAuthWithProfile(request);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = await request.json();
 
@@ -307,13 +263,16 @@ export async function POST(
       !requestUserId ||
       !paymentOrderUserId ||
       requestUserId !==
-        paymentOrderUserId
+        paymentOrderUserId ||
+      requestUserId !==
+        auth.profile.uid
     ) {
       console.error(
         "PayPal payment ownership mismatch:",
         {
           requestUserId,
           paymentOrderUserId,
+          authUserId: auth.profile.uid,
           requestId,
           orderID,
         }
@@ -431,12 +390,10 @@ export async function POST(
         {
           success: false,
           error:
-            paypalData?.message ||
             "PayPal could not capture the payment.",
         },
         {
-          status:
-            paypalResponse.status,
+          status: 400,
         }
       );
     }

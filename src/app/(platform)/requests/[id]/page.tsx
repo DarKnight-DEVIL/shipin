@@ -14,7 +14,7 @@ import { db, auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
 import SupportCenter from "@/components/support/SupportCenter";
-import { canCreateSupportTicket } from "@/lib/support";
+import { canCreateSupportTicket } from "@/features/support/services/supportRules";
 
 import RequestHeader from "@/components/request/RequestHeader";
 import RequestTimeline from "@/components/request/RequestTimeline";
@@ -26,7 +26,7 @@ import AdditionalItemPaymentsCard from "@/components/request/AdditionalItemPayme
 import PageSkeleton from "@/components/ui/PageSkeleton";
 import QuoteCountdown from "@/components/request/QuoteCountdown";
 
-import { isQuoteExpired } from "@/lib/quoteExpiry";
+import { isQuoteExpired } from "@/features/requests/services/quoteExpiry";
 import type { Request } from "@/types/request";
 
 export default function RequestDetailsPage() {

@@ -6,7 +6,7 @@ import {
   createShipment,
   addRequestToShipment,
   getUserShipments,
-} from "@/lib/shipment";
+} from "@/features/shipments/services/shipments";
 
 interface Props {
   request: any;

@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, AlertCircle, PackageOpen, Plus } from "lucide-react";
 
 import { auth } from "@/lib/firebase";
-import { subscribeToRequests } from "@/lib/firestore";
+import { subscribeToRequests } from "@/features/requests/services/requests";
 import type { Request } from "@/types/request";
 
 import PageHeader from "@/components/ui/PageHeader";

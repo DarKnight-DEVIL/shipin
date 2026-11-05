@@ -13,10 +13,8 @@ import type { RequestStatus } from "@/lib/requestStatus";
 import Section from "@/components/ui/Section";
 import ActionButton from "@/components/ui/ActionButton";
 
-import { generateTrackingId } from "@/lib/tracking";
+import { generateTrackingId } from "@/features/shipments/services/tracking";
 import { generateShippingLabel } from "@/lib/pdf/shippingLabel";
-
-import { saveShipmentDetails } from "@/lib/firestore";
 
 interface Props {
   request: Request;
@@ -225,27 +223,26 @@ export default function ShipmentPanel({ request }: Props) {
       const createdAt =
         request.tracking?.createdAt ?? Timestamp.now();
 
-      await saveShipmentDetails(request.id, {
-        internalTrackingId,
-
-        carrier,
-
-        /*
-         * Private carrier tracking
-         * number.
-         */
-        trackingNumber: trackingNumber.trim(),
-
-        estimatedDelivery,
-
-        /*
-         * We no longer use temporary
-         * carrier tracking URLs.
-         */
-        trackingUrl: "",
-
-        createdAt,
+      const response = await fetch(`/api/admin/requests/${request.id}/shipment`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          internalTrackingId,
+          carrier,
+          trackingNumber: trackingNumber.trim(),
+          estimatedDelivery,
+          trackingUrl: "",
+          createdAt,
+        }),
       });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to save shipment.");
+      }
 
       /*
        * Only move to shipped after

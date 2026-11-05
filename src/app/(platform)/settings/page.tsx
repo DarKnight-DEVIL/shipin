@@ -21,17 +21,17 @@ import {
   getUserProfile,
   createUserProfile,
   updateUserProfile,
-} from "@/lib/userProfile";
+} from "@/features/users/services/userProfile";
 import {
   dashboardMetrics,
   DEFAULT_DASHBOARD_METRICS,
   MIN_DASHBOARD_METRICS,
   type DashboardMetricId,
-} from "@/lib/dashboardMetrics";
+} from "@/features/users/services/dashboardMetrics";
 import {
   getUserPreferences,
   saveDashboardMetrics,
-} from "@/lib/userPreferences";
+} from "@/features/users/services/userPreferences";
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   type NotificationPreferences,
@@ -40,7 +40,7 @@ import {
 import {
   getNotificationPreferences,
   saveNotificationPreferences,
-} from "@/lib/firestore";
+} from "@/features/notifications/services";
 
 type ThemeOption = "light" | "dark" | "system";
 

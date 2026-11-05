@@ -17,9 +17,8 @@
 // Production-allowed frontend origins.
 // Add deployment domains here. Keep this list short and explicit.
 const ALLOWED_ORIGINS = [
-  "https://shipin.com",
-  "https://www.shipin.com",
-  "http://localhost:3000",
+  "https://shipin-psi.vercel.app", // Production (Vercel)
+  "http://localhost:3000", // Local development
 ];
 
 // APIs that do NOT require an authenticated token, but still need CORS.
@@ -34,15 +33,21 @@ const PUBLIC_API_ROUTES = ["/api/tracking/", "/api/whatsapp/test/"];
  */
 export function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
-  const normalized = origin.toLowerCase().trim();
-  return ALLOWED_ORIGINS.some(
-    (allowed) =>
-      allowed === normalized ||
-      allowed.endsWith("/*") ||
-      allowed.endsWith("*") ||
-      (allowed.startsWith("*") &&
-        normalized.endsWith(allowed.slice(1)))
-  );
+  const normalized = origin.toLowerCase().trim().replace(/\/+$/, "");
+  return ALLOWED_ORIGINS.some((allowed) => {
+    const candidate = allowed.toLowerCase().trim().replace(/\/+$/, "");
+    // Exact match
+    if (candidate === normalized) return true;
+    // Explicit subdomain wildcard only: https://*.example.com
+    if (candidate.startsWith("https://*.")) {
+      const base = candidate.slice("https://*.".length);
+      return (
+        normalized.startsWith("https://") &&
+        normalized.endsWith("." + base)
+      );
+    }
+    return false;
+  });
 }
 
 /**
@@ -57,11 +62,8 @@ export function getCorsHeaders(requestOrigin: string | null) {
 
   if (requestOrigin && isAllowedOrigin(requestOrigin)) {
     headers["Access-Control-Allow-Origin"] = requestOrigin;
-  } else {
-    headers["Access-Control-Allow-Origin"] = "*";
+    headers["Access-Control-Allow-Credentials"] = "true";
   }
-
-  headers["Access-Control-Allow-Credentials"] = "true";
   headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
   headers["Access-Control-Allow-Headers"] =
     "Content-Type, Authorization, X-Requested-With, X-CSRF-Token";

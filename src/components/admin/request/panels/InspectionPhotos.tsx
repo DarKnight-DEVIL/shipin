@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { saveInspectionPhotos } from "@/lib/firestore";
+import { saveInspectionPhotos } from "@/features/requests/services/warehouse";
 import { auth } from "@/lib/firebase";
 import Section from "@/components/ui/Section";
 import ActionButton from "@/components/ui/ActionButton";
@@ -68,8 +68,11 @@ export default function InspectionPhotos({
       /*
        * Store the private R2 object keys
        * in the request document.
+       * saveInspectionPhoto expects a single photo object with id, url, and optional caption.
        */
-      await saveInspectionPhotos(requestId, objectKeys);
+      for (const key of objectKeys) {
+        await saveInspectionPhotos(requestId, { id: crypto.randomUUID(), url: key, caption: '' });
+      }
 
       setFiles([]);
 

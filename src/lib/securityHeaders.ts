@@ -15,6 +15,8 @@
  * appropriate CSP directives here.
  */
 
+import { isDevelopment, isProduction } from "@/config/env";
+
 /**
  * Development CSP: allows inline scripts and styles for Turbopack/Next.js dev server.
  * This is less secure but necessary for development hot-reloading.
@@ -79,9 +81,10 @@ export const SECURITY_HEADERS: Record<string, string> = {
   "X-XSS-Protection": "0",
 
   /**
-   * Removes application-level disclosure headers.
+   * Remove application-level disclosure header.
+   * Next.js already handles this via poweredByHeader: false in next.config.ts
    */
-  "X-Powered-By": "ShipIN",
+  // "X-Powered-By": "ShipIN",  // Removed — handled by next.config.ts
 
   /**
    * Content Security Policy.
@@ -94,9 +97,17 @@ export const SECURITY_HEADERS: Record<string, string> = {
 
   /**
    * Discourages search engines from indexing the app.
-   * Remove or change to "index" for public landing pages.
+   * Public landing pages should override this with getRobotsTag("index").
+   * Authenticated/app pages keep noindex to avoid leaking user data.
    */
   "X-Robots-Tag": "noindex, nofollow",
+
+  /**
+   * Cross-Origin-Resource-Policy (CORP).
+   * Prevents the browser from loading this resource from a different origin.
+   * Only applies to static assets; harmless on HTML pages.
+   */
+  "Cross-Origin-Resource-Policy": "same-origin",
 
   /**
    * Permissions Policy (previously Feature-Policy).
@@ -110,6 +121,16 @@ export const SECURITY_HEADERS: Record<string, string> = {
 };
 
 /**
+ * Returns the appropriate robots tag for a given route type.
+ *
+ * - Public landing pages: "index, follow" (good for SEO)
+ * - Authenticated/app pages: "noindex, nofollow" (prevents leaking user data)
+ */
+export function getRobotsTag(isPublicPage: boolean = false): string {
+  return isPublicPage ? "index, follow" : "noindex, nofollow";
+}
+
+/**
  * CSP that includes a nonce for React's inline scripts.
  *
  * Use this when the app renders inline scripts that must execute.
@@ -117,7 +138,7 @@ export const SECURITY_HEADERS: Record<string, string> = {
  */
 export function getCSPWithNonce(nonce: string): string {
   const baseScriptSrc = `'self' 'strict-dynamic' 'nonce-${nonce}' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://unpkg.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com`;
-  const scriptSrc = process.env.NODE_ENV === "development"
+  const scriptSrc = isDevelopment
     ? `script-src ${baseScriptSrc} 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; `
     : `script-src ${baseScriptSrc}; `;
 
@@ -168,7 +189,7 @@ export function getSecureCookieOptions(): {
 } {
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: isProduction,
     sameSite: "strict",
     path: "/",
     maxAge: 60 * 60, // 1 hour

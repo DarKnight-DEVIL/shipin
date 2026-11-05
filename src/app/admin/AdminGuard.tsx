@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
-import { getUserProfile } from "@/lib/userProfile";
+import { getUserProfile } from "@/features/users/services/userProfile";
 
 export default function AdminGuard({
   children,

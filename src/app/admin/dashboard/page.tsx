@@ -14,7 +14,7 @@ import {
   getTopCustomers,
   getOperationsOverview,
   getFinancialOverview
-} from "@/lib/adminAnalytics";
+} from "@/features/admin/services/analytics";
 
 import RevenueChart from "@/components/admin/dashboard/RevenueChart";
 import StatusDistributionChart from "@/components/admin/dashboard/StatusDistributionChart";

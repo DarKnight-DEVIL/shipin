@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { MapPinOff, Plus } from "lucide-react";
 
 import { auth } from "@/lib/firebase";
-import { getAddresses, addAddress } from "@/lib/addressBook";
+import { getAddresses, addAddress, updateAddress } from "@/features/requests/services/addressesLegacy";
 
 import AddressCard from "@/components/address/AddressCard";
 import Modal from "@/components/ui/Modal";

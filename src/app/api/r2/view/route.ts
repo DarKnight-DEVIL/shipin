@@ -9,8 +9,8 @@ import {
 } from "@aws-sdk/s3-request-presigner";
 
 import {
-  r2,
-  R2_BUCKET_NAME,
+  getR2Client,
+  getR2BucketName,
 } from "@/lib/r2";
 
 import {
@@ -109,7 +109,7 @@ export async function POST(
     const command =
       new GetObjectCommand({
         Bucket:
-          R2_BUCKET_NAME,
+          getR2BucketName(),
 
         Key:
           key,
@@ -124,7 +124,7 @@ export async function POST(
      */
     const url =
       await getSignedUrl(
-        r2,
+        getR2Client(),
         command,
         {
           expiresIn:

@@ -1,20 +1,30 @@
+rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Default: no access without an authenticated user.
-    // Path-scoped rules below grant access per use-case.
-    match /images/{userId}/{fileName} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && request.auth.uid == userId;
-      allow delete: if false;
+    match /inspection/{requestId}/{allPaths=**} {
+      // Only authenticated users can read their own inspection photos
+      allow read: if request.auth != null &&
+        request.auth.uid == requestId;
+      // Only admin can write inspection photos
+      allow write: if request.auth != null &&
+        get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    match /inspection/{requestId}/{fileName} {
-      // Inspection images are written by warehouse/admin tooling
-      // via the Admin SDK. Regular users may read images on
-      // requests they own (enforced by the calling API route).
-      allow read: if request.auth != null;
-      allow write: if false;
+    match /warehouse/{requestId}/{allPaths=**} {
+      // Admin-only access for warehouse documents
+      allow read, write: if request.auth != null &&
+        get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    match /user-uploads/{userId}/{allPaths=**} {
+      // Users can read/write their own uploads
+      allow read, write: if request.auth != null &&
+        request.auth.uid == userId;
+    }
+
+    // Deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }

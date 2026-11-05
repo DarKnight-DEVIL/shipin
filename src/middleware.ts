@@ -125,6 +125,13 @@ export default async function middleware(request: NextRequest) {
     response.headers.set("X-Sensitive-Route", "true");
   }
 
+  // Public landing + track pages should be indexable by search engines.
+  // Authenticated/app pages keep the default noindex from SECURITY_HEADERS.
+  const PUBLIC_ROUTES = ["/", "/track"];
+  if (PUBLIC_ROUTES.includes(pathname)) {
+    response.headers.set("X-Robots-Tag", "index, follow");
+  }
+
   return response;
 }
 

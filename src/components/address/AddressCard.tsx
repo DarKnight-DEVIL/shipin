@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import {
   deleteAddress,
   setDefaultAddress,
-} from "@/lib/addressBook";
+} from "@/features/requests/services/addressesLegacy";
 import { auth } from "@/lib/firebase";
 import type { Address } from "@/types/address";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";

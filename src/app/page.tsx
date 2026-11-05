@@ -1068,6 +1068,8 @@ export default function Home() {
               All corridors operational
             </span>
             <span>Designed and run in Mumbai</span>
+            <a href="/privacy-policy" className="footer__link">Privacy Policy</a>
+            <a href="/terms" className="footer__link">Terms of Service</a>
           </div>
         </div>
       </footer>

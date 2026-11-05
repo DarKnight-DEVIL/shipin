@@ -1,4 +1,4 @@
-import { getWallet } from "@/lib/wallet";
+import { getWallet } from "./wallet";
 
 class WalletService {
 

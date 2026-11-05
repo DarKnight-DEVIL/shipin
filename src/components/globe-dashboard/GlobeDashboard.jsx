@@ -29,8 +29,9 @@ const LOCATION_ROW_COUNT = 5;
 const LOCATION_ROW_HEIGHT = 54;
 const LOCATION_LIST_PADDING_BOTTOM = 16;
 
-// The globe animates for every visitor by default, regardless of the OS
-// reduced-motion setting. The toggle (here or in the parent) can pause it.
+// The globe starts with animation based on the user's system
+// reduced-motion preference. The toggle (here or in the parent) can pause it.
+// Users with "reduce motion" enabled get a static globe by default.
 const ANIMATION_STARTS_ON = true;
 
 function latLngToVector3(lat, lng, radius = 1) {
@@ -280,11 +281,23 @@ export default function GlobeDashboard({
   const activePinsGroupRef = useRef(null);
   // The render loop reads this ref instead of state, so toggling the animation
   // never requires tearing the loop down and rebuilding it.
-  const motionEnabledRef = useRef(ANIMATION_STARTS_ON);
+  const motionEnabledRef = useRef(
+    typeof window !== 'undefined'
+      ? !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : ANIMATION_STARTS_ON
+  );
   const arcLineRef = useRef(null);
 
   const [mounted, setMounted] = useState(false);
-  const [motionEnabled, setMotionEnabled] = useState(ANIMATION_STARTS_ON);
+  const [motionEnabled, setMotionEnabled] = useState(() => {
+    // Respect the OS-level reduced-motion preference on initial render.
+    // If the user has "reduce motion" enabled, start with animation OFF.
+    if (typeof window !== 'undefined') {
+      const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      return !prefersReduced;
+    }
+    return ANIMATION_STARTS_ON;
+  });
   const [revealed, setRevealed] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [selectedLocation, setSelectedLocation] = useState(null);

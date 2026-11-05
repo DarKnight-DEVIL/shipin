@@ -13,7 +13,7 @@ import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
 import type { Request } from "@/types/request";
-import { isQuoteExpired } from "@/lib/quoteExpiry";
+import { isQuoteExpired } from "@/features/requests/services/quoteExpiry";
 
 interface Props {
   request: Request;

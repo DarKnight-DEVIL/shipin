@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Timestamp } from "firebase/firestore";
-import { getRemainingTime, isQuoteExpired } from "@/lib/quoteExpiry";
+import { getRemainingTime, isQuoteExpired } from "@/features/requests/services/quoteExpiry";
 
 interface Props {
   expiresAt: Timestamp | Date | string;

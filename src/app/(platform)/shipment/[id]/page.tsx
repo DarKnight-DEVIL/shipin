@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 
-import { getShipment, getShipmentRequests } from "@/lib/shipment";
+import { getShipment, getShipmentRequests } from "@/features/shipments/services/shipments";
 import PageHeader from "@/components/ui/PageHeader";
 
 export default function ShipmentPage() {

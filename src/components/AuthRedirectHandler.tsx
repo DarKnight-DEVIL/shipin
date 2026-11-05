@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { getRedirectResult, GoogleAuthProvider } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { getUserProfile } from "@/lib/userProfile";
+import { getUserProfile } from "@/features/users/services/userProfile";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 

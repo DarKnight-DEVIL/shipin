@@ -28,9 +28,9 @@ import {
 } from "lucide-react";
 
 import { auth } from "@/lib/firebase";
-import { getRequests } from "@/lib/firestore";
+import { getRequests } from "@/features/requests/services/requests";
 import type { Request } from "@/types/request";
-import type { RequestStatus } from "@/lib/requestStatus";
+import type { RequestStatus } from "@/features/requests/services/requestStatus";
 
 import {
   ACTIVE_REQUEST_STATUSES,
@@ -38,8 +38,8 @@ import {
   IN_TRANSIT_STATUSES,
   dashboardMetrics,
   type DashboardMetricId,
-} from "@/lib/dashboardMetrics";
-import { getUserPreferences } from "@/lib/userPreferences";
+} from "@/features/users/services/dashboardMetrics";
+import { getUserPreferences } from "@/features/users/services/userPreferences";
 
 import StatusBadge from "@/components/ui/StatusBadge";
 
@@ -101,7 +101,8 @@ export default function DashboardPage() {
           getUserPreferences(user.uid),
         ]);
 
-        const sorted = [...data].sort((a, b) => {
+        const requests = data.requests;
+        const sorted = [...requests].sort((a, b) => {
           const aTime = a.createdAt?.seconds ?? 0;
           const bTime = b.createdAt?.seconds ?? 0;
           return bTime - aTime;

@@ -1,6 +1,6 @@
 import { auth } from "@/lib/firebase";
-import { getRequestById } from "@/lib/firestore";
-import { getWallet } from "@/lib/wallet";
+import { getRequestById } from "@/features/requests/services/requests";
+import { getWallet } from "@/features/wallet/services/wallet";
 
 export async function getCheckoutData(
   requestId: string
