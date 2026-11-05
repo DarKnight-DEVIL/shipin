@@ -139,70 +139,60 @@ export const serverEnv: ServerEnv = new Proxy({} as ServerEnv, {
 });
 
 /**
- * Read a client-side environment variable with static access so Next.js
- * (and Turbopack) can inline it into the client bundle.
- * Throws if required and value is missing/empty.
- */
-function readClientEnv(key: string, value: string | undefined): string {
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${key}`);
-  }
-  return value;
-}
-
-/**
- * Build the validated client-side environment object.
- * Throws if any required var is missing.
- *
- * IMPORTANT: Uses static property access (process.env.NEXT_PUBLIC_*) so
- * Next.js/Turbopack can inline these values into the client bundle.
- * Dynamic access (process.env[key]) does NOT work on the client side.
- */
-function buildClientEnv(): ClientEnv {
-  return {
-    NODE_ENV: (process.env.NODE_ENV as NodeEnv) ?? 'development',
-    NEXT_PUBLIC_PAYPAL_CLIENT_ID: readClientEnv('NEXT_PUBLIC_PAYPAL_CLIENT_ID', process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID),
-    NEXT_PUBLIC_APP_URL: readClientEnv('NEXT_PUBLIC_APP_URL', process.env.NEXT_PUBLIC_APP_URL),
-    NEXT_PUBLIC_FIREBASE_API_KEY: readClientEnv('NEXT_PUBLIC_FIREBASE_API_KEY', process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
-    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: readClientEnv('NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN', process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN),
-    NEXT_PUBLIC_FIREBASE_PROJECT_ID: readClientEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID', process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
-    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: readClientEnv('NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET', process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET),
-    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: readClientEnv('NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID', process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID),
-    NEXT_PUBLIC_FIREBASE_APP_ID: readClientEnv('NEXT_PUBLIC_FIREBASE_APP_ID', process.env.NEXT_PUBLIC_FIREBASE_APP_ID),
-  };
-}
-
-/**
- * Lazily-built, cached instance of the validated client environment.
- * Null until first access so a missing client var throws at the point of
- * use (with a clear stack trace) rather than crashing the whole module at
- * import time.
- */
-let _clientEnv: ClientEnv | null = null;
-function getClientEnv(): ClientEnv {
-  if (_clientEnv === null) _clientEnv = buildClientEnv();
-  return _clientEnv;
-}
-
-/**
  * Client-side environment variables (safe to expose to browser).
  *
- * Lazily validated via a Proxy for the same reason as `serverEnv`: deferring
- * validation to first access gives a much clearer error location than a
- * top-level throw during module evaluation.
+ * Per-property validation: each access validates only the requested variable,
+ * giving precise error messages and allowing build-time collection to succeed
+ * even when some optional/unused vars are missing.
  */
 export const clientEnv: ClientEnv = new Proxy({} as ClientEnv, {
   get(_target, prop) {
-    return getClientEnv()[prop as keyof ClientEnv];
+    const key = prop as string;
+    if (key === 'NODE_ENV') {
+      return (process.env.NODE_ENV as NodeEnv) ?? 'development';
+    }
+    const value = process.env[key];
+    if (!value) {
+      throw new Error(`Missing required environment variable: ${key}`);
+    }
+    return value;
   },
   has(_target, prop) {
-    return prop in getClientEnv();
+    const key = prop as string;
+    if (key === 'NODE_ENV') return true;
+    return !!process.env[key];
   },
   ownKeys(_target) {
-    return Reflect.ownKeys(getClientEnv());
+    return [
+      'NODE_ENV',
+      'NEXT_PUBLIC_PAYPAL_CLIENT_ID',
+      'NEXT_PUBLIC_APP_URL',
+      'NEXT_PUBLIC_FIREBASE_API_KEY',
+      'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
+      'NEXT_PUBLIC_FIREBASE_PROJECT_ID',
+      'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET',
+      'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID',
+      'NEXT_PUBLIC_FIREBASE_APP_ID',
+    ];
   },
   getOwnPropertyDescriptor(_target, prop) {
-    return Reflect.getOwnPropertyDescriptor(getClientEnv(), prop as keyof ClientEnv);
+    const key = prop as string;
+    if (key === 'NODE_ENV') {
+      return {
+        value: (process.env.NODE_ENV as NodeEnv) ?? 'development',
+        writable: false,
+        enumerable: true,
+        configurable: true,
+      };
+    }
+    const value = process.env[key];
+    if (!value) return undefined;
+    return {
+      value,
+      writable: false,
+      enumerable: true,
+      configurable: true,
+    };
   },
 });
 
