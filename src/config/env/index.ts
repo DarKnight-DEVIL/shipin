@@ -47,7 +47,7 @@ interface ClientEnv {
   NEXT_PUBLIC_FIREBASE_APP_ID: string;
 }
 
-function readEnv(key: string, required: boolean = false): string | undefined {
+export function readEnv(key: string, required: boolean = false): string | undefined {
   const value = process.env[key];
   if (required && !value) {
     throw new Error(`Missing required environment variable: ${key}`);

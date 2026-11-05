@@ -2,22 +2,12 @@ import "server-only";
 
 import { Resend } from "resend";
 import nodemailer from "nodemailer";
-import { serverEnv } from "@/config/env";
+import { readEnv } from "@/config/env";
 
 // Primary: Resend (modern email API, no SMTP limits)
-const resend = new Resend(serverEnv.RESEND_API_KEY);
-
-// Fallback: Gmail SMTP via Nodemailer (used only if Resend fails)
-const smtpTransporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: serverEnv.SMTP_EMAIL,
-    pass: serverEnv.SMTP_PASSWORD,
-  },
-  connectionTimeout: 15000,
-  greetingTimeout: 10000,
-  socketTimeout: 15000,
-});
+let resend: Resend | null = null;
+let smtpEmail: string | undefined;
+let smtpPassword: string | undefined;
 
 export interface SendMailOptions {
   to: string;
@@ -34,11 +24,62 @@ export async function sendMail({
   text,
   from,
 }: SendMailOptions) {
-  const fromAddress = from ?? `"ShipIN" <${serverEnv.SMTP_EMAIL}>`;
+  // Lazy-load env vars on first send (bypasses build-time static analysis)
+  if (!resend) {
+    // Allow Gmail SMTP-only during build/CI with dummy env (won't actually send)
+    const envResendKey = readEnv('RESEND_API_KEY');
+    const envSmtpEmail = readEnv('SMTP_EMAIL');
+    const envSmtpPassword = readEnv('SMTP_PASSWORD');
 
-  // Try Resend first
-  try {
-    const { data, error } = await resend.emails.send({
+    if (envResendKey && envResendKey !== 'dummy_for_build') {
+      resend = new Resend(envResendKey);
+      smtpEmail = envSmtpEmail;
+    } else {
+      smtpEmail = envSmtpEmail;
+      smtpPassword = envSmtpPassword;
+    }
+  }
+
+  // Validation: must have at least SMTP email or Resend key
+  if (!smtpEmail) {
+    throw new Error("SMTP_EMAIL is required for email sending");
+  }
+
+  const fromAddress = from ?? `"ShipIN" <${smtpEmail}>`;
+
+  // Try Resend first (only if configured)
+  if (resend) {
+    try {
+      const { data, error } = await resend.emails.send({
+        from: fromAddress,
+        to,
+        subject,
+        html,
+        text,
+      });
+
+      if (error) {
+        console.warn("[Mailer] Resend failed, falling back to SMTP:", error);
+        throw new Error(`Resend error: ${error.message ?? "unknown"}`);
+      }
+
+      console.log("[Mailer] Email sent via Resend:", data?.id);
+      return { id: data?.id, provider: "resend" };
+    } catch (resendError) {
+      console.warn("[Mailer] Resend unavailable or misconfigured:", resendError);
+    }
+  }
+
+  // Fallback to SMTP (only if we have email + password)
+  if (smtpPassword && smtpPassword !== 'dummy_for_build') {
+    const smtpTransporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: smtpEmail, pass: smtpPassword },
+      connectionTimeout: 15000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
+    });
+    const info = await smtpTransporter.sendMail({
       from: fromAddress,
       to,
       subject,
@@ -46,26 +87,10 @@ export async function sendMail({
       text,
     });
 
-    if (error) {
-      console.warn("[Mailer] Resend failed, falling back to SMTP:", error);
-      throw new Error(`Resend error: ${error.message ?? "unknown"}`);
-    }
-
-    console.log("[Mailer] Email sent via Resend:", data?.id);
-    return { id: data?.id, provider: "resend" };
-  } catch (resendError) {
-    console.warn("[Mailer] Resend unavailable, trying SMTP fallback:", resendError);
+    console.log("[Mailer] Email sent via SMTP:", info.messageId);
+    return { id: info.messageId, provider: "smtp" };
+  } else {
+    console.warn("[Mailer] Email sending skipped - no configured credentials");
+    throw new Error("Email sending not configured (RESEND_API_KEY or SMTP_EMAIL+PASSWORD required)");
   }
-
-  // Fallback to SMTP
-  const info = await smtpTransporter.sendMail({
-    from: fromAddress,
-    to,
-    subject,
-    html,
-    text,
-  });
-
-  console.log("[Mailer] Email sent via SMTP:", info.messageId);
-  return { id: info.messageId, provider: "smtp" };
 }
