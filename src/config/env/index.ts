@@ -10,6 +10,17 @@
 
 type NodeEnv = 'development' | 'production' | 'test';
 
+/**
+ * True only while `next build` is running (incl. the prerender/collect step).
+ *
+ * NEXT_PHASE is set to 'phase-production-build' for the duration of the build
+ * and to 'phase-production-server' when the production server starts again, so
+ * this never leaks leniency into actual runtime.
+ */
+function isBuildPhase(): boolean {
+  return process.env.NEXT_PHASE === 'phase-production-build';
+}
+
 interface ServerEnv {
   NODE_ENV: NodeEnv;
   FIREBASE_ADMIN_PROJECT_ID: string;
@@ -55,86 +66,98 @@ export function readEnv(key: string, required: boolean = false): string | undefi
   return value;
 }
 
-function readNumberEnv(key: string, required = false): number | undefined {
-  const value = process.env[key];
-  if (!value) {
-    if (required) throw new Error(`Missing required environment variable: ${key}`);
-    return undefined;
-  }
-  const num = Number(value);
-  if (Number.isNaN(num)) {
-    throw new Error(`Environment variable ${key} must be a number, got: ${value}`);
-  }
-  return num;
-}
-
-/**
- * Build the validated server-side environment object.
- * Throws if any required var is missing.
- */
-function buildServerEnv(): ServerEnv {
-  return {
-    NODE_ENV: (process.env.NODE_ENV as NodeEnv) ?? 'development',
-    FIREBASE_ADMIN_PROJECT_ID: readEnv('FIREBASE_ADMIN_PROJECT_ID', true)!,
-    FIREBASE_ADMIN_CLIENT_EMAIL: readEnv('FIREBASE_ADMIN_CLIENT_EMAIL', true)!,
-    FIREBASE_ADMIN_PRIVATE_KEY: readEnv('FIREBASE_ADMIN_PRIVATE_KEY', true)!,
-    PAYPAL_CLIENT_ID: readEnv('PAYPAL_CLIENT_ID', true)!,
-    PAYPAL_CLIENT_SECRET: readEnv('PAYPAL_CLIENT_SECRET', true)!,
-    PAYPAL_ENV: (process.env.PAYPAL_ENV as 'live' | 'sandbox') ?? 'sandbox',
-    PAYPAL_API_URL: readEnv('PAYPAL_API_URL'),
-    PAYPAL_WEBHOOK_ID: readEnv('PAYPAL_WEBHOOK_ID'),
-    SMTP_EMAIL: readEnv('SMTP_EMAIL', true)!,
-    SMTP_PASSWORD: readEnv('SMTP_PASSWORD', true)!,
-    RESEND_API_KEY: readEnv('RESEND_API_KEY', true)!,
-    UPSTASH_REDIS_REST_URL: readEnv('UPSTASH_REDIS_REST_URL'),
-    UPSTASH_REDIS_REST_TOKEN: readEnv('UPSTASH_REDIS_REST_TOKEN'),
-    R2_ACCOUNT_ID: readEnv('R2_ACCOUNT_ID', true)!,
-    R2_ACCESS_KEY_ID: readEnv('R2_ACCESS_KEY_ID', true)!,
-    R2_SECRET_ACCESS_KEY: readEnv('R2_SECRET_ACCESS_KEY', true)!,
-    R2_BUCKET_NAME: readEnv('R2_BUCKET_NAME', true)!,
-    APP_URL: readEnv('APP_URL', true)!,
-    WHATSAPP_ACCESS_TOKEN: readEnv('WHATSAPP_ACCESS_TOKEN'),
-    WHATSAPP_PHONE_NUMBER_ID: readEnv('WHATSAPP_PHONE_NUMBER_ID'),
-    WHATSAPP_API_VERSION: readEnv('WHATSAPP_API_VERSION') ?? 'v25.0',
-  };
-}
-
-/**
- * Lazily-built, cached instance of the validated server environment.
- * Null until first access so that merely importing this module does NOT
- * force evaluation of server-only secrets.
- */
-let _serverEnv: ServerEnv | null = null;
-function getServerEnv(): ServerEnv {
-  if (_serverEnv === null) _serverEnv = buildServerEnv();
-  return _serverEnv;
-}
-
 /**
  * Server-side environment variables.
  *
- * Lazily validated via a Proxy so that merely importing this module does NOT
- * force evaluation of server-only secrets. This is required because some
- * client-safe modules (e.g. src/lib/firebase.ts) import from this module for
- * the client-side `clientEnv`; a top-level `const serverEnv` would eagerly
- * throw when the client bundle loads and the server-only vars are absent.
+ * Per-property validation: each access validates only the requested variable,
+ * giving precise error messages and allowing build-time collection to succeed
+ * even when some server-only vars are missing (they're only needed at runtime).
  *
- * Accessing any server-only property still fails fast with the same error as
- * before, so the original startup validation behaviour is preserved for
- * server code.
+ * Accessing a required server-only property still fails fast with the same error
+ * as before, so runtime startup validation behaviour is preserved.
  */
+
+/** Server-only vars that MUST be present at runtime. */
+const REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
+  'FIREBASE_ADMIN_PROJECT_ID',
+  'FIREBASE_ADMIN_CLIENT_EMAIL',
+  'FIREBASE_ADMIN_PRIVATE_KEY',
+  'PAYPAL_CLIENT_ID',
+  'PAYPAL_CLIENT_SECRET',
+  'SMTP_EMAIL',
+  'SMTP_PASSWORD',
+  'RESEND_API_KEY',
+  'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET_NAME',
+  'APP_URL',
+]);
+
+/** Server-only vars that fall back to a default when unset. */
+const DEFAULT_SERVER_ENV: Record<string, string> = {
+  NODE_ENV: 'development',
+  PAYPAL_ENV: 'sandbox',
+  WHATSAPP_API_VERSION: 'v25.0',
+};
+
+/** Server-only vars that are optional (no default, no throw). */
+const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
+  'PAYPAL_API_URL',
+  'PAYPAL_WEBHOOK_ID',
+  'UPSTASH_REDIS_REST_URL',
+  'UPSTASH_REDIS_REST_TOKEN',
+  'WHATSAPP_ACCESS_TOKEN',
+  'WHATSAPP_PHONE_NUMBER_ID',
+]);
+
 export const serverEnv: ServerEnv = new Proxy({} as ServerEnv, {
   get(_target, prop) {
-    return getServerEnv()[prop as keyof ServerEnv];
+    const key = prop as string;
+    if (key in DEFAULT_SERVER_ENV) {
+      return (process.env[key] ?? DEFAULT_SERVER_ENV[key]) as any;
+    }
+    const value = process.env[key];
+    if (REQUIRED_SERVER_ENV.has(key)) {
+      if (!value) {
+        // Never let a missing secret kill the production build: Next evaluates
+        // every route module during page-data collection, and env vars are not
+        // guaranteed to exist on the build machine. Fail fast at runtime instead.
+        if (isBuildPhase()) return undefined as any;
+        throw new Error(`Missing required environment variable: ${key}`);
+      }
+      return value;
+    }
+    // Optional server-only vars — return undefined without throwing
+    return value;
   },
   has(_target, prop) {
-    return prop in getServerEnv();
+    const key = prop as string;
+    if (key in DEFAULT_SERVER_ENV) return true;
+    return !!process.env[key];
   },
   ownKeys(_target) {
-    return Reflect.ownKeys(getServerEnv());
+    return [
+      ...REQUIRED_SERVER_ENV,
+      ...Object.keys(DEFAULT_SERVER_ENV),
+      ...OPTIONAL_SERVER_ENV,
+    ];
   },
   getOwnPropertyDescriptor(_target, prop) {
-    return Reflect.getOwnPropertyDescriptor(getServerEnv(), prop as keyof ServerEnv);
+    const key = prop as string;
+    let value: string | undefined;
+    if (key in DEFAULT_SERVER_ENV) {
+      value = process.env[key] ?? DEFAULT_SERVER_ENV[key];
+    } else {
+      value = process.env[key];
+    }
+    if (value === undefined) return undefined;
+    return {
+      value,
+      writable: false,
+      enumerable: true,
+      configurable: true,
+    };
   },
 });
 
@@ -153,6 +176,10 @@ export const clientEnv: ClientEnv = new Proxy({} as ClientEnv, {
     }
     const value = process.env[key];
     if (!value) {
+      // Never let a missing NEXT_PUBLIC_* var kill the production build:
+      // prerendering evaluates client components in a bare build environment.
+      // Fail fast whenever the app actually runs instead.
+      if (isBuildPhase()) return undefined as any;
       throw new Error(`Missing required environment variable: ${key}`);
     }
     return value;
