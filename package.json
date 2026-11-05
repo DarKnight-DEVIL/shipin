@@ -48,7 +48,7 @@
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
-    "@types/node": "^20",
+    "@types/node": "^22.20.5",
     "@types/nodemailer": "^8.0.1",
     "@types/paypal__checkout-server-sdk": "^1.0.8",
     "@types/react": "^19",
