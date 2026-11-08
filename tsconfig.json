@@ -24,12 +24,19 @@
   },
   "include": [
     "next-env.d.ts",
-    "vite-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "vitest.setup.ts",
+    "vitest.server-only-stub.ts"
+  ]
 }
