@@ -43,3 +43,49 @@ next-env.d.ts
 patch*.js
 fix*.py
 write_emails.js
+
+# agent tooling / scratch artifacts
+.claude/
+.cloud-attachments/
+.freebuff/
+
+# Agent/tooling directories
+.agents/
+.claude/
+.cloud-attachments/
+.freebuff/
+.impeccable/
+.playwright-cli/
+.postman/
+.serena/
+.shots/
+.output/
+
+# Config/UI
+.vscode/
+.github/
+
+# Build outputs
+.next/
+.vercel/
+node_modules/
+coverage/
+build/
+out/
+
+# Debug/scratch files
+diff_out.txt
+tsc_out.txt
+*.log
+*.tsbuildinfo
+next-env.d.ts
+
+# Temporary fix scripts
+fix-*.js
+fix-*.py
+fix-*.ps1
+restore_env.py
+diagnose*.js
+get-token*.js
+write_emails.js
+patch*.js
