@@ -8,12 +8,14 @@ import {
   Inbox,
   MessageCircle,
   ShieldCheck,
+  KeyRound,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useState } from "react";
 
 import AdminGuard from "./AdminGuard";
+import AdminMfaGate from "@/components/admin/AdminMfaGate";
 
 export default function AdminLayout({
   children,
@@ -180,6 +182,29 @@ export default function AdminLayout({
                 </Link>
               </div>
 
+              {/* SECURITY */}
+              <Link
+                href="/admin/security"
+                className="
+                  flex
+                  items-center
+                  gap-3
+                  rounded-xl
+                  px-4
+                  py-3
+                  text-slate-300
+                  transition
+                  hover:bg-slate-800
+                  hover:text-white
+                "
+              >
+                <KeyRound size={19} />
+
+                <span>
+                  Security
+                </span>
+              </Link>
+
               {/* SUPPORT */}
               <Link
                 href="/admin/support"
@@ -255,7 +280,11 @@ export default function AdminLayout({
             "
           >
             <div className="min-h-full p-8">
-              {children}
+              {/* Non-blocking MFA banner: admin pages stay usable while it
+                  offers to elevate the session. */}
+              <AdminMfaGate>
+                {children}
+              </AdminMfaGate>
             </div>
           </section>
 

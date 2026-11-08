@@ -44,6 +44,8 @@ interface ServerEnv {
   WHATSAPP_ACCESS_TOKEN?: string;
   WHATSAPP_PHONE_NUMBER_ID?: string;
   WHATSAPP_API_VERSION?: string;
+  /** Optional signing key for admin MFA session cookies (min 32 chars). */
+  MFA_SESSION_SECRET?: string;
 }
 
 interface ClientEnv {
@@ -109,6 +111,7 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
   'UPSTASH_REDIS_REST_TOKEN',
   'WHATSAPP_ACCESS_TOKEN',
   'WHATSAPP_PHONE_NUMBER_ID',
+  'MFA_SESSION_SECRET',
 ]);
 
 export const serverEnv: ServerEnv = new Proxy({} as ServerEnv, {
@@ -164,64 +167,41 @@ export const serverEnv: ServerEnv = new Proxy({} as ServerEnv, {
 /**
  * Client-side environment variables (safe to expose to browser).
  *
+ * IMPORTANT: This is a plain object with static property access, NOT a Proxy.
+ * Next.js can only inline NEXT_PUBLIC_* env vars when it sees static
+ * `process.env.NEXT_PUBLIC_X` patterns during build-time analysis.
+ * A dynamic Proxy would prevent inlining, causing runtime "missing env var" errors.
+ *
  * Per-property validation: each access validates only the requested variable,
  * giving precise error messages and allowing build-time collection to succeed
  * even when some optional/unused vars are missing.
  */
-export const clientEnv: ClientEnv = new Proxy({} as ClientEnv, {
-  get(_target, prop) {
-    const key = prop as string;
-    if (key === 'NODE_ENV') {
-      return (process.env.NODE_ENV as NodeEnv) ?? 'development';
-    }
-    const value = process.env[key];
-    if (!value) {
-      // Never let a missing NEXT_PUBLIC_* var kill the production build:
-      // prerendering evaluates client components in a bare build environment.
-      // Fail fast whenever the app actually runs instead.
-      if (isBuildPhase()) return undefined as any;
-      throw new Error(`Missing required environment variable: ${key}`);
-    }
-    return value;
-  },
-  has(_target, prop) {
-    const key = prop as string;
-    if (key === 'NODE_ENV') return true;
-    return !!process.env[key];
-  },
-  ownKeys(_target) {
-    return [
-      'NODE_ENV',
-      'NEXT_PUBLIC_PAYPAL_CLIENT_ID',
-      'NEXT_PUBLIC_APP_URL',
-      'NEXT_PUBLIC_FIREBASE_API_KEY',
-      'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
-      'NEXT_PUBLIC_FIREBASE_PROJECT_ID',
-      'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET',
-      'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID',
-      'NEXT_PUBLIC_FIREBASE_APP_ID',
-    ];
-  },
-  getOwnPropertyDescriptor(_target, prop) {
-    const key = prop as string;
-    if (key === 'NODE_ENV') {
-      return {
-        value: (process.env.NODE_ENV as NodeEnv) ?? 'development',
-        writable: false,
-        enumerable: true,
-        configurable: true,
-      };
-    }
-    const value = process.env[key];
-    if (!value) return undefined;
-    return {
-      value,
-      writable: false,
-      enumerable: true,
-      configurable: true,
-    };
-  },
-});
+function validateClientEnv(value: string | undefined, key: string): string {
+  if (!value) {
+    // Never let a missing NEXT_PUBLIC_* var kill the production build:
+    // prerendering evaluates client components in a bare build environment.
+    // Fail fast whenever the app actually runs instead.
+    if (isBuildPhase()) return undefined as any;
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+  return value;
+}
+
+export const clientEnv: ClientEnv = {
+  NODE_ENV: (process.env.NODE_ENV as NodeEnv) ?? 'development',
+  // NOTE: each value must be a static `process.env.NEXT_PUBLIC_X` access so
+  // Next.js/Turbopack can inline it into the client bundle. Reading via
+  // `process.env[key]` (dynamic key) is never inlined and always yields
+  // `undefined` in the browser, even when the variable is set.
+  NEXT_PUBLIC_PAYPAL_CLIENT_ID: validateClientEnv(process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID, 'NEXT_PUBLIC_PAYPAL_CLIENT_ID'),
+  NEXT_PUBLIC_APP_URL: validateClientEnv(process.env.NEXT_PUBLIC_APP_URL, 'NEXT_PUBLIC_APP_URL'),
+  NEXT_PUBLIC_FIREBASE_API_KEY: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_API_KEY, 'NEXT_PUBLIC_FIREBASE_API_KEY'),
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'),
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID, 'NEXT_PUBLIC_FIREBASE_PROJECT_ID'),
+  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET, 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'),
+  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID, 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
+  NEXT_PUBLIC_FIREBASE_APP_ID: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_APP_ID, 'NEXT_PUBLIC_FIREBASE_APP_ID'),
+};
 
 /** Whether the app is running in production. */
 export const isProduction = (process.env.NODE_ENV as NodeEnv) === 'production';

@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { withErrorHandler } from "@/utils/errors";
 
 import { requireAuthWithProfile } from "@/lib/auth";
 import {
@@ -11,6 +12,8 @@ import {
 } from "@/lib/validation";
 
 export const runtime = "nodejs";
+
+const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 /**
  * POST /api/whatsapp/test
@@ -25,7 +28,7 @@ export const runtime = "nodejs";
  * This route proves the WhatsApp credentials work and would
  * otherwise be a spam/conduit endpoint.
  */
-export async function POST(request: Request) {
+export const POST = withErrorHandler(async (request: NextRequest) => {
   // --- 1. Authenticate the caller (admin only) ---
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
@@ -35,8 +38,12 @@ export async function POST(request: Request) {
   // so we enforce the role here.
   if (auth.profile.role !== "admin") {
     return NextResponse.json(
-      { error: "Administrator access required." },
-      { status: 403 }
+      {
+        success: false,
+        error: "Administrator access required.",
+        code: "ADMIN_ACCESS_REQUIRED",
+      },
+      { status: 403, headers: NO_STORE }
     );
   }
 
@@ -44,8 +51,13 @@ export async function POST(request: Request) {
   const parseResult = validateBody(await request.json(), whatsappTestBodySchema);
   if (!parseResult.success) {
     return NextResponse.json(
-      { error: "Invalid request body." },
-      { status: 400 }
+      {
+        success: false,
+        error: "Invalid request body.",
+        code: "INVALID_REQUEST_BODY",
+        errors: parseResult.errors,
+      },
+      { status: 400, headers: NO_STORE }
     );
   }
 
@@ -59,14 +71,21 @@ export async function POST(request: Request) {
       languageCode: "en_US",
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json(
+      { success: true },
+      { status: 200, headers: NO_STORE }
+    );
   } catch (error) {
     // Log the real error server-side; do not leak third-party API details.
     console.error("WhatsApp test failed:", error instanceof Error ? error.message : error);
 
     return NextResponse.json(
-      { error: "Unable to send WhatsApp message." },
-      { status: 500 }
+      {
+        success: false,
+        error: "Unable to send WhatsApp message.",
+        code: "EXTERNAL_SERVICE_ERROR",
+      },
+      { status: 502, headers: NO_STORE }
     );
   }
-}
+});

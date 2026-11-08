@@ -30,7 +30,7 @@ export type {
 
 import type { RequestItem } from '@/types/request';
 import type { ServiceSelections } from '@/types/request';
-import type { RequestStatus } from '@/lib/requestStatus';
+import type { RequestStatus } from '@/features/requests/services/requestStatus';
 import type { Address } from '@/types/address';
 
 export interface CreateRequestInput {

@@ -4,11 +4,38 @@ import {
   doc,
   arrayUnion,
   getDoc,
+  getDocs,
+  collection,
+  query,
+  where,
   arrayRemove,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { toShipINError } from '@/utils/errors';
 import { createNotification } from '@/features/notifications/services';
+import type { Request } from '@/types/request';
+
+export async function getWarehouseInventory(): Promise<Request[]> {
+  try {
+    const snapshot = await getDocs(
+      query(
+        collection(db, 'requests'),
+        where('status', 'in', [
+          'warehouse_received',
+          'ready_for_international_shipping',
+          'packed',
+        ])
+      )
+    );
+
+    return snapshot.docs.map((document) => ({
+      id: document.id,
+      ...(document.data() as Omit<Request, 'id'>),
+    }));
+  } catch (error) {
+    throw toShipINError(error);
+  }
+}
 
 export async function saveWarehouseInspection(
   requestId: string,
@@ -66,6 +93,19 @@ export async function saveInspectionPhoto(
   }
 }
 
+/**
+ * Add a single inspection photo to a request's warehouse record.
+ * Alias kept for backward compatibility with older call sites.
+ *
+ * @deprecated Use saveInspectionPhoto instead.
+ */
+export async function saveInspectionPhotosAlias(
+  requestId: string,
+  photo: { id: string; url: string; caption?: string }
+): Promise<void> {
+  return saveInspectionPhoto(requestId, photo);
+}
+
 export async function approveInternationalShipment(requestId: string): Promise<void> {
   try {
     await updateDoc(doc(db, 'requests', requestId), {
@@ -96,6 +136,9 @@ export async function startStorageTimer(requestId: string): Promise<void> {
   }
 }
 
+/**
+ * @deprecated Use saveInspectionPhoto instead. Kept for backward compatibility.
+ */
 export const saveInspectionPhotos = saveInspectionPhoto;
 
 export async function saveWarehouseMeasurements(

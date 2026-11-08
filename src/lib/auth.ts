@@ -40,7 +40,7 @@ export async function requireAuth(
   const token = extractAuth(request);
   if (!token) {
     return NextResponse.json(
-      { error: 'Authentication required.' },
+      { success: false, error: "Authentication required.", code: "AUTHENTICATION_REQUIRED" },
       { status: 401 }
     );
   }
@@ -48,7 +48,7 @@ export async function requireAuth(
   const decoded = await verifyIdToken(token);
   if (!decoded) {
     return NextResponse.json(
-      { error: 'Invalid authentication token.' },
+      { success: false, error: "Invalid authentication token.", code: "INVALID_AUTHENTICATION" },
       { status: 401 }
     );
   }
@@ -56,7 +56,7 @@ export async function requireAuth(
   // Enforce email verification on all authenticated API access.
   if (decoded.email_verified !== true) {
     return NextResponse.json(
-      { error: 'Please verify your email address before accessing this resource.' },
+      { success: false, error: "Please verify your email address before accessing this resource.", code: "EMAIL_VERIFICATION_REQUIRED" },
       { status: 403 }
     );
   }
@@ -78,7 +78,7 @@ export async function requireAuthWithProfile(
     const userSnapshot = await adminDb.collection('users').doc(auth.uid).get();
     if (!userSnapshot.exists) {
       return NextResponse.json(
-        { error: 'User profile not found.' },
+        { success: false, error: "User profile not found.", code: "USER_PROFILE_NOT_FOUND" },
         { status: 403 }
       );
     }
@@ -90,7 +90,7 @@ export async function requireAuthWithProfile(
         : undefined;
     if (allowedRoles && !allowedRoles.includes(role ?? 'customer')) {
       return NextResponse.json(
-        { error: 'Insufficient permissions.' },
+        { success: false, error: "Insufficient permissions.", code: "AUTHORIZATION_ERROR" },
         { status: 403 }
       );
     }
@@ -99,7 +99,7 @@ export async function requireAuthWithProfile(
   } catch (error) {
     console.error('[Auth] Profile verification failed:', error);
     return NextResponse.json(
-      { error: 'Unable to verify user profile.' },
+      { success: false, error: 'Unable to verify user profile.', code: 'INTERNAL_ERROR' },
       { status: 500 }
     );
   }
@@ -114,7 +114,7 @@ export async function requireAdmin(
   } catch (error) {
     const authError = getAdminAuthError(error);
     return NextResponse.json(
-      { error: authError.error },
+      { success: false, error: authError.error, code: authError.status === 401 ? "AUTHENTICATION_REQUIRED" : "AUTHORIZATION_ERROR" },
       { status: authError.status }
     );
   }
@@ -131,7 +131,7 @@ export function handleAuthError(error: unknown): {
 /**
  * Wrap an auth handler with centralized error handling.
  */
-export function withAuthHandler<T extends (...args: any[]) => Promise<NextResponse>>(
+export function withAuthHandler<T extends (...args: unknown[]) => Promise<NextResponse>>(
   handler: T
 ): (...args: Parameters<T>) => Promise<NextResponse> {
   return async (...args: Parameters<T>): Promise<NextResponse> => {

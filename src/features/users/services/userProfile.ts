@@ -1,12 +1,11 @@
 import {
   doc,
   getDoc,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import { customerApi } from "@/lib/customerApiClient";
+import { toShipINError } from "@/utils/errors";
 
 export interface UserProfile {
   displayName: string;
@@ -71,9 +70,9 @@ export interface UserProfile {
     required?: boolean;
   };
 
-  createdAt?: any;
+  createdAt?: unknown;
 
-  updatedAt?: any;
+  updatedAt?: unknown;
 }
 
 export async function getUserProfile(
@@ -107,45 +106,28 @@ export async function createUserProfile(
     photoURL?: string;
   }
 ) {
-  const ref = doc(
-    db,
-    "users",
-    userId
-  );
+  try {
+    void userId;
 
-  await setDoc(
-    ref,
-    {
-      displayName:
-        profile.displayName,
+    await customerApi<{ success: boolean }>("/api/profile", {
+      method: "POST",
+      body: {
+        displayName:
+          profile.displayName,
 
-      email:
-        profile.email,
+        email:
+          profile.email,
 
-      phone:
-        profile.phone ?? "",
+        phone:
+          profile.phone ?? "",
 
-      photoURL:
-        profile.photoURL ?? "",
-
-      createdAt:
-        serverTimestamp(),
-
-      updatedAt:
-        serverTimestamp(),
-    },
-    {
-      /*
-       * VERY IMPORTANT:
-       *
-       * merge=true means an existing
-       * role field will NOT be removed.
-       *
-       * This is important for admins.
-       */
-      merge: true,
-    }
-  );
+        photoURL:
+          profile.photoURL ?? "",
+      },
+    });
+  } catch (error) {
+    throw toShipINError(error);
+  }
 }
 
 export async function updateUserProfile(
@@ -160,19 +142,14 @@ export async function updateUserProfile(
     photoURL?: string;
   }
 ) {
-  const ref = doc(
-    db,
-    "users",
-    userId
-  );
+  try {
+    void userId;
 
-  await updateDoc(
-    ref,
-    {
-      ...updates,
-
-      updatedAt:
-        serverTimestamp(),
-    }
-  );
+    await customerApi<{ success: boolean }>("/api/profile", {
+      method: "PATCH",
+      body: updates,
+    });
+  } catch (error) {
+    throw toShipINError(error);
+  }
 }

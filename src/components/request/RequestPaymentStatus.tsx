@@ -9,9 +9,8 @@ import {
   AlertCircle,
   RefreshCw,
 } from "lucide-react";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { toast } from "sonner";
-import { db } from "@/lib/firebase";
+import { CustomerApiError, customerApi } from "@/lib/customerApiClient";
 import type { Request } from "@/types/request";
 import { isQuoteExpired } from "@/features/requests/services/quoteExpiry";
 
@@ -39,7 +38,7 @@ export default function RequestPaymentStatus({
     request.status === "review" || request.status === "awaiting_payment";
 
   const regenerationAlreadyRequested = Boolean(
-    (request as any).quoteRegenerationRequested ||
+    request.quoteRegenerationRequested ||
       request.quote?.regenerationRequested
   );
 
@@ -48,12 +47,10 @@ export default function RequestPaymentStatus({
 
     try {
       setRequestingQuote(true);
-      await updateDoc(doc(db, "requests", request.id), {
-        quoteRegenerationRequested: true,
-        quoteRequestedAt: serverTimestamp(),
-        "quote.regenerationRequested": true,
-        "quote.expired": true,
-      });
+      await customerApi<void>(
+        `/api/requests/${request.id}/request-new-quote`,
+        { method: "POST" }
+      );
 
       toast.success("New quote requested", {
         description:
@@ -63,7 +60,11 @@ export default function RequestPaymentStatus({
       console.error(error);
       toast.error("Could not request a new quote.", {
         description:
-          error instanceof Error ? error.message : "Please try again.",
+          error instanceof CustomerApiError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : "Please try again.",
       });
     } finally {
       setRequestingQuote(false);
@@ -242,4 +243,4 @@ export default function RequestPaymentStatus({
   }
 
   return null;
-}
+}

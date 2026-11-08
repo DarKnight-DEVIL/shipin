@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { isQuoteExpired } from "@/features/requests/services/quoteExpiry";
-import { calculateProcessingFee } from "@/features/finance/calculateProcessingFee";
+import { calculateProcessingFee } from "@/features/finance/services/calculateProcessingFee";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { getPayPalAccessToken } from "@/lib/paypal";
 

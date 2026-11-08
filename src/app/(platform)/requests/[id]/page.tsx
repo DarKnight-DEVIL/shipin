@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { doc, updateDoc, onSnapshot } from "firebase/firestore";
 import { AlertCircle, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -10,7 +9,8 @@ import { toast } from "sonner";
 import Lightbox from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
 
-import { db, auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
+import { customerApi } from "@/lib/customerApiClient";
 import { onAuthStateChanged } from "firebase/auth";
 
 import SupportCenter from "@/components/support/SupportCenter";
@@ -27,6 +27,7 @@ import PageSkeleton from "@/components/ui/PageSkeleton";
 import QuoteCountdown from "@/components/request/QuoteCountdown";
 
 import { isQuoteExpired } from "@/features/requests/services/quoteExpiry";
+import { subscribeToRequest } from "@/features/requests/services/requests";
 import type { Request } from "@/types/request";
 
 export default function RequestDetailsPage() {
@@ -54,22 +55,13 @@ export default function RequestDetailsPage() {
         return;
       }
 
-      const requestRef = doc(db, "requests", requestId);
-
-      unsubscribeSnapshot = onSnapshot(
-        requestRef,
-        (snapshot) => {
-          if (snapshot.exists()) {
-            setRequest({
-              id: snapshot.id,
-              ...snapshot.data(),
-            } as Request);
-          } else {
-            setRequest(null);
-          }
+      unsubscribeSnapshot = subscribeToRequest(
+        requestId,
+        (request) => {
+          setRequest(request);
           setLoading(false);
         },
-        (error) => {
+        (error: Error) => {
           console.error("Request snapshot error:", error);
           setLoading(false);
         }
@@ -137,10 +129,10 @@ export default function RequestDetailsPage() {
     setApproving(true);
 
     try {
-      const requestRef = doc(db, "requests", requestId);
-      await updateDoc(requestRef, {
-        status: "awaiting_payment",
-      });
+      await customerApi<void>(
+        `/api/requests/${requestId}/approve-quote`,
+        { method: "POST" }
+      );
       router.push(`/payment/${requestId}`);
     } catch (error) {
       console.error(error);

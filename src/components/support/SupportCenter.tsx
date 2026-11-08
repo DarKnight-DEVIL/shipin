@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { MessageCircle } from "lucide-react";
 import { toast } from "sonner";
-import { doc, getDoc } from "firebase/firestore";
 
-import { db, auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
+import { getRequestById } from "@/features/requests/services/requests";
 import useSupport from "@/hooks/useSupport";
 
 import SupportTicketList from "./SupportTicketList";
@@ -69,15 +69,13 @@ export default function SupportCenter({
 
     async function loadRefundOffer() {
       try {
-        const snapshot = await getDoc(doc(db, "requests", requestId));
+        const request = await getRequestById(requestId);
 
-        if (!snapshot.exists()) {
+        if (!request) {
           return;
         }
 
-        const data = snapshot.data();
-
-        const partialOffer = data.partialRefundOffer;
+        const partialOffer = request.partialRefundOffer;
 
         if (
           partialOffer &&
@@ -99,16 +97,16 @@ export default function SupportCenter({
         // Do not show the old full-refund offer while a
         // partial-refund offer exists.
         setRefundOffer(
-          data.refundOffer?.offered === true &&
-            !data.refundRequest &&
+          request.refundOffer?.offered === true &&
+            !request.refundRequest &&
             !partialOffer
         );
 
-        setRefundOfferReason(data.refundOffer?.reason ?? "");
+        setRefundOfferReason(request.refundOffer?.reason ?? "");
 
         setPaymentBreakdown({
-          walletAmount: Number(data.payment?.walletAmount ?? 0),
-          paypalAmount: Number(data.payment?.paypalAmount ?? 0),
+          walletAmount: Number(request.payment?.walletAmount ?? 0),
+          paypalAmount: Number(request.payment?.paypalAmount ?? 0),
         });
       } catch (error) {
         console.error("Unable to load refund offer:", error);

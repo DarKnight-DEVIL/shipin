@@ -2,10 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  collection,
-  getDocs,
-} from "firebase/firestore";
-import {
   Search,
   User,
   Wallet,
@@ -17,8 +13,9 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-import { db } from "@/lib/firebase";
 import type { Request } from "@/types/request";
+import { getCustomersWithWallets } from "@/features/admin/services/customers";
+import { getAllRequests } from "@/features/admin/services/requestQueue";
 
 interface Customer {
   id: string;
@@ -26,10 +23,6 @@ interface Customer {
   email: string;
   photoURL?: string;
   role?: string;
-}
-
-interface CustomerWallet {
-  balance: number;
 }
 
 interface CustomerRecord
@@ -58,131 +51,19 @@ export default function AdminAuditPage() {
       try {
         setLoading(true);
 
-        const [
-          usersSnapshot,
-          walletsSnapshot,
-          requestsSnapshot,
-        ] = await Promise.all([
-          getDocs(
-            collection(db, "users")
-          ),
-          getDocs(
-            collection(db, "wallets")
-          ),
-          getDocs(
-            collection(db, "requests")
-          ),
+        const [customerList, requestList] = await Promise.all([
+          getCustomersWithWallets(),
+          getAllRequests(),
         ]);
 
-        /*
-         * ========================================
-         * WALLETS
-         * ========================================
-         */
+        setCustomers(customerList);
+        setRequests(requestList);
 
-        const walletMap =
-          new Map<string, number>();
-
-        walletsSnapshot.docs.forEach(
-          (walletDoc) => {
-            const data =
-              walletDoc.data();
-
-            const balance =
-              Number(
-                data.balance ?? 0
-              );
-
-            walletMap.set(
-              walletDoc.id,
-              Number.isFinite(balance)
-                ? balance
-                : 0
-            );
-          }
-        );
-
-        /*
-         * ========================================
-         * CUSTOMERS
-         * ========================================
-         */
-
-        const customerList =
-          usersSnapshot.docs
-            .map((userDoc) => {
-              const data =
-                userDoc.data();
-
-              return {
-                id: userDoc.id,
-
-                displayName:
-                  data.displayName ||
-                  "Unnamed Customer",
-
-                email:
-                  data.email ||
-                  "",
-
-                photoURL:
-                  data.photoURL ||
-                  "",
-
-                role:
-                  data.role ||
-                  "customer",
-
-                walletBalance:
-                  walletMap.get(
-                    userDoc.id
-                  ) ?? 0,
-              };
-            })
-            .filter(
-              (customer) =>
-                customer.role !==
-                "admin"
-            );
-
-        /*
-         * ========================================
-         * REQUESTS
-         * ========================================
-         */
-
-        const requestList =
-          requestsSnapshot.docs.map(
-            (requestDoc) => ({
-              id: requestDoc.id,
-              ...requestDoc.data(),
-            })
-          ) as Request[];
-
-        setCustomers(
-          customerList
-        );
-
-        setRequests(
-          requestList
-        );
-
-        /*
-         * Automatically select first customer.
-         */
-
-        if (
-          customerList.length > 0
-        ) {
-          setSelectedCustomerId(
-            customerList[0].id
-          );
+        if (customerList.length > 0) {
+          setSelectedCustomerId(customerList[0].id);
         }
       } catch (error) {
-        console.error(
-          "Failed to load audit data:",
-          error
-        );
+        console.error("Failed to load audit data:", error);
       } finally {
         setLoading(false);
       }

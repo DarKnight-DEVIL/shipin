@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { saveInspectionPhotos } from "@/features/requests/services/warehouse";
-import { auth } from "@/lib/firebase";
 import Section from "@/components/ui/Section";
 import ActionButton from "@/components/ui/ActionButton";
 import { toast } from "sonner";
+import { adminApi } from "@/lib/adminApiClient";
+import { auth } from "@/lib/firebase";
 
 interface Props {
   requestId: string;
@@ -71,7 +71,17 @@ export default function InspectionPhotos({
        * saveInspectionPhoto expects a single photo object with id, url, and optional caption.
        */
       for (const key of objectKeys) {
-        await saveInspectionPhotos(requestId, { id: crypto.randomUUID(), url: key, caption: '' });
+        await adminApi<void>(
+          `/api/admin/requests/${requestId}/warehouse/inspection/photos`,
+          {
+            method: "POST",
+            body: {
+              id: crypto.randomUUID(),
+              url: key,
+              caption: '',
+            },
+          }
+        );
       }
 
       setFiles([]);

@@ -10,6 +10,7 @@ import { ArrowLeft, CheckCircle2, Loader2, Mail, RefreshCw } from "lucide-react"
 import { toast } from "sonner";
 
 import { auth } from "@/lib/firebase";
+import { clientEnv } from "@/config/env";
 import "./verify-email.css";
 
 const fadeUp = {
@@ -81,7 +82,7 @@ export default function VerifyEmailClient() {
     setSending(true);
     try {
       await sendEmailVerification(user, {
-        url: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/verify-email`,
+        url: `${clientEnv.NEXT_PUBLIC_APP_URL ?? ""}/verify-email`,
       });
       toast.success("Verification email sent. Please check your inbox.");
     } catch (error: any) {

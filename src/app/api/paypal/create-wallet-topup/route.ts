@@ -9,10 +9,10 @@ import {
 } from "@/lib/firebaseAdmin";
 
 import { getPayPalAccessToken } from "@/lib/paypal";
+import { withErrorHandler } from '@/utils/errors';
 
-export async function POST(
-  request: NextRequest
-) {
+export const POST = withErrorHandler(async (request: NextRequest) => {
+
   try {
     /*
      * Authenticate Firebase user.
@@ -202,4 +202,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+
+});

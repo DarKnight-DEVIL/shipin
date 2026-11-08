@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Select, { StylesConfig, components } from "react-select";
+import Select, { StylesConfig } from "react-select";
 import { Country } from "country-state-city";
 
 interface Props {

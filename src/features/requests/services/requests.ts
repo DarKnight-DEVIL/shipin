@@ -11,8 +11,6 @@ import {
   onSnapshot,
   orderBy,
   limit,
-  startAfter,
-  Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Request } from '@/types/request';
@@ -163,7 +161,8 @@ export function subscribeToRequests(
 
 export function subscribeToRequest(
   requestId: string,
-  callback: (request: Request | null) => void
+  callback: (request: Request | null) => void,
+  onError?: (error: Error) => void
 ): () => void {
   return onSnapshot(doc(db, 'requests', requestId), (snapshot) => {
     if (!snapshot.exists()) {
@@ -171,7 +170,7 @@ export function subscribeToRequest(
       return;
     }
     callback({ id: snapshot.id, ...(snapshot.data() as Omit<Request, 'id'>) });
-  });
+  }, onError);
 }
 
 /** Add a new request (convenience alias for createRequest). */

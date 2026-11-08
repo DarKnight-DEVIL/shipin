@@ -3,9 +3,10 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import {
   sendNotification,
-} from "@/lib/notifications/notificationService";
+} from "@/features/notifications/services/notificationService";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { getPayPalAccessToken } from "@/lib/paypal";
+import { withErrorHandler } from '@/utils/errors';
 
 type PaymentType = "main" | "additional_item";
 
@@ -15,9 +16,8 @@ function toNumber(value: unknown): number {
   return Number.isFinite(number) ? number : 0;
 }
 
-export async function POST(
-  request: NextRequest
-) {
+export const POST = withErrorHandler(async (request: NextRequest) => {
+
   // --- 1. Authenticate the caller ---
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
@@ -1206,4 +1206,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+
+});

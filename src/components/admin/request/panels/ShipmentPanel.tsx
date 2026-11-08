@@ -8,7 +8,7 @@ import { Truck } from "lucide-react";
 import type { Request } from "@/types/request";
 import { CARRIERS } from "@/types/carrier";
 import type { Carrier } from "@/types/carrier";
-import type { RequestStatus } from "@/lib/requestStatus";
+import type { RequestStatus } from "@/features/requests/services/requestStatus";
 
 import Section from "@/components/ui/Section";
 import ActionButton from "@/components/ui/ActionButton";

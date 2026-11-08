@@ -5,9 +5,9 @@ import { requireAdmin, getAdminAuthError } from "@/lib/adminAuth";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 
-import { sendNotification } from "@/lib/notifications/notificationService";
-
-import type { NotificationCategory } from '@/lib/notifications/notificationService';
+import { sendNotification } from "@/features/notifications/services/notificationService";
+import type { NotificationCategory } from "@/features/notifications/services/notificationService";
+import { withErrorHandler } from '@/utils/errors';
 
 interface RouteContext {
   params: Promise<{
@@ -15,10 +15,9 @@ interface RouteContext {
   }>;
 }
 
-export async function POST(
-  request: Request,
-  context: RouteContext
-) {
+export const POST = withErrorHandler(async (request: Request,
+  context: RouteContext) => {
+
   try {
     let admin;
     try {
@@ -136,4 +135,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+
+});

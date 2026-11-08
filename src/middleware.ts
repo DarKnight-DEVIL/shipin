@@ -11,7 +11,7 @@ import {
   isRateLimited,
   addRateLimitHeaders,
 } from "@/lib/rateLimiter";
-import { SECURITY_HEADERS, getCSPWithNonce, getDevCSP, createSecureCookieHeader } from "@/lib/securityHeaders";
+import { SECURITY_HEADERS, getCSPWithNonce, getDevCSP } from "@/lib/securityHeaders";
 import { getCorsHeaders, isAllowedOrigin } from "@/lib/cors";
 import { getCsrfTokenFromCookie } from "@/lib/csrf";
 
@@ -31,7 +31,11 @@ export default async function middleware(request: NextRequest) {
 
   if (isRateLimited(limitResult)) {
     const response = NextResponse.json(
-      { error: "Too many requests, please try again later." },
+      {
+        success: false,
+        error: "Too many requests, please try again later.",
+        code: "RATE_LIMIT_ERROR",
+      },
       { status: 429 }
     );
     addRateLimitHeaders(response.headers, limitResult);
@@ -41,7 +45,14 @@ export default async function middleware(request: NextRequest) {
   // Reject cross-origin API requests from origins outside the allowlist.
   const origin = request.headers.get("origin");
   if (isApi && origin && !isAllowedOrigin(origin)) {
-    return NextResponse.json({ error: "Origin not allowed." }, { status: 403 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Origin not allowed.",
+        code: "CORS_ORIGIN_NOT_ALLOWED",
+      },
+      { status: 403 }
+    );
   }
 
   // Preflight requests should not continue to application route handlers.

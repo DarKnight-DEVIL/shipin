@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { withErrorHandler } from "@/utils/errors";
+
 import {
   loginRateLimiter,
   isRateLimited,
@@ -16,12 +18,16 @@ import {
  * This endpoint intentionally does NO authentication — its only job
  * is to count and throttle anonymous sign-in attempts.
  */
-export async function POST(request: Request) {
+export const POST = withErrorHandler(async (request: Request) => {
   const result = await loginRateLimiter.record(request);
 
   if (isRateLimited(result)) {
     const response = NextResponse.json(
-      { error: "Too many sign-in attempts. Please try again later." },
+      {
+        success: false,
+        error: "Too many sign-in attempts. Please try again later.",
+        code: "RATE_LIMIT_ERROR",
+      },
       { status: 429 }
     );
     addRateLimitHeaders(response.headers, result);
@@ -38,4 +44,4 @@ export async function POST(request: Request) {
   addRateLimitHeaders(response.headers, result);
 
   return response;
-}
+});

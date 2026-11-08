@@ -15,10 +15,10 @@ import {
   requireAdmin,
   getAdminAuthError,
 } from "@/lib/adminAuth";
+import { withErrorHandler } from '@/utils/errors';
 
-export async function POST(
-  request: NextRequest
-) {
+export const POST = withErrorHandler(async (request: NextRequest) => {
+
   try {
     /*
      * ========================================
@@ -721,4 +721,5 @@ export async function POST(
       }
     );
   }
-}
+
+});

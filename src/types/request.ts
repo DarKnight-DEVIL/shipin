@@ -350,6 +350,7 @@ export interface Request {
   id: string;
   userId: string;
   email: string;
+  customerName?: string;
 
   status: RequestStatus;
 

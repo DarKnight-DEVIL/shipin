@@ -1,11 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { adminApi } from "@/lib/adminApiClient";
 import type { Request } from "@/types/request";
-import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
-
-import { db } from "@/lib/firebase";
 
 import Section from "@/components/ui/Section";
 import InfoCard from "@/components/ui/InfoCard";
@@ -14,6 +12,25 @@ import NextActionCard from "@/components/admin/request/NextActionCard";
 import RefundActionCard from "@/components/admin/request/RefundActionCard";
 import Stepper from "@/components/ui/Stepper";
 import Modal from "@/components/ui/Modal";
+
+/**
+ * Shape of `request.payment`. Older records predate `paymentMethod` and store
+ * the provider instead, and `paidAt` varies between a Firestore timestamp and
+ * a plain date string depending on when the request was paid.
+ */
+type PaymentRecord = {
+  paymentMethod?: string;
+  provider?: string;
+  amount?: number;
+  amountPaid?: number;
+  walletAmount?: number;
+  paypalAmount?: number;
+  currency?: string;
+  orderId?: string;
+  captureId?: string;
+  status?: string;
+  paidAt?: Date | string | number | { seconds: number; nanoseconds: number } | null;
+};
 
 interface Props {
   request: Request;
@@ -44,15 +61,13 @@ export default function OverviewPanel({ request, onGoToQuote }: Props) {
     try {
       setRejecting(true);
 
-      const requestRef = doc(db, "requests", request.id);
-
-      await updateDoc(requestRef, {
-        status: "rejected",
-        rejectionReason: reason,
-        rejectedAt: serverTimestamp(),
-        [`statusHistory.rejected`]: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      await adminApi<void>(
+        `/api/requests/${request.id}/status`,
+        {
+          method: "PATCH",
+          body: { status: "rejected", rejectionReason: reason },
+        }
+      );
 
       toast.success("Request rejected successfully.");
       setRejectOpen(false);
@@ -71,21 +86,7 @@ export default function OverviewPanel({ request, onGoToQuote }: Props) {
    * ========================================
    */
 
-  const payment = request.payment as
-    | {
-        paymentMethod?: string;
-        provider?: string;
-        amount?: number;
-        amountPaid?: number;
-        walletAmount?: number;
-        paypalAmount?: number;
-        currency?: string;
-        orderId?: string;
-        captureId?: string;
-        status?: string;
-        paidAt?: any;
-      }
-    | undefined;
+  const payment = request.payment as PaymentRecord | undefined;
 
   const paymentCompleted =
     request.status === "paid" ||
@@ -134,134 +135,6 @@ export default function OverviewPanel({ request, onGoToQuote }: Props) {
   }
   if (paymentMethod === "wallet_and_paypal") {
     paymentMethodLabel = "Wallet + PayPal";
-  }
-
-  /*
-   * ========================================
-   * PAYMENT DETAILS SUBCOMPONENT
-   * ========================================
-   */
-  function PaymentDetails() {
-    if (!paymentCompleted && !payment) {
-      return (
-        <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Payment Status
-              </p>
-              <p className="mt-1 text-lg font-semibold text-amber-400">
-                Pending
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-sm text-slate-400">
-            No completed payment has been recorded for this request.
-          </p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="rounded-2xl border border-green-500/20 bg-green-500/5 p-6">
-        {/* HEADER */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Payment Status
-            </p>
-            <p className="mt-1 text-xl font-bold text-green-600 dark:text-green-400">
-              Payment Completed
-            </p>
-          </div>
-          <div className="rounded-full bg-green-500/10 px-4 py-2 text-sm font-semibold text-green-600 dark:text-green-400">
-            Paid
-          </div>
-        </div>
-
-        {/* PAYMENT METHOD */}
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <PaymentDetail
-            label="Payment Method"
-            value={paymentMethodLabel}
-          />
-          <PaymentDetail
-            label="Total Paid"
-            value={totalPaid > 0 ? `$${totalPaid.toFixed(2)}` : "—"}
-          />
-          <PaymentDetail
-            label="Currency"
-            value={payment?.currency || "USD"}
-          />
-        </div>
-
-        {/* PAYMENT BREAKDOWN */}
-        {(walletAmount > 0 || paypalAmount > 0) && (
-          <div className="mt-6 border-t border-slate-200 pt-6 dark:border-slate-800">
-            <p className="mb-4 text-sm font-semibold text-slate-900 dark:text-white">
-              Payment Breakdown
-            </p>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {walletAmount > 0 && (
-                <PaymentDetail
-                  label="Wallet Used"
-                  value={`$${walletAmount.toFixed(2)}`}
-                  valueClassName="text-blue-600 dark:text-blue-400"
-                />
-              )}
-              {paypalAmount > 0 && (
-                <PaymentDetail
-                  label="PayPal Paid"
-                  value={`$${paypalAmount.toFixed(2)}`}
-                  valueClassName="text-purple-600 dark:text-purple-400"
-                />
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TRANSACTION DETAILS */}
-        {(payment?.orderId || payment?.captureId) && (
-          <div className="mt-6 border-t border-slate-200 pt-6 dark:border-slate-800">
-            <p className="mb-4 text-sm font-semibold text-slate-900 dark:text-white">
-              Transaction Details
-            </p>
-            <div className="space-y-3">
-              {payment.orderId && (
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-sm text-slate-500">
-                    PayPal Order ID
-                  </span>
-                  <span className="break-all font-mono text-xs text-slate-700 dark:text-slate-300 sm:text-right">
-                    {payment.orderId}
-                  </span>
-                </div>
-              )}
-              {payment.captureId && (
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-sm text-slate-500">
-                    Capture ID
-                  </span>
-                  <span className="break-all font-mono text-xs text-slate-700 dark:text-slate-300 sm:text-right">
-                    {payment.captureId}
-                  </span>
-                </div>
-              )}
-              {payment.status && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-500">
-                    Transaction Status
-                  </span>
-                  <span className="font-semibold capitalize text-green-600 dark:text-green-400">
-                    {payment.status}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
   }
 
   return (
@@ -313,7 +186,14 @@ export default function OverviewPanel({ request, onGoToQuote }: Props) {
         title="Payment Details"
         subtitle="Payment method and transaction information"
       >
-        <PaymentDetails />
+        <PaymentDetails
+          payment={payment}
+          paymentCompleted={paymentCompleted}
+          paymentMethodLabel={paymentMethodLabel}
+          walletAmount={walletAmount}
+          paypalAmount={paypalAmount}
+          totalPaid={totalPaid}
+        />
       </Section>
 
       {/* CUSTOMER SELECTED SERVICES */}
@@ -521,6 +401,150 @@ function PaymentDetail({
       <p className={`mt-1 break-all text-sm font-semibold ${valueClassName}`}>
         {value}
       </p>
+    </div>
+  );
+}
+
+/*
+ * ========================================
+ * PAYMENT DETAILS SUBCOMPONENT
+ * ========================================
+ */
+type PaymentDetailsProps = {
+  payment: PaymentRecord | undefined;
+  paymentCompleted: boolean;
+  paymentMethodLabel: string;
+  walletAmount: number;
+  paypalAmount: number;
+  totalPaid: number;
+};
+
+function PaymentDetails({
+  payment,
+  paymentCompleted,
+  paymentMethodLabel,
+  walletAmount,
+  paypalAmount,
+  totalPaid,
+}: PaymentDetailsProps) {
+  if (!paymentCompleted && !payment) {
+    return (
+      <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Payment Status
+            </p>
+            <p className="mt-1 text-lg font-semibold text-amber-400">
+              Pending
+            </p>
+          </div>
+        </div>
+        <p className="mt-3 text-sm text-slate-400">
+          No completed payment has been recorded for this request.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-green-500/20 bg-green-500/5 p-6">
+      {/* HEADER */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Payment Status
+          </p>
+          <p className="mt-1 text-xl font-bold text-green-600 dark:text-green-400">
+            Payment Completed
+          </p>
+        </div>
+        <div className="rounded-full bg-green-500/10 px-4 py-2 text-sm font-semibold text-green-600 dark:text-green-400">
+          Paid
+        </div>
+      </div>
+
+      {/* PAYMENT METHOD */}
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <PaymentDetail
+          label="Payment Method"
+          value={paymentMethodLabel}
+        />
+        <PaymentDetail
+          label="Total Paid"
+          value={totalPaid > 0 ? `$${totalPaid.toFixed(2)}` : "—"}
+        />
+        <PaymentDetail
+          label="Currency"
+          value={payment?.currency || "USD"}
+        />
+      </div>
+
+      {/* PAYMENT BREAKDOWN */}
+      {(walletAmount > 0 || paypalAmount > 0) && (
+        <div className="mt-6 border-t border-slate-200 pt-6 dark:border-slate-800">
+          <p className="mb-4 text-sm font-semibold text-slate-900 dark:text-white">
+            Payment Breakdown
+          </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {walletAmount > 0 && (
+              <PaymentDetail
+                label="Wallet Used"
+                value={`$${walletAmount.toFixed(2)}`}
+                valueClassName="text-blue-600 dark:text-blue-400"
+              />
+            )}
+            {paypalAmount > 0 && (
+              <PaymentDetail
+                label="PayPal Paid"
+                value={`$${paypalAmount.toFixed(2)}`}
+                valueClassName="text-purple-600 dark:text-purple-400"
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TRANSACTION DETAILS */}
+      {(payment?.orderId || payment?.captureId) && (
+        <div className="mt-6 border-t border-slate-200 pt-6 dark:border-slate-800">
+          <p className="mb-4 text-sm font-semibold text-slate-900 dark:text-white">
+            Transaction Details
+          </p>
+          <div className="space-y-3">
+            {payment.orderId && (
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-sm text-slate-500">
+                  PayPal Order ID
+                </span>
+                <span className="break-all font-mono text-xs text-slate-700 dark:text-slate-300 sm:text-right">
+                  {payment.orderId}
+                </span>
+              </div>
+            )}
+            {payment.captureId && (
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-sm text-slate-500">
+                  Capture ID
+                </span>
+                <span className="break-all font-mono text-xs text-slate-700 dark:text-slate-300 sm:text-right">
+                  {payment.captureId}
+                </span>
+              </div>
+            )}
+            {payment.status && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-500">
+                  Transaction Status
+                </span>
+                <span className="font-semibold capitalize text-green-600 dark:text-green-400">
+                  {payment.status}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

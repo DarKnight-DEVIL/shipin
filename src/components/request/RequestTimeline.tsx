@@ -5,7 +5,7 @@ import { Check } from "lucide-react";
 import {
   REQUEST_STATUS,
   type RequestStatus,
-} from "@/lib/requestStatus";
+} from "@/features/requests/services/requestStatus";
 
 import type {
   StatusHistory,

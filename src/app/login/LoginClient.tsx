@@ -16,6 +16,7 @@ import { ArrowLeft, ArrowUpRight, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import { auth } from "@/lib/firebase";
+import { clientEnv } from "@/config/env";
 import { createUserProfile, getUserProfile } from "@/features/users/services/userProfile";
 
 import "./login.css";
@@ -259,7 +260,7 @@ export default function LoginClient() {
       if (!user.emailVerified) {
         try {
           await sendEmailVerification(user, {
-            url: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/verify-email`,
+            url: `${clientEnv.NEXT_PUBLIC_APP_URL ?? ""}/verify-email`,
           });
         } catch (sendError) {
           console.error("Failed to send verification email:", sendError);

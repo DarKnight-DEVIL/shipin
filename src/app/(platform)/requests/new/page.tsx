@@ -20,8 +20,8 @@ import AddressForm from "@/components/address/AddressForm";
 import Modal from "@/components/ui/Modal";
 import PageHeader from "@/components/ui/PageHeader";
 import { auth } from "@/lib/firebase";
-import { addRequest } from "@/features/requests/services/requests";
-import { getAddresses, addAddress } from "@/features/requests/services/addressesLegacy";
+import { customerApi } from "@/lib/customerApiClient";
+import { getAddresses, addAddress } from "@/features/addresses/services/addresses";
 import type { Address } from "@/types/address";
 
 type ItemDraft = {
@@ -113,8 +113,9 @@ export default function NewRequestPage() {
 
     setSubmitting(true);
     try {
-      await addRequest(
-        {
+      await customerApi<{ requestId: string }>("/api/requests", {
+        method: "POST",
+        body: {
           items: items.map((i) => ({
             name: i.name.trim(),
             url: i.url.trim(),
@@ -126,11 +127,8 @@ export default function NewRequestPage() {
             shippingPreference,
           },
           notes: notes.trim(),
-          email: user.email ?? "",
-          customerName: user.displayName || "Customer",
         },
-        user.uid
-      );
+      });
 
       toast.success("Request submitted successfully!");
       setItems([emptyItem()]);

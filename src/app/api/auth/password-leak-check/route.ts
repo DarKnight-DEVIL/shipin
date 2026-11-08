@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
-import crypto from "crypto";
+import { NextRequest, NextResponse } from "next/server";
+import { withErrorHandler } from "@/utils/errors";
+
+const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 /**
  * POST /api/auth/password-leak-check
@@ -17,17 +19,23 @@ import crypto from "crypto";
  *
  * Rate-limited to prevent scraping.
  */
-export async function POST(request: Request) {
+export const POST = withErrorHandler(async (request: NextRequest) => {
   let body: { prefix?: string };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: "Invalid request.", code: "INVALID_JSON" },
+      { status: 400, headers: NO_STORE }
+    );
   }
 
   const prefix = typeof body.prefix === "string" ? body.prefix.trim().toUpperCase() : "";
   if (!/^[0-9A-F]{5}$/.test(prefix)) {
-    return NextResponse.json({ error: "Invalid prefix." }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: "Invalid prefix.", code: "INVALID_REQUEST_BODY" },
+      { status: 400, headers: NO_STORE }
+    );
   }
 
   try {
@@ -44,7 +52,10 @@ export async function POST(request: Request) {
     if (!response.ok) {
       // If HIBP is unavailable, fail closed: treat as not leaked.
       // A real deployment should log this and alert.
-      return NextResponse.json({ leaked: false, serviceUnavailable: true });
+      return NextResponse.json(
+        { success: true, leaked: false, serviceUnavailable: true },
+        { status: 200, headers: NO_STORE }
+      );
     }
 
     const text = await response.text();
@@ -53,9 +64,15 @@ export async function POST(request: Request) {
       .map((line) => line.trim().toUpperCase())
       .filter(Boolean);
 
-    return NextResponse.json({ suffixes });
+    return NextResponse.json(
+      { success: true, suffixes },
+      { status: 200, headers: NO_STORE }
+    );
   } catch (error) {
     console.error("Password leak check failed:", error instanceof Error ? error.message : error);
-    return NextResponse.json({ error: "Leak check unavailable." }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Leak check unavailable.", code: "EXTERNAL_SERVICE_ERROR" },
+      { status: 502, headers: NO_STORE }
+    );
   }
-}
+});

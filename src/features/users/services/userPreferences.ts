@@ -1,11 +1,10 @@
 import {
   doc,
   getDoc,
-  setDoc,
-  serverTimestamp,
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import { customerApi } from "@/lib/customerApiClient";
 import { toShipINError, ValidationError } from "@/utils/errors";
 
 import {
@@ -82,6 +81,8 @@ export async function saveDashboardMetrics(
   metrics: DashboardMetricId[]
 ) {
   try {
+    void userId;
+
     if (
       metrics.length <
       MIN_DASHBOARD_METRICS
@@ -106,34 +107,12 @@ export async function saveDashboardMetrics(
       );
     }
 
-    const userRef = doc(
-      db,
-      "users",
-      userId
-    );
-
-    /*
-     * merge:true is important.
-     *
-     * We don't want dashboard preferences
-     * overwriting the customer's existing
-     * user document.
-     */
-    await setDoc(
-      userRef,
-      {
-        preferences: {
-          dashboardMetrics:
-            validMetrics,
-        },
-
-        preferencesUpdatedAt:
-          serverTimestamp(),
+    await customerApi<{ success: boolean }>("/api/profile/preferences", {
+      method: "PATCH",
+      body: {
+        metrics: validMetrics,
       },
-      {
-        merge: true,
-      }
-    );
+    });
   } catch (error) {
     throw toShipINError(error);
   }

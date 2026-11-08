@@ -13,10 +13,10 @@ import {
 } from "firebase-admin/firestore";
 
 import { getPayPalAccessToken } from "@/lib/paypal";
+import { withErrorHandler } from '@/utils/errors';
 
-export async function POST(
-  request: NextRequest
-) {
+export const POST = withErrorHandler(async (request: NextRequest) => {
+
   try {
     /*
      * ========================================
@@ -555,4 +555,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+
+});

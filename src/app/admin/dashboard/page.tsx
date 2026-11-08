@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { collection, getDocs } from "firebase/firestore";
 import { LayoutDashboard } from "lucide-react";
 
-import { db } from "@/lib/firebase";
 import { 
   getDashboardStats, 
   getMonthlyRevenue, 
@@ -50,47 +48,20 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     async function load() {
       try {
-        const querySnapshot = await getDocs(collection(db, "requests"));
-        const requests = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as any[];
-
         const analyticsData = await getDashboardStats();
 
         setStats({
-          total: requests.length,
-
-          submitted: requests.filter(
-            (r: any) => r.status === "submitted"
-          ).length,
-
-          review: requests.filter(
-            (r: any) => r.status === "review"
-          ).length,
-
-          quoteReady: requests.filter(
-            (r: any) => r.status === "review"
-          ).length,
-
-          quoteUpdates: requests.filter(
-            (r: any) =>
-              r.quoteRegenerationRequested === true &&
-              r.status !== "rejected"
-          ).length,
-
-          refundRequested: requests.filter(
-            (r: any) => r.refundRequest?.status === "requested"
-          ).length,
-
-          shipped: requests.filter(
-            (r: any) => r.status === "shipped"
-          ).length,
-          
-          revenue: analyticsData.revenue ?? 0,
-          awaitingPayment: analyticsData.awaitingPayment ?? 0,
-          warehouse: analyticsData.warehouse ?? 0,
-          delivered: analyticsData.delivered ?? 0
+          total: analyticsData.total,
+          submitted: analyticsData.submitted,
+          review: analyticsData.review,
+          quoteReady: analyticsData.quoteReady,
+          quoteUpdates: analyticsData.quoteUpdates,
+          refundRequested: analyticsData.refundRequested,
+          shipped: analyticsData.shipped,
+          revenue: analyticsData.revenue,
+          awaitingPayment: analyticsData.awaitingPayment,
+          warehouse: analyticsData.warehouse,
+          delivered: analyticsData.delivered,
         });
 
         const revenue = await getMonthlyRevenue();

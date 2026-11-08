@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 
 import { db } from '@/lib/firebase';
-import { toShipINError, PaymentError, NotFoundError } from '@/utils/errors';
+import { toShipINError, PaymentError } from '@/utils/errors';
 
 export interface WalletData {
   balance: number;

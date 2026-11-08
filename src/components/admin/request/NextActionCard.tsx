@@ -1,17 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { adminApi } from "@/lib/adminApiClient";
 import { toast } from "sonner";
-import {
-  doc,
-  serverTimestamp,
-  updateDoc,
-} from "firebase/firestore";
 
-import { db } from "@/lib/firebase";
 import ActionButton from "@/components/ui/ActionButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import type { RequestStatus } from "@/lib/requestStatus";
+import type { RequestStatus } from "@/features/requests/services/requestStatus";
 
 interface Props {
   requestId: string;
@@ -132,27 +127,11 @@ export default function NextActionCard({
     try {
       setUpdating(true);
 
-      const requestRef = doc(
-        db,
-        "requests",
-        requestId
-      );
-
-      await updateDoc(
-        requestRef,
+      await adminApi<void>(
+        `/api/requests/${requestId}/status`,
         {
-          status:
-            action.nextStatus,
-
-          /*
-           * Record when this status
-           * was reached.
-           */
-          [`statusHistory.${action.nextStatus}`]:
-            serverTimestamp(),
-
-          updatedAt:
-            serverTimestamp(),
+          method: "PATCH",
+          body: { status: action.nextStatus },
         }
       );
 

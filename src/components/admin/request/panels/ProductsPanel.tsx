@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { adminApi } from "@/lib/adminApiClient";
+import { doc, getDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { PackageOpen } from "lucide-react";
 
@@ -193,10 +194,16 @@ function AdditionalItemCard({
         };
       });
 
-      await updateDoc(requestRef, {
-        additionalItemRequests: updatedAdditionalRequests,
-        updatedAt: new Date(),
-      });
+      await adminApi<void>(
+        `/api/requests/${request.id}/additional-items`,
+        {
+          method: "PATCH",
+          body: {
+            additionalItemRequests: updatedAdditionalRequests,
+            status: "awaiting_payment"
+          }
+        }
+      );
 
       toast.success(
         "Additional item approved. Additional payment is now pending."
@@ -243,19 +250,25 @@ function AdditionalItemCard({
 
       const now = new Date();
 
-      await updateDoc(requestRef, {
-        additionalItemRequests: updatedAdditionalRequests,
-        ...(allAdditionalItemsResolved
-          ? {
-              orderChange: {
-                ...(latestRequest.orderChange || { active: false }),
-                active: false,
-                completedAt: now,
-              },
-            }
-          : {}),
-        updatedAt: now,
-      });
+      await adminApi<void>(
+        `/api/requests/${request.id}/additional-items`,
+        {
+          method: "PATCH",
+          body: {
+            additionalItemRequests: updatedAdditionalRequests,
+            ...(allAdditionalItemsResolved
+              ? {
+                  orderChange: {
+                    ...(latestRequest.orderChange || { active: false }),
+                    active: false,
+                    completedAt: now,
+                  },
+                }
+              : {}),
+            updatedAt: now,
+          }
+        }
+      );
 
       toast.success("Additional item request rejected.");
     } catch (error) {
@@ -317,19 +330,25 @@ function AdditionalItemCard({
           item.status === "cancelled"
       );
 
-      await updateDoc(requestRef, {
-        additionalItemRequests: updatedAdditionalRequests,
-        ...(allAdditionalItemsResolved
-          ? {
-              orderChange: {
-                ...(latestRequest.orderChange || { active: false }),
-                active: false,
-                completedAt: now,
-              },
-            }
-          : {}),
-        updatedAt: now,
-      });
+      await adminApi<void>(
+        `/api/requests/${request.id}/additional-items`,
+        {
+          method: "PATCH",
+          body: {
+            additionalItemRequests: updatedAdditionalRequests,
+            ...(allAdditionalItemsResolved
+              ? {
+                  orderChange: {
+                    ...(latestRequest.orderChange || { active: false }),
+                    active: false,
+                    completedAt: now,
+                  },
+                }
+              : {}),
+            updatedAt: now,
+          }
+        }
+      );
 
       toast.success(
         `Additional item marked as ${STATUS_LABELS[nextStatus]}.`

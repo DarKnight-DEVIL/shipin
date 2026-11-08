@@ -10,7 +10,6 @@
  */
 
 const CSRF_COOKIE_NAME = "csrf_token";
-const CSRF_HEADER_NAME = "x-csrf-token";
 
 /**
  * Generate a cryptographically secure CSRF token using Web Crypto API.

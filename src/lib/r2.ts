@@ -1,6 +1,5 @@
 import { S3Client } from "@aws-sdk/client-s3";
 import { serverEnv } from "@/config/env";
-import { createShipINError } from "@/utils/errors";
 
 let cachedClient: S3Client | null = null;
 

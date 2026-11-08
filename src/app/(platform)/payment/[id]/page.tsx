@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
-import { getRequestById } from "@/lib/firestore";
+import { getRequestById } from "@/features/requests/services/requests";
 import { getWallet } from "@/features/wallet/services/wallet";
 import { isQuoteExpired } from "@/features/requests/services/quoteExpiry";
 import PageSkeleton from "@/components/ui/PageSkeleton";

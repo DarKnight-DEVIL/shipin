@@ -1,6 +1,6 @@
 "use client";
 
-import type { PaymentCalculation } from "@/features/finance/calculatePayment";
+import type { PaymentCalculation } from "@/features/finance/services/calculatePayment";
 
 interface Props {
   payment: PaymentCalculation;

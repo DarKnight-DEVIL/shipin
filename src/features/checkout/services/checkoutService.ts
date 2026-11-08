@@ -1,4 +1,4 @@
-import { calculatePayment } from "@/features/finance/calculatePayment";
+import { calculatePayment } from "@/features/finance/services/calculatePayment";
 
 export async function buildCheckout(
   request: any,

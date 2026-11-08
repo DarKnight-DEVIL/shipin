@@ -2,76 +2,65 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { requireAuthWithProfile } from "@/lib/auth";
-import { generateWebAuthnChallenge, generateCredentialId } from "@/lib/mfa";
+import {
+  buildRegistrationOptions,
+  readStoredCredentials,
+  type WebAuthnRecord,
+} from "@/lib/webauthn";
+import { withErrorHandler } from "@/utils/errors";
+
+const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 /**
  * POST /api/auth/mfa/webauthn/register/start
- *
+ *r
  * Start WebAuthn registration (ceremony 1 of 2).
  * Returns a PublicKeyCredentialCreationOptions object for navigator.credentials.create().
  */
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
   if (auth.profile.role !== "admin") {
     return NextResponse.json(
-      { error: "Administrator access required." },
-      { status: 403 }
+      { success: false, error: "Administrator access required.", code: "ADMIN_ACCESS_REQUIRED" },
+      { status: 403, headers: NO_STORE }
     );
   }
 
-  try {
-    // Fetch full user profile for email/displayName
-    const userSnapshot = await adminDb.collection("users").doc(auth.profile.uid).get();
-    const userData = userSnapshot.data() || {};
-    const email = userData.email || auth.token.email;
-    const displayName = userData.displayName || auth.token.name || email;
-
-    const challenge = generateWebAuthnChallenge();
-    const credentialId = generateCredentialId();
-
-    // Store challenge in user profile temporarily
-    await adminDb.collection("users").doc(auth.profile.uid).update({
-      "mfa.webauthn.pendingChallenge": challenge,
-      "mfa.webauthn.pendingCredentialId": credentialId,
-      updatedAt: new Date().toISOString(),
-    });
-
-    // Return PublicKeyCredentialCreationOptions
-    const options = {
-      publicKey: {
-        rp: {
-          name: "ShipIN",
-          id: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://shipin.com").hostname,
-        },
-        user: {
-          id: credentialId,
-          name: email,
-          displayName,
-        },
-        challenge: Uint8Array.from(atob(challenge), c => c.charCodeAt(0)).buffer,
-        pubKeyCredParams: [
-          { type: "public-key", alg: -7 }, // ES256
-          { type: "public-key", alg: -257 }, // RS256
-        ],
-        authenticatorSelection: {
-          authenticatorAttachment: "platform",
-          userVerification: "preferred",
-          requireResidentKey: false,
-        },
-        timeout: 60000,
-        attestation: "direct",
-        excludeCredentials: [], // Could exclude existing credential IDs
-      },
-    };
-
-    return NextResponse.json(options);
-  } catch (error) {
-    console.error("WebAuthn register start error:", error);
+  // Fetch full user profile for email/displayName and existing credentials
+  const userSnapshot = await adminDb.collection("users").doc(auth.profile.uid).get();
+  if (!userSnapshot.exists) {
     return NextResponse.json(
-      { error: "Failed to start WebAuthn registration." },
-      { status: 500 }
+      { success: false, error: "User not found.", code: "USER_PROFILE_NOT_FOUND" },
+      { status: 404, headers: NO_STORE }
     );
   }
-}
+
+  const userData = userSnapshot.data() as Record<string, unknown> | undefined;
+  const storedEmail = typeof userData?.email === "string" ? userData.email : null;
+  const email = storedEmail || auth.token.email || `${auth.profile.uid}@shipin.local`;
+  const storedName = typeof userData?.displayName === "string" ? userData.displayName : null;
+  const displayName = storedName || auth.token.name || email;
+  const record = (userData?.mfa as { webauthn?: WebAuthnRecord } | undefined)?.webauthn ?? {};
+  const existingCredentials = readStoredCredentials(record);
+
+  const options = await buildRegistrationOptions({
+    uid: auth.profile.uid,
+    userName: email,
+    displayName,
+    excludeCredentials: existingCredentials,
+  });
+
+  // Store the challenge for verification (consumed in /complete). In the
+  // simplewebauthn JSON format the challenge is already base64url-encoded.
+  await userSnapshot.ref.update({
+    "mfa.webauthn.pendingChallenge": options.challenge,
+    "mfa.webauthn.pendingExpires": Date.now() + 5 * 60 * 1000,
+  });
+
+  return NextResponse.json(
+    { success: true, options },
+    { status: 200, headers: NO_STORE }
+  );
+});

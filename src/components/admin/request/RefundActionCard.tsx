@@ -2,11 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  doc,
-  serverTimestamp,
-  updateDoc,
-} from "firebase/firestore";
 import { toast } from "sonner";
 import {
   Wallet,
@@ -15,7 +10,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
-import { db } from "@/lib/firebase";
+import { AdminApiError, adminApi } from "@/lib/adminApiClient";
 import type { Request } from "@/types/request";
 
 interface Props {
@@ -219,28 +214,16 @@ function RefundActionCard({ request }: Props) {
     try {
       setProcessing(true);
 
-      const requestRef = doc(
-        db,
-        "requests",
-        request.id
+      await adminApi<void>(
+        `/api/admin/requests/${request.id}/refund/paypal`,
+        {
+          method: "POST",
+          body: {
+            amount: paypalRefund,
+            transactionId,
+          },
+        }
       );
-
-      await updateDoc(requestRef, {
-        "refundRequest.paypalRefundStatus":
-          "completed",
-
-        "refundRequest.paypalRefundAmount":
-          paypalRefund,
-
-        "refundRequest.paypalRefundTransactionId":
-          transactionId,
-
-        "refundRequest.paypalRefundedAt":
-          serverTimestamp(),
-
-        updatedAt:
-          serverTimestamp(),
-      });
 
       toast.success("PayPal refund recorded.");
     } catch (error) {
@@ -249,7 +232,11 @@ function RefundActionCard({ request }: Props) {
         error
       );
 
-      toast.error("Unable to record PayPal refund.");
+      toast.error(
+        error instanceof AdminApiError
+          ? error.message
+          : "Unable to record PayPal refund."
+      );
     } finally {
       setProcessing(false);
     }
@@ -279,20 +266,20 @@ function RefundActionCard({ request }: Props) {
     try {
       setProcessing(true);
 
-      const requestRef = doc(db, "requests", request.id);
-
-      await updateDoc(requestRef, {
-        "refundRequest.status": "completed",
-        "refundRequest.processedAt": serverTimestamp(),
-        status: "refunded",
-        "statusHistory.refunded": serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      await adminApi<void>(
+        `/api/admin/requests/${request.id}/refund/complete`,
+        { method: "POST" }
+      );
 
       toast.success("Refund completed successfully.");
+      router.refresh();
     } catch (error) {
       console.error("Failed to complete refund:", error);
-      toast.error("Unable to complete refund.");
+      toast.error(
+        error instanceof AdminApiError
+          ? error.message
+          : "Unable to complete refund."
+      );
     } finally {
       setProcessing(false);
     }
@@ -466,7 +453,7 @@ function RefundActionCard({ request }: Props) {
                     dark:text-slate-400
                   "
                 >
-                  Amount to credit to the customer's ShipIN Wallet.
+                  Amount to credit to the customer&apos;s ShipIN Wallet.
                 </p>
               </div>
             </div>

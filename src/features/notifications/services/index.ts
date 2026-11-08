@@ -1,5 +1,16 @@
-import { collection, addDoc, query, where, getDocs, updateDoc, doc, serverTimestamp, orderBy, deleteDoc, writeBatch, onSnapshot, getDoc } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  orderBy,
+  onSnapshot,
+  getDoc,
+} from 'firebase/firestore';
+
 import { db } from '@/lib/firebase';
+import { customerApi } from '@/lib/customerApiClient';
 import type { Notification } from '@/types/notification';
 import type { NotificationPreferences } from '@/types/notificationPreferences';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '@/types/notificationPreferences';
@@ -13,16 +24,12 @@ export async function createNotification(
   type: Notification['type']
 ): Promise<string> {
   try {
-    const docRef = await addDoc(collection(db, 'notifications'), {
-      userId,
-      requestId,
-      title,
-      message,
-      type,
-      read: false,
-      createdAt: serverTimestamp(),
+    const result = await customerApi<{ notificationId: string }>('/api/notifications', {
+      method: 'POST',
+      body: { userId, requestId, title, message, type },
     });
-    return docRef.id;
+
+    return result.notificationId;
   } catch (error) {
     throw toShipINError(error);
   }
@@ -49,8 +56,9 @@ export async function getNotifications(
 
 export async function markNotificationRead(notificationId: string): Promise<void> {
   try {
-    await updateDoc(doc(db, 'notifications', notificationId), {
-      read: true,
+    await customerApi<{ success: boolean }>(`/api/notifications/${notificationId}`, {
+      method: 'PATCH',
+      body: { read: true },
     });
   } catch (error) {
     throw toShipINError(error);
@@ -59,7 +67,9 @@ export async function markNotificationRead(notificationId: string): Promise<void
 
 export async function deleteNotification(notificationId: string): Promise<void> {
   try {
-    await deleteDoc(doc(db, 'notifications', notificationId));
+    await customerApi<{ success: boolean }>(`/api/notifications/${notificationId}`, {
+      method: 'DELETE',
+    });
   } catch (error) {
     throw toShipINError(error);
   }
@@ -67,18 +77,13 @@ export async function deleteNotification(notificationId: string): Promise<void> 
 
 export async function markAllNotificationsRead(userId: string): Promise<number> {
   try {
-    const q = query(
-      collection(db, 'notifications'),
-      where('userId', '==', userId),
-      where('read', '==', false)
-    );
-    const snapshot = await getDocs(q);
-    const batch = writeBatch(db);
-    snapshot.docs.forEach((doc) => {
-      batch.update(doc.ref, { read: true });
+    void userId;
+
+    const result = await customerApi<{ count: number }>('/api/notifications/read-all', {
+      method: 'POST',
     });
-    await batch.commit();
-    return snapshot.size;
+
+    return result.count;
   } catch (error) {
     throw toShipINError(error);
   }
@@ -86,18 +91,13 @@ export async function markAllNotificationsRead(userId: string): Promise<number> 
 
 export async function clearReadNotifications(userId: string): Promise<number> {
   try {
-    const q = query(
-      collection(db, 'notifications'),
-      where('userId', '==', userId),
-      where('read', '==', true)
-    );
-    const snapshot = await getDocs(q);
-    const batch = writeBatch(db);
-    snapshot.docs.forEach((doc) => {
-      batch.delete(doc.ref);
+    void userId;
+
+    const result = await customerApi<{ count: number }>('/api/notifications/clear-read', {
+      method: 'POST',
     });
-    await batch.commit();
-    return snapshot.size;
+
+    return result.count;
   } catch (error) {
     throw toShipINError(error);
   }
@@ -156,9 +156,11 @@ export async function saveNotificationPreferences(
   preferences: NotificationPreferences
 ): Promise<void> {
   try {
-    await updateDoc(doc(db, 'users', userId), {
-      'preferences.notifications': preferences,
-      preferencesUpdatedAt: serverTimestamp(),
+    void userId;
+
+    await customerApi<{ success: boolean }>('/api/notifications/preferences', {
+      method: 'PATCH',
+      body: preferences,
     });
   } catch (error) {
     throw toShipINError(error);

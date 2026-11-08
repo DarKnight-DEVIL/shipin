@@ -1,15 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import {
-  arrayUnion,
-  doc,
-  serverTimestamp,
-  updateDoc,
-} from "firebase/firestore";
 import { toast } from "sonner";
 
-import { db } from "@/lib/firebase";
+import { CustomerApiError, customerApi } from "@/lib/customerApiClient";
 import type { Request } from "@/types/request";
 
 interface Props {
@@ -61,35 +55,17 @@ export default function AddItemRequest({ request }: Props) {
     try {
       setSubmitting(true);
 
-      const additionalItemId = crypto.randomUUID();
-      const requestRef = doc(db, "requests", request.id);
-      const wasPacked = request.status === "packed";
-
-      await updateDoc(requestRef, {
-        additionalItemRequests: arrayUnion({
-          id: additionalItemId,
-          item: {
+      await customerApi<{ itemId: string }>(
+        `/api/requests/${request.id}/additional-items`,
+        {
+          method: "POST",
+          body: {
             name: name.trim(),
             url: url.trim(),
             quantity,
           },
-          status: "pending",
-          repackingFee: 0,
-          storageFee: 0,
-          amountPaid: 0,
-          orderChangeHold: true,
-          requestedAt: new Date(),
-        }),
-        orderChange: {
-          active: true,
-          requiresRepacking: wasPacked,
-          repackingFee: wasPacked ? 2 : 0,
-          storageFee: 0,
-          storageFeeApplied: false,
-          startedAt: serverTimestamp(),
-        },
-        updatedAt: serverTimestamp(),
-      });
+        }
+      );
 
       setName("");
       setUrl("");
@@ -103,7 +79,11 @@ export default function AddItemRequest({ request }: Props) {
       console.error("Add item request error:", error);
       toast.error("Unable to submit request.", {
         description:
-          error instanceof Error ? error.message : undefined,
+          error instanceof CustomerApiError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : undefined,
       });
     } finally {
       setSubmitting(false);

@@ -5,10 +5,10 @@ import { useEffect, useState } from "react";
 import {
   subscribeToCustomerSupportTickets,
   subscribeToSupportMessages,
-  subscribeToRequests,
   markSupportTicketRead,
   createSupportTicket,
-} from "@/lib/firestore";
+} from "@/features/support/services";
+import { subscribeToRequests } from "@/features/requests/services/requests";
 
 import {
   SupportMessage,

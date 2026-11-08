@@ -2,7 +2,7 @@ import "server-only";
 
 import { adminDb } from '@/lib/firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
-import type { Request } from '@/types/request';
+import { NotFoundError } from '@/utils/errors';
 
 interface ShipmentDetails {
   internalTrackingId: string;
@@ -25,7 +25,7 @@ export async function saveShipmentDetails(
   const snapshot = await requestRef.get();
 
   if (!snapshot.exists) {
-    throw new Error('Request not found');
+    throw new NotFoundError('Request');
   }
 
   await requestRef.update({
@@ -53,7 +53,7 @@ export async function updateShipmentStatus(
   const snapshot = await requestRef.get();
 
   if (!snapshot.exists) {
-    throw new Error('Request not found');
+    throw new NotFoundError('Request');
   }
 
   await requestRef.update({

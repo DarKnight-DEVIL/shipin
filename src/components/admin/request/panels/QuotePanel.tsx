@@ -15,7 +15,7 @@ import {
   calculateInspectionFee,
   calculateHoldFee,
   requiresManualQuote,
-} from "@/features/finance/quoteCalculator";
+} from "@/features/finance/services/calculateServiceFee";
 
 import { buildInvoiceSummary } from "@/components/invoice/InvoiceSummary";
 

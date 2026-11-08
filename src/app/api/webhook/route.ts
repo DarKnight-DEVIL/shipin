@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withErrorHandler } from "@/utils/errors";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { serverEnv } from "@/config/env";
 import { verifyPayPalWebhook } from "@/lib/paypal";
-import { sendNotification } from "@/lib/notifications/notificationService";
+import { sendNotification } from "@/features/notifications/services/notificationService";
 
 // PayPal Webhook ID from the developer dashboard.
 // Should be set in environment variables: PAYPAL_WEBHOOK_ID
@@ -20,11 +21,11 @@ const PAYPAL_WEBHOOK_ID = serverEnv.PAYPAL_WEBHOOK_ID;
  * so the raw body is available for signature verification.
  * (See middleware.ts matcher config.)
  */
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandler(async (request: NextRequest) => {
   if (!PAYPAL_WEBHOOK_ID) {
     console.error("PAYPAL_WEBHOOK_ID is not configured");
     return NextResponse.json(
-      { error: "Webhook not configured" },
+      { success: false, error: "Webhook not configured.", code: "CONFIGURATION_ERROR" },
       { status: 500 }
     );
   }
@@ -38,17 +39,17 @@ export async function POST(request: NextRequest) {
   if (!valid) {
     console.warn("PayPal webhook signature verification failed");
     return NextResponse.json(
-      { error: "Invalid webhook signature" },
+      { success: false, error: "Invalid webhook signature.", code: "INVALID_SIGNATURE" },
       { status: 400 }
     );
   }
 
-  let event;
+  let event: Record<string, unknown>;
   try {
-    event = JSON.parse(rawBody);
+    event = JSON.parse(rawBody) as Record<string, unknown>;
   } catch {
     return NextResponse.json(
-      { error: "Invalid JSON" },
+      { success: false, error: "Invalid JSON.", code: "INVALID_JSON" },
       { status: 400 }
     );
   }
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
       case "PAYMENT.CAPTURE.REFUNDED":
       case "PAYMENT.CAPTURE.PENDING":
         // Log but don't auto-process these
-        console.log("PayPal event:", event.event_type, event.resource.id);
+        console.log("PayPal event:", event.event_type, (event.resource as { id?: string } | undefined)?.id);
         break;
 
       case "BILLING.SUBSCRIPTION.CANCELLED":
@@ -79,11 +80,12 @@ export async function POST(request: NextRequest) {
     console.error("Webhook processing error:", error);
     // Return 200 to prevent PayPal from retrying, but log the error
     // The internal processing failure should be monitored separately
-    return NextResponse.json({ received: true });
+    return NextResponse.json({ received: true, success: true });
   }
 
-  return NextResponse.json({ received: true });
-}
+  // PayPal requires a 2xx to stop delivery; `received` is the provider contract.
+  return NextResponse.json({ received: true, success: true });
+});
 
 /**
  * Handle a completed PayPal capture from a webhook.

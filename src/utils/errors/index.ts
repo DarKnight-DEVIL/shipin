@@ -30,8 +30,11 @@ export class ShipINError extends Error {
   ) {
     super(message);
     this.name = this.constructor.name;
-    if (typeof (Error as any).captureStackTrace === 'function') {
-      (Error as any).captureStackTrace(this, this.constructor);
+    const errorStack = (Error as unknown as {
+      captureStackTrace?: (target: object, constructor: new (...args: unknown[]) => Error) => void;
+    }).captureStackTrace;
+    if (typeof errorStack === 'function') {
+      errorStack(this, this.constructor as new (...args: unknown[]) => Error);
     }
   }
 }
@@ -135,10 +138,10 @@ export function serializeError(error: unknown): { error: string; code?: string; 
  *   return NextResponse.json(result);
  * });
  */
-export function withErrorHandler<T extends (...args: any[]) => Promise<Response>>(
-  handler: T
-): (...args: Parameters<T>) => Promise<Response> {
-  return async (...args: Parameters<T>): Promise<Response> => {
+export function withErrorHandler<Args extends unknown[], R extends Response = Response>(
+  handler: (...args: Args) => Promise<R>
+): (...args: Args) => Promise<R> {
+  return async (...args: Args): Promise<R> => {
     try {
       return await handler(...args);
     } catch (error) {
@@ -148,7 +151,7 @@ export function withErrorHandler<T extends (...args: any[]) => Promise<Response>
       return NextResponse.json(
         serializeError(error),
         { status: err.status }
-      );
+      ) as unknown as R;
     }
   };
 }

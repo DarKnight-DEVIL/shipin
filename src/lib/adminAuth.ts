@@ -148,13 +148,11 @@ export async function requireAdmin(
   const smsCode = request.headers.get("x-mfa-sms");
 
   let mfaVerified = false;
-  let mfaMethod = "none";
 
   // TOTP verification
   if (totpCode && hasTotp) {
     if (verifyTotp(mfa.totp.secret, totpCode, 1)) {
       mfaVerified = true;
-      mfaMethod = "totp";
     }
   }
 
@@ -163,7 +161,6 @@ export async function requireAdmin(
     const index = verifyBackupCode(backupCode, mfa.totp.backupCodes);
     if (index !== -1) {
       mfaVerified = true;
-      mfaMethod = "backup";
     }
   }
 
@@ -186,7 +183,6 @@ export async function requireAdmin(
           "mfa.sms.pendingExpires": FieldValue.delete(),
         });
         mfaVerified = true;
-        mfaMethod = "sms";
       }
     }
   }

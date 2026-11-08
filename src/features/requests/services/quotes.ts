@@ -3,6 +3,7 @@ import "server-only";
 import { adminDb } from '@/lib/firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { Timestamp } from 'firebase-admin/firestore';
+import { NotFoundError, PaymentError } from '@/utils/errors';
 import type { Request } from '@/types/request';
 
 /** Convert Firestore Timestamp or Date to JS Date. */
@@ -31,7 +32,7 @@ export async function saveDetailedQuote(
   const snapshot = await requestRef.get();
 
   if (!snapshot.exists) {
-    throw new Error('Request not found');
+    throw new NotFoundError('Request');
   }
 
   const requestData = snapshot.data();
@@ -60,14 +61,14 @@ export async function acceptQuote(
   const snapshot = await requestRef.get();
 
   if (!snapshot.exists) {
-    throw new Error('Request not found');
+    throw new NotFoundError('Request');
   }
 
   const requestData = snapshot.data();
   const quote = requestData?.quote;
 
   if (!quote || quote.expired) {
-    throw new Error('No valid quote to accept');
+    throw new PaymentError('No valid quote to accept');
   }
 
   await requestRef.update({
@@ -98,7 +99,7 @@ export async function regenerateQuote(
   const snapshot = await requestRef.get();
 
   if (!snapshot.exists) {
-    throw new Error('Request not found');
+    throw new NotFoundError('Request');
   }
 
   const requestData = snapshot.data();

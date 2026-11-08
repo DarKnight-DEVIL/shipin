@@ -2,19 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/firebaseAdmin";
+import { withErrorHandler } from '@/utils/errors';
 import {
   requireAdmin,
   getAdminAuthError,
 } from "@/lib/adminAuth";
 
-export async function POST(
-  req: NextRequest,
+export const POST = withErrorHandler(async (req: NextRequest,
   {
     params,
   }: {
     params: Promise<{ requestId: string }>;
-  }
-) {
+  }) => {
+
   try {
     /*
      * ========================================
@@ -332,4 +332,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+
+});

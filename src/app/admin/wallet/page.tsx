@@ -4,12 +4,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-} from "firebase/firestore";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search,
@@ -21,15 +15,16 @@ import {
   CheckCircle2,
   AlertCircle,
 } from "lucide-react";
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
+import {
+  getCustomersWithWallets,
+  getRefundRequestDetails,
+} from "@/features/admin/services/customers";
 interface Customer {
   id: string;
   displayName: string;
   email: string;
   photoURL?: string;
-}
-interface CustomerWallet {
-  balance: number;
 }
 interface CustomerWithWallet
   extends Customer {
@@ -44,8 +39,6 @@ export default function AdminWalletPage() {
     useState(false);
   const [refundLoading, setRefundLoading] =
     useState(false);
-  const [refundRequestData, setRefundRequestData] =
-    useState<any>(null);
   const [customers, setCustomers] =
     useState<CustomerWithWallet[]>(
       []
@@ -82,88 +75,18 @@ export default function AdminWalletPage() {
     async function loadCustomers() {
       try {
         setLoading(true);
-        /*
-         * Get users.
-         */
-        const usersSnapshot =
-          await getDocs(
-            collection(db, "users")
-          );
-        /*
-         * Get wallets.
-         */
-        const walletsSnapshot =
-          await getDocs(
-            collection(db, "wallets")
-          );
-        /*
-         * Build wallet lookup.
-         */
-        const walletMap =
-          new Map<string, number>();
-        walletsSnapshot.docs.forEach(
-          (walletDoc) => {
-            const data =
-              walletDoc.data();
-            const balance =
-              Number(
-                data.balance ?? 0
-              );
-            walletMap.set(
-              walletDoc.id,
-              Number.isFinite(balance)
-                ? balance
-                : 0
-            );
-          }
-        );
-        /*
-         * Only show customers.
-         *
-         * Admin accounts are excluded
-         * from this wallet-management UI.
-         */
-        const customerData =
-          usersSnapshot.docs
-            .map((userDoc) => {
-              const data =
-                userDoc.data();
-              return {
-                id: userDoc.id,
-                displayName:
-                  data.displayName ||
-                  "Unnamed Customer",
-                email:
-                  data.email ||
-                  "",
-                photoURL:
-                  data.photoURL ||
-                  "",
-                role:
-                  data.role ||
-                  "customer",
-              };
-            })
-            .filter(
-              (user) =>
-                user.role !== "admin"
-            )
-            .map((user) => ({
-              id: user.id,
-              displayName:
-                user.displayName,
-              email:
-                user.email,
-              photoURL:
-                user.photoURL,
-              balance:
-                walletMap.get(
-                  user.id
-                ) ?? 0,
-            }));
+        const customerData = await getCustomersWithWallets();
+
         setCustomers(
-          customerData
+          customerData.map((customer) => ({
+            id: customer.id,
+            displayName: customer.displayName,
+            email: customer.email,
+            photoURL: customer.photoURL,
+            balance: customer.walletBalance,
+          }))
         );
+
       } catch (error) {
         console.error(
           "Failed to load customers:",
@@ -192,120 +115,19 @@ export default function AdminWalletPage() {
       try {
         setRefundLoading(true);
         setErrorMessage("");
-        const snapshot = await getDoc(
-          doc(db, "requests", refundRequestId!)
-        );
-        if (!snapshot.exists()) {
-          throw new Error("Refund request not found.");
-        }
-        const data = snapshot.data();
-        /*
-         * Example breakdown:
-         * Wallet: $100.00
-         * PayPal:  $15.38
-         */
-        const preference =
-          data.refundRequest?.preference ??
-          data.preference ??
-          "wallet";
-        const totalRefundAmount = Number(
-          data.refundRequest?.amount ??
-            data.amount ??
-            0
-        );
-        const originalWalletAmount = Number(
-          data.refundRequest?.walletAmount ??
-            data.payment?.walletAmount ??
-            data.walletAmount ??
-            0
-        );
-        let walletRefundAmount = 0;
-        /*
-         * ========================================
-         * CUSTOMER CHOSE SHIPIN WALLET
-         * ========================================
-         *
-         * The customer wants the ENTIRE refund
-         * credited to their ShipIN Wallet.
-         *
-         * Therefore we refund the FULL amount,
-         * not merely the amount originally paid
-         * using the wallet.
-         *
-         * $100 Wallet + $15.38 PayPal
-         *                ↓
-         *         $115.38 Wallet
-         */
-        if (preference === "wallet") {
-          walletRefundAmount =
-            totalRefundAmount;
-        }
-        /*
-         * ========================================
-         * CUSTOMER CHOSE ORIGINAL SOURCES
-         * ========================================
-         *
-         * Only the amount originally paid from
-         * the wallet comes back to the wallet.
-         *
-         * $100 Wallet + $15.38 PayPal
-         *                ↓
-         * $100 Wallet + $15.38 PayPal
-         */
-        else if (
-          preference === "original_sources"
-        ) {
-          walletRefundAmount =
-            originalWalletAmount;
-        }
-        /*
-         * ========================================
-         * ORIGINAL PAYMENT METHOD
-         * ========================================
-         *
-         * Keep compatibility with the existing
-         * preference.
-         *
-         * If there was an original wallet
-         * contribution, that portion is handled
-         * through the wallet refund flow.
-         */
-        else if (
-          preference === "original_payment"
-        ) {
-          walletRefundAmount =
-            originalWalletAmount;
-        }
-        /*
-         * ========================================
-         * VALIDATE WALLET REFUND
-         * ========================================
-         */
-        if (
-          !Number.isFinite(
-            walletRefundAmount
-          ) ||
-          walletRefundAmount <= 0
-        ) {
-          throw new Error(
-            "This refund does not contain a wallet refund amount."
-          );
-        }
-        setRefundRequestData({
-          id: snapshot.id,
-          ...data,
-        });
+        const refund = await getRefundRequestDetails(refundRequestId!);
+        const walletRefundAmount = refund.walletRefundAmount;
+
         setRefundMode(true);
+
         /*
          * ========================================
          * SELECT CUSTOMER
          * ========================================
          */
-        const customer =
-          customers.find(
-            (item) =>
-              item.id === data.userId
-          );
+        const customer = customers.find(
+          (item) => item.id === refund.userId
+        );
         if (customer) {
           setSelectedCustomer(
             customer
@@ -319,9 +141,7 @@ export default function AdminWalletPage() {
           setAmount(
             walletRefundAmount.toFixed(2)
           );
-          setDescription(
-            `Refund for Request #${snapshot.id}`
-          );
+          setDescription(`Refund for Request #${refund.id}`);
         }
       } catch (error) {
         console.error(

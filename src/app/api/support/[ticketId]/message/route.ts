@@ -1,11 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { withErrorHandler } from "@/utils/errors";
 import { FieldValue } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/firebaseAdmin";
+import { requireAuthWithProfile } from "@/lib/auth";
 
 import {
   sendNotification,
-} from "@/lib/notifications/notificationService";
+} from "@/features/notifications/services/notificationService";
+
+const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 interface RouteContext {
   params: Promise<{
@@ -13,109 +17,146 @@ interface RouteContext {
   }>;
 }
 
-export async function POST(
-  request: Request,
+export const POST = withErrorHandler(async (
+  request: NextRequest,
   context: RouteContext
-) {
-  try {
-    const { ticketId } =
-      await context.params;
+) => {
+  // --- 1. Authenticate the caller ---
+  const auth = await requireAuthWithProfile(request);
+  if (auth instanceof NextResponse) return auth;
 
-    const body =
-      await request.json();
+  const { ticketId } = await context.params;
 
-    const sender =
-      body.sender === "admin"
-        ? "admin"
-        : body.sender === "customer"
-          ? "customer"
-          : "";
+  const body = await request.json() as {
+    sender?: unknown;
+    message?: unknown;
+  };
 
-    const message =
-      typeof body.message === "string"
-        ? body.message.trim()
+  const sender =
+    body.sender === "admin"
+      ? "admin"
+      : body.sender === "customer"
+        ? "customer"
         : "";
 
-    if (
-      !ticketId ||
-      !sender ||
-      !message
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Ticket ID, sender and message are required.",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
+  const message =
+    typeof body.message === "string"
+      ? body.message.trim()
+      : "";
 
-    /*
-     * LOAD SUPPORT TICKET
-     */
-    const ticketRef =
-      adminDb
-        .collection("supportTickets")
-        .doc(ticketId);
+  if (
+    !ticketId ||
+    !sender ||
+    !message
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Ticket ID, sender and message are required.",
+        code: "INVALID_REQUEST_BODY",
+      },
+      {
+        status: 400,
+        headers: NO_STORE,
+      }
+    );
+  }
 
-    const ticketSnapshot =
-      await ticketRef.get();
+  // The caller may only speak as themselves: admins post as admin,
+  // customers post as customer. This stops a customer impersonating
+  // support inside the message stream.
+  if (sender !== auth.profile.role) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "You can only send messages as your own role.",
+        code: "AUTHORIZATION_ERROR",
+      },
+      { status: 403, headers: NO_STORE }
+    );
+  }
 
-    if (!ticketSnapshot.exists) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Support ticket not found.",
-        },
-        {
-          status: 404,
-        }
-      );
-    }
+  /*
+   * LOAD SUPPORT TICKET
+   */
+  const ticketRef =
+    adminDb
+      .collection("supportTickets")
+      .doc(ticketId);
 
-    const ticketData =
-      ticketSnapshot.data();
+  const ticketSnapshot =
+    await ticketRef.get();
 
-    if (!ticketData) {
-      throw new Error(
-        "Unable to read support ticket."
-      );
-    }
+  if (!ticketSnapshot.exists) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Support ticket not found.",
+        code: "NOT_FOUND",
+      },
+      {
+        status: 404,
+        headers: NO_STORE,
+      }
+    );
+  }
 
-    /*
-     * SAVE MESSAGE
-     */
-    await adminDb
-      .collection("supportMessages")
-      .add({
-        ticketId,
-        sender,
-        message,
+  const ticketData =
+    ticketSnapshot.data() as Record<string, unknown> | undefined;
 
-        createdAt:
-          FieldValue.serverTimestamp(),
-      });
+  if (!ticketData) {
+    throw new Error(
+      "Unable to read support ticket."
+    );
+  }
 
-    /*
-     * UPDATE UNREAD STATE
-     *
-     * This preserves the same behaviour
-     * as sendSupportMessage() in firestore.ts.
-     */
-    await ticketRef.update({
-      updatedAt:
+  // Authorization: a customer may only reply to their own tickets.
+  if (
+    sender === "customer" &&
+    ticketData.customerId !== auth.profile.uid
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "You can only reply to your own support tickets.",
+        code: "AUTHORIZATION_ERROR",
+      },
+      { status: 403, headers: NO_STORE }
+    );
+  }
+
+  /*
+   * SAVE MESSAGE
+   */
+  await adminDb
+    .collection("supportMessages")
+    .add({
+      ticketId,
+      sender,
+      message,
+
+      createdAt:
         FieldValue.serverTimestamp(),
-
-      adminUnread:
-        sender === "customer",
-
-      customerUnread:
-        sender === "admin",
     });
+
+  /*
+   * UPDATE UNREAD STATE
+   *
+   * This preserves the same behaviour
+   * as sendSupportMessage() in firestore.ts.
+   */
+  await ticketRef.update({
+    updatedAt:
+      FieldValue.serverTimestamp(),
+
+    adminUnread:
+      sender === "customer",
+
+    customerUnread:
+      sender === "admin",
+  });
 
     /*
      * Only an ADMIN reply should notify
@@ -124,13 +165,13 @@ export async function POST(
     if (sender === "admin") {
       try {
         const requestId =
-          ticketData.requestId;
+          ticketData.requestId as string | undefined;
 
         const customerId =
-          ticketData.customerId;
+          ticketData.customerId as string | undefined;
 
         let customerName =
-          "Customer";
+          "Customer" as string;
 
         /*
          * Get request/customer information.
@@ -144,14 +185,14 @@ export async function POST(
                 .get();
 
             const requestData =
-              requestSnapshot.data();
+              requestSnapshot.data() as Record<string, unknown> | undefined;
+
+            const shippingAddress =
+              requestData?.shippingAddress as { firstName?: string } | undefined;
 
             customerName =
-              requestData
-                ?.customerName ||
-              requestData
-                ?.shippingAddress
-                ?.firstName ||
+              (typeof requestData?.customerName === "string" && requestData.customerName) ||
+              (typeof shippingAddress?.firstName === "string" && shippingAddress.firstName) ||
               "Customer";
           } catch (error) {
             console.error(
@@ -174,7 +215,7 @@ export async function POST(
                 .get();
 
             notificationPreferences =
-              userSnapshot.data()
+              (userSnapshot.data() as Record<string, any> | undefined)
                 ?.preferences
                 ?.notifications;
           } catch (error) {
@@ -200,15 +241,13 @@ export async function POST(
           notificationPreferences
             ?.whatsapp
             ?.phone
-            ? notificationPreferences
-                .whatsapp
-                .phone
+            ? (notificationPreferences.whatsapp.phone as string)
             : "";
 
         await sendNotification({
-          userId: customerId,
+          userId: customerId ?? "",
 
-          requestId,
+          requestId: requestId ?? "",
 
           title:
             "Support Update",
@@ -254,8 +293,7 @@ export async function POST(
                         {
                           type: "text",
                           text:
-                            ticketData
-                              .ticketNumber ||
+                            (typeof ticketData.ticketNumber === "string" && ticketData.ticketNumber) ||
                             ticketId,
                         },
                       ],
@@ -280,24 +318,9 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({
-      success: true,
-    });
-  } catch (error) {
-    console.error(
-      "Send support message failed:",
-      error
-    );
-
     return NextResponse.json(
-      {
-        success: false,
-
-        error: "Internal server error",
-      },
-      {
-        status: 500,
-      }
+      { success: true },
+      { status: 200, headers: NO_STORE }
     );
   }
-}
+);

@@ -7,7 +7,7 @@ interface Props {
   compact?: boolean;
 }
 
-export default function QuoteCard({ request, compact = false}: Props) {
+export default function QuoteCard({ request }: Props) {
   const quote = request.quote;
 
   if (!quote) return null;

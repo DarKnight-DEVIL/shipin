@@ -3,35 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PackageSearch } from "lucide-react";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import EmptyState from "@/components/ui/EmptyState";
+import { getWarehouseInventory } from "@/features/requests/services/warehouse";
+import type { Request } from "@/types/request";
 
 export default function WarehouseInventoryPage() {
-  const [packages, setPackages] = useState<any[]>([]);
+  const [packages, setPackages] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const snapshot = await getDocs(
-          collection(db, "requests")
-        );
-
-        const data = snapshot.docs
-          .map((doc) => ({
-            id: doc.id,
-            ...(doc.data() as any),
-          }))
-          .filter(
-            (request) =>
-              request.status ===
-                "warehouse_received" ||
-              request.status ===
-                "ready_for_international_shipping" ||
-              request.status ===
-                "packed"
-          );
+        const data = await getWarehouseInventory();
 
         setPackages(data);
       } catch (error) {

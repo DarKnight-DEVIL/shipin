@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withErrorHandler } from '@/utils/errors';
 
 import {
   PutObjectCommand,
@@ -25,9 +26,8 @@ const ALLOWED_TYPES = [
   "image/webp",
 ];
 
-export async function POST(
-  request: Request
-) {
+export const POST = withErrorHandler(async (request: Request) => {
+
   try {
     const authorization =
       request.headers.get(
@@ -218,4 +218,5 @@ export async function POST(
       }
     );
   }
-}
+
+});

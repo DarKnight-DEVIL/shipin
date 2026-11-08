@@ -13,7 +13,7 @@ const PayPalCheckout = dynamic(
   () => import("@/components/payment/PayPalCheckout"),
   { ssr: false }
 );
-import { calculatePayment } from "@/features/finance/calculatePayment";
+import { calculatePayment } from "@/features/finance/services/calculatePayment";
 
 interface Props {
   request: Request;
