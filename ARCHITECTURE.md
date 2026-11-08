@@ -1,119 +1,102 @@
-# ShipIN Architecture Documentation
+# ShipIN Architecture
 
 ## Overview
 
-ShipIN is a Next.js 16 (App Router) application for international shipping logistics. It provides a platform for customers to create shipping requests, track shipments, manage payments, and interact with support.
+ShipIN is a Next.js 16 (App Router) application for international shipping
+logistics. Customers create shipping requests, receive quotes, pay, track
+warehouse processing, and manage deliveries. Administrators review requests,
+run the warehouse workflow, handle refunds, and manage support.
 
 ## Tech Stack
 
-- **Framework**: Next.js 16.4 (App Router, Turbopack)
-- **Language**: TypeScript 5
-- **Styling**: Tailwind CSS 4
-- **Database**: Firebase Firestore (via Firebase Admin SDK server-side, Firebase Client SDK client-side)
-- **Authentication**: Firebase Auth (client) + Firebase Admin Auth (server)
-- **Payments**: PayPal SDK (server-side), @paypal/react-paypal-js (client)
-- **Email**: Resend (primary) + SMTP via Nodemailer (fallback)
-- **File Storage**: Cloudflare R2 (S3-compatible)
-- **Messaging**: WhatsApp Business API
-- **State Management**: Redux Toolkit
-- **Validation**: Zod
-- **Rate Limiting**: In-memory + Upstash Redis (optional)
+- **Framework:** Next.js 16 (App Router, Turbopack)
+- **Language:** TypeScript 5 (strict)
+- **Styling:** Tailwind CSS 4
+- **Database:** Firebase Firestore
+- **Authentication:** Firebase Auth (client) + Firebase Admin Auth (server)
+- **Payments:** PayPal (server verification, client SDK)
+- **Email:** Resend + SMTP via Nodemailer
+- **File storage:** Cloudflare R2
+- **Messaging:** WhatsApp Business API
+- **Validation:** Zod
+- **Rate limiting:** In-memory + optional Upstash Redis
 
 ## Project Structure
 
-```
+```text
 shipin/
-├── public/                 # Static assets
+├── public/                    Static assets
+├── docs/
+│   └── ARCHITECTURE_AUDIT.md  Audit findings and remaining debt
 ├── src/
-│   ├── app/                # Next.js App Router
-│   │   ├── (platform)/     # Customer-facing routes (authenticated)
-│   │   ├── admin/          # Admin panel routes
-│   │   ├── api/            # API routes (thin handlers → services)
-│   │   ├── login/          # Auth pages
-│   │   └── ...
-│   ├── components/         # Reusable UI components
-│   │   ├── ui/             # Base UI primitives (shadcn-style)
-│   │   ├── forms/          # Form components
-│   │   ├── layout/         # Layout components
-│   │   └── common/         # Business-agnostic components
-│   ├── features/           # Feature-based modules (business logic)
-│   │   ├── auth/           # Authentication
-│   │   ├── requests/       # Shipping requests
-│   │   ├── payments/       # Payment processing (PayPal, wallet)
-│   │   ├── wallet/         # Wallet management
-│   │   ├── notifications/  # Notification system
-│   │   ├── support/        # Support tickets
-│   │   ├── checkout/       # Checkout flow
-│   │   ├── admin/          # Admin dashboard
-│   │   └── tracking/       # Package tracking
-│   ├── hooks/              # Custom React hooks
-│   ├── lib/                # Core libraries (shared infrastructure)
-│   │   ├── config/         # Configuration
-│   │   │   └── env/        # Environment variables (validated)
-│   │   ├── firebase/       # Firebase client + Admin SDK
-│   │   ├── utils/          # General utilities
-│   │   │   ├── errors/     # Error classes + factory + handlers
-│   │   │   ├── format/     # Formatting helpers
-│   │   │   └── validation/ # Zod schemas
-│   │   ├── security/       # Security utilities
-│   │   │   ├── cors.ts
-│   │   │   ├── csrf.ts
-│   │   │   ├── headers.ts  # Security headers + CSP
-│   │   │   └── mfa.ts      # Multi-factor auth helpers
-│   │   └── types/          # Shared TypeScript types
-│   ├── middleware.ts       # Next.js middleware (rate limit, CORS, CSP)
-│   ├── services/           # API service layer
-│   │   └── api/
-│   │       └── client.ts   # HTTP client
-│   ├── store/              # Redux store
-│   │   ├── slices/         # Feature slices
-│   │   └── index.ts
-│   ├── types/              # Global domain types
-│   └── utils/              # Canonical shared utilities
-│       ├── errors/         # ShipINError classes + toShipINError + serializeError + withErrorHandler
-│       └── format/         # Currency, date, phone, tracking-id formatters
-├── .env.example            # Environment template
-├── next.config.ts
-├── package.json
-├── tsconfig.json
-└── firestore.rules
+│   ├── app/                   Next.js App Router
+│   │   ├── (platform)/        Customer routes
+│   │   ├── admin/             Admin routes (AdminGuard)
+│   │   ├── api/               Route handlers (thin → services)
+│   │   ├── login/             Authentication
+│   │   └── track/             Public tracking
+│   ├── components/            Reusable and feature UI
+│   │   ├── ui/                Base primitives (Modal, Badge, Skeleton, etc.)
+│   │   ├── platform/          Shared chrome: PlatformShell, Sidebar, Brand, NavItem, UserAvatar
+│   │   ├── admin/             Admin UI panels & cards
+│   │   ├── checkout/          Checkout flow components
+│   │   ├── request/           Request detail components
+│   │   ├── support/           Support ticket/conversation UI
+│   │   └── landing/           Landing page sections (ProofSection, PricingSection, etc.)
+│   ├── features/              Domain modules
+│   │   ├── addresses/         Address book (canonical address service)
+│   │   ├── admin/             Admin analytics
+│   │   ├── auth/              Auth types
+│   │   ├── checkout/          Checkout orchestration
+│   │   ├── finance/           Payment, fees and quote calculations
+│   │   ├── notifications/     Reads, writes, delivery
+│   │   ├── payment/           Payment service
+│   │   ├── requests/          Request workflow and persistence
+│   │   ├── shipments/         Shipment and tracking services
+│   │   ├── support/           Support tickets and messages
+│   │   ├── users/             Profile and preferences
+│   │   └── wallet/            Wallet reads and admin credits
+│   ├── hooks/                 Reusable React hooks
+│   ├── lib/                   Shared infrastructure only
+│   │   ├── auth.ts            Customer auth guards
+│   │   ├── adminAuth.ts       Admin auth + MFA gate
+│   │   ├── firebase*.ts       Firebase client/Admin setup
+│   │   ├── paypal.ts          PayPal client
+│   │   ├── mailer.ts          Email transport
+│   │   ├── r2.ts              Object storage
+│   │   ├── security*.ts       CORS, CSRF, headers
+│   │   ├── rateLimiter.ts     Rate limiting
+│   │   ├── validation.ts      Shared Zod schemas
+│   │   ├── customerApiClient.ts
+│   │   ├── adminApiClient.ts
+│   │   └── pdf/               PDF generation
+│   ├── config/                Environment and product configuration
+│   ├── stores/                Zustand shared client store (useProfileStore)
+│   ├── types/                 Canonical domain types
+│   ├── utils/                 Errors and formatting
+│   └── middleware.ts          Rate limit, CORS, CSP
+└── ...
 ```
-
-> Note: `src/lib/errors` and `src/lib/utils` are backward-compatibility
-> re-export barrels. New code should import from `@/utils/errors` and
-> `@/utils/format` directly.
 
 ## Layering Rules
 
-The codebase follows a strict dependency direction (top may import from
-bottom, never the reverse):
+Dependencies point downward only:
 
-```
-pages/routes (src/app)        ← thin: server components + route handlers
-     │
-features (src/features/*)     ← business logic: services, hooks, types, store, components
-     │
-lib (src/lib/*)               ← infrastructure: firebase, auth guards, integrations
-     │
-config/env (src/config/env)   ← single source of truth for process.env
+```text
+app routes/pages  →  features  →  lib  →  config/env
 ```
 
-Rules:
-
-1. **Route handlers stay thin.** Each `route.ts` should only parse/validate
-   input, call an auth guard, delegate to a service, and return JSON.
-   Business logic lives in `src/features/*/services` or `src/lib/*`.
-2. **Features are self-contained.** A feature owns its services, types,
-   hooks, and components. Features may import from `lib` and `config`,
-   but other features must not reach into another feature's internals —
-   use its exported service API instead.
-3. **`lib/` holds shared infrastructure**, not feature-specific logic.
-   Feature-specific persistence belongs in `features/*/services`.
-4. **UI components live in `components/` (shared) or `features/*/` (feature).**
-   Components never write to Firestore directly — they call services.
-5. **Types:** canonical domain types live in `src/types/`; feature
-   request/response types live in `src/features/*/types` and re-export
-   the canonical types.
+1. **Route handlers stay thin.** Parse/validate input, run an auth guard,
+   delegate to a feature service, return JSON.
+2. **Features are self-contained.** A feature owns its services, types, hooks,
+   and components. Other features use its exported service API.
+3. **`lib/` is infrastructure.** No feature-specific business rules. If logic
+   only makes sense for requests, addresses, notifications, etc., it belongs in
+   that feature.
+4. **Components never write to Firestore directly.** They call a service or an
+   API route. Read-only live subscriptions are exposed by feature services.
+5. **Types.** Canonical domain types live in `src/types/`; feature-specific
+   request/response types live in `src/features/*/types`.
 
 ## Environment Configuration
 
@@ -123,98 +106,91 @@ All environment access goes through `src/config/env`:
 import { serverEnv, clientEnv, isProduction } from '@/config/env';
 ```
 
-- `serverEnv` — server-only secrets (Firebase Admin, PayPal, SMTP, R2,
-  Upstash). Throws at startup if a required var is missing (fail fast).
-- `clientEnv` — only `NEXT_PUBLIC_*` vars. Safe to bundle into the browser.
-- Never read `process.env` directly outside this module.
-- Copy `.env.example` to `.env.local` and fill in real values.
-  `.env.local` is git-ignored; `.env.example` documents required keys.
+- `serverEnv` — server-only secrets. Required variables fail fast at runtime;
+  the build phase tolerates missing variables so page-data collection can run.
+- `clientEnv` — only `NEXT_PUBLIC_*` variables, safe to bundle.
+- Never read `process.env` directly outside this module, except for framework
+  `NODE_ENV` checks.
+- Copy `.env.example` to `.env.local`; `.env.local` is git-ignored.
 
 ## Error Handling
 
-All application errors extend `ShipINError` (in `@/utils/errors`) and carry
-a machine-readable `code` and HTTP `status`:
+All application errors extend `ShipINError` in `@/utils/errors`:
 
-| Error class            | Code                     | HTTP |
-| ---------------------- | ------------------------ | ---- |
-| `ValidationError`      | `VALIDATION_ERROR`       | 400  |
-| `AuthenticationError`  | `AUTHENTICATION_ERROR`   | 401  |
-| `AuthorizationError`   | `AUTHORIZATION_ERROR`    | 403  |
-| `NotFoundError`        | `NOT_FOUND`              | 404  |
-| `PaymentError`         | `PAYMENT_ERROR`          | 402  |
-| `RateLimitError`       | `RATE_LIMIT_ERROR`       | 429  |
-| `ExternalServiceError` | `EXTERNAL_SERVICE_ERROR` | 502  |
+| Error class | Code | HTTP |
+| --- | --- | --- |
+| `ValidationError` | `VALIDATION_ERROR` | 400 |
+| `AuthenticationError` | `AUTHENTICATION_ERROR` | 401 |
+| `AuthorizationError` | `AUTHORIZATION_ERROR` | 403 |
+| `NotFoundError` | `NOT_FOUND` | 404 |
+| `PaymentError` | `PAYMENT_ERROR` | 402 |
+| `RateLimitError` | `RATE_LIMIT_ERROR` | 429 |
+| `ExternalServiceError` | `EXTERNAL_SERVICE_ERROR` | 502 |
 
 Conventions:
 
-1. **Services** wrap operations in try/catch and rethrow via
-   `toShipINError(error)` — this maps Firebase/Firestore error strings
-   (`permission-denied`, `not-found`, ...) to the right error class.
-2. **Route handlers** should be wrapped with `withErrorHandler(...)` so any
-   thrown error is serialized by `serializeError` into
-   `{ error, code, details? }`. `details` is only included outside
-   production, so stack internals never leak to clients.
-3. **Client API calls** go through `apiClient` (`@/services/api/client`),
-   which converts non-OK responses into `ShipINError`s and logs every
-   failure with URL/status/code context.
-4. Log server-side with a `[Context]` prefix (e.g. `[Auth]`,
-   `[API Client]`) before converting to an error response.
+1. Services wrap operations in `try/catch` and rethrow via `toShipINError`.
+2. Route handlers are wrapped with `withErrorHandler`, which serializes
+   `{ error, code, details? }` and only includes `details` outside production.
+3. Client calls go through `customerApi` or `adminApi`; both attach the
+   Firebase ID token and convert non-OK responses into typed errors.
+4. Log server-side with a `[Context]` prefix and return a generic client message.
 
 ## API Structure
 
-API routes live under `src/app/api/` and mirror the resource model:
+Routes live under `src/app/api/` and mirror the resource model:
 
-```
+```text
 api/
-├── auth/            # login-intent, mfa/{totp,webauthn,sms}, password-leak-check
-├── requests/        # [requestId]/{quote,refund,partial-refund,shipment-status,request-new-quote}
-├── admin/           # requests/[requestId]/{refund,refund-offer,partial-refund}, wallet/credit
-├── paypal/          # create-order, capture-order, complete-payment, create/capture-wallet-topup
-├── payment/         # complete-wallet
-├── r2/              # upload, view (presigned R2 access)
-└── send-*-email/    # notification email dispatch
+├── auth/            login-intent, mfa/{totp,webauthn,sms}, password-leak-check
+├── requests/        [requestId]/{quote,refund,partial-refund,shipment-status,
+│                    additional-items,approve-quote,status,notifications}
+├── admin/           requests/[requestId]/{refund,refund-offer,partial-refund,
+│                    warehouse,shipment,additional-items,approve-international},
+│                    shipments/[shipmentId], wallet/credit
+├── addresses/       create, update/delete, set default
+├── notifications/   create, mark read/delete, read-all, clear-read, preferences
+├── profile/         create/update, dashboard preferences
+├── paypal/          create-order, capture-order, wallet top-ups
+├── payment/         complete-wallet
+├── support/         [ticketId]/message
+├── r2/              upload, view
+├── tracking/        [trackingId]
+├── send-email/      transactional email dispatch
+└── webhook/         provider callbacks
 ```
 
-Handler pattern:
-
-```ts
-import { withErrorHandler } from '@/utils/errors';
-import { requireAuth } from '@/lib/auth';
-import { myService } from '@/features/my-feature/services';
-
-export const POST = withErrorHandler(async (request: Request) => {
-  const auth = await requireAuth(request);          // 1. auth guard
-  if (auth instanceof NextResponse) return auth;
-
-  const body = await parseBody(request);            // 2. parse + validate
-  const result = await myService.doThing(body);     // 3. delegate to service
-  return NextResponse.json(result);                 // 4. respond
-});
-```
-
-Adding a new endpoint:
-
-1. Create the route file under `api/<resource>/<action>/route.ts`.
-2. Put the logic in the owning feature's service, not the route.
-3. Wrap with `withErrorHandler`; use `requireAuth` / `requireAdmin` guards.
-4. Return `NextResponse.json` with stable, documented shapes.
+See [`src/app/api/README.md`](src/app/api/README.md) for the handler contract.
 
 ## State Management
 
-Client state uses Redux Toolkit (`src/store`) with per-feature slices:
-`auth`, `requests`, `notifications`, `support`, `wallet`.
+There is no global client store. State is split deliberately:
 
-- Slices hold only UI-relevant server data (loaded entities, flags, errors).
-- All async data fetching flows through feature services; slices store results.
-- Real-time data (request status, support messages, notifications) arrives
-  via Firestore `onSnapshot` subscriptions exposed by feature services.
+- **Server state:** feature services fetch Firestore data and expose
+  `onSnapshot` subscriptions for live data (requests, notifications, support).
+- **UI state:** page-level `useState` for filters, drafts, modals, and
+  optimistic updates.
+- **Cross-page cache:** `src/stores/index.ts` provides a lightweight Zustand
+  store (currently only `useProfileStore` for short-lived profile cache). If
+  more cross-page caching is needed, extend this file rather than adding new
+  store files.
+
+This keeps a single source of truth in Firestore and avoids duplicating server
+data in a client cache. If cross-page client caching becomes necessary, add a
+dedicated data-fetching layer rather than Redux slices that shadow Firestore.
 
 ## Naming Conventions
 
-- Files: `camelCase.ts`; `PascalCase.tsx` for React components.
-- Features: folder per domain (`features/requests/`) with `services/`,
-  `types/`, `hooks/`, `components/` subfolders as needed.
-- Services export named functions (or a single `XService` class instance);
-  one responsibility per module.
+- Files: `camelCase.ts`; React components `PascalCase.tsx`.
+- Features: one folder per domain with `services/`, `types/`, `hooks/`,
+  `components/` subfolders as needed.
+- Services export named functions; one responsibility per module.
 - API routes: kebab-case folders, `route.ts` entry file.
 - Env vars: `UPPER_SNAKE_CASE`; client-exposed vars prefixed `NEXT_PUBLIC_`.
+
+## Testing
+
+- Vitest for unit tests (`npm test`).
+- ESLint for linting (`npm run lint`).
+- Type checking with `npx tsc --noEmit` (see known debt in
+  `docs/ARCHITECTURE_AUDIT.md`).

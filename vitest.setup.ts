@@ -1,5 +1,5 @@
-import { expect, vi, beforeAll, afterAll } from 'vitest';
-import '@testing-library/jest-dom';
+import { vi, beforeAll, afterAll } from 'vitest';
+import '@testing-library/jest-dom/vitest';
 
 // Mock Next.js router
 vi.mock('next/navigation', () => ({
@@ -84,15 +84,18 @@ vi.mock('@/components/AuthRedirectHandler', () => ({
 
 // Mock crypto.randomUUID for tests
 if (typeof globalThis.crypto === 'undefined') {
-  (globalThis as any).crypto = {
-    randomUUID: () => 'test-uuid-' + Math.random().toString(36).slice(2),
-    getRandomValues: (arr: Uint8Array) => {
-      for (let i = 0; i < arr.length; i++) {
-        arr[i] = Math.floor(Math.random() * 256);
-      }
-      return arr;
+  Object.defineProperty(globalThis, 'crypto', {
+    configurable: true,
+    value: {
+      randomUUID: () => 'test-uuid-' + Math.random().toString(36).slice(2),
+      getRandomValues: (arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) {
+          arr[i] = Math.floor(Math.random() * 256);
+        }
+        return arr;
+      },
     },
-  };
+  });
 }
 
 // Mock Resend

@@ -10,21 +10,11 @@ const nextConfig: NextConfig = {
   // Disable powered-by header
   poweredByHeader: false,
 
-  // Keep heavy Node-only SDKs external to the server bundle so Turbopack
-  // does not trace their internal Node builtins (fs, net, tls) at build time.
-  serverExternalPackages: [
-    "firebase-admin",
-    "@google-cloud/firestore",
-    "@grpc/grpc-js",
-  ],
+  // Keep heavy Node-only SDKs external so Turbopack doesn’t bundle them
 
-  // Security: disable client-side navigation for sensitive routes
-  // (handled by middleware)
-
-  // Experimental features (if needed)
-  // experimental: {
-  //   appDir: true,
-  // },
+  // Prefer server-rendering dashboard/admin pages and static for public site
+  // (route exports are set per-page where needed)
+  output: "standalone"
 };
 
 export default nextConfig;

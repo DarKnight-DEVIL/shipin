@@ -26,7 +26,7 @@ npm run start            # Start production server
 npm run lint             # Run ESLint (config in package.json)
 ```
 
-**Note**: No unit tests exist in this codebase. Manual verification needed for changes.
+**Testing**: Vitest unit tests live next to the modules they cover (`*.test.ts` / `*.test.tsx`). Run `npm test`. ESLint: `npm run lint`.
 
 ## gstack Skills
 
@@ -136,7 +136,7 @@ src/
 ### Data Flow
 1. **Requests**: Native Firestore documents in `requests` collection
 2. **Status Tracking**: `statusHistory` timestamps on Request type
-3. **Email**: Triggers via API endpoints (`/api/send-*.ts`) called from components
+3. **Email**: Triggered via `/api/send-email` and feature notification services
 4. **PDF Documents**: Generated via `react-pdf/renderer` (client) or `firebase-admin` (server)
 
 ### Path Aliases
