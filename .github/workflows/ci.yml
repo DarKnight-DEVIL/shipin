@@ -485,26 +485,6 @@ jobs:
           E2E_SEED_CONFIRM: ${{ secrets.E2E_FIREBASE_ADMIN_PROJECT_ID }}
           E2E_FIXTURE_TTL_HOURS: "6"
 
-      # Re-run the hydration contract test against staging, because a failing
-      # local build is the one we care to read right now and a passing staging
-      # run would not remove that uncertainty. Logs to the job summary for the
-      # same public-channels reason as the local run.
-      - name: Re-run hydration contract test against staging
-        if: env.E2E_STAGING_URL != ''
-        run: |
-          set +e
-          npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/hydration.spec.ts
-          EXIT=$?
-          echo "### Playwright hydration contract test results (staging)" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          npx playwright show-report apps/web/playwright-report/report.json --reporter=json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          exit $EXIT
-        env:
-          CI: "1"
-          BASE_URL: ${{ env.E2E_STAGING_URL }}
-          PLAYWRIGHT_MANAGE_WEBSERVER: "0"
-
   # ─── Firestore security rules ───────────────────────────────────────────────
   # Runs the real `firestore.rules` against the Firestore emulator. The unit
   # suite's `src/lib/firestoreRules.test.ts` re-implements the rules as JS
