@@ -402,8 +402,19 @@ jobs:
       # a bundling change, a MIME/type regression. Smoke tests asserting page
       # text pass straight through that, which is how it shipped once.
       # Always runs against the local build above, never E2E_STAGING_URL.
+      # Emits the run results to the job summary even on failure so the public
+      # channel below gives detail when the HTML logs are gated behind GitHub
+      # sign-in.
       - name: Run hydration contract test
-        run: npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/hydration.spec.ts
+        run: |
+          set +e
+          npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/hydration.spec.ts
+          EXIT=$?
+          echo "### Playwright hydration contract test results" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          npx playwright show-report apps/web/playwright-report/report.json --reporter=json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          exit $EXIT
         env:
           CI: "1"
           BASE_URL: "http://localhost:3000"
@@ -415,8 +426,7 @@ jobs:
       # Each refund run consumes its fixture, so make a new one first. The
       # seeder writes `E2E_REFUND_REQUEST_ID` / `E2E_REFUND_CUSTOMER_ID` into
       # GITHUB_ENV for the step below. Skipped when the ids are supplied as
-      # secrets instead (e.g. a pre-seeded request).
-      - name: Seed a fresh refund fixture (staging)
+      # secrets instead (e.g. a pre-seeded request).      - name: Seed a fresh refund fixture (staging)
         if: env.E2E_STAGING_URL != '' && env.E2E_ADMIN_EMAIL != '' && env.E2E_REFUND_REQUEST_ID == ''
         run: node apps/web/scripts/e2e/seed-refund-fixture.mjs >> "$GITHUB_ENV"
         env:
@@ -473,6 +483,26 @@ jobs:
           FIREBASE_ADMIN_PRIVATE_KEY: ${{ secrets.E2E_FIREBASE_ADMIN_PRIVATE_KEY }}
           E2E_SEED_CONFIRM: ${{ secrets.E2E_FIREBASE_ADMIN_PROJECT_ID }}
           E2E_FIXTURE_TTL_HOURS: "6"
+
+      # Re-run the hydration contract test against staging, because a failing
+      # local build is the one we care to read right now and a passing staging
+      # run would not remove that uncertainty. Logs to the job summary for the
+      # same public-channels reason as the local run.
+      - name: Re-run hydration contract test against staging
+        if: env.E2E_STAGING_URL != ''
+        run: |
+          set +e
+          npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/hydration.spec.ts
+          EXIT=$?
+          echo "### Playwright hydration contract test results (staging)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          npx playwright show-report apps/web/playwright-report/report.json --reporter=json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          exit $EXIT
+        env:
+          CI: "1"
+          BASE_URL: ${{ env.E2E_STAGING_URL }}
+          PLAYWRIGHT_MANAGE_WEBSERVER: "0"
 
   # ─── Firestore security rules ───────────────────────────────────────────────
   # Runs the real `firestore.rules` against the Firestore emulator. The unit
