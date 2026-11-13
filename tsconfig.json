@@ -15,6 +15,5 @@
     "jsx": "react-jsx",
     "incremental": true,
     "types": ["node"]
-  },
-  "files": []
+  }
 }

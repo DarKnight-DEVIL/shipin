@@ -4,8 +4,8 @@ import { calculateAge, isChild } from './ageVerification';
 import { hasLegalHold, shouldHardDelete, getCollectionsForCategory } from './retentionCore';
 import { recordBreach, updateBreach, getBreach, getAllBreaches, getActiveBreaches } from './breach';
 import { logRightsRequest, getUserRightsRequests, updateRightsRequest, getPendingRightsRequests, getAllRightsRequests } from './rightsOps2';
-import { logConsent, getUserConsentState, updateUserConsent, getConsentLog, getGrantedCategories, hasValidConsent, withdrawConsent, ConsentState } from './consent';
-import { verifyParentalConsent, verifyParentalConsentOTP, hasParentalConsent, enforceAgeGate } from './ageOps';
+import { logConsent, getUserConsentState, updateUserConsent, getConsentLog, getGrantedCategories, hasValidConsent, withdrawConsent } from './consent';
+import { hasParentalConsent, enforceAgeGate } from './ageOps';
 import { PERSONAL_DATA_CATEGORIES, LAWFUL_BASES, PROCESSING_REGISTER, DATA_SUBJECT_RIGHTS } from './dpdp';
 import { RIGHTS_DEADLINES } from './rights';
 
