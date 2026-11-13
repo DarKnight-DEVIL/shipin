@@ -56,6 +56,9 @@ write_emails.js
 .freebuff/
 .impeccable/
 .playwright-cli/
+# Playwright run artifacts (reports, traces, failure contexts)
+playwright-report/
+test-results/
 .postman/
 .serena/
 .shots/
@@ -63,7 +66,6 @@ write_emails.js
 
 # Config/UI
 .vscode/
-.github/
 
 # Build outputs
 .next/
@@ -89,3 +91,26 @@ diagnose*.js
 get-token*.js
 write_emails.js
 patch*.js
+
+# Local lint / audit scratch output
+eslint_*.json
+eslint_*.txt
+*_eslint.json
+lint_*.txt
+build_output.txt
+
+# Local scratch / audit artifacts (kept out of the repo root)
+.scratch/
+write_*.py
+write_*.js
+temp_write.*
+append_test.js
+tsc_*.txt
+test_*.txt
+*_b64.txt
+qp_fix_result.txt
+screenshot*.png
+site-restored.png
+
+# Turborepo local cache
+.turbo/

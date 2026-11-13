@@ -1,0 +1,76 @@
+name: Nightly Shuffled Tests
+
+# The PR workflow runs three fixed seeds so a red run is reproducible. That
+# leaves every other ordering untested, which is exactly where an unnoticed
+# cross-file leak would hide. This nightly run picks a fresh seed each time and
+# records it in the job summary, so the ordering that failed can be replayed.
+on:
+  schedule:
+    # 03:17 UTC — off the hour so it does not queue behind the release jobs.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  shuffled:
+    name: Shuffled Order (random seed)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # No --sequence.seed: Vitest derives one from the clock, so every night
+      # explores a different file order. The seed is written to the summary
+      # before the step fails, which makes a red run replayable.
+      - name: Run tests in shuffled file order
+        run: |
+          set -euo pipefail
+          log="$(mktemp)"
+          set +e
+          npm run test:shuffle 2>&1 | tee "$log"
+          status="${PIPESTATUS[0]}"
+          set -e
+          seed="$(grep -oE 'seed "[0-9]+"' "$log" | head -1 | grep -oE '[0-9]+' || true)"
+          {
+            echo "### Nightly shuffled run"
+            echo ""
+            echo "- seed: \`${seed:-unknown}\`"
+            echo "- result: $([ "$status" -eq 0 ] && echo 'pass' || echo 'fail')"
+            echo ""
+            echo "Replay locally with: \`npm run test:shuffle -- --sequence.seed=${seed:-<seed>}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+        env:
+          PAYPAL_CLIENT_ID: "test"
+          PAYPAL_CLIENT_SECRET: "test"
+          NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
+          PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
+          PAYPAL_ENV: "sandbox"
+          SMTP_EMAIL: "test@test.com"
+          SMTP_PASSWORD: "test"
+          FIREBASE_ADMIN_PROJECT_ID: "test"
+          FIREBASE_ADMIN_CLIENT_EMAIL: "test@test.com"
+          FIREBASE_ADMIN_PRIVATE_KEY: "test"
+          R2_ACCOUNT_ID: "test"
+          R2_ACCESS_KEY_ID: "test"
+          R2_SECRET_ACCESS_KEY: "test"
+          R2_BUCKET_NAME: "test"
+          WHATSAPP_ACCESS_TOKEN: "test"
+          WHATSAPP_PHONE_NUMBER_ID: "test"
+          UPSTASH_REDIS_REST_URL: ""
+          UPSTASH_REDIS_REST_TOKEN: ""
+          NODE_ENV: "test"

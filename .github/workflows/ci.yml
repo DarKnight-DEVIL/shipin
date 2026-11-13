@@ -1,0 +1,481 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  # `types: [opened, synchronize, reopened]` means PRs from forks
+  # (which use the `pull_request_target`-style token) still run on the
+  # base repo's config. Without `reopened`, a PR that is closed and
+  # re-opened will not re-trigger CI.
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  # ─── Secret scanning ────────────────────────────────────────────────────────
+  # A committed FIREBASE_ADMIN_PRIVATE_KEY or PayPal secret is a full
+  # compromise, so scan every push and PR for verified credentials.
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog (verified secrets only)
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --results=verified,unknown
+
+  lint-and-typecheck:
+    name: Lint & TypeCheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: TypeScript check
+        run: npm run typecheck
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Next.js
+        run: npm run build
+        env:
+          # Optional: when these repository secrets exist, @sentry/nextjs
+          # uploads source maps during the build so stack traces stay readable.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          # Dummy env vars for build-time validation
+          PAYPAL_CLIENT_ID: "test"
+          PAYPAL_CLIENT_SECRET: "test"
+          NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
+          PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
+          PAYPAL_ENV: "sandbox"
+          SMTP_EMAIL: "test@test.com"
+          SMTP_PASSWORD: "test"
+          FIREBASE_ADMIN_PROJECT_ID: "test"
+          FIREBASE_ADMIN_CLIENT_EMAIL: "test@test.com"
+          FIREBASE_ADMIN_PRIVATE_KEY: "test"
+          R2_ACCOUNT_ID: "test"
+          R2_ACCESS_KEY_ID: "test"
+          R2_SECRET_ACCESS_KEY: "test"
+          R2_BUCKET_NAME: "test"
+          WHATSAPP_ACCESS_TOKEN: "test"
+          WHATSAPP_PHONE_NUMBER_ID: "test"
+          UPSTASH_REDIS_REST_URL: "https://test.upstash.io"
+          UPSTASH_REDIS_REST_TOKEN: "test"
+          NODE_ENV: "test"
+
+  # ─── Initial JS budgets ─────────────────────────────────────────────────────
+  # Every route's initial JavaScript (the chunks referenced by its prerendered
+  # HTML, gzipped) must stay under its budget in scripts/bundle-budgets.json.
+  #
+  # The budgets are tight on purpose. Two regressions this gate exists to
+  # catch already happened here: the Firestore SDK shipping to every public
+  # page because the root layout imported a profile service, and the whole
+  # country/flag dataset loading on /requests/new for a form hidden behind a
+  # modal. Both were invisible without measuring, and neither was caught by
+  # any build-time check.
+  #
+  # Builds with production env rather than reusing the `build` job: NODE_ENV
+  # and the env vars are inlined into the client bundle at build time, so the
+  # measured sizes have to come from the same configuration that ships.
+  bundle-budget:
+    name: Bundle Budget
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build for production
+        run: npm run build
+        env:
+          # Dummy env vars so the production build passes startup validation.
+          NODE_ENV: "production"
+          PAYPAL_CLIENT_ID: "test"
+          PAYPAL_CLIENT_SECRET: "test"
+          NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
+          PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
+          PAYPAL_ENV: "sandbox"
+          PAYPAL_WEBHOOK_ID: "test"
+          SMTP_EMAIL: "test@test.com"
+          SMTP_PASSWORD: "test"
+          RESEND_API_KEY: "test"
+          FIREBASE_ADMIN_PROJECT_ID: "test"
+          FIREBASE_ADMIN_CLIENT_EMAIL: "test@test.com"
+          FIREBASE_ADMIN_PRIVATE_KEY: "test"
+          R2_ACCOUNT_ID: "test"
+          R2_ACCESS_KEY_ID: "test"
+          R2_SECRET_ACCESS_KEY: "test"
+          R2_BUCKET_NAME: "test"
+          APP_URL: "http://localhost:3000"
+          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+          NEXT_PUBLIC_FIREBASE_API_KEY: "test"
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "test.firebaseapp.com"
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: "test"
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "test-bucket"
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "123456"
+          NEXT_PUBLIC_FIREBASE_APP_ID: "1:123456:web:abcdef"
+          UPSTASH_REDIS_REST_URL: "https://test.upstash.io"
+          UPSTASH_REDIS_REST_TOKEN: "test"
+
+      - name: Check initial JS budgets
+        # Fails when a route grows past its budget, when a prerendered route
+        # has no budget entry, or when nothing could be measured. The table it
+        # prints (route, actual, budget, delta) is the report; a red run shows
+        # which route grew and by how much.
+        run: npm run check:bundle-budget
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: npm audit --audit-level=moderate
+
+      - name: Report unpinned dependencies
+        # Advisory only. The manifest intentionally uses caret ranges, so a
+        # hard failure here would turn every run red without changing anything.
+        run: |
+          UNPINNED=$(jq -r '.dependencies | to_entries[] | select(.value | startswith("^") or startswith("~")) | "\(.key): \(.value)"' apps/web/package.json)
+          if [ -n "$UNPINNED" ]; then
+            echo "::warning::Dependencies using caret/tilde ranges:"
+            echo "$UNPINNED"
+          fi
+
+      - name: Verify lockfile integrity
+        run: npm ci --package-lock-only --ignore-scripts
+
+  test:
+    name: Tests (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22', '24']
+    needs: lint-and-typecheck
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+        env:
+          # Dummy env vars for build-time validation
+          PAYPAL_CLIENT_ID: "test"
+          PAYPAL_CLIENT_SECRET: "test"
+          NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
+          PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
+          PAYPAL_ENV: "sandbox"
+          SMTP_EMAIL: "test@test.com"
+          SMTP_PASSWORD: "test"
+          FIREBASE_ADMIN_PROJECT_ID: "test"
+          FIREBASE_ADMIN_CLIENT_EMAIL: "test@test.com"
+          FIREBASE_ADMIN_PRIVATE_KEY: "test"
+          R2_ACCOUNT_ID: "test"
+          R2_ACCESS_KEY_ID: "test"
+          R2_SECRET_ACCESS_KEY: "test"
+          R2_BUCKET_NAME: "test"
+          WHATSAPP_ACCESS_TOKEN: "test"
+          WHATSAPP_PHONE_NUMBER_ID: "test"
+          UPSTASH_REDIS_REST_URL: ""
+          UPSTASH_REDIS_REST_TOKEN: ""
+          NODE_ENV: "test"
+
+  # ─── Test-order independence ────────────────────────────────────────────────
+  # The unit suite runs with `isolate: false`, so every file in a worker shares
+  # one module registry. Shuffling the file order on each run means a mock or a
+  # module-level cache leaking between files fails here, instead of passing by
+  # luck on whatever order the filesystem happened to return.
+  #
+  # Reproduce a failure locally with the seed Vitest prints in its output:
+  #   npm run test:shuffle -- --sequence.seed=<seed>
+  test-order-independence:
+    name: Test Order Independence
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests in shuffled file order
+        # Three fixed seeds: any single ordering can pass while another exposes
+        # cross-file coupling, so one seed would let CI go green on a lucky
+        # order. Fixed rather than random so a red run is reproducible from the
+        # log alone; rotate or add a seed when you want more coverage.
+        run: |
+          set -euo pipefail
+          for seed in 104729 130363 155921; do
+            echo "::group::vitest run --sequence.seed=$seed"
+            npm run test:shuffle -- --sequence.seed=$seed
+            echo "::endgroup::"
+          done
+        env:
+          PAYPAL_CLIENT_ID: "test"
+          PAYPAL_CLIENT_SECRET: "test"
+          NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
+          PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
+          PAYPAL_ENV: "sandbox"
+          SMTP_EMAIL: "test@test.com"
+          SMTP_PASSWORD: "test"
+          FIREBASE_ADMIN_PROJECT_ID: "test"
+          FIREBASE_ADMIN_CLIENT_EMAIL: "test@test.com"
+          FIREBASE_ADMIN_PRIVATE_KEY: "test"
+          R2_ACCOUNT_ID: "test"
+          R2_ACCESS_KEY_ID: "test"
+          R2_SECRET_ACCESS_KEY: "test"
+          R2_BUCKET_NAME: "test"
+          WHATSAPP_ACCESS_TOKEN: "test"
+          WHATSAPP_PHONE_NUMBER_ID: "test"
+          UPSTASH_REDIS_REST_URL: ""
+          UPSTASH_REDIS_REST_TOKEN: ""
+          NODE_ENV: "test"
+
+  # ─── E2E smoke tests ────────────────────────────────────────────────────────
+  #
+  # By default E2E runs against a PRODUCTION build (next build + next start),
+  # which is far more stable than the dev server used previously.
+  #
+  # If the `E2E_STAGING_URL` repository secret is set, tests run against
+  # that live staging environment instead — recommended once staging exists.
+  e2e:
+    name: E2E Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck]
+    env:
+      # Optional: point E2E at a live staging environment by setting the
+      # E2E_STAGING_URL repository secret (e.g. https://shipin-staging.vercel.app).
+      E2E_STAGING_URL: ${{ secrets.E2E_STAGING_URL }}
+      # Credentials for the destructive staging refund smoke test. Left unset,
+      # that step skips itself so forks and PRs stay green.
+      E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+      E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+      E2E_ADMIN_TOTP_SECRET: ${{ secrets.E2E_ADMIN_TOTP_SECRET }}
+      E2E_FIREBASE_API_KEY: ${{ secrets.E2E_FIREBASE_API_KEY }}
+      E2E_REFUND_REQUEST_ID: ${{ secrets.E2E_REFUND_REQUEST_ID }}
+      E2E_REFUND_CUSTOMER_ID: ${{ secrets.E2E_REFUND_CUSTOMER_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      # Build once; Playwright starts the server itself (see
+      # PLAYWRIGHT_WEBSERVER_COMMAND below). The previous version built the app
+      # and then polled a port nothing listened on, so E2E silently fell back to
+      # a dev server and never exercised the production build.
+      - name: Build for production
+        run: npm run build
+        env:
+          # Dummy env vars so the production build passes startup validation.
+          NODE_ENV: "production"
+          PAYPAL_CLIENT_ID: "test"
+          PAYPAL_CLIENT_SECRET: "test"
+          NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
+          PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
+          PAYPAL_ENV: "sandbox"
+          PAYPAL_WEBHOOK_ID: "test"
+          SMTP_EMAIL: "test@test.com"
+          SMTP_PASSWORD: "test"
+          RESEND_API_KEY: "test"
+          FIREBASE_ADMIN_PROJECT_ID: "test"
+          FIREBASE_ADMIN_CLIENT_EMAIL: "test@test.com"
+          FIREBASE_ADMIN_PRIVATE_KEY: "test"
+          R2_ACCOUNT_ID: "test"
+          R2_ACCESS_KEY_ID: "test"
+          R2_SECRET_ACCESS_KEY: "test"
+          R2_BUCKET_NAME: "test"
+          APP_URL: "http://localhost:3000"
+          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+          NEXT_PUBLIC_FIREBASE_API_KEY: "test"
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "test.firebaseapp.com"
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: "test"
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "test-bucket"
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "123456"
+          NEXT_PUBLIC_FIREBASE_APP_ID: "1:123456:web:abcdef"
+          UPSTASH_REDIS_REST_URL: "https://test.upstash.io"
+          UPSTASH_REDIS_REST_TOKEN: "test"
+
+      # A production build must actually execute its JavaScript. This catches
+      # the failure mode where every page renders correctly but nothing
+      # hydrates — a CSP with a nonce the prerendered HTML can never carry,
+      # a bundling change, a MIME/type regression. Smoke tests asserting page
+      # text pass straight through that, which is how it shipped once.
+      # Always runs against the local build above, never E2E_STAGING_URL.
+      - name: Run hydration contract test
+        run: npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/hydration.spec.ts
+        env:
+          CI: "1"
+          BASE_URL: "http://localhost:3000"
+          # `-p 3000` is required: with `output: "standalone"` in next.config.ts,
+          # a bare `next start` binds an arbitrary free port, so Playwright waits
+          # on http://localhost:3000 until it times out.
+          PLAYWRIGHT_WEBSERVER_COMMAND: "npm run start --workspace=@shipin/web -- -p 3000"
+
+      # Each refund run consumes its fixture, so make a new one first. The
+      # seeder writes `E2E_REFUND_REQUEST_ID` / `E2E_REFUND_CUSTOMER_ID` into
+      # GITHUB_ENV for the step below. Skipped when the ids are supplied as
+      # secrets instead (e.g. a pre-seeded request).
+      - name: Seed a fresh refund fixture (staging)
+        if: env.E2E_STAGING_URL != '' && env.E2E_ADMIN_EMAIL != '' && env.E2E_REFUND_REQUEST_ID == ''
+        run: node apps/web/scripts/e2e/seed-refund-fixture.mjs >> "$GITHUB_ENV"
+        env:
+          FIREBASE_ADMIN_PROJECT_ID: ${{ secrets.E2E_FIREBASE_ADMIN_PROJECT_ID }}
+          FIREBASE_ADMIN_CLIENT_EMAIL: ${{ secrets.E2E_FIREBASE_ADMIN_CLIENT_EMAIL }}
+          FIREBASE_ADMIN_PRIVATE_KEY: ${{ secrets.E2E_FIREBASE_ADMIN_PRIVATE_KEY }}
+          # Must equal the project id: staging-only guard inside the seeder.
+          E2E_SEED_CONFIRM: ${{ secrets.E2E_FIREBASE_ADMIN_PROJECT_ID }}
+
+      # Moves real money, so it only runs against staging with a seeded fixture
+      # (see playwright-test/tests/admin-refund.spec.ts for the seed shape and
+      # the environment it needs). Each run consumes that fixture.
+      - name: Run admin refund smoke test (staging)
+        if: env.E2E_STAGING_URL != '' && env.E2E_ADMIN_EMAIL != ''
+        run: npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/admin-refund.spec.ts
+        env:
+          BASE_URL: ${{ env.E2E_STAGING_URL }}
+          PLAYWRIGHT_MANAGE_WEBSERVER: "0"
+
+      # Read-only counterpart to the refund smoke: signs in through the real
+      # login page and checks the paths only a session can reach — the admin
+      # area and the dashboard's Firestore reads. The hydration contract runs
+      # against the local build, so it can never cover these. Skips itself when
+      # the staging credentials are absent, so forks stay green.
+      - name: Run signed-in smoke test (staging)
+        if: env.E2E_STAGING_URL != '' && env.E2E_ADMIN_EMAIL != ''
+        run: npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/signed-in-smoke.spec.ts
+        env:
+          BASE_URL: ${{ env.E2E_STAGING_URL }}
+          PLAYWRIGHT_MANAGE_WEBSERVER: "0"
+
+      - name: Run Playwright smoke tests
+        run: npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/smoke.spec.ts
+        env:
+          CI: "1"
+          BASE_URL: ${{ env.E2E_STAGING_URL || 'http://localhost:3000' }}
+          # When BASE_URL is local, Playwright starts this command and waits
+          # for it. Serves the production build made above; the explicit port is
+          # required because standalone output makes a bare `next start` choose
+          # its own port, leaving the 3000 health check to time out.
+          PLAYWRIGHT_WEBSERVER_COMMAND: "npm run start --workspace=@shipin/web -- -p 3000"
+
+      # Sweeps fixtures left by this and earlier runs. `always()` so a failed
+      # smoke run does not litter staging, and `--apply` because the script is
+      # read-only by default (a human running it by hand only sees the plan).
+      # Only documents marked `e2eFixture: true` and older than the TTL are
+      # removed; audit log entries are kept.
+      - name: Clean up stale refund fixtures (staging)
+        if: always() && env.E2E_STAGING_URL != '' && env.E2E_ADMIN_EMAIL != ''
+        run: node apps/web/scripts/e2e/cleanup-refund-fixtures.mjs --apply
+        env:
+          FIREBASE_ADMIN_PROJECT_ID: ${{ secrets.E2E_FIREBASE_ADMIN_PROJECT_ID }}
+          FIREBASE_ADMIN_CLIENT_EMAIL: ${{ secrets.E2E_FIREBASE_ADMIN_CLIENT_EMAIL }}
+          FIREBASE_ADMIN_PRIVATE_KEY: ${{ secrets.E2E_FIREBASE_ADMIN_PRIVATE_KEY }}
+          E2E_SEED_CONFIRM: ${{ secrets.E2E_FIREBASE_ADMIN_PROJECT_ID }}
+          E2E_FIXTURE_TTL_HOURS: "6"
+
+  # ─── Accessibility audit ────────────────────────────────────────────────────
+  a11y:
+    name: Accessibility Audit
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run axe-core contract tests
+        run: npm run test:security --workspace=@shipin/web -- src/lib/axeScan.test.ts

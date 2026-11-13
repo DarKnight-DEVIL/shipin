@@ -1,0 +1,67 @@
+/* ShipIN global styles. Tailwind v4 base + custom design tokens. */
+@import "tailwindcss";
+
+/* ShipIN app theme: the landing palette applied to the signed-in area.
+   Scoped to .shipin-app (set on the platform layout), so it re-themes the
+   dashboard, sidebar and every page inside that layout, and nothing else
+   (landing, login and any admin layout are untouched). Clean and flat: no 3D
+   or glow effects. Dark = landing ink + saffron; light = warm cream. */
+.shipin-app {
+  --background: #f7f3ec; --card: #ffffff; --sidebar: #fbf8f3;
+  --foreground: #1c1814; --muted: #6b6358; --muted-soft: #7c7468;
+  --border: #e7e0d4; --border-strong: #d6ccbc;
+  --surface: #ffffff; --surface-2: #f1ece3; --surface-3: #e8e1d5;
+  --accent: #c2410c; --accent-solid: #ff6b1a; --accent-solid-hover: #ea580c;
+  --display: var(--font-display), var(--font-geist-sans), system-ui, sans-serif;
+  background: var(--background); color: var(--foreground);
+}
+.dark .shipin-app {
+  --background: #0c0a09; --card: #141211; --sidebar: #0f0d0c;
+  --foreground: #f6f0e6; --muted: #9a9286; --muted-soft: #8f877b;
+  --border: #2a2622; --border-strong: #3d362d;
+  --surface: #141211; --surface-2: #1b1816; --surface-3: #26221e;
+  --accent: #ff8a3d; --accent-solid: #ff6b1a; --accent-solid-hover: #ff8a3d;
+}
+.shipin-app ::selection { background: rgba(255, 107, 26, .35); }
+.shipin-app :focus-visible { outline: 2px solid var(--accent-solid); outline-offset: 2px; }
+.shipin-app h1 { font-family: var(--display); letter-spacing: -.04em; }
+
+.shipin-app .app-page { width: 100%; max-width: 1240px; margin-inline: auto; padding: 28px 20px 64px; }
+@media (min-width: 768px) { .shipin-app .app-page { padding: 36px 36px 72px; } }
+
+.shipin-app .app-panel { background: var(--card); border: 1px solid var(--border); border-radius: 16px; }
+.shipin-app .app-panel-flush { padding: 0; overflow: hidden; }
+.shipin-app .app-section-title { font-family: var(--display); font-size: 15px; font-weight: 600; letter-spacing: -.02em; color: var(--foreground); }
+.shipin-app .app-kicker { font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted-soft); }
+
+.shipin-app .dash-title {
+  font-family: var(--display);
+  font-size: clamp(1.875rem, 3.5vw, 2.25rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+  color: var(--foreground);
+}
+
+.shipin-app .app-h1 {
+  font-family: var(--display);
+  font-size: clamp(1.25rem, 2.5vw, 1.5rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+  color: var(--foreground);
+}
+.shipin-app .app-lead {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.shipin-app .app-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 14px; border: 1px solid transparent; border-radius: 10px; font-size: 13px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; text-decoration: none; transition: background .2s, border-color .2s, color .2s, transform .15s; }
+.shipin-app .app-btn:active { transform: translateY(1px); }
+.shipin-app .app-btn:disabled { opacity: .55; cursor: not-allowed; }
+.shipin-app .app-btn-lg { height: 40px; padding: 0 18px; font-size: 13.5px; border-radius: 11px; }
+.shipin-app .app-btn-primary { background: var(--accent-solid); color: #1a0b02; font-weight: 600; }
+.shipin-app .app-btn-primary:hover:not(:disabled) { background: var(--accent-solid-hover); }
+.shipin-app .app-btn-secondary { background: var(--surface-2); border-color: var(--border); color: var(--foreground); }
+.shipin-app .app-btn-secondary:hover:not(:disabled) { background: var(--surface-3); border-color: var(--border-strong); }
