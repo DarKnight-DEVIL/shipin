@@ -72,19 +72,7 @@ jobs:
         run: npm ci
 
       - name: Build Next.js
-        # TEMP DIAGNOSTIC: publish the failure tail to the job summary, which
-        # is readable without authenticated log access.
-        run: |
-          set +e
-          echo '::warning::probe: step started'
-          npm run build > build.log 2>&1
-          status=$?
-          echo "::warning::probe: npm exited $status"
-          if [ "$status" -ne 0 ]; then
-            grep -n -i -E 'error|failed|missing|cannot' build.log | head -20 | while IFS= read -r l; do echo "::warning::$l"; done
-            tail -40 build.log | while IFS= read -r l; do echo "::warning::TAIL $l"; done
-            exit "$status"
-          fi
+        run: npm run build
         env:
           # Optional: when these repository secrets exist, @sentry/nextjs
           # uploads source maps during the build so stack traces stay readable.
@@ -102,7 +90,9 @@ jobs:
           PAYPAL_CLIENT_ID: "test"
           PAYPAL_CLIENT_SECRET: "test"
           NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
+          APP_URL: "http://localhost:3000"
           NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+          RESEND_API_KEY: "test"
           NEXT_PUBLIC_FIREBASE_API_KEY: "test"
           NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "test.firebaseapp.com"
           NEXT_PUBLIC_FIREBASE_PROJECT_ID: "test"
