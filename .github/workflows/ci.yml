@@ -72,7 +72,17 @@ jobs:
         run: npm ci
 
       - name: Build Next.js
-        run: npm run build
+        # TEMP DIAGNOSTIC: surface the real failure text as annotations so it
+        # can be read without authenticated log access.
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee /tmp/build.log
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::error::build exited with $status"
+            tail -50 /tmp/build.log | while IFS= read -r line; do echo "::error::$line"; done
+            exit "$status"
+          fi
         env:
           # Optional: when these repository secrets exist, @sentry/nextjs
           # uploads source maps during the build so stack traces stay readable.
