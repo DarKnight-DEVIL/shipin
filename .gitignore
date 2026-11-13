@@ -113,6 +113,8 @@ test_*.txt
 qp_fix_result.txt
 screenshot*.png
 site-restored.png
+# Local visual-check captures
+screenshots/
 
 # Turborepo local cache
 .turbo/
