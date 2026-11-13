@@ -76,19 +76,13 @@ jobs:
         # is readable without authenticated log access.
         run: |
           set +e
+          echo '::warning::probe: step started'
           npm run build > build.log 2>&1
           status=$?
-          set -e
-          cat build.log
+          echo "::warning::probe: npm exited $status"
           if [ "$status" -ne 0 ]; then
-            {
-              echo '### Build failed'
-              echo '```'
-              grep -n -i -E 'error|failed|missing|cannot' build.log | head -40 || true
-              echo '--- tail ---'
-              tail -150 build.log
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
+            grep -n -i -E 'error|failed|missing|cannot' build.log | head -20 | while IFS= read -r l; do echo "::warning::$l"; done
+            tail -40 build.log | while IFS= read -r l; do echo "::warning::TAIL $l"; done
             exit "$status"
           fi
         env:
