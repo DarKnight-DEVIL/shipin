@@ -3,8 +3,12 @@ import { Timestamp } from "firebase/firestore";
 function toMillis(value?: Timestamp | Date | string): number | null {
   if (!value) return null;
 
-  if (value instanceof Timestamp) {
-    return value.toMillis();
+  // Duck-type instead of `value instanceof Timestamp`. The client SDK, the Admin
+  // SDK and test doubles each provide their own Timestamp constructor for the
+  // same value, so an identity check silently treats a real expiry as "no
+  // expiry" — which is how expired quotes stayed valid on the server.
+  if (typeof (value as { toMillis?: unknown }).toMillis === 'function') {
+    return (value as Timestamp).toMillis();
   }
 
   if (value instanceof Date) {
