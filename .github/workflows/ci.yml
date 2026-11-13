@@ -80,10 +80,23 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
-          # Dummy env vars for build-time validation
+          # Dummy env vars for build-time validation.
+          #
+          # The NEXT_PUBLIC_* values are read while Next collects page-data for
+          # prerendered routes (clientEnv validates them at import time), so a
+          # build without them dies with "Missing required environment variable:
+          # NEXT_PUBLIC_FIREBASE_API_KEY" while collecting /robots.txt. The
+          # bundle-budget and e2e jobs already pass these; this job did not.
           PAYPAL_CLIENT_ID: "test"
           PAYPAL_CLIENT_SECRET: "test"
           NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
+          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+          NEXT_PUBLIC_FIREBASE_API_KEY: "test"
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "test.firebaseapp.com"
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: "test"
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "test-bucket"
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "123456"
+          NEXT_PUBLIC_FIREBASE_APP_ID: "1:123456:web:abcdef"
           PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
           PAYPAL_ENV: "sandbox"
           SMTP_EMAIL: "test@test.com"
