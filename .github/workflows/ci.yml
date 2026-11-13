@@ -426,7 +426,8 @@ jobs:
       # Each refund run consumes its fixture, so make a new one first. The
       # seeder writes `E2E_REFUND_REQUEST_ID` / `E2E_REFUND_CUSTOMER_ID` into
       # GITHUB_ENV for the step below. Skipped when the ids are supplied as
-      # secrets instead (e.g. a pre-seeded request).      - name: Seed a fresh refund fixture (staging)
+      # secrets instead (e.g. a pre-seeded request).
+      - name: Seed a fresh refund fixture (staging)
         if: env.E2E_STAGING_URL != '' && env.E2E_ADMIN_EMAIL != '' && env.E2E_REFUND_REQUEST_ID == ''
         run: node apps/web/scripts/e2e/seed-refund-fixture.mjs >> "$GITHUB_ENV"
         env:
