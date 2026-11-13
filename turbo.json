@@ -23,26 +23,32 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"],
+      "tags": ["ci"]
     },
     "dev": {
       "cache": false,
       "persistent": true
     },
     "lint": {
-      "outputs": []
+      "outputs": [],
+      "tags": ["ci"]
     },
     "typecheck": {
-      "outputs": []
+      "outputs": [],
+      "tags": ["ci"]
     },
     "test": {
-      "outputs": ["coverage/**"]
+      "outputs": ["coverage/**"],
+      "tags": ["ci"]
     },
     "test:coverage": {
-      "outputs": ["coverage/**"]
+      "outputs": ["coverage/**"],
+      "tags": ["ci"]
     },
     "check:bundle-budget": {
-      "cache": false
+      "cache": false,
+      "tags": ["ci"]
     }
   }
 }
