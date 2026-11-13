@@ -17,6 +17,7 @@
     "test:coverage": "npm run test:coverage --workspace=@shipin/web",
     "test:shuffle": "npm run test:shuffle --workspace=@shipin/web",
     "test:security": "npm run test:security --workspace=@shipin/web",
+    "test:rules": "npm run test:rules --workspace=@shipin/web",
     "test:e2e": "npm run test:e2e --workspace=@shipin/web",
     "check:bundle-budget": "npm run check:bundle-budget --workspace=@shipin/web"
   },

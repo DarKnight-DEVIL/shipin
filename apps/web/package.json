@@ -16,6 +16,7 @@
     "test:coverage": "vitest run --coverage",
     "test:shuffle": "vitest run --sequence.shuffle",
     "test:security": "vitest run src/lib/auth.test.ts src/lib/mfaSession.test.ts src/lib/firestoreRules.test.ts",
+    "test:rules": "npx --yes firebase-tools@15.36.0 --config ../../firebase.json emulators:exec --only firestore --project shipin-rules \"vitest run --config vitest.rules.config.ts\"",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "analyze": "cross-env ANALYZE=true next build",

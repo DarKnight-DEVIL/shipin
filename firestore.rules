@@ -1,64 +1,155 @@
+rules_version = '2';
+
+// ShipIN Firestore rules.
+//
+// Trust boundary: the browser may READ what it is allowed to see and may file
+// a brand-new request, but it may never move money, price a request or change
+// a request's workflow state. Those writes belong to the Admin SDK routes
+// under /api/**, which bypass these rules.
+//
+// The previous version granted `update` on `request.resource.data.userId`,
+// which is the document AFTER the write. Any signed-in customer could therefore
+// PATCH their own request to `status: "paid"`, rewrite
+// `quote.breakdown.grandTotal`, or PATCH `wallets/{uid}.balance` to any number
+// and spend it through /api/payment/complete-wallet.
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ------------------------------------------------------------------ users
+    // A customer owns their profile, but not the fields that grant privilege
+    // or move money. Without this split a customer could write `role: "admin"`
+    // on their own document, enrol their own MFA, and inherit the console.
     match /users/{userId} {
-      allow read, create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && request.auth.uid == userId;
+      allow read: if isSelf(userId);
+
+      allow create: if isSelf(userId)
+        && (!('role' in request.resource.data) || request.resource.data.role == 'customer')
+        && !('mfa' in request.resource.data);
+
+      allow update: if isSelf(userId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+             'role',
+             'mfa',
+             'disabled',
+             'suspended',
+             'banned',
+             'deletedAt',
+             'walletBalance',
+             'email',
+             'emailVerified'
+           ]);
+
       allow delete: if false;
     }
 
+    // --------------------------------------------------------------- requests
+    match /requests/{requestId} {
+      allow read: if isAdmin() || isSelf(resource.data.userId);
+
+      // Filing a request is the one customer write that stays client-side
+      // (see POST /api/requests in the new-request flow). It must be born
+      // unpriced, unpaid and unshipped — every later transition runs through
+      // /api/requests/[requestId]/* with the Admin SDK.
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'submitted'
+        && !request.resource.data.keys().hasAny([
+             'quote',
+             'payment',
+             'purchases',
+             'refundRequests',
+             'shipment',
+             'tracking',
+             'inspection',
+             'deliveredAt'
+           ]);
+
+      // Customers cannot update a request from the browser at all: no status,
+      // no quote, no payment record. Admin console writes keep working.
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ----------------------------------------------------------------- wallet
+    // Balance is only ever moved by Admin SDK transactions
+    // (features/wallet/services/walletPayment.ts, admin/wallet/credit).
+    //
+    // `getWallet()` still self-provisions an empty wallet on first visit, so
+    // creation is allowed for the owner — but only at zero, only once, and the
+    // document can never be updated or deleted afterwards.
+    match /wallets/{userId} {
+      allow read: if isAdmin() || isSelf(userId);
+
+      allow create: if isSelf(userId)
+        && request.resource.data.keys().hasOnly(['balance', 'currency'])
+        && request.resource.data.balance == 0;
+
+      allow update, delete: if false;
+    }
+
+    match /walletTransactions/{transactionId} {
+      allow read: if isAdmin() || isSelf(resource.data.userId);
+      allow write: if false;
+    }
+
+    match /paypalPaymentOrders/{orderId} {
+      allow read: if isAdmin() || isSelf(resource.data.userId);
+      allow write: if false;
+    }
+
+    // ----------------------------------------------------------------- quotes
+    match /quotes/{quoteId} {
+      allow read: if isAdmin() || isSelf(resource.data.userId);
+
+      // Pricing is decided by the admin routes; a customer approving a quote
+      // writes to the request through /api/requests/[requestId]/approve-quote.
+      allow write: if false;
+    }
+
+    // -------------------------------------------------------- refund requests
+    match /refundRequests/{refundId} {
+      allow read: if isAdmin() || isSelf(resource.data.userId);
+
+      // A customer may open a refund request for themselves, but the status
+      // and amounts are admin-owned.
+      allow create: if isSelf(request.resource.data.userId);
+      allow update, delete: if false;
+    }
+
+    // ---------------------------------------------------------------- support
     match /supportTickets/{ticketId} {
-      allow read, update: if request.auth != null && (
+      allow read, update: if signedIn() && (
         resource.data.customerId == request.auth.uid ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+        isAdmin()
       );
-      allow create: if request.auth != null &&
+      allow create: if signedIn() &&
         request.resource.data.customerId == request.auth.uid;
       allow delete: if false;
     }
 
     match /supportMessages/{messageId} {
-      allow read: if request.auth != null && (
+      allow read: if signedIn() && (
         resource.data.customerId == request.auth.uid ||
         resource.data.adminId == request.auth.uid ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+        isAdmin()
       );
-      allow create: if request.auth != null &&
+      allow create: if signedIn() &&
         request.resource.data.customerId == request.auth.uid;
       allow update, delete: if false;
-    }
-
-    match /requests/{requestId} {
-      allow read, create, update: if request.auth != null && request.auth.uid == request.resource.data.userId;
-      allow delete: if false;
-    }
-
-    match /wallets/{userId} {
-      allow read, update: if request.auth != null && request.auth.uid == userId;
-    }
-
-    match /walletTransactions/{transactionId} {
-      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-    }
-
-    match /paypalPaymentOrders/{orderId} {
-      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-    }
-
-    match /quotes/{quoteId} {
-      allow read, create, update: if request.auth != null && request.auth.uid == request.resource.data.userId;
-      allow delete: if false;
-    }
-
-    match /refundRequests/{refundId} {
-      allow read, update: if request.auth != null && (
-        resource.data.userId == request.auth.uid ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
-      );
-      allow create: if request.auth != null &&
-        request.resource.data.userId == request.auth.uid;
-      allow delete: if false;
     }
   }
 }
