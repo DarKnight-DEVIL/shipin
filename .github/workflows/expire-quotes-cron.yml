@@ -1,0 +1,19 @@
+﻿name: Expire Quotes Hourly Cron
+
+on:
+  schedule:
+    # Runs at minute 0 of every hour (UTC)
+    - cron: '0 * * * *'
+  # Allows manual trigger from the GitHub Actions tab for testing
+  workflow_dispatch:
+
+jobs:
+  trigger-expire-quotes:
+    name: Trigger Quote Expiry Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Next.js Expire Quotes Endpoint
+        run: |
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.PRODUCTION_URL }}/api/admin/requests/quotes/expire"

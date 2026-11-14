@@ -1,4 +1,4 @@
-{
+﻿{
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
   "outputDirectory": "apps/web/.next/standalone",
@@ -32,11 +32,5 @@
     "R2_SECRET_ACCESS_KEY": "@r2_secret_access_key",
     "R2_BUCKET_NAME": "@r2_bucket_name",
     "NODE_ENV": "production"
-  },
-  "crons": [
-    {
-      "path": "/api/admin/requests/quotes/expire",
-      "schedule": "0 * * * *"
-    }
-  ]
+  }
 }

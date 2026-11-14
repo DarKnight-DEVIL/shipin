@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Centralized environment variable access.
  *
  * All env vars must be accessed through this module to ensure:
@@ -53,6 +53,7 @@ interface ServerEnv {
   INDIA_POST_TRACKING_URL?: string;
   INDIA_POST_CLIENT_ID?: string;
   INDIA_POST_CLIENT_SECRET?: string;
+  CRON_SECRET?: string;
 }
 
 interface ClientEnv {
@@ -133,6 +134,7 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
   'INDIA_POST_TRACKING_URL',
   'INDIA_POST_CLIENT_ID',
   'INDIA_POST_CLIENT_SECRET',
+  'CRON_SECRET',
 ]);
 
 // NOTE: the rate-limit store assertion lives in @/lib/redisRateLimiter so
@@ -194,7 +196,7 @@ export const serverEnv: ServerEnv = new Proxy({} as ServerEnv, {
       }
       return value;
     }
-    // Optional server-only vars — return undefined without throwing
+    // Optional server-only vars â€” return undefined without throwing
     return value;
   },
   has(_target, prop) {
