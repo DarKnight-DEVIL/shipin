@@ -10,6 +10,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
+  signInWithRedirect,
 } from "firebase/auth";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowUpRight, Mail } from "lucide-react";
@@ -71,7 +72,7 @@ export default function LoginClient() {
 
   async function handleGoogleLogin() {
     try {
-      // Must be the very first call — preserves the user-gesture token
+      // Must be the very first call â€” preserves the user-gesture token
       // so the browser doesn't block Firebase's popup (window.open).
       // No React state updates, no awaits, no async work before this.
       const provider = new GoogleAuthProvider();
@@ -116,11 +117,15 @@ export default function LoginClient() {
       try {
         await fetch("/api/auth/login-intent", { method: "POST" });
       } catch {
-        // Ignore — analytics failures must not break sign-in.
+        // Ignore â€” analytics failures must not break sign-in.
       }
     } catch (error) {
       setLoading(false);
-      console.error("Google login failed:", error);
+      // Log full error details for debugging â€” Firebase error codes are
+      // often buried in nested properties, so stringify everything.
+      console.error("FULL AUTH ERROR:", JSON.stringify(error, null, 2));
+      console.error("Error code:", error instanceof Error ? (error as { code?: string }).code : "N/A");
+      console.error("Error message:", error instanceof Error ? error.message : String(error));
 
       const err = error as { code?: string; message?: string };
       const errorCode = err?.code;
@@ -149,6 +154,16 @@ export default function LoginClient() {
           "Too many attempts. Please wait a moment and try again.";
       } else if (errorCode === "auth/cancelled-popup-request") {
         userMessage = "Another sign-in attempt is in progress. Please wait.";
+      }
+
+      // For auth/internal-error, try signInWithRedirect as a fallback.
+      // The popup opens but Firebase OAuth fails internally â€” redirect
+      // avoids popup timing issues entirely and works on all browsers.
+      if (errorCode === "auth/internal-error" || errorCode === "auth/popup-blocked") {
+        toast.info("Trying redirect sign-in instead...");
+        const provider = new GoogleAuthProvider();
+        void signInWithRedirect(auth, provider);
+        return;
       }
 
       toast.error(userMessage);
@@ -224,7 +239,7 @@ export default function LoginClient() {
         return;
       }
     } catch {
-      // Network error — fail open (don't block legitimate users if the gate is down)
+      // Network error â€” fail open (don't block legitimate users if the gate is down)
     }
 
     // Have I Been Pwned leak check (registration only).
@@ -315,7 +330,7 @@ export default function LoginClient() {
         return;
       }
 
-      // Verified email — proceed to the dashboard (or admin).
+      // Verified email â€” proceed to the dashboard (or admin).
       const { getUserProfile } = await import(
         "@/features/users/services/userProfile"
       );
@@ -362,7 +377,7 @@ export default function LoginClient() {
             address.
           </p>
           <p className="login__list">
-            Requests · Quotes · Worldwide shipments
+            Requests Â· Quotes Â· Worldwide shipments
           </p>
         </div>
       </aside>
@@ -427,7 +442,7 @@ export default function LoginClient() {
                     className="login__input"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                     autoComplete={isRegister ? "new-password" : "current-password"}
                     disabled={loading}
                     aria-invalid={formError ? true : undefined}
