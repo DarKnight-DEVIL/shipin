@@ -13,13 +13,14 @@
     "WHATSAPP_*",
     "MFA_SESSION_SECRET",
     "INDIA_POST_*",
-    "SENTRY_*"
+    "SENTRY_*",
+    "CRON_SECRET"
   ],
   "globalDependencies": ["**/.env", "**/.env.local", "tsconfig.json"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"],
+      "outputs": [".next/**", "!*.next/cache/**", "dist/**"],
       "tags": ["ci"]
     },
     "dev": {
