@@ -126,8 +126,10 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
   'PAYPAL_API_URL',
   // PAYPAL_WEBHOOK_ID is listed in PRODUCTION_REQUIRED_SERVER_ENV instead:
   // it may be absent in dev/test, but must be set in production.
-  // UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are now production-required
-  // (hard-fail at startup in production, see assertRateLimitStoreAvailable).
+  // UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN stay optional so a
+  // missing shared store degrades rate limiting instead of crashing the app:
+  // startup logs a warning (reportRateLimitStoreStatus) and /api/health
+  // reports degraded.
   'WHATSAPP_ACCESS_TOKEN',
   'WHATSAPP_PHONE_NUMBER_ID',
   'MFA_SESSION_SECRET',

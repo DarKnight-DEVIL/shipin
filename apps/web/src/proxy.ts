@@ -33,6 +33,22 @@ const SENSITIVE_PATHS = [
  */
 const BYPASS_PATHS = ["/api/webhook"];
 
+/**
+ * Sign-in entry points that must never be rate limited.
+ *
+ * These are the recovery path for every other failure: a burst of retries, a
+ * shared limiter store that cannot be reached, or a proxy in fail-closed mode
+ * would otherwise answer /login with a 429 and leave nobody able to sign in.
+ * They still receive the security headers below.
+ */
+const AUTH_ENTRY_PATHS = ["/login", "/verify-email"];
+
+function isAuthEntryPath(pathname: string): boolean {
+  return AUTH_ENTRY_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
+  );
+}
+
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -42,9 +58,22 @@ export default async function proxy(request: NextRequest) {
 
   const isApi = pathname.startsWith("/api/");
   const limiter = isApi ? apiRateLimiter : webRateLimiter;
-  const limitResult = await limiter.record(request);
 
-  if (isRateLimited(limitResult)) {
+  const skipRateLimit = !isApi && isAuthEntryPath(pathname);
+  const limitResult = skipRateLimit
+    ? { ok: true, limit: 0, remaining: 0, reset: 0 }
+    : await limiter.record(request);
+
+  // A rejection caused by a missing/unreachable shared store is an
+  // infrastructure problem, not an abusive client. Serve the request and let
+  // /api/health report the deployment as degraded.
+  if (isRateLimited(limitResult) && limitResult.unavailable) {
+    console.warn(
+      `[proxy] rate-limit store unavailable for ${pathname}; allowing request.`
+    );
+  }
+
+  if (isRateLimited(limitResult) && !limitResult.unavailable) {
     const response = NextResponse.json(
       {
         success: false,
@@ -78,7 +107,7 @@ export default async function proxy(request: NextRequest) {
         response.headers.set(name, value);
       }
     }
-    addRateLimitHeaders(response.headers, limitResult);
+    if (!skipRateLimit) addRateLimitHeaders(response.headers, limitResult);
     return response;
   }
 
@@ -90,7 +119,7 @@ export default async function proxy(request: NextRequest) {
   // per-request nonce could never match it (see getProductionCSP).
   const response = NextResponse.next();
 
-  addRateLimitHeaders(response.headers, limitResult);
+  if (!skipRateLimit) addRateLimitHeaders(response.headers, limitResult);
   response.headers.set("Content-Security-Policy", csp);
 
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {

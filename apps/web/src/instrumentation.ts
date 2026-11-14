@@ -7,7 +7,7 @@
  */
 
 import { validateProductionRequiredEnv } from '@/config/env';
-import { assertRateLimitStoreAvailable } from '@/lib/redisRateLimiter';
+import { reportRateLimitStoreStatus } from '@/lib/redisRateLimiter';
 
 /**
  * Register is called once when the Next.js server starts.
@@ -20,9 +20,10 @@ export function register() {
   // Throws if any are missing when running in production.
   validateProductionRequiredEnv();
 
-  // Hard-fail if the rate-limiting shared store is missing in production.
-  // Per-instance in-memory limits cannot enforce global limits across
-  // serverless regions, so for a financial application that is a hard
-  // failure — not a soft warning.
-  assertRateLimitStoreAvailable();
+  // Warn (never throw) if the rate-limiting shared store is missing in
+  // production. Per-instance in-memory limits cannot enforce global limits
+  // across serverless regions, but crashing at boot made the entire app —
+  // sign-in included — unreachable over a rate-limit dependency. The gap is
+  // logged here and surfaced as `degraded` by /api/health.
+  reportRateLimitStoreStatus();
 }

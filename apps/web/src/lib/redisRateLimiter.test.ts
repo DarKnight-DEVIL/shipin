@@ -59,14 +59,14 @@ vi.mock('@upstash/ratelimit', () => ({
 // first importer fixes which mocks this module binds to, so a static import
 // can inherit another file's stub.
 let createSharedRateLimiter: typeof import('./redisRateLimiter').createSharedRateLimiter;
-let assertRateLimitStoreAvailable: typeof import('./redisRateLimiter').assertRateLimitStoreAvailable;
+let reportRateLimitStoreStatus: typeof import('./redisRateLimiter').reportRateLimitStoreStatus;
 let RATE_LIMIT_ERROR_WINDOW_MS: typeof import('./redisRateLimiter').RATE_LIMIT_ERROR_WINDOW_MS;
 
 beforeEach(async () => {
   vi.resetModules();
   ({
     createSharedRateLimiter,
-    assertRateLimitStoreAvailable,
+    reportRateLimitStoreStatus,
     RATE_LIMIT_ERROR_WINDOW_MS,
   } = await import('./redisRateLimiter'));
 });
@@ -216,42 +216,69 @@ describe('createSharedRateLimiter with Redis configured', () => {
   });
 });
 
-describe('assertRateLimitStoreAvailable', () => {
-  it('throws in production when the shared store is missing', () => {
+describe('reportRateLimitStoreStatus', () => {
+  it('reports degraded and warns in production when the shared store is missing', () => {
     state.isProduction = true;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    expect(() => assertRateLimitStoreAvailable()).toThrow(
-      'FATAL: Rate limiting requires a shared store'
+    // A missing store must never stop the server from booting.
+    expect(() => reportRateLimitStoreStatus()).not.toThrow();
+    expect(reportRateLimitStoreStatus()).toEqual({
+      configured: false,
+      degraded: true,
+    });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('No shared rate-limit store configured')
     );
+
+    warn.mockRestore();
   });
 
-  it('throws in production when the Redis URL is not https', () => {
+  it('reports degraded in production when the Redis URL is not https', () => {
     state.isProduction = true;
     state.url = 'http://insecure.example';
     state.token = 'tok';
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    expect(() => assertRateLimitStoreAvailable()).toThrow(
-      'FATAL: Rate limiting requires a shared store'
-    );
+    expect(reportRateLimitStoreStatus()).toEqual({
+      configured: false,
+      degraded: true,
+    });
+
+    warn.mockRestore();
   });
 
-  it('throws in production when the token is missing', () => {
+  it('reports degraded in production when the token is missing', () => {
     state.isProduction = true;
     state.url = 'https://t.upstash.io';
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    expect(() => assertRateLimitStoreAvailable()).toThrow(
-      'FATAL: Rate limiting requires a shared store'
-    );
+    expect(reportRateLimitStoreStatus()).toEqual({
+      configured: false,
+      degraded: true,
+    });
+
+    warn.mockRestore();
   });
 
-  it('accepts a complete production configuration', () => {
+  it('reports configured and not degraded for a complete production configuration', () => {
     state.isProduction = true;
     configureRedis();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    expect(() => assertRateLimitStoreAvailable()).not.toThrow();
+    expect(reportRateLimitStoreStatus()).toEqual({
+      configured: true,
+      degraded: false,
+    });
+    expect(warn).not.toHaveBeenCalled();
+
+    warn.mockRestore();
   });
 
-  it('never throws outside production', () => {
-    expect(() => assertRateLimitStoreAvailable()).not.toThrow();
+  it('is not degraded outside production', () => {
+    expect(reportRateLimitStoreStatus()).toEqual({
+      configured: false,
+      degraded: false,
+    });
   });
 });

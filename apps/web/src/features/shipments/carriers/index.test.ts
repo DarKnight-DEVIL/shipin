@@ -8,12 +8,20 @@ const env = vi.hoisted(() => ({
 
 vi.mock('@/config/env', () => ({ serverEnv: env }));
 
-import { getTrackingProvider, isIndiaPostConfigured } from './index';
+// Imported per file instead of statically: with a shared module registry the
+// first importer fixes which `@/config/env` this module binds to, so a static
+// import inherits another suite's real (or differently mocked) env and the
+// configuration cases below read empty values.
+let getTrackingProvider: typeof import('./index').getTrackingProvider;
+let isIndiaPostConfigured: typeof import('./index').isIndiaPostConfigured;
 
-beforeEach(() => {
+beforeEach(async () => {
   env.INDIA_POST_TRACKING_URL = '';
   env.INDIA_POST_CLIENT_ID = '';
   env.INDIA_POST_CLIENT_SECRET = '';
+
+  vi.resetModules();
+  ({ getTrackingProvider, isIndiaPostConfigured } = await import('./index'));
 });
 
 describe('getTrackingProvider', () => {

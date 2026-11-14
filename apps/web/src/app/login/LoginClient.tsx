@@ -186,37 +186,37 @@ export default function LoginClient() {
       fail("Please enter your email and password.");
       return;
     }
-    if (password.length < 6) {
-      fail("Password must be at least 6 characters.");
-      return;
-    }
+    // Password policy belongs to account creation only. Enforcing it on
+    // sign-in locked out every existing user whose password predates the
+    // current rules (or was set outside this form), because the check ran
+    // before Firebase ever saw the credentials.
+    if (isRegister) {
+      const passwordErrors: string[] = [];
+      if (password.length < 8) passwordErrors.push("at least 8 characters");
+      if (!/[A-Z]/.test(password)) passwordErrors.push("one uppercase letter");
+      if (!/[a-z]/.test(password)) passwordErrors.push("one lowercase letter");
+      if (!/[0-9]/.test(password)) passwordErrors.push("one number");
+      if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+        passwordErrors.push("one special character");
+      }
+      if (passwordErrors.length > 0) {
+        fail(
+          `Password must include ${passwordErrors.join(", ")}.`
+        );
+        return;
+      }
 
-    // Password strength rules
-    const passwordErrors: string[] = [];
-    if (password.length < 8) passwordErrors.push("at least 8 characters");
-    if (!/[A-Z]/.test(password)) passwordErrors.push("one uppercase letter");
-    if (!/[a-z]/.test(password)) passwordErrors.push("one lowercase letter");
-    if (!/[0-9]/.test(password)) passwordErrors.push("one number");
-    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
-      passwordErrors.push("one special character");
-    }
-    if (passwordErrors.length > 0) {
-      fail(
-        `Password must include ${passwordErrors.join(", ")}.`
-      );
-      return;
-    }
-
-    // Common password check (client-side blocklist)
-    const COMMON_PASSWORDS = new Set([
-      "password", "123456", "12345678", "123456789", "qwerty",
-      "abc123", "password1", "111111", "123123", "admin", "letmein",
-      "welcome", "monkey", "dragon", "master", "login", "princess",
-      "football", "shadow", "sunshine", "trustno1", "iloveyou",
-    ]);
-    if (COMMON_PASSWORDS.has(password.toLowerCase())) {
-      fail("That password is too common. Please choose a stronger one.");
-      return;
+      // Common password check (client-side blocklist)
+      const COMMON_PASSWORDS = new Set([
+        "password", "123456", "12345678", "123456789", "qwerty",
+        "abc123", "password1", "111111", "123123", "admin", "letmein",
+        "welcome", "monkey", "dragon", "master", "login", "princess",
+        "football", "shadow", "sunshine", "trustno1", "iloveyou",
+      ]);
+      if (COMMON_PASSWORDS.has(password.toLowerCase())) {
+        fail("That password is too common. Please choose a stronger one.");
+        return;
+      }
     }
 
     // Rate-limit gate: ask the server whether this sign-in attempt is allowed.
@@ -235,8 +235,12 @@ export default function LoginClient() {
         return;
       }
       if (!gateResponse.ok) {
-        fail("Unable to start sign-in. Please try again.");
-        return;
+        // Only a real 429 blocks the attempt. Anything else means the gate
+        // itself is unhealthy; blocking here made sign-in depend on
+        // rate-limit infrastructure and took the whole login down with it.
+        console.warn(
+          `Login intent gate returned HTTP ${gateResponse.status}; continuing.`
+        );
       }
     } catch {
       // Network error â€” fail open (don't block legitimate users if the gate is down)

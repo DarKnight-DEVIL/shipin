@@ -9,10 +9,13 @@
  *   healthy    200 — a shared rate-limit store is configured (production)
  *                    and no limiter errors occurred in the last window.
  *   degraded   200 — the app still serves traffic, but the shared rate
- *                    limiter failed recently and requests are being rejected
- *                    fail-closed. Alert on this; do not treat it as up.
- *   unhealthy  503 — production deployment with no shared rate-limit store.
- *                    Uptime monitors must treat this as down.
+ *                    limiter failed recently, or production is running with
+ *                    no shared store (per-instance limits only). Alert on
+ *                    this; do not treat it as fully healthy.
+ *
+ * A missing shared store never produces a non-200: the process has always been
+ * able to serve requests in that state, and returning 503 made load balancers
+ * and uptime monitors mark a working deployment as down.
  */
 
 import { NextResponse } from "next/server";
@@ -30,8 +33,8 @@ export async function GET() {
   const redisConfigured = Boolean(
     serverEnv.UPSTASH_REDIS_REST_URL && serverEnv.UPSTASH_REDIS_REST_TOKEN
   );
-  // In production a missing store means per-instance limits, which is a
-  // hard misconfiguration rather than a degraded mode.
+  // In production a missing store means per-instance limits. The app keeps
+  // serving (and logs a startup warning), so this is degraded, not down.
   const missingSharedStore = isProduction && !redisConfigured;
 
   // Relative to this request, not to module load: a long-lived instance must
@@ -59,11 +62,8 @@ export async function GET() {
   });
 
   const hasRecentErrors = redisErrors.some((e) => e.recentErrors > 0);
-  const status = missingSharedStore
-    ? "unhealthy"
-    : hasRecentErrors
-      ? "degraded"
-      : "healthy";
+  const degraded = missingSharedStore || hasRecentErrors;
+  const status = degraded ? "degraded" : "healthy";
 
   return NextResponse.json(
     {
@@ -84,8 +84,8 @@ export async function GET() {
       },
       ...(missingSharedStore
         ? {
-            error:
-              "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required in production.",
+            warning:
+              "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are not set in production; rate limits are per-instance.",
           }
         : {}),
       ...(isProduction && hasRecentErrors
@@ -106,6 +106,6 @@ export async function GET() {
           }
         : {}),
     },
-    { status: missingSharedStore ? 503 : 200 }
+    { status: 200 }
   );
 }

@@ -28,6 +28,13 @@ export interface RateLimitResult {
   limit: number;
   remaining: number;
   reset: number;
+  /**
+   * True when the rejection is an infrastructure failure (no shared store or a
+   * Redis error) rather than the client actually exceeding the limit.
+   * Callers that guard user-facing flows (sign-in) can fail open on this while
+   * still rejecting genuine abuse.
+   */
+  unavailable?: boolean;
 }
 
 /** Milliseconds used as the sliding-window cutoff for error-count queries. */
@@ -83,19 +90,47 @@ function isValidRedisUrl(url: string | undefined): url is string {
  * limits across serverless regions, so for a financial application
  * that is a hard failure — not a soft warning.
  */
-export function assertRateLimitStoreAvailable(): void {
+export type RateLimitStoreStatus = {
+  /** Whether the shared store is usable on this deployment. */
+  configured: boolean;
+  /** True when production is running without a shared store. */
+  degraded: boolean;
+};
+
+/**
+ * Describe the state of the shared rate-limit store without throwing.
+ *
+ * A missing store is a real limitation — per-instance limits can be bypassed
+ * across serverless regions — but it must not stop the server from booting:
+ * that crash took every request, sign-in included, offline. Callers log the
+ * problem and surface it through `/api/health`, which reports `degraded`.
+ */
+export function getRateLimitStoreStatus(): RateLimitStoreStatus {
   const url = serverEnv.UPSTASH_REDIS_REST_URL;
   const token = serverEnv.UPSTASH_REDIS_REST_TOKEN;
+  const configured = isValidRedisUrl(url) && Boolean(token);
 
-  if (isProduction && (!isValidRedisUrl(url) || !token)) {
-    throw new Error(
-      "FATAL: Rate limiting requires a shared store in production. " +
+  return { configured, degraded: isProduction && !configured };
+}
+
+/**
+ * Log the shared-store state at startup. Never throws.
+ *
+ * @returns the same status object as {@link getRateLimitStoreStatus}.
+ */
+export function reportRateLimitStoreStatus(): RateLimitStoreStatus {
+  const status = getRateLimitStoreStatus();
+
+  if (status.degraded) {
+    console.warn(
+      "[RateLimiter] No shared rate-limit store configured in production. " +
         "Set UPSTASH_REDIS_REST_URL (an https:// URL) and " +
-        "UPSTASH_REDIS_REST_TOKEN. Without them, per-instance in-memory " +
-        "limits can be bypassed by distributing requests across serverless " +
-        "regions."
+        "UPSTASH_REDIS_REST_TOKEN. Rate limits are per-instance until then " +
+        "and /api/health reports degraded."
     );
   }
+
+  return status;
 }
 
 // Lazily initialize Redis client to avoid triggering env validation at module load time
@@ -152,6 +187,7 @@ export function createSharedRateLimiter(
           );
           return {
             ok: false,
+            unavailable: true,
             limit: maxRequests,
             remaining: 0,
             reset: Date.now() + windowMs,
@@ -192,6 +228,7 @@ export function createSharedRateLimiter(
         );
         return {
           ok: false,
+          unavailable: true,
           limit: maxRequests,
           remaining: 0,
           reset: Date.now() + windowMs,

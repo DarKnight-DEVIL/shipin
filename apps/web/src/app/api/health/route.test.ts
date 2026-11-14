@@ -3,7 +3,8 @@
  *
  * The route is the readiness probe used by uptime monitors, so its status
  * codes matter as much as its body: a production deployment without a shared
- * rate-limit store must report 503, not a cheerful 200.
+ * rate-limit store still serves traffic, so it reports 200 with a `degraded`
+ * status and a warning rather than claiming the deployment is down.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -71,16 +72,17 @@ describe('GET /api/health', () => {
     expect(body.checkedAt).toEqual(expect.any(String));
   });
 
-  it('reports unhealthy with 503 when production has no shared store', async () => {
+  it('reports degraded with 200 when production has no shared store', async () => {
     state.isProduction = true;
 
     const response = await GET();
     const body = await response.json();
 
-    expect(response.status).toBe(503);
-    expect(body.status).toBe('unhealthy');
+    expect(response.status).toBe(200);
+    expect(body.status).toBe('degraded');
+    expect(body.redis.configured).toBe(false);
     expect(body.redis.status).toBe('missing');
-    expect(body.error).toContain('UPSTASH_REDIS_REST_URL');
+    expect(body.warning).toContain('UPSTASH_REDIS_REST_URL');
   });
 
   it('reports healthy when production has Redis and no limiter errors', async () => {

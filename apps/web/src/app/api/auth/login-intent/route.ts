@@ -21,6 +21,21 @@ import {
 export const POST = withErrorHandler(async (request: Request) => {
   const result = await loginRateLimiter.record(request);
 
+  // A missing shared store or a Redis outage is an infrastructure problem, not
+  // an abusive client. Failing closed here took the whole sign-in flow offline
+  // whenever the limiter backend was unavailable, so allow the attempt and log
+  // it instead. Firebase Auth still applies its own abuse protection.
+  if (isRateLimited(result) && result.unavailable) {
+    console.warn(
+      "[login-intent] rate-limit store unavailable; allowing sign-in attempt."
+    );
+
+    return NextResponse.json(
+      { allowed: true, degraded: true },
+      { status: 200 }
+    );
+  }
+
   if (isRateLimited(result)) {
     const response = NextResponse.json(
       {
