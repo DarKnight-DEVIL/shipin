@@ -71,9 +71,9 @@ export default function LoginClient() {
 
   async function handleGoogleLogin() {
     try {
-      // Must be the very first async call — preserves the user-gesture token
+      // Must be the very first call — preserves the user-gesture token
       // so the browser doesn't block Firebase's popup (window.open).
-      setLoading(true);
+      // No React state updates, no awaits, no async work before this.
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
@@ -105,6 +105,8 @@ export default function LoginClient() {
             : "/dashboard";
       }
 
+      setLoading(true);
+
       router.replace(destination);
       router.refresh();
 
@@ -117,6 +119,7 @@ export default function LoginClient() {
         // Ignore — analytics failures must not break sign-in.
       }
     } catch (error) {
+      setLoading(false);
       console.error("Google login failed:", error);
 
       const err = error as { code?: string; message?: string };
