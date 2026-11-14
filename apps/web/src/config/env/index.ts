@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Centralized environment variable access.
  *
  * All env vars must be accessed through this module to ensure:

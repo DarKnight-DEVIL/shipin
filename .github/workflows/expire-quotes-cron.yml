@@ -1,4 +1,4 @@
-﻿name: Expire Quotes Hourly Cron
+name: Expire Quotes Hourly Cron
 
 on:
   schedule:
