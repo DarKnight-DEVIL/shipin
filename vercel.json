@@ -12,7 +12,7 @@
     }
   },
   "env": {
-    "NEXT_PUBLIC_APP_URL": "@next_public_app_url",
+    "NEXT_PUBLIC_APP_URL": "https://shipin-psi.vercel.app",
     "PAYPAL_CLIENT_ID": "@paypal_client_id",
     "PAYPAL_CLIENT_SECRET": "@paypal_client_secret",
     "PAYPAL_API_URL": "@paypal_api_url",
