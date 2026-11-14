@@ -3,10 +3,6 @@
   "globalEnv": [
     "NODE_ENV",
     "NEXT_PUBLIC_*",
-    // Turbo runs tasks with a strict environment: only variables listed here
-    // reach `next build`. Without these, the server env accessors see nothing
-    // and page-data collection dies with "Missing required environment
-    // variable: PAYPAL_CLIENT_SECRET" (exactly what CI hit).
     "APP_URL",
     "FIREBASE_ADMIN_*",
     "PAYPAL_*",

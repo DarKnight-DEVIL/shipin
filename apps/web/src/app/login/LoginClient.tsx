@@ -132,7 +132,37 @@ export default function LoginClient() {
       router.refresh();
     } catch (error) {
       console.error("Google login failed:", error);
-      toast.error("Unable to sign in with Google.");
+
+      const err = error as { code?: string; message?: string };
+      const errorCode = err?.code;
+
+      // Map common Firebase Auth error codes to actionable user messages
+      let userMessage = "Unable to sign in with Google.";
+
+      if (errorCode === "auth/internal-error") {
+        userMessage =
+          "Google sign-in failed due to an internal error. This usually means the Google provider isn't properly configured in Firebase Console. Please contact support or try email sign-in.";
+      } else if (errorCode === "auth/popup-blocked") {
+        userMessage =
+          "The sign-in popup was blocked by your browser. Please allow popups for this site and try again.";
+      } else if (errorCode === "auth/popup-closed-by-user") {
+        userMessage = "Sign-in was cancelled. Please try again.";
+      } else if (errorCode === "auth/unauthorized-domain") {
+        userMessage =
+          "This domain isn't authorized for Google sign-in. Please contact support.";
+      } else if (errorCode === "auth/operation-not-allowed") {
+        userMessage =
+          "Google sign-in is not enabled. Please contact support to enable it.";
+      } else if (errorCode === "auth/network-request-failed") {
+        userMessage = "Network error. Please check your connection and try again.";
+      } else if (errorCode === "auth/too-many-requests") {
+        userMessage =
+          "Too many attempts. Please wait a moment and try again.";
+      } else if (errorCode === "auth/cancelled-popup-request") {
+        userMessage = "Another sign-in attempt is in progress. Please wait.";
+      }
+
+      toast.error(userMessage);
       setLoading(false);
     }
   }

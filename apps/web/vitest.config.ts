@@ -11,6 +11,7 @@ export default defineConfig({
       // bundle; tests exercise those modules directly, so stub it out.
       'server-only': path.resolve(__dirname, './vitest.server-only-stub.ts'),
     },
+    conditions: ['test'],
   },
   test: {
     globals: true,
@@ -38,13 +39,15 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
-      include: ['src/lib/**', 'src/features/**', 'src/app/api/**/*.ts'],
+      include: ['src/lib/**', 'src/features/**/*.ts', 'src/app/api/**/*.ts'],
       exclude: [
         'src/app/api/**/route.test.ts', // test files are not production code
         'src/types/**',
         'src/styles/**',
         'src/components/**', // UI components are covered by E2E
         'src/lib/firebase.ts', // lazy singleton with no unit-level exercise path
+        'src/features/**/types/README.md', // feature docs, not runtime code
+        '**/README.md',
       ],
       thresholds: {
         // Global floor — every module must be exercised.

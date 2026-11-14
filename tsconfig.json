@@ -15,5 +15,6 @@
     "jsx": "react-jsx",
     "incremental": true,
     "types": ["node"]
-  }
+  },
+  "include": ["packages/*/src/**/*"]
 }
