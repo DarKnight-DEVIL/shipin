@@ -71,31 +71,8 @@ export default function LoginClient() {
 
   async function handleGoogleLogin() {
     try {
-      /*
-       * Rate-limit gate: ask the server whether this
-       * sign-in attempt is allowed before opening the
-       * Google popup. Stops credential-stuffing and
-       * popup-spam loops (5 attempts / IP / minute).
-       */
-      const gateResponse = await fetch("/api/auth/login-intent", {
-        method: "POST",
-      });
-
-      if (gateResponse.status === 429) {
-        const retryAfter = Number(
-          gateResponse.headers.get("Retry-After") ?? 60
-        );
-        toast.error(
-          `Too many sign-in attempts. Try again in ${Math.max(1, Math.ceil(retryAfter))}s.`
-        );
-        return;
-      }
-
-      if (!gateResponse.ok) {
-        toast.error("Unable to start sign-in. Please try again.");
-        return;
-      }
-
+      // Must be the very first async call — preserves the user-gesture token
+      // so the browser doesn't block Firebase's popup (window.open).
       setLoading(true);
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
@@ -130,6 +107,15 @@ export default function LoginClient() {
 
       router.replace(destination);
       router.refresh();
+
+      // Rate-limit gate runs AFTER the popup so the user-gesture token
+      // is preserved for signInWithPopup above. Best-effort: never block
+      // the user on analytics.
+      try {
+        await fetch("/api/auth/login-intent", { method: "POST" });
+      } catch {
+        // Ignore — analytics failures must not break sign-in.
+      }
     } catch (error) {
       console.error("Google login failed:", error);
 
