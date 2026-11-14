@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Sliding-window rate limiting for the request proxy.
  *
  * The exported limiters are Redis-backed (see `redisRateLimiter`), so limits are

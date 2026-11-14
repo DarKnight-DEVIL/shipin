@@ -1,4 +1,4 @@
-﻿export interface SupportMessage {
+export interface SupportMessage {
   id: string;
   sender: "customer" | "admin";
   message: string;
