@@ -1,9 +1,0 @@
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build",
-  "outputDirectory": "apps/web/.next/standalone",
-  "installCommand": "npm ci",
-  "framework": null,
-  "devCommand": "npm run dev",
-  "regions": ["iad1"]
-}

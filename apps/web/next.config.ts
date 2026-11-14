@@ -1,4 +1,4 @@
-import type { NextConfig } from 'next';
+﻿import type { NextConfig } from 'next';
 import withBundleAnalyzer from '@next/bundle-analyzer';
 
 const ANALYZE = process.env.ANALYZE === 'true';
@@ -7,7 +7,6 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   productionBrowserSourceMaps: false,
   poweredByHeader: false,
-  output: 'standalone',
   // Workspace packages ship TypeScript sources rather than a build output, so
   // Next has to compile them as part of the app graph.
   transpilePackages: ['@shipin/config', '@shipin/shared', '@shipin/ui', '@shipin/utils'],

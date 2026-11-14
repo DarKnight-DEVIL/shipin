@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "@shipin/web",
   "version": "0.1.0",
   "private": true,
@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build && cp -r public .next/standalone/apps/web/public",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
