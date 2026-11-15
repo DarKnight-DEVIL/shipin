@@ -17,6 +17,12 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ['lucide-react', 'date-fns', 'recharts', 'framer-motion'],
   },
   async headers() {
+    // Production only. Next warns that a custom /_next/static Cache-Control can
+    // break its development behavior — Fast Refresh re-fetches chunks and a
+    // year-long `immutable` makes the browser refuse — and the pin exists for
+    // the deployed build, where every filename is content-hashed anyway.
+    if (process.env.NODE_ENV !== 'production') return [];
+
     return [
       {
         // Build output under /_next/static carries a content hash in every

@@ -119,7 +119,10 @@ export const SECURITY_HEADERS: Record<string, string> = {
   "Permissions-Policy":
     "accelerometer=(), camera=(), gyroscope=(), magnetometer=(), microphone=(), " +
     "payment=(self), publickey-credentials-get=(), usb=(), geolocation=(), " +
-    "clipboard-read=(), clipboard-write=(), speaker=(), display-capture=(), " +
+    // `clipboard-write=(self)`: the admin backup-code list copies through
+    // navigator.clipboard, and `clipboard-write=()` blocked that outright — the
+    // button silently did nothing. Reading the clipboard is still denied.
+    "clipboard-read=(), clipboard-write=(self), speaker=(), display-capture=(), " +
     "document-domain=(), cross-origin-isolated=()",
 
     /**

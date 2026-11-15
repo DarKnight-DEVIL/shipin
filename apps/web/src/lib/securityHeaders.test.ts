@@ -58,6 +58,15 @@ describe('SECURITY_HEADERS', () => {
     expect(policy).toContain('payment=(self)');
   });
 
+  it('lets the app write to the clipboard but never read it', () => {
+    const policy = SECURITY_HEADERS['Permissions-Policy'];
+
+    // The admin backup-code list copies through navigator.clipboard; denying
+    // `clipboard-write` made that button silently do nothing.
+    expect(policy).toContain('clipboard-write=(self)');
+    expect(policy).toContain('clipboard-read=()');
+  });
+
   it('declares the CSP reporting endpoint', () => {
     expect(SECURITY_HEADERS['Reporting-Endpoints']).toContain('/api/csp-report');
     expect(SECURITY_HEADERS['Content-Security-Policy']).toContain(
