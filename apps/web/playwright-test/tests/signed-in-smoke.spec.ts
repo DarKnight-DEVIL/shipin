@@ -58,12 +58,13 @@ test.describe('Signed-in smoke (staging)', () => {
 
     await page.goto('/login');
 
-    // /login opens on the Google button; the password form sits behind the
-    // toggle on that screen (labelled "Create one", which is why this is worth
-    // driving in a browser — the sign-in path is not the obvious one).
+    // /login opens on the Google button; the password form sits behind
+    // "Sign in with email". Its neighbour "Create one" only flips the register
+    // flag and stays on the Google view, so clicking that one leaves this test
+    // waiting for fields that never render.
     const emailInput = page.locator('input[type="email"]');
     if ((await emailInput.count()) === 0) {
-      await page.getByRole('button', { name: 'Create one' }).click();
+      await page.getByRole('button', { name: 'Sign in with email' }).click();
     }
     await expect(emailInput).toBeVisible();
 
