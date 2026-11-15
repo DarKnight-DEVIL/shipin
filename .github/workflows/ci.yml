@@ -534,9 +534,12 @@ jobs:
           PLAYWRIGHT_MANAGE_WEBSERVER: "0"
 
       - name: Run Playwright smoke tests
-        # Same requirement when it starts a local server; against staging the
-        # URL is remote and the local store is irrelevant.
-        if: env.UPSTASH_REDIS_REST_URL != '' || env.E2E_STAGING_URL != ''
+        # Local production build only. This spec asserts a dev-server contract
+        # — a single `h1` on the landing page and a client-side redirect off
+        # /dashboard — and the deployed origin satisfies neither today, so
+        # pointing it at staging tests the app, not the build. Staging is
+        # covered by the signed-in and refund specs above.
+        if: env.UPSTASH_REDIS_REST_URL != '' && env.E2E_STAGING_URL == ''
         run: npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/smoke.spec.ts
         env:
           CI: "1"

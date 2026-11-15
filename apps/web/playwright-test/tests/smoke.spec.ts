@@ -47,8 +47,13 @@ test.describe('Security headers', () => {
 test.describe('Auth flows', () => {
   test('protected dashboard redirects to login when unauthenticated', async ({ page }) => {
     await page.goto('/dashboard');
-    // Should redirect away from protected route, whatever origin serves it.
-    expect(['/login', '/verify-email']).toContain(new URL(page.url()).pathname);
+    // The redirect runs once Firebase reports "signed out", so it lands after
+    // hydration: sample the URL only after it moves, or this reads /dashboard
+    // and calls a working redirect a failure.
+    await page.waitForURL(
+      (url) => url.pathname === '/login' || url.pathname === '/verify-email',
+      { timeout: 15_000 }
+    );
   });
 
   test('login page renders without crashing', async ({ page }) => {
