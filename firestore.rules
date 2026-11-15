@@ -130,6 +130,28 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ----------------------------------------------------------- notifications
+    // Read by the bell in the platform shell, which subscribes with
+    // `where('userId', '==', uid)`. The equality filter is what lets the rules
+    // engine prove this read for a list query — without a match block here the
+    // collection fell through to the default deny, and that listener failed
+    // with permission-denied on every signed-in page.
+    //
+    // Created from the browser by the admin request flows (`rejectRequest`,
+    // `recordPayment` in features/requests/services): a customer notifies
+    // themselves, an admin notifies the customer whose request changed. `read`
+    // must arrive false so a create cannot land pre-read, and nothing is
+    // updatable from the client — marking read goes through /api/notifications.
+    match /notifications/{notificationId} {
+      allow read: if isSelf(resource.data.userId);
+
+      allow create: if signedIn()
+        && (request.resource.data.userId == request.auth.uid || isAdmin())
+        && request.resource.data.read == false;
+
+      allow update, delete: if false;
+    }
+
     // ---------------------------------------------------------------- support
     match /supportTickets/{ticketId} {
       allow read, update: if signedIn() && (

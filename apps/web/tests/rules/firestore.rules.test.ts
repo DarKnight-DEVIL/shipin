@@ -447,6 +447,57 @@ describe('refundRequests', () => {
   });
 });
 
+describe('notifications', () => {
+  const notice = (overrides: Record<string, unknown> = {}) => ({
+    userId: CUSTOMER,
+    requestId: 'req-1',
+    title: 'Payment Received',
+    message: 'Your payment has been recorded.',
+    type: 'payment',
+    read: false,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  });
+
+  it('lets a customer read their own notification', async () => {
+    await seed('notifications/n-1', notice());
+
+    await expectAllowed(read(customer(), 'notifications/n-1'));
+  });
+
+  it('blocks reading another customer notification', async () => {
+    await seed('notifications/n-2', notice({ userId: OTHER_CUSTOMER }));
+
+    await expectDenied(read(customer(), 'notifications/n-2'));
+  });
+
+  it('lets a customer create their own unread notification', async () => {
+    await expectAllowed(create(customer(), 'notifications/n-3', notice()));
+  });
+
+  it('blocks creating a notification in someone else name', async () => {
+    await expectDenied(
+      create(customer(), 'notifications/n-4', notice({ userId: OTHER_CUSTOMER }))
+    );
+  });
+
+  it('lets an admin notify a customer', async () => {
+    await expectAllowed(
+      create({ uid: ADMIN }, 'notifications/n-5', notice({ userId: OTHER_CUSTOMER }))
+    );
+  });
+
+  it('blocks a create that arrives already read', async () => {
+    await expectDenied(create(customer(), 'notifications/n-6', notice({ read: true })));
+  });
+
+  it('blocks a client marking a notification read', async () => {
+    await seed('notifications/n-7', notice());
+
+    await expectDenied(update(customer(), 'notifications/n-7', { read: true }));
+  });
+});
+
 describe('support', () => {
   it('lets a customer open a ticket in their own name', async () => {
     await expectAllowed(
