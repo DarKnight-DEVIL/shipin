@@ -365,6 +365,38 @@ jobs:
       E2E_FIREBASE_API_KEY: ${{ secrets.E2E_FIREBASE_API_KEY }}
       E2E_REFUND_REQUEST_ID: ${{ secrets.E2E_REFUND_REQUEST_ID }}
       E2E_REFUND_CUSTOMER_ID: ${{ secrets.E2E_REFUND_CUSTOMER_ID }}
+      # Dummy values for the production server this job builds and starts. They
+      # are job-level because the build and the running server validate the same
+      # variables at startup: keeping them on the build step alone meant every
+      # later step died with a 60s `webServer` timeout. NODE_ENV is deliberately
+      # absent here - at job level it makes `npm ci` skip devDependencies, and
+      # Playwright lives in them.
+      PAYPAL_CLIENT_ID: "test"
+      PAYPAL_CLIENT_SECRET: "test"
+      NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
+      PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
+      PAYPAL_ENV: "sandbox"
+      PAYPAL_WEBHOOK_ID: "test"
+      SMTP_EMAIL: "test@test.com"
+      SMTP_PASSWORD: "test"
+      RESEND_API_KEY: "test"
+      FIREBASE_ADMIN_PROJECT_ID: "test"
+      FIREBASE_ADMIN_CLIENT_EMAIL: "test@test.com"
+      FIREBASE_ADMIN_PRIVATE_KEY: "test"
+      R2_ACCOUNT_ID: "test"
+      R2_ACCESS_KEY_ID: "test"
+      R2_SECRET_ACCESS_KEY: "test"
+      R2_BUCKET_NAME: "test"
+      APP_URL: "http://localhost:3000"
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+      NEXT_PUBLIC_FIREBASE_API_KEY: "test"
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "test.firebaseapp.com"
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: "test"
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "test-bucket"
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "123456"
+      NEXT_PUBLIC_FIREBASE_APP_ID: "1:123456:web:abcdef"
+      UPSTASH_REDIS_REST_URL: "https://test.upstash.io"
+      UPSTASH_REDIS_REST_TOKEN: "test"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -388,35 +420,9 @@ jobs:
       - name: Build for production
         run: npm run build
         env:
-          # Dummy env vars so the production build passes startup validation.
+          # Per step, not job-wide: NODE_ENV=production at job level would make
+          # `npm ci` skip devDependencies. The dummies come from the job env.
           NODE_ENV: "production"
-          PAYPAL_CLIENT_ID: "test"
-          PAYPAL_CLIENT_SECRET: "test"
-          NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
-          PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
-          PAYPAL_ENV: "sandbox"
-          PAYPAL_WEBHOOK_ID: "test"
-          SMTP_EMAIL: "test@test.com"
-          SMTP_PASSWORD: "test"
-          RESEND_API_KEY: "test"
-          FIREBASE_ADMIN_PROJECT_ID: "test"
-          FIREBASE_ADMIN_CLIENT_EMAIL: "test@test.com"
-          FIREBASE_ADMIN_PRIVATE_KEY: "test"
-          R2_ACCOUNT_ID: "test"
-          R2_ACCESS_KEY_ID: "test"
-          R2_SECRET_ACCESS_KEY: "test"
-          R2_BUCKET_NAME: "test"
-          APP_URL: "http://localhost:3000"
-          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
-          NEXT_PUBLIC_FIREBASE_API_KEY: "test"
-          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "test.firebaseapp.com"
-          NEXT_PUBLIC_FIREBASE_PROJECT_ID: "test"
-          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "test-bucket"
-          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "123456"
-          NEXT_PUBLIC_FIREBASE_APP_ID: "1:123456:web:abcdef"
-          UPSTASH_REDIS_REST_URL: "https://test.upstash.io"
-          UPSTASH_REDIS_REST_TOKEN: "test"
-
       # A production build must actually execute its JavaScript. This catches
       # the failure mode where every page renders correctly but nothing
       # hydrates — a CSP with a nonce the prerendered HTML can never carry,
@@ -437,6 +443,10 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           exit $EXIT
         env:
+          # The server this step starts validates the same startup variables the
+          # build did; without NODE_ENV and the job-level dummies the
+          # instrumentation hook throws and Playwright times out waiting.
+          NODE_ENV: "production"
           CI: "1"
           BASE_URL: "http://localhost:3000"
           # `-p 3000` is required: with `output: "standalone"` in next.config.ts,
