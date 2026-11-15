@@ -72,17 +72,10 @@ export const POST = withErrorHandler(async (req: NextRequest,
       );
     }
 
+    // `requestIdSchema` wraps `idSchema`, which already rejects an empty id, so
+    // there is no second check here. It was unreachable, and unreachable money
+    // handling reads as protection that does not exist.
     const { requestId } = validatedParams.data;
-
-    if (!requestId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Request ID is required.",
-        },
-        { status: 400 }
-      );
-    }
 
     /*
      * ========================================
@@ -177,19 +170,12 @@ export const POST = withErrorHandler(async (req: NextRequest,
 
     /*
      * ========================================
-     * VALIDATE AMOUNT
+     * ROUND AMOUNT
      * ========================================
+     *
+     * `moneySchema` already rejects non-finite and non-positive amounts, so
+     * this is the only amount handling that remains: rounding to paise.
      */
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Enter a valid refund amount.",
-        },
-        { status: 400 }
-      );
-    }
 
     const roundedAmount = Number(amount.toFixed(2));
 

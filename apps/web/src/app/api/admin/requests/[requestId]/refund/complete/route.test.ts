@@ -154,6 +154,58 @@ describe('POST /api/admin/requests/[requestId]/refund/complete', () => {
     expect(mocks.txUpdate).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects an invalid request id', async () => {
+    const response = await POST(request(), context(''));
+
+    expect(response.status).toBe(400);
+    expect(mocks.runTransaction).not.toHaveBeenCalled();
+  });
+
+  it('treats a document with no data as having no refund workflow', async () => {
+    mocks.get.mockResolvedValue({ exists: true, data: () => undefined });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'No refund workflow exists for this request.',
+    });
+  });
+
+  it('derives the amount from the portions when no total is stored', async () => {
+    respondWith({
+      refundRequest: refundRequest({
+        amount: undefined,
+        walletAmount: 20,
+        paypalAmount: 100,
+      }),
+    });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(200);
+    expect(mocks.recordAdminAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { amount: 120, alreadyCompleted: false } })
+    );
+  });
+
+  it('treats a refund workflow with no recorded portions as zero', async () => {
+    respondWith({
+      refundRequest: refundRequest({
+        amount: undefined,
+        walletAmount: undefined,
+        paypalAmount: undefined,
+      }),
+    });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(200);
+    expect(mocks.recordAdminAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { amount: 0, alreadyCompleted: false } })
+    );
+  });
+
   it('rejects a request with no refund workflow', async () => {
     respondWith({ status: 'purchased' });
 

@@ -239,6 +239,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Vitest skips a glob-keyed threshold that matches no files without
+      # saying so, so a typo — or a subtree that gets renamed into another
+      # directory — would drop a payment or compliance gate while this job
+      # stayed green. The check reads the same globs the config uses and takes
+      # a second, so it runs before the suite rather than after it.
+      - name: Verify coverage globs resolve
+        run: npm run check:coverage-globs
+
+      # Coverage thresholds are global, so one well-tested compliance module
+      # hides a new neighbour that has no tests at all. This check requires a
+      # colocated `*.test.ts` for every module under src/lib/compliance and
+      # takes a second, so it runs before the suite.
+      - name: Verify compliance modules have tests
+        run: npm run check:compliance-tests
+
+      # The glob check proves each glob still matches a file; this proves each
+      # money-path file still matches a glob. A new wallet or refund module
+      # would otherwise inherit the global thresholds silently.
+      - name: Verify money-path files are under a stricter floor
+        run: npm run check:money-globs
+
       - name: Run tests with coverage
         run: npm run test:coverage
         env:

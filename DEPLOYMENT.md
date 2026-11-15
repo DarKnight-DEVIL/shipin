@@ -47,6 +47,13 @@ explicit rather than wildcarded:
 - All of the hosts above are accepted by `src/lib/cors.ts`. Add or change hosts
   with `APP_ALLOWED_ORIGINS` (comma-separated) instead of editing code; the
   variable is optional and unset by default.
+- **Preview deployments need no CORS configuration.** Each preview gets a generated
+  hostname, so the allowlist is extended at runtime from the Vercel system
+  variables `VERCEL_URL`, `VERCEL_BRANCH_URL` and
+  `VERCEL_PROJECT_PRODUCTION_URL`. That is deliberately not a `*.vercel.app`
+  wildcard, which would trust every unrelated project hosted there. Note that
+  `NEXT_PUBLIC_APP_URL` stays the canonical domain on previews, so links in
+  emails sent from a preview still point at production.
 - Set both `NEXT_PUBLIC_APP_URL` and `APP_URL` to the canonical domain users
   actually visit. They build verification links and the WebAuthn relying party,
   so a mismatch sends users to the wrong site and breaks passkeys.
@@ -60,6 +67,83 @@ explicit rather than wildcarded:
   is no `hosting` block, so the Firebase Hosting URLs do not serve this Next.js
   app yet; they need a Hosting target (static export or a Cloud Run / Functions
   backend).
+
+### Firebase Auth on preview deployments
+
+CORS being automatic does **not** make preview URLs usable for Google sign-in.
+`signInWithPopup` — and the `signInWithRedirect` fallback in
+`src/app/login/LoginClient.tsx` — only run on hostnames listed in **Firebase
+Console → Authentication → Settings → Authorized domains**. Any other host
+fails with `auth/unauthorized-domain`, which the login page maps to a support
+message.
+
+Which flows need the preview host authorized:
+
+| Flow | Preview host must be authorized? |
+|------|----------------------------------|
+| Google sign-in (popup or redirect) | **Yes** |
+| Email + password sign-in / registration | No |
+| Email-verification links | No — `NEXT_PUBLIC_APP_URL` stays canonical, so links point at production. Only a preview that overrides `NEXT_PUBLIC_APP_URL` needs its own host, otherwise `sendEmailVerification` fails with `auth/unauthorized-continue-uri` |
+| CORS, rate limiting, the App Check header | No — handled per request |
+
+Every Vercel deployment gets its own host
+(`shipin-psi-<hash>-<team>.vercel.app`), and the authorized-domain list holds
+exact hostnames: **there is no wildcard entry**, and `*.vercel.app` would be
+wrong anyway because it would authorize every unrelated project on that domain.
+Authorizing each commit URL is therefore not practical.
+
+**Use the branch alias instead.** Vercel keeps
+`shipin-psi-git-<branch>-<team>.vercel.app` stable across deployments of a
+branch, so it only has to be added once:
+
+1. Vercel → Project → Domains: copy the `git-<branch>` domain for the branch
+   used for auth QA.
+2. Firebase Console → project `shipin-9576a` → Authentication → Settings →
+   Authorized domains → **Add domain**.
+3. Enter the **bare hostname**: no scheme, no path, no port.
+4. Open the alias in a fresh tab and sign in with Google; the error should be
+   gone. The change can take a minute to propagate.
+5. Remove the host when the branch is deleted. An authorized host can run OAuth
+   against the project, so stale preview hosts are unnecessary surface.
+
+Ephemeral per-commit URLs still cannot do Google sign-in. Use the branch alias,
+the canonical domain, or email + password for those.
+
+**Automating the list** (optional). The Firebase Admin SDK does not expose
+authorized domains; the Identity Toolkit Admin API does. `PATCH` replaces the
+whole field, so read the current list first and write it back with the new host:
+
+```bash
+PROJECT=shipin-9576a
+HOST=shipin-psi-git-develop-<team>.vercel.app
+TOKEN="$(gcloud auth print-access-token)"   # needs the cloud-platform scope
+URL="https://identitytoolkit.googleapis.com/admin/v2/projects/${PROJECT}/config"
+
+DOMAINS="$(curl -sf -H "Authorization: Bearer ${TOKEN}" \
+  -H "x-goog-user-project: ${PROJECT}" "${URL}" | jq -c '.authorizedDomains // []')"
+
+BODY="$(jq -c --arg h "${HOST}" \
+  'if any(.[]; . == $h) then . else . + [$h] end | {authorizedDomains: .}' \
+  <<<"${DOMAINS}")"
+
+curl -sf -X PATCH -H "Authorization: Bearer ${TOKEN}" \
+  -H "x-goog-user-project: ${PROJECT}" -H "Content-Type: application/json" \
+  -d "${BODY}" "${URL}?updateMask=authorizedDomains"
+```
+
+This is the same read-modify-write the Firebase CLI performs when it authorizes
+a Hosting preview channel.
+
+Two adjacent settings are separate from this list:
+
+- If `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` is ever pointed at a custom host instead
+  of the project's `firebaseapp.com` domain, that host must be authorized **and**
+  the Google OAuth client needs `https://<host>/__/auth/handler` as a redirect
+  URI. Nothing to do today: the app keeps the default `authDomain`.
+- App Check is not covered by this list. A reCAPTCHA v3 site key only works on
+  the domains registered on the key in Google Cloud Console. With
+  `APP_CHECK_ENFORCEMENT=true`, a preview host must be added there too, or the
+  client cannot mint a token and requests fail with `APP_CHECK_FAILED`.
 
 ### Enabling Global Rate Limiting (Upstash Redis)
 

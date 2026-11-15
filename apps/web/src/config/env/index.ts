@@ -54,6 +54,11 @@ interface ServerEnv {
   INDIA_POST_CLIENT_ID?: string;
   INDIA_POST_CLIENT_SECRET?: string;
   CRON_SECRET?: string;
+  /**
+   * `'true'` makes API routes reject requests without a valid App Check token.
+   * Off by default so local development and CI need no Firebase project.
+   */
+  APP_CHECK_ENFORCEMENT?: string;
 }
 
 interface ClientEnv {
@@ -66,6 +71,17 @@ interface ClientEnv {
   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: string;
   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: string;
   NEXT_PUBLIC_FIREBASE_APP_ID: string;
+  /**
+   * reCAPTCHA v3 site key for Firebase App Check.
+   *
+   * Empty disables App Check, which is the right default for local development
+   * without a registered key. When the Firebase project enforces App Check,
+   * this must be set or every Auth request is rejected with
+   * `auth/firebase-app-check-token-is-invalid`.
+   */
+  NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY: string;
+  /** `'true'` registers a local App Check debug token instead of calling reCAPTCHA. */
+  NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG: string;
 }
 
 export function readEnv(key: string, required: boolean = false): string | undefined {
@@ -133,6 +149,7 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
   'WHATSAPP_ACCESS_TOKEN',
   'WHATSAPP_PHONE_NUMBER_ID',
   'MFA_SESSION_SECRET',
+  'APP_CHECK_ENFORCEMENT',
   'INDIA_POST_TRACKING_URL',
   'INDIA_POST_CLIENT_ID',
   'INDIA_POST_CLIENT_SECRET',
@@ -268,6 +285,10 @@ export const clientEnv: ClientEnv = {
   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET, 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'),
   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID, 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
   NEXT_PUBLIC_FIREBASE_APP_ID: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_APP_ID, 'NEXT_PUBLIC_FIREBASE_APP_ID'),
+  // Optional on purpose: an empty value disables App Check instead of failing
+  // the build, so a project without enforcement still runs.
+  NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY: process.env.NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY ?? '',
+  NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG: process.env.NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG ?? '',
 };
 
 /** Whether the app is running in production. */

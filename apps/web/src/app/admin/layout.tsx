@@ -13,11 +13,12 @@ import {
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { endMfaSession } from "@/lib/mfaSessionClient";
 import { useState } from "react";
 
 import AdminGuard from "./AdminGuard";
 import AdminMfaGate from "@/components/admin/AdminMfaGate";
-import { ErrorBoundary } from "@/components/ui";
+import { AppCheckBanner, ErrorBoundary, RetryNotice } from "@/components/ui";
 
 export default function AdminLayout({
   children,
@@ -32,6 +33,24 @@ export default function AdminLayout({
     setLoggingOut(true);
 
     try {
+      // Drop the elevation before the token is gone: DELETE needs the bearer
+      // token, and an elevation left behind lets this account walk back into
+      // /admin without a fresh MFA challenge for the rest of its window.
+      const idToken = await auth.currentUser
+        ?.getIdToken()
+        .catch(() => null);
+
+      if (idToken) {
+        try {
+          await endMfaSession(idToken);
+        } catch (error) {
+          // Signing out must win over a failed elevation clear: a stuck
+          // logout leaves the user with no way out, while a leftover cookie
+          // still expires on its own.
+          console.error("Ending MFA session failed:", error);
+        }
+      }
+
       await signOut(auth);
 
       window.location.replace("/login");
@@ -48,6 +67,8 @@ export default function AdminLayout({
   return (
     <ErrorBoundary title="Admin dashboard unavailable">
       <AdminGuard>
+        <AppCheckBanner supportHref="/admin/support" />
+        <RetryNotice />
         <main className="h-screen overflow-hidden bg-slate-950 text-white">
         <div className="flex h-full">
 

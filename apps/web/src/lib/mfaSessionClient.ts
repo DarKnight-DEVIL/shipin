@@ -79,15 +79,19 @@ export async function startWebAuthnSession(
   };
 }
 
-/** End the elevated session (call on admin sign-out). */
-export async function endMfaSession(): Promise<void> {
+/**
+ * End the elevated session (call on admin sign-out).
+ *
+ * The route requires the caller's ID token, so pass one obtained *before*
+ * `signOut()`. Sign-out must not fail because this did, hence the swallow: a
+ * leftover cookie expires on its own, whereas a stuck sign-out leaves the user
+ * signed in with no way out.
+ */
+export async function endMfaSession(idToken: string): Promise<void> {
   try {
-    await fetch(SESSION_PATH, {
-      method: "DELETE",
-      credentials: "same-origin",
-      cache: "no-store",
-    });
+    await mfaApi(SESSION_PATH, { idToken, method: "DELETE" });
   } catch {
-    // Clearing an elevation is best-effort; the cookie expires on its own.
+    // See above: an elevation that outlives this call is still bounded by its
+    // own 30-minute lifetime.
   }
 }

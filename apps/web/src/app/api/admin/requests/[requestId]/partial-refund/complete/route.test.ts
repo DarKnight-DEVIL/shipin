@@ -91,6 +91,151 @@ beforeEach(() => {
 });
 
 describe('POST /api/admin/requests/[requestId]/partial-refund/complete', () => {
+  it('treats a document with no data as having no offer', async () => {
+    mocks.get.mockResolvedValue({ exists: true, data: () => undefined });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'No partial refund offer exists.',
+    });
+  });
+
+  it('refuses a refund when the request has no payment record', async () => {
+    mocks.get.mockResolvedValue(snapshot({ userId: 'user-1', partialRefundOffer: acceptedOffer }));
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'The partial refund amount cannot be covered by the original payment sources.',
+    });
+  });
+
+  it('reports a transaction that finds the offer changed method', async () => {
+    mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
+      ref.__kind === 'wallet'
+        ? snapshot({ balance: 10, currency: 'EUR' })
+        : snapshot({
+            ...requestDoc,
+            partialRefundOffer: { ...acceptedOffer, selectedMethod: 'wallet' },
+          })
+    );
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(500);
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
+  it('reports a transaction that finds the request emptied', async () => {
+    mocks.txGet.mockImplementation(async () => ({ exists: true, data: () => undefined }));
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(500);
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
+  it('reports a transaction whose payment no longer covers the refund', async () => {
+    mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
+      ref.__kind === 'wallet'
+        ? snapshot({ balance: 10, currency: 'EUR' })
+        : snapshot({ ...requestDoc, payment: { walletAmount: 5, paypalAmount: 5 } })
+    );
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(500);
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
+  it('reports a transaction that now needs a PayPal transaction id', async () => {
+    mocks.get.mockResolvedValue(
+      snapshot({
+        ...requestDoc,
+        payment: { walletAmount: 50, paypalAmount: 100 },
+        partialRefundOffer: { ...acceptedOffer, amount: 50 },
+      })
+    );
+    mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
+      ref.__kind === 'wallet'
+        ? snapshot({ balance: 10, currency: 'EUR' })
+        : snapshot({
+            ...requestDoc,
+            payment: { walletAmount: 0, paypalAmount: 100 },
+            partialRefundOffer: { ...acceptedOffer, amount: 50 },
+          })
+    );
+
+    const response = await POST(request({}), context());
+
+    expect(response.status).toBe(500);
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
+  it('defaults a missing wallet document and blank optional fields', async () => {
+    mocks.verifyIdToken.mockResolvedValue({ uid: 'admin-1', email: '' });
+    mocks.get.mockResolvedValue(
+      snapshot({
+        userId: 'user-1',
+        payment: { walletAmount: 40, paypalAmount: 0 },
+        partialRefundOffer: { ...acceptedOffer, amount: 20, reason: undefined },
+      })
+    );
+    mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
+      ref.__kind === 'wallet' ? snapshot(undefined) : mocks.get()
+    );
+
+    const response = await POST(request({}), context());
+
+    expect(response.status).toBe(200);
+    expect(mocks.txSet).toHaveBeenCalledWith(
+      expect.objectContaining({ __kind: 'wallet' }),
+      expect.objectContaining({ balance: 20, currency: 'USD' }),
+      { merge: true }
+    );
+    expect(mocks.txSet).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'wtx-1' }),
+      expect.objectContaining({ description: 'Partial refund', createdByEmail: null })
+    );
+    expect(mocks.txUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        partialRefunds: [expect.objectContaining({ reason: '', createdByEmail: null })],
+      })
+    );
+  });
+
+  it('uses a zero balance and USD when the wallet document is empty', async () => {
+    mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
+      ref.__kind === 'wallet' ? snapshot({}) : mocks.get()
+    );
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(200);
+    expect(mocks.txSet).toHaveBeenCalledWith(
+      expect.objectContaining({ __kind: 'wallet' }),
+      expect.objectContaining({ balance: 20, currency: 'USD' }),
+      { merge: true }
+    );
+  });
+
+  it('reports a transaction whose request has no payment record', async () => {
+    mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
+      ref.__kind === 'wallet'
+        ? snapshot({ balance: 10, currency: 'EUR' })
+        : snapshot({ userId: 'user-1', partialRefundOffer: acceptedOffer })
+    );
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(500);
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
   it('requires a bearer token', async () => {
     const response = await POST(request(undefined, ''), context());
 

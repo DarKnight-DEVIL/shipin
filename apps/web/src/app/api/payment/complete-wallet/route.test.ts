@@ -17,6 +17,20 @@ vi.mock('@/utils/errors', () => ({
   withErrorHandler: (handler: unknown) => handler,
 }));
 
+const idem = vi.hoisted(() => ({
+  readKey: vi.fn(),
+  readPrior: vi.fn(),
+  remember: vi.fn(),
+}));
+
+// The route imports the server store, which pulls in firebase-admin; stub it so
+// these tests stay about the replay behaviour.
+vi.mock('@/lib/idempotency', () => ({
+  readIdempotencyKey: idem.readKey,
+  readIdempotentResponse: idem.readPrior,
+  rememberIdempotentResponse: idem.remember,
+}));
+
 vi.mock('@/features/wallet/services/walletPayment', () => ({
   processWalletPayment: vi.fn(),
   walletPaymentErrorResponse: (error: unknown) =>
@@ -44,6 +58,9 @@ const AUTH = { token: { uid: 'user-1' }, profile: { uid: 'user-1', role: 'custom
 describe('POST /api/payment/complete-wallet', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    idem.readKey.mockReturnValue(null);
+    idem.readPrior.mockResolvedValue(null);
+    idem.remember.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -85,6 +102,76 @@ describe('POST /api/payment/complete-wallet', () => {
     const body = await res.json();
     expect(body).toEqual({ success: true, transactionId: 'txn-1' });
     expect(mockProcess).toHaveBeenCalledWith('r1', 10.5, 'user-1');
+  });
+
+  it('treats a non-string requestId as missing', async () => {
+    mockRequireAuth.mockResolvedValue(AUTH as never);
+
+    const res = (await POST(makeRequest({ requestId: 42, amount: 10 }))) as Response;
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: 'Request ID is required.' });
+    expect(mockProcess).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 for an unrecognised service failure', async () => {
+    mockRequireAuth.mockResolvedValue(AUTH as never);
+    mockProcess.mockRejectedValue('unexpected');
+
+    const res = (await POST(makeRequest({ requestId: 'r1', amount: 10 }))) as Response;
+
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toMatchObject({ success: false });
+  });
+
+  it('replays a stored result instead of charging again', async () => {
+    mockRequireAuth.mockResolvedValue(AUTH as never);
+    idem.readKey.mockReturnValue('key-1');
+    idem.readPrior.mockResolvedValue({
+      status: 200,
+      body: { success: true, transactionId: 'txn-first' },
+    });
+
+    const res = (await POST(makeRequest({ requestId: 'r1', amount: 10.5 }))) as Response;
+
+    // A dropped response, then a retry: the customer must see the original
+    // success, and the wallet must not be debited twice.
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      success: true,
+      transactionId: 'txn-first',
+    });
+    expect(mockProcess).not.toHaveBeenCalled();
+    expect(idem.readPrior).toHaveBeenCalledWith({
+      uid: 'user-1',
+      scope: 'wallet.complete',
+      key: 'key-1',
+    });
+  });
+
+  it('records the result so the next retry can replay it', async () => {
+    mockRequireAuth.mockResolvedValue(AUTH as never);
+    mockProcess.mockResolvedValue({ success: true, transactionId: 'txn-1' });
+    idem.readKey.mockReturnValue('key-2');
+
+    const res = (await POST(makeRequest({ requestId: 'r1', amount: 10.5 }))) as Response;
+
+    expect(res.status).toBe(200);
+    expect(idem.remember).toHaveBeenCalledWith(
+      { uid: 'user-1', scope: 'wallet.complete', key: 'key-2' },
+      { status: 200, body: { success: true, transactionId: 'txn-1' } }
+    );
+  });
+
+  it('touches the store only when the caller sent a key', async () => {
+    mockRequireAuth.mockResolvedValue(AUTH as never);
+    mockProcess.mockResolvedValue({ success: true, transactionId: 'txn-1' });
+
+    const res = (await POST(makeRequest({ requestId: 'r1', amount: 10.5 }))) as Response;
+
+    expect(res.status).toBe(200);
+    expect(idem.readPrior).not.toHaveBeenCalled();
+    expect(idem.remember).not.toHaveBeenCalled();
   });
 
   it('maps known service errors to HTTP responses', async () => {

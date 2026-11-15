@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireAuthWithProfile } from "@/lib/auth";
+import {
+  readIdempotencyKey,
+  readIdempotentResponse,
+  rememberIdempotentResponse,
+} from "@/lib/idempotency";
 import { withErrorHandler } from "@/utils/errors";
 import {
   processWalletPayment,
@@ -51,6 +56,24 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     );
   }
 
+  // --- 2b. Replay a completed attempt instead of charging again ---
+  //
+  // The client sends this key again when it retries after a dropped response.
+  // Without the replay, that retry would reach the service and come back as
+  // ALREADY_PAID — a successful payment reported to the customer as a failure.
+  const idempotencyKey = readIdempotencyKey(req);
+  const replayScope = {
+    uid: auth.profile.uid,
+    scope: "wallet.complete",
+    key: idempotencyKey ?? "",
+  };
+
+  if (idempotencyKey) {
+    const prior = await readIdempotentResponse(replayScope);
+
+    if (prior) return NextResponse.json(prior.body, { status: prior.status });
+  }
+
   // --- 3. Delegate to the wallet service ---
   try {
     const result = await processWalletPayment(
@@ -59,10 +82,16 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       auth.profile.uid
     );
 
-    return NextResponse.json({
+    const body = {
       success: true,
       transactionId: result.transactionId,
-    });
+    };
+
+    if (idempotencyKey) {
+      await rememberIdempotentResponse(replayScope, { status: 200, body });
+    }
+
+    return NextResponse.json(body);
   } catch (error) {
     const known = walletPaymentErrorResponse(error);
     if (known) {

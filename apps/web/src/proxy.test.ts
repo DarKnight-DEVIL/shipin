@@ -54,10 +54,6 @@ vi.mock('@/lib/cors', () => ({
   getCorsHeaders: () => ({ 'Access-Control-Allow-Origin': '*' }),
 }));
 
-vi.mock('@/lib/csrf', () => ({
-  getCsrfTokenFromCookie: () => 'csrf-token',
-}));
-
 import proxy from './proxy';
 
 const allowed: LimitResult = { ok: true, limit: 100, remaining: 99, reset: 0 };
@@ -120,6 +116,39 @@ describe('proxy: sign-in entry points are never rate limited', () => {
     expect(state.web.record).not.toHaveBeenCalled();
     expect(response.status).toBe(200);
     expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+  });
+});
+
+describe('proxy: page responses stay cacheable', () => {
+  it.each(['/', '/dashboard', '/login'])(
+    'sets no Set-Cookie for %s',
+    async (pathname) => {
+      // A Set-Cookie on an HTML response makes it uncacheable at the edge, and
+      // nothing in the app reads a cookie for authentication on these routes.
+      const response = await proxy(requestFor(pathname));
+
+      expect(response.headers.get('set-cookie')).toBeNull();
+    }
+  );
+
+  it.each(['/', '/login', '/track', '/dashboard'])(
+    'leaves Cache-Control to Next for %s',
+    async (pathname) => {
+      // Next emits `s-maxage=31536000` on prerendered HTML. Any value from the
+      // proxy would replace it, and `no-store` here would silently undo the
+      // cacheability that removing the cookie bought.
+      const response = await proxy(requestFor(pathname));
+
+      expect(response.headers.get('cache-control')).toBeNull();
+    }
+  );
+
+  it('advertises no CSRF header in CORS', async () => {
+    const response = await proxy(requestFor('/dashboard'));
+
+    expect(response.headers.get('Access-Control-Allow-Headers')).toBe(
+      'Content-Type, Authorization, X-Requested-With, X-Firebase-AppCheck'
+    );
   });
 });
 

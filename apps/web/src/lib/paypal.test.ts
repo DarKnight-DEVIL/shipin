@@ -12,6 +12,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const envState = {
   production: false,
   webhookId: 'test-webhook-id' as string | undefined,
+  apiUrl: undefined as string | undefined,
+  paypalEnv: 'sandbox' as 'sandbox' | 'live',
+  clientId: 'test-client-id' as string | undefined,
+  clientSecret: 'test-secret' as string | undefined,
 };
 
 vi.mock('@/config/env', () => ({
@@ -21,9 +25,10 @@ vi.mock('@/config/env', () => ({
   isDevelopment: true,
   get serverEnv() {
     return {
-      PAYPAL_CLIENT_ID: 'test-client-id',
-      PAYPAL_CLIENT_SECRET: 'test-secret',
-      PAYPAL_ENV: 'sandbox',
+      PAYPAL_CLIENT_ID: envState.clientId,
+      PAYPAL_CLIENT_SECRET: envState.clientSecret,
+      PAYPAL_ENV: envState.paypalEnv,
+      PAYPAL_API_URL: envState.apiUrl,
       PAYPAL_WEBHOOK_ID: envState.webhookId,
     };
   },
@@ -141,8 +146,28 @@ describe('verifyPayPalWebhook', () => {
 import { getPayPalBaseUrl, getPayPalAccessToken } from '@/lib/paypal';
 
 describe('getPayPalBaseUrl', () => {
+  afterEach(() => {
+    envState.apiUrl = undefined;
+    envState.paypalEnv = 'sandbox';
+  });
+
   it('returns sandbox URL for sandbox env', () => {
     expect(getPayPalBaseUrl()).toBe('https://api-m.sandbox.paypal.com');
+  });
+
+  it('returns the live URL for live env', () => {
+    // Live is the one value where a wrong base URL moves real money in the
+    // wrong PayPal environment.
+    envState.paypalEnv = 'live';
+
+    expect(getPayPalBaseUrl()).toBe('https://api-m.paypal.com');
+  });
+
+  it('prefers an explicit PAYPAL_API_URL override', () => {
+    envState.paypalEnv = 'live';
+    envState.apiUrl = 'https://paypal-proxy.internal.example';
+
+    expect(getPayPalBaseUrl()).toBe('https://paypal-proxy.internal.example');
   });
 });
 
@@ -161,7 +186,37 @@ describe('getPayPalAccessToken', () => {
     await expect(getPayPalAccessToken()).rejects.toMatchObject({ code: 'PAYPAL_AUTH_ERROR', status: 502 });
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  it('throws a config error without a client id, before any request', async () => {
+    envState.clientId = undefined;
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    // Configured-nothing is not a 502: the request would never succeed, so it
+    // must fail loudly as a deployment problem rather than a PayPal outage.
+    await expect(getPayPalAccessToken()).rejects.toMatchObject({
+      code: 'PAYPAL_CONFIG_ERROR',
+      status: 500,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('throws a config error without a client secret, before any request', async () => {
+    envState.clientSecret = undefined;
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(getPayPalAccessToken()).rejects.toMatchObject({
+      code: 'PAYPAL_CONFIG_ERROR',
+      status: 500,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  afterEach(() => {
+    envState.clientId = 'test-client-id';
+    envState.clientSecret = 'test-secret';
+    vi.restoreAllMocks();
+  });
 });
 
 import { verifyPayPalOrder, capturePayPalOrder, refundPayPalOrder } from '@/lib/paypal';

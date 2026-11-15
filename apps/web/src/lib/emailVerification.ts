@@ -1,0 +1,116 @@
+/**
+ * Email-verification helpers shared by the login form and the verify screen.
+ *
+ * Two details make the difference between "verification works" and "the user
+ * is stuck on the verify screen forever":
+ *
+ *  1. `sendEmailVerification` rejects the whole call with
+ *     `auth/invalid-continue-uri` when the continue URL is relative (for
+ *     example `"/verify-email"` because NEXT_PUBLIC_APP_URL is unset). No email
+ *     is sent at all, so the user has nothing to click and no error worth
+ *     showing.
+ *  2. `reload()` refreshes the user *record*, not the ID token. The token in
+ *     the client cache still carries `email_verified: false` for up to an hour,
+ *     and every API route calls `requireAuth`, which rejects it with 403
+ *     EMAIL_VERIFICATION_REQUIRED. The user sees "Email verified!", clicks
+ *     Continue, and the dashboard is broken in exactly the way an unverified
+ *     account is.
+ */
+
+import { clientEnv } from "@/config/env";
+
+/**
+ * The absolute continue URL Firebase should return the user to, if usable.
+ *
+ * `baseUrl` is injectable so the rules are testable without stubbing the env
+ * module; callers pass nothing and it reads clientEnv.
+ */
+export function verificationContinueUrl(
+  baseUrl: string | undefined = clientEnv.NEXT_PUBLIC_APP_URL
+): string | undefined {
+  // Firebase only accepts an absolute http(s) URL here. Passing anything else
+  // fails the send, which is worse than the default action handler.
+  if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) return undefined;
+
+  return `${baseUrl.replace(/\/+$/, "")}/verify-email`;
+}
+
+/**
+ * Action-code settings for `sendEmailVerification`.
+ *
+ * Returns undefined rather than `{}` when no usable URL exists: Firebase's
+ * ActionCodeSettings requires `url`, and passing an object without one is
+ * rejected at runtime.
+ */
+export function verificationEmailOptions(
+  baseUrl?: string
+): { url: string } | undefined {
+  const url = verificationContinueUrl(baseUrl);
+  return url ? { url } : undefined;
+}
+
+/**
+ * How long a rate-limited user must wait before resending.
+ *
+ * Firebase's limit is a rolling window, not a fixed lockout, so this is the
+ * confirmation window rather than an exact opening time; it matches the "wait a
+ * minute" the message already gives the user.
+ */
+export const RESEND_COOLDOWN_MS = 60_000;
+
+/**
+ * Whether a failed send was Firebase rate-limiting the user.
+ *
+ * Checked separately from the message because the screen does something with it
+ * — it disables the button for {@link RESEND_COOLDOWN_MS} — and matching on the
+ * message text to decide behaviour would break the moment the copy changes.
+ */
+export function isRateLimitedResend(error: unknown): boolean {
+  return (
+    (error as { code?: string } | null | undefined)?.code ===
+    "auth/too-many-requests"
+  );
+}
+
+/**
+ * User-facing message for a failed `sendEmailVerification`.
+ *
+ * The verify screen previously reported these only to the console, so a
+ * rate-limited or offline user was told nothing and simply never received mail.
+ */
+export function resendVerificationErrorMessage(error: unknown): string {
+  const code = (error as { code?: string } | null | undefined)?.code;
+
+  switch (code) {
+    case "auth/too-many-requests":
+      return "Too many attempts. Wait a minute, then try again.";
+    case "auth/network-request-failed":
+      return "We could not reach Firebase. Check your connection and try again.";
+    case "auth/user-token-expired":
+    case "auth/requires-recent-login":
+      return "Your session has expired. Sign in again to resend the email.";
+    case "auth/invalid-continue-uri":
+    case "auth/unauthorized-continue-uri":
+      // Not the user's fault: NEXT_PUBLIC_APP_URL is not a URL this Firebase
+      // project accepts, so Firebase refuses to send anything at all.
+      return "We could not send the verification email. Please contact support.";
+    default:
+      return "We could not send the verification email. Please try again.";
+  }
+}
+
+/**
+ * Force a token refresh so the next request carries `email_verified: true`.
+ *
+ * Never throws: verification has already succeeded at this point, and failing
+ * to refresh must not trap the user on the verify screen.
+ */
+export async function refreshVerifiedToken(user: {
+  getIdToken: (forceRefresh?: boolean) => Promise<string>;
+}): Promise<void> {
+  try {
+    await user.getIdToken(true);
+  } catch (error) {
+    console.error("[auth] Could not refresh the ID token after verification:", error);
+  }
+}

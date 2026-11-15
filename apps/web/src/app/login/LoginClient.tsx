@@ -17,7 +17,7 @@ import { ArrowLeft, ArrowUpRight, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import { auth } from "@/lib/firebase";
-import { clientEnv } from "@/config/env";
+import { verificationEmailOptions } from "@/lib/emailVerification";
 // The profile service is imported on demand below: it pulls in the Firestore
 // SDK, and the login page only needs it after a successful sign-in.
 
@@ -53,6 +53,16 @@ function Logo({ small = false }: { small?: boolean }) {
   );
 }
 
+/**
+ * Firebase's page for the console setting behind
+ * `auth/unauthorized-domain`. Preview deployments get a new host on
+ * every deploy, and only hosts listed under Auth -> Settings ->
+ * Authorized domains can start a sign-in, so this is the one link that
+ * actually helps.
+ */
+const AUTHORIZED_DOMAINS_DOC =
+  "https://support.google.com/firebase/answer/6400741";
+
 export default function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -62,6 +72,12 @@ export default function LoginClient() {
   const [password, setPassword] = useState("");
   const [isRegister, setIsRegister] = useState(false);
   const [formError, setFormError] = useState("");
+  // Optional documentation link rendered under the inline error, for
+  // failures a user cannot fix from this page.
+  const [formErrorHelp, setFormErrorHelp] = useState<{
+    href: string;
+    label: string;
+  } | null>(null);
 
   const requestedNext = searchParams.get("next");
 
@@ -86,10 +102,18 @@ export default function LoginClient() {
       let destination = "/dashboard";
 
       try {
-        const { getUserProfile } = await import(
+        const { ensureUserProfile } = await import(
           "@/features/users/services/userProfile"
         );
-        const profile = await getUserProfile(user.uid);
+        // A Google account has never gone through registration, so it may have
+        // no users/{uid} document. Without the repair every authenticated API
+        // call answers 403 USER_PROFILE_NOT_FOUND once the user lands.
+        const profile = await ensureUserProfile({
+          uid: user.uid,
+          displayName: user.displayName,
+          email: user.email,
+          photoURL: user.photoURL,
+        });
         if (profile?.role === "admin") {
           destination = safeRequestedNext || "/admin/dashboard";
         } else {
@@ -121,6 +145,10 @@ export default function LoginClient() {
       }
     } catch (error) {
       setLoading(false);
+      // The previous inline error is about a different attempt, so it must
+      // not outlive this one. Clearing it also unmounts any documentation
+      // link, which only renders beside an inline error.
+      setFormError("");
       // Log full error details for debugging â€” Firebase error codes are
       // often buried in nested properties, so stringify everything.
       console.error("FULL AUTH ERROR:", JSON.stringify(error, null, 2));
@@ -142,11 +170,32 @@ export default function LoginClient() {
       } else if (errorCode === "auth/popup-closed-by-user") {
         userMessage = "Sign-in was cancelled. Please try again.";
       } else if (errorCode === "auth/unauthorized-domain") {
+        // The message named support and nothing else, so the one fact that
+        // fixes it - this host is missing from the authorized list - never
+        // reached anyone. Shown inline as well as toasted, because a toast
+        // cannot carry the link.
         userMessage =
-          "This domain isn't authorized for Google sign-in. Please contact support.";
+          "This domain isn't authorized for sign-in. Add it to Firebase Auth " +
+          "> Settings > Authorized domains - every preview deployment needs " +
+          "its own host added.";
+        setFormError(userMessage);
+        setFormErrorHelp({
+          href: AUTHORIZED_DOMAINS_DOC,
+          label: "See the authorized domains documentation",
+        });
       } else if (errorCode === "auth/operation-not-allowed") {
         userMessage =
           "Google sign-in is not enabled. Please contact support to enable it.";
+      } else if (errorCode?.includes("app-check")) {
+        // Firebase App Check enforcement on Identity Toolkit rejects every
+        // sign-in, for every provider, before credentials are even checked.
+        // Without this branch it read as "internal error" and looked like an
+        // OAuth misconfiguration.
+        userMessage =
+          "Sign-in is blocked by Firebase App Check for this project. An administrator must disable App Check enforcement on Identity Toolkit, or register this web app in App Check.";
+        console.error(
+          "[auth] App Check is enforced on Identity Toolkit and the web client has no valid token. In Firebase Console → App Check → APIs, set Identity Toolkit / Identity Platform to Unenforced (or register the web app with a reCAPTCHA v3 key)."
+        );
       } else if (errorCode === "auth/network-request-failed") {
         userMessage = "Network error. Please check your connection and try again.";
       } else if (errorCode === "auth/too-many-requests") {
@@ -176,6 +225,7 @@ export default function LoginClient() {
    * role="alert" region) as well as in a toast.
    */
   function fail(message: string) {
+    setFormErrorHelp(null);
     setFormError(message);
     toast.error(message);
   }
@@ -320,9 +370,7 @@ export default function LoginClient() {
       // and redirect to the dedicated verification screen.
       if (!user.emailVerified) {
         try {
-          await sendEmailVerification(user, {
-            url: `${clientEnv.NEXT_PUBLIC_APP_URL ?? ""}/verify-email`,
-          });
+          await sendEmailVerification(user, verificationEmailOptions());
         } catch (sendError) {
           console.error("Failed to send verification email:", sendError);
         }
@@ -335,10 +383,15 @@ export default function LoginClient() {
       }
 
       // Verified email â€” proceed to the dashboard (or admin).
-      const { getUserProfile } = await import(
+      const { ensureUserProfile } = await import(
         "@/features/users/services/userProfile"
       );
-      const profile = await getUserProfile(user.uid);
+      const profile = await ensureUserProfile({
+        uid: user.uid,
+        displayName: user.displayName,
+        email: user.email,
+        photoURL: user.photoURL,
+      });
       let destination = "/dashboard";
       if (profile?.role === "admin") {
         destination = safeRequestedNext || "/admin/dashboard";
@@ -363,6 +416,13 @@ export default function LoginClient() {
         setIsRegister(false);
       } else if (err.code === "auth/weak-password") {
         fail("Password is too weak. Try a longer one.");
+      } else if (err.code?.includes("app-check")) {
+        console.error(
+          "[auth] App Check is enforced on Identity Toolkit and the web client has no valid token. In Firebase Console → App Check → APIs, set Identity Toolkit / Identity Platform to Unenforced (or register the web app with a reCAPTCHA v3 key)."
+        );
+        fail(
+          "Sign-in is blocked by Firebase App Check for this project. An administrator must disable App Check enforcement on Identity Toolkit, or register this web app in App Check."
+        );
       } else {
         fail("Unable to sign in. Please try again.");
       }
@@ -411,6 +471,19 @@ export default function LoginClient() {
           {formError && (
             <p className="login__error" role="alert" id="login-error">
               {formError}
+              {formErrorHelp && (
+                <>
+                  {" "}
+                  <a
+                    href={formErrorHelp.href}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="login__error-link"
+                  >
+                    {formErrorHelp.label}
+                  </a>
+                </>
+              )}
             </p>
           )}
 

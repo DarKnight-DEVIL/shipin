@@ -20,15 +20,18 @@ export class AdminApiError extends ApiError {
 type AdminApiOptions = {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;
+  /** Pass `newIdempotencyKey()` for writes the route deduplicates. */
+  idempotencyKey?: string;
 };
 
 export async function adminApi<T>(
   path: string,
-  { method = "GET", body }: AdminApiOptions = {}
+  { method = "GET", body, idempotencyKey }: AdminApiOptions = {}
 ): Promise<T> {
   return apiFetch<T>(path, {
     method,
     body,
+    idempotencyKey,
     errorClass: AdminApiError,
   });
 }

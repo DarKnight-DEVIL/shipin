@@ -14,6 +14,8 @@ vi.mock('@/lib/firebase', () => ({
   },
   db: {},
   app: {},
+  // App Check is not configured in tests; apiFetch must still work.
+  getAppCheckToken: async () => null,
 }));
 
 // Imported per file instead of statically: with a shared module registry the

@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { adminAuth, adminDb } from '@/lib/firebaseAdmin';
 import { getAdminAuthError, type AdminUser } from './adminAuth';
+import { verifyAppCheckRequest } from './appCheck';
 import { toShipINError, serializeError } from '@/utils/errors';
 
 export function extractAuth(request: Request): string | null {
@@ -56,6 +57,20 @@ export async function verifyIdToken(token: string): Promise<DecodedIdToken | nul
 export async function requireAuth(
   request: Request
 ): Promise<DecodedIdToken | NextResponse> {
+  // Checked before the ID token when enforcement is on: an unverified client is
+  // rejected without spending a token verification on it.
+  const appCheck = await verifyAppCheckRequest(request);
+  if (appCheck === "missing" || appCheck === "invalid") {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "App verification failed. Reload the page and try again.",
+        code: "APP_CHECK_FAILED",
+      },
+      { status: 401 }
+    );
+  }
+
   const token = extractAuth(request);
   if (!token) {
     return NextResponse.json(

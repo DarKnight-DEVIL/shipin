@@ -54,6 +54,81 @@ beforeEach(() => {
 });
 
 describe('POST /api/admin/requests/[requestId]/partial-refund', () => {
+  it('maps a known auth error thrown after validation to its own status', async () => {
+    mocks.update.mockRejectedValue(new Error('ADMIN_ACCESS_REQUIRED'));
+    mocks.getAdminAuthError.mockReturnValue({ status: 403, error: 'Admin access required.' });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: 'Admin access required.',
+    });
+  });
+
+  it('rethrows an unexpected error that is classified as a 500', async () => {
+    mocks.requireAdmin.mockRejectedValue(new Error('mfa store offline'));
+    mocks.getAdminAuthError.mockReturnValue({ status: 500, error: 'Internal error' });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: 'Unable to create partial refund offer.',
+    });
+  });
+
+  it('rethrows a non-Error rejection', async () => {
+    mocks.requireAdmin.mockRejectedValue('boom');
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: 'Unable to create partial refund offer.',
+    });
+  });
+
+  it('treats a payment with no total fields as zero', async () => {
+    respondWith({ payment: { walletAmount: 5 }, totalRefundedAmount: 0 });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: 'Invalid payment amount.',
+    });
+  });
+
+  it('requires a reason', async () => {
+    const response = await POST(request({ amount: 25 }), context());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: 'A refund reason is required.',
+    });
+  });
+
+  it('defaults a missing refunded total and a blank admin email', async () => {
+    mocks.requireAdmin.mockResolvedValue({ uid: 'admin-1', email: '' });
+    respondWith({ payment: { amountPaid: 100 } });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ remainingRefundable: 100 });
+    expect(mocks.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        partialRefundOffer: expect.objectContaining({ createdByEmail: null }),
+      })
+    );
+  });
+
   it('passes admin auth failures straight through', async () => {
     mocks.requireAdmin.mockRejectedValue(new Error('ADMIN_ACCESS_REQUIRED'));
     mocks.getAdminAuthError.mockReturnValue({ status: 403, error: 'Admin access required.' });

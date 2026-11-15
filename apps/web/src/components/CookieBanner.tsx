@@ -44,8 +44,9 @@ export default function CookieBanner() {
               We value your privacy
             </h3>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              We use a single CSRF protection cookie to secure your session. We do not use tracking cookies,
-              advertising cookies, or share your data with advertisers. See our{' '}
+              We do not use tracking, advertising or analytics cookies, and we never share your data with
+              advertisers. The only cookie we set is an essential sign-in security cookie for administrators.
+              See our{' '}
               <Link href="/privacy-policy" className="text-orange-600 dark:text-orange-400 hover:underline">
                 Privacy Policy
               </Link>

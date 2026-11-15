@@ -16,11 +16,24 @@
  * A missing shared store never produces a non-200: the process has always been
  * able to serve requests in that state, and returning 503 made load balancers
  * and uptime monitors mark a working deployment as down.
+ *
+ * The `appCheck` block reports the two independent switches: whether clients
+ * hold a site key (`configured`) and whether routes reject tokens it cannot
+ * verify (`enforced`). Enforcement without a site key is reported as
+ * `misconfigured`: every browser request would fail the check, because the
+ * client has no way to mint a token.
+ *
+ * That combination also makes the whole deployment `degraded`. It is the one
+ * configuration where the process is up, Redis is fine, and yet every single
+ * browser request is rejected — a deployment that answers `healthy` in that
+ * state is invisible to uptime monitors until a human notices nobody can sign
+ * in.
  */
 
 import { NextResponse } from "next/server";
 
 import { isProduction, serverEnv } from "@/config/env";
+import { getAppCheckStatus } from "@/lib/appCheck";
 import {
   apiRateLimiter,
   loginRateLimiter,
@@ -36,6 +49,19 @@ export async function GET() {
   // In production a missing store means per-instance limits. The app keeps
   // serving (and logs a startup warning), so this is degraded, not down.
   const missingSharedStore = isProduction && !redisConfigured;
+
+  // Two independent switches, reported separately so a half-configured
+  // deployment is visible instead of looking either fully on or fully off. The
+  // mapping lives in `lib/appCheck` so this route and the startup warning are
+  // reading one definition.
+  const {
+    configured: appCheckConfigured,
+    enforced: appCheckEnforced,
+    status: appCheckStatus,
+  } = getAppCheckStatus();
+  // Enforced without a site key is not a warning: the API rejects every browser
+  // request, so this deployment cannot serve users at all.
+  const appCheckBroken = appCheckStatus === "misconfigured";
 
   // Relative to this request, not to module load: a long-lived instance must
   // not keep reporting errors from hours ago as "recent".
@@ -62,7 +88,7 @@ export async function GET() {
   });
 
   const hasRecentErrors = redisErrors.some((e) => e.recentErrors > 0);
-  const degraded = missingSharedStore || hasRecentErrors;
+  const degraded = missingSharedStore || hasRecentErrors || appCheckBroken;
   const status = degraded ? "degraded" : "healthy";
 
   return NextResponse.json(
@@ -76,6 +102,17 @@ export async function GET() {
           : isProduction
             ? "missing"
             : "fallback (in-memory, development only)",
+      },
+      appCheck: {
+        configured: appCheckConfigured,
+        enforced: appCheckEnforced,
+        status: appCheckStatus,
+        ...(appCheckBroken
+          ? {
+              warning:
+                "APP_CHECK_ENFORCEMENT is on but NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY is empty: clients cannot mint an App Check token, so API requests are rejected with APP_CHECK_FAILED.",
+            }
+          : {}),
       },
       rateLimits: {
         windowMs: "5m",

@@ -200,7 +200,7 @@ export async function requireAdmin(
   // session here is what lets security-key-only admins through instead of
   // locking them out.
   if (!mfaVerified) {
-    const session = getMfaSession(request);
+    const session = await getMfaSession(request);
 
     if (session && session.uid === uid) {
       mfaVerified = true;

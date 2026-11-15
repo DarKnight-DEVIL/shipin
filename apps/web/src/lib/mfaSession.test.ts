@@ -1,4 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const denylist = vi.hoisted(() => ({
+  isMfaSessionDenied: vi.fn(),
+  denyMfaSession: vi.fn(),
+}));
+
+// The revocation list talks to Redis; these tests are about how its answer is
+// used, so it is stubbed and its calls asserted.
+vi.mock("./mfaDenylist", () => ({
+  isMfaSessionDenied: denylist.isMfaSessionDenied,
+  denyMfaSession: denylist.denyMfaSession,
+}));
 
 import {
   MFA_SESSION_TTL_MS,
@@ -7,11 +19,18 @@ import {
   createMfaSessionCookieHeader,
   createMfaSessionToken,
   getMfaSession,
+  parseMfaSessionPayload,
   readRequestCookie,
+  revokeMfaSession,
   verifyMfaSessionToken,
 } from "./mfaSession";
 
 const UID = "admin-uid-123";
+
+beforeEach(() => {
+  denylist.isMfaSessionDenied.mockReset().mockResolvedValue(false);
+  denylist.denyMfaSession.mockReset().mockResolvedValue(undefined);
+});
 
 /**
  * Minimal Request stand-in. The DOM Request implementation in the test
@@ -29,13 +48,24 @@ function requestWithCookie(cookie: string): Request {
 
 describe("createMfaSessionToken / verifyMfaSessionToken", () => {
   it("round-trips a valid token", () => {
-    const { token, expiresAt } = createMfaSessionToken(UID);
+    const { token, expiresAt, jti } = createMfaSessionToken(UID);
     const session = verifyMfaSessionToken(token);
 
     expect(session).not.toBeNull();
     expect(session?.uid).toBe(UID);
     expect(session?.expiresAt).toBe(expiresAt);
+    expect(session?.jti).toBe(jti);
     expect(expiresAt).toBeGreaterThan(Math.floor(Date.now() / 1000));
+  });
+
+  it("gives every session its own id", () => {
+    // Revoking one admin session must not touch the same account's others.
+    const first = createMfaSessionToken(UID);
+    const second = createMfaSessionToken(UID);
+
+    expect(first.jti).not.toBe(second.jti);
+    expect(verifyMfaSessionToken(first.token)?.jti).toBe(first.jti);
+    expect(verifyMfaSessionToken(second.token)?.jti).toBe(second.jti);
   });
 
   it("expires exactly at the configured TTL", () => {
@@ -115,16 +145,61 @@ describe("cookie helpers", () => {
     expect(readRequestCookie(requestWithCookie(""), MFA_SESSION_COOKIE)).toBeNull();
   });
 
-  it("extracts a verifying session from a request", () => {
-    const { token } = createMfaSessionToken(UID);
+  it("extracts a verifying session from a request", async () => {
+    const { token, jti } = createMfaSessionToken(UID);
     const request = requestWithCookie(`${MFA_SESSION_COOKIE}=${token}`);
 
-    expect(getMfaSession(request)?.uid).toBe(UID);
+    await expect(getMfaSession(request)).resolves.toMatchObject({ uid: UID, jti });
+    expect(denylist.isMfaSessionDenied).toHaveBeenCalledWith(jti);
   });
 
-  it("ignores an invalid session cookie", () => {
+  it("ignores an invalid session cookie without consulting the denylist", async () => {
     const request = requestWithCookie(`${MFA_SESSION_COOKIE}=not-a-token`);
 
-    expect(getMfaSession(request)).toBeNull();
+    await expect(getMfaSession(request)).resolves.toBeNull();
+    // An unverifiable token never reaches the store.
+    expect(denylist.isMfaSessionDenied).not.toHaveBeenCalled();
+  });
+
+  it("rejects a session that was revoked server-side", async () => {
+    const { token } = createMfaSessionToken(UID);
+    const request = requestWithCookie(`${MFA_SESSION_COOKIE}=${token}`);
+    denylist.isMfaSessionDenied.mockResolvedValue(true);
+
+    // Same signature, same claims: only the denylist can tell that the admin
+    // signed out elsewhere and this token was copied.
+    await expect(getMfaSession(request)).resolves.toBeNull();
+  });
+
+  it("revokes by session id for the rest of its lifetime", async () => {
+    const { token, expiresAt, jti } = createMfaSessionToken(UID);
+    const session = verifyMfaSessionToken(token)!;
+
+    await revokeMfaSession(session);
+
+    expect(denylist.denyMfaSession).toHaveBeenCalledWith(jti, expiresAt);
+  });
+});
+
+describe("parseMfaSessionPayload", () => {
+  const now = 2_000_000_000_000;
+  const issued = Math.floor(now / 1000);
+
+  it("accepts a current payload", () => {
+    expect(parseMfaSessionPayload(`2.${UID}.${issued}.${issued + 900}.jti-1`, now)).toEqual({
+      uid: UID,
+      expiresAt: issued + 900,
+      jti: "jti-1",
+    });
+  });
+
+  it("rejects version 1 tokens, which have no session id", () => {
+    // Those cookies shipped before revocation existed, so honouring them would
+    // leave a 30-minute window that nothing can close.
+    expect(parseMfaSessionPayload(`1.${UID}.${issued}.${issued + 900}`, now)).toBeNull();
+  });
+
+  it("rejects a version 2 payload with no jti", () => {
+    expect(parseMfaSessionPayload(`2.${UID}.${issued}.${issued + 900}`, now)).toBeNull();
   });
 });

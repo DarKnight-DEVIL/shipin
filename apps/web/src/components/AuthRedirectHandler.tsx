@@ -37,10 +37,17 @@ export default function AuthRedirectHandler() {
             // layout, and the profile service pulls in the Firestore SDK. A static
             // import would ship ~160 KB (gzip) of Firestore to every public page
             // for a lookup that only matters when returning from a redirect sign-in.
-            const { getUserProfile } = await import(
+            const { ensureUserProfile } = await import(
               "@/features/users/services/userProfile"
             );
-            const profile = await getUserProfile(user.uid);
+            // Redirect sign-in bypasses registration just like the popup flow,
+            // so repair a missing profile before navigating.
+            const profile = await ensureUserProfile({
+              uid: user.uid,
+              displayName: user.displayName,
+              email: user.email,
+              photoURL: user.photoURL,
+            });
             if (profile?.role === "admin") {
               destination = safeRequestedNext || "/admin/dashboard";
             } else {

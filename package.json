@@ -19,7 +19,11 @@
     "test:security": "npm run test:security --workspace=@shipin/web",
     "test:rules": "npm run test:rules --workspace=@shipin/web",
     "test:e2e": "npm run test:e2e --workspace=@shipin/web",
-    "check:bundle-budget": "npm run check:bundle-budget --workspace=@shipin/web"
+    "check:bundle-budget": "npm run check:bundle-budget --workspace=@shipin/web",
+    "check:coverage-globs": "npm run check:coverage-globs --workspace=@shipin/web",
+    "check:compliance-tests": "npm run check:compliance-tests --workspace=@shipin/web",
+    "check:money-globs": "npm run check:money-globs --workspace=@shipin/web",
+    "check:authorized-domains": "npm run check:authorized-domains --workspace=@shipin/web"
   },
   "devDependencies": {
     "turbo": "^2.5.6"

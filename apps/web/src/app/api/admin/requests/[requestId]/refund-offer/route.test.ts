@@ -61,6 +61,29 @@ beforeEach(() => {
 });
 
 describe('POST /api/admin/requests/[requestId]/refund-offer', () => {
+  it('rejects a non-string reason', async () => {
+    const response = await POST(request({ reason: 42 }), context());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: 'A reason is required to offer a refund.',
+    });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('treats a payment with no total fields as zero', async () => {
+    respondWith({ status: 'purchased', payment: { walletAmount: 5 } });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: 'Invalid payment amount.',
+    });
+  });
+
   it('passes admin auth failures through', async () => {
     mocks.requireAdmin.mockRejectedValue(new Error('ADMIN_ACCESS_REQUIRED'));
     mocks.getAdminAuthError.mockReturnValue({ status: 403, error: 'Admin access required.' });

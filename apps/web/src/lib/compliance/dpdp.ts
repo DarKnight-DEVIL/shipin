@@ -123,7 +123,7 @@ export const PROCESSING_REGISTER: Record<PersonalDataCategory, {
   },
   [PERSONAL_DATA_CATEGORIES.COOKIE]: {
     lawfulBasis: LAWFUL_BASES.LEGITIMATE_INTERESTS,
-    purposes: ['CSRF protection', 'Session security'],
+    purposes: ['Session security (administrator MFA elevation)'],
     retentionPeriod: 'Session + 24 hours',
     retentionDays: 1,
     thirdParties: [],

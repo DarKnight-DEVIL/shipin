@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   readStoredCredentials: vi.fn(),
   verifyAssertion: vi.fn(),
   getMfaSession: vi.fn(),
+  revokeMfaSession: vi.fn(),
   createMfaSessionToken: vi.fn(),
   createMfaSessionCookieHeader: vi.fn(),
   clearMfaSessionCookieHeader: vi.fn(),
@@ -39,6 +40,7 @@ vi.mock('@/lib/webauthn', () => ({
 vi.mock('@/lib/mfaSession', () => ({
   MFA_SESSION_TTL_MS: 900_000,
   getMfaSession: mocks.getMfaSession,
+  revokeMfaSession: mocks.revokeMfaSession,
   createMfaSessionToken: mocks.createMfaSessionToken,
   createMfaSessionCookieHeader: mocks.createMfaSessionCookieHeader,
   clearMfaSessionCookieHeader: mocks.clearMfaSessionCookieHeader,
@@ -83,7 +85,8 @@ beforeEach(() => {
   mocks.isChallengeExpired.mockReset().mockReturnValue(false);
   mocks.readStoredCredentials.mockReset().mockReturnValue([{ credentialID: 'cred-1', counter: 1 }]);
   mocks.verifyAssertion.mockReset().mockResolvedValue({ verified: true, newCounter: 2 });
-  mocks.getMfaSession.mockReset().mockReturnValue(null);
+  mocks.getMfaSession.mockReset().mockResolvedValue(null);
+  mocks.revokeMfaSession.mockReset().mockResolvedValue(undefined);
   mocks.createMfaSessionToken.mockReset().mockReturnValue({ token: 'elevated', expiresAt: 42 });
   mocks.createMfaSessionCookieHeader.mockReset().mockReturnValue('mfa_session=elevated');
   mocks.clearMfaSessionCookieHeader.mockReset().mockReturnValue('mfa_session=');
@@ -340,12 +343,73 @@ describe('POST /api/auth/mfa/session', () => {
   });
 });
 
+const deleteRequest = (authorization?: string) =>
+  new NextRequest('http://localhost/api/auth/mfa/session', {
+    method: 'DELETE',
+    ...(authorization ? { headers: { authorization } } : {}),
+  });
+
 describe('DELETE /api/auth/mfa/session', () => {
-  it('clears the elevated cookie', async () => {
-    const response = await DELETE();
+  it('requires a bearer token', async () => {
+    const response = await DELETE(deleteRequest());
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ code: 'AUTHENTICATION_REQUIRED' })
+    );
+    // No cookie is touched for an unauthenticated caller.
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(mocks.verifyIdToken).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid token without touching the cookie', async () => {
+    mocks.verifyIdToken.mockRejectedValue(new Error('bad token'));
+
+    const response = await DELETE(deleteRequest('Bearer stale-token'));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ code: 'INVALID_AUTHENTICATION' })
+    );
+    expect(response.headers.get('set-cookie')).toBeNull();
+  });
+
+  it('clears the elevated cookie for a valid token', async () => {
+    const response = await DELETE(deleteRequest('Bearer token-1'));
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ success: true, elevated: false });
+    expect(response.headers.get('set-cookie')).toContain('mfa_session=');
+    expect(mocks.verifyIdToken).toHaveBeenCalledWith('token-1');
+  });
+
+  it('revokes the session server-side, not just in this browser', async () => {
+    const session = { uid: 'admin-1', expiresAt: 1234, jti: 'jti-1' };
+    mocks.getMfaSession.mockResolvedValue(session);
+
+    const response = await DELETE(deleteRequest('Bearer token-1'));
+
+    expect(response.status).toBe(200);
+    // A copied token has to stop verifying too, which only the denylist does.
+    expect(mocks.revokeMfaSession).toHaveBeenCalledWith(session);
+  });
+
+  it('still clears the cookie when there is no session to revoke', async () => {
+    const response = await DELETE(deleteRequest('Bearer token-1'));
+
+    expect(response.status).toBe(200);
+    expect(mocks.revokeMfaSession).not.toHaveBeenCalled();
+    expect(response.headers.get('set-cookie')).toContain('mfa_session=');
+  });
+
+  it('clears the cookie even when the role is no longer admin', async () => {
+    // A revoked admin must still be able to drop their own elevation; the
+    // cookie is useless without the role, so demanding it here only strands it.
+    mocks.getUser.mockResolvedValue({ exists: true, data: () => ({ role: 'customer' }) });
+
+    const response = await DELETE(deleteRequest('Bearer token-1'));
+
+    expect(response.status).toBe(200);
     expect(response.headers.get('set-cookie')).toContain('mfa_session=');
   });
 });

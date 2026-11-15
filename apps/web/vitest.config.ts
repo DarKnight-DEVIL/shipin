@@ -2,6 +2,15 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+// Payment and compliance floors, plus the globs they apply to. They live in
+// their own module so `scripts/check-coverage-globs.mjs` can assert that every
+// glob still resolves to a file: Vitest skips a glob-keyed threshold silently
+// when nothing matches it.
+import {
+  COVERAGE_GLOB_THRESHOLDS,
+  GLOBAL_COVERAGE_FLOORS,
+} from './coverage-thresholds.mjs';
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -32,9 +41,11 @@ export default defineConfig({
     // Coverage thresholds.
     //
     // ShipIN handles real money, so coverage is a safety gate — not a metric.
-    // Payment-critical paths (wallet, PayPal, refunds) have a higher bar.
-    // The `payment` path alias in `coverage.reporter` / `coverage.allow` below
-    // is used to enforce a separate threshold for payment files.
+    // Payment-critical paths (wallet, PayPal, refunds) and the compliance
+    // modules have a higher bar, enforced per glob below. Global `perFile`
+    // above still applies to every file, so the two gates combine: no single
+    // file may fall under 80/80/70/80, and no payment or compliance subtree may
+    // fall under its family floor.
     // ---------------------------------------------------------------------------
     coverage: {
       provider: 'v8',
@@ -50,14 +61,16 @@ export default defineConfig({
         '**/README.md',
       ],
       thresholds: {
-        // Global floor — every module must be exercised.
-        lines: 80,
-        functions: 80,
-        branches: 70,
-        statements: 80,
-        // Per-directory overrides for payment-critical code.
-        // These are enforced on the subset of files matching the path.
+        // Global floor — every module must be exercised. Shared with the
+        // checker script so "the global minimum" has one definition.
+        ...GLOBAL_COVERAGE_FLOORS,
         perFile: true,
+
+        // ---- Payment-critical and DPDP/GDPR compliance subtrees ----
+        // Each glob is checked on its own aggregate, so a strong sibling cannot
+        // carry a weak subtree. Every glob must match a file, or its gate is
+        // dead weight — `npm run check:coverage-globs` enforces that in CI.
+        ...COVERAGE_GLOB_THRESHOLDS,
       },
     },
   },

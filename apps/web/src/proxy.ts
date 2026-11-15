@@ -14,7 +14,6 @@ import {
 } from "@/lib/rateLimiter";
 import { SECURITY_HEADERS, getProductionCSP, getDevCSP } from "@/lib/securityHeaders";
 import { getCorsHeaders, isAllowedOrigin } from "@/lib/cors";
-import { getCsrfTokenFromCookie } from "@/lib/csrf";
 
 const SENSITIVE_PATHS = [
   "/api/paypal/",
@@ -126,35 +125,15 @@ export default async function proxy(request: NextRequest) {
     if (name !== "Content-Security-Policy") response.headers.set(name, value);
   }
 
-  // Add secure cookie headers for cookie-based flows
-  // Only set if we're on a page that might need cookies (non-API)
-  if (!isApi) {
-    // CSRF token cookie for form submissions
-    const csrfToken = getCsrfTokenFromCookie(request);
-    if (!csrfToken) {
-      const array = new Uint8Array(32);
-      crypto.getRandomValues(array);
-      const newCsrfToken = btoa(String.fromCharCode(...array))
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=/g, "");
-      response.headers.append(
-        "Set-Cookie",
-        `csrf_token=${newCsrfToken}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=86400`
-      );
-    }
-  }
-
   if (isApi && origin) {
     for (const [name, value] of Object.entries(getCorsHeaders(origin))) {
       response.headers.set(name, value);
     }
   }
 
-  // Allow CSRF header in CORS
   response.headers.set(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With, X-CSRF-Token"
+    "Content-Type, Authorization, X-Requested-With, X-Firebase-AppCheck"
   );
 
   if (process.env.NODE_ENV !== "development") {

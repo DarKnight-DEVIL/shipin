@@ -42,6 +42,34 @@ function parseOriginList(value: string | undefined): string[] {
 }
 
 /**
+ * Origins belonging to the Vercel deployment this process is running on.
+ *
+ * Preview deployments get a generated hostname (`shipin-psi-<hash>-<team>.vercel.app`)
+ * that cannot be known ahead of time, so a preview build's own pages were
+ * rejected by the origin check: the browser sends `Origin` even on same-origin
+ * POSTs, and sign-in failed with CORS_ORIGIN_NOT_ALLOWED.
+ *
+ * Vercel injects these hosts as system environment variables, so the exact
+ * deployment origin is derived instead of guessed. Wildcarding `*.vercel.app`
+ * would also accept every unrelated project hosted there, which is not needed
+ * to fix preview sign-in.
+ */
+function vercelDeploymentOrigins(): string[] {
+  const hosts = [
+    process.env.VERCEL_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  ];
+
+  return hosts
+    .filter((host): host is string => Boolean(host))
+    .map((host) =>
+      /^https?:\/\//i.test(host) ? host : `https://${host}`
+    )
+    .map((origin) => origin.toLowerCase().trim().replace(/\/+$/, ""));
+}
+
+/**
  * Resolve the allowed origins for this runtime.
  *
  * Computed per call rather than cached at module load so environment
@@ -51,9 +79,18 @@ function allowedOrigins(): string[] {
   return Array.from(
     new Set([
       ...DEFAULT_ALLOWED_ORIGINS,
+      ...vercelDeploymentOrigins(),
       ...parseOriginList(process.env.APP_ALLOWED_ORIGINS),
     ])
   );
+}
+
+/**
+ * Loopback origin on any port, e.g. `next dev` falling back to an ephemeral
+ * port when 3000 is already taken.
+ */
+function isLoopbackOrigin(origin: string): boolean {
+  return /^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):\d+$/.test(origin);
 }
 
 /**
@@ -66,6 +103,16 @@ function allowedOrigins(): string[] {
 export function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
   const normalized = origin.toLowerCase().trim().replace(/\/+$/, "");
+
+  // Local development is same-origin regardless of port. Pinning this to :3000
+  // meant that whenever `next dev` picked another port, every API call from the
+  // page was answered with 403 CORS_ORIGIN_NOT_ALLOWED — which surfaced as
+  // "Unable to sign in" because profile creation runs through /api/profile.
+  // Loopback cannot be reached by a remote attacker, so this is dev-only.
+  if (process.env.NODE_ENV !== "production" && isLoopbackOrigin(normalized)) {
+    return true;
+  }
+
   return allowedOrigins().some((allowed) => {
     const candidate = allowed.toLowerCase().trim().replace(/\/+$/, "");
     // Exact match
@@ -98,7 +145,7 @@ export function getCorsHeaders(requestOrigin: string | null) {
   }
   headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
   headers["Access-Control-Allow-Headers"] =
-    "Content-Type, Authorization, X-Requested-With, X-CSRF-Token";
+    "Content-Type, Authorization, X-Requested-With, X-Firebase-AppCheck";
   headers["Access-Control-Max-Age"] = "86400";
   headers["Vary"] = "Origin";
 

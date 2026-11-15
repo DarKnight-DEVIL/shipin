@@ -80,6 +80,48 @@ beforeEach(() => {
 });
 
 describe('POST /api/admin/requests/[requestId]/refund/paypal', () => {
+  it('rejects an invalid request id', async () => {
+    const response = await POST(request(), context(''));
+
+    expect(response.status).toBe(400);
+    expect(mocks.runTransaction).not.toHaveBeenCalled();
+  });
+
+  it('treats a document with no data as having no refund workflow', async () => {
+    mocks.get.mockResolvedValue({ exists: true, data: () => undefined });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'No refund workflow exists for this request.',
+    });
+  });
+
+  it('refuses a refund workflow with no PayPal portion', async () => {
+    respondWith({ refundRequest: refundRequest({ paypalAmount: undefined }) });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'This refund has no PayPal portion to record.',
+    });
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
+  it('completes the refund when no wallet portion exists either', async () => {
+    respondWith({ refundRequest: refundRequest({ walletAmount: undefined }) });
+
+    const response = await POST(request({ amount: 50, transactionId: 'tx-9' }), context());
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      refund: { amount: 50, transactionId: 'tx-9', status: 'completed' },
+    });
+  });
+
   it('records the PayPal portion and completes the refund when the wallet part is done', async () => {
     const response = await POST(request(), context());
 

@@ -150,6 +150,18 @@ describe('POST /api/admin/requests/[requestId]/refund', () => {
     });
   });
 
+  it('treats a payment with no total fields as zero', async () => {
+    respondWith({ status: 'purchased', payment: { walletAmount: 5, paypalAmount: 5 } });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: 'Invalid payment amount.',
+    });
+  });
+
   it('rejects a non-positive total', async () => {
     respondWith({ status: 'purchased', payment: { amount: 0 } });
 

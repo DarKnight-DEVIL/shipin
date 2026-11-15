@@ -106,21 +106,21 @@ describe('startWebAuthnSession', () => {
 });
 
 describe('endMfaSession', () => {
-  it('deletes the session cookie without caching', async () => {
-    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+  it('deletes the session with the caller\'s bearer token', async () => {
+    mocks.mfaApi.mockResolvedValue({ success: true, elevated: false });
 
-    await endMfaSession();
+    await endMfaSession('token-1');
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/auth/mfa/session', {
+    // The route requires authentication, so the token is not optional here.
+    expect(mocks.mfaApi).toHaveBeenCalledWith('/api/auth/mfa/session', {
+      idToken: 'token-1',
       method: 'DELETE',
-      credentials: 'same-origin',
-      cache: 'no-store',
     });
   });
 
-  it('swallows network failures so sign-out is never blocked', async () => {
-    fetchMock.mockRejectedValue(new TypeError('offline'));
+  it('swallows failures so sign-out is never blocked', async () => {
+    mocks.mfaApi.mockRejectedValue(new Error('offline'));
 
-    await expect(endMfaSession()).resolves.toBeUndefined();
+    await expect(endMfaSession('token-1')).resolves.toBeUndefined();
   });
 });

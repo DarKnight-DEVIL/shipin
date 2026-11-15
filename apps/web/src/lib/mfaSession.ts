@@ -8,9 +8,11 @@
  *
  * Design notes:
  *
- *  - The cookie payload is `version.uid.issuedAt.expiresAt` and is signed with
- *    HMAC-SHA256. It carries no secret data and cannot be forged without the
- *    signing key.
+ *  - The cookie payload is `version.uid.issuedAt.expiresAt.jti` and is signed
+ *    with HMAC-SHA256. It carries no secret data and cannot be forged without
+ *    the signing key. The `jti` is what makes server-side revocation possible:
+ *    a `Set-Cookie` that clears the browser copy does nothing about a token
+ *    copied out of an earlier request.
  *  - HttpOnly + SameSite=Strict + Secure (in production) means page scripts
  *    cannot read it and other origins cannot send it.
  *  - The session only proves *MFA was completed*. `requireAdmin` still verifies
@@ -24,17 +26,23 @@ import "server-only";
 import crypto from "crypto";
 
 import { isProduction, serverEnv } from "@/config/env";
+import { denyMfaSession, isMfaSessionDenied } from "./mfaDenylist";
 import { createSecureCookieHeader } from "./securityHeaders";
 
 export const MFA_SESSION_COOKIE = "shipin_admin_mfa";
 export const MFA_SESSION_TTL_MS = 30 * 60 * 1000;
 
-const SESSION_VERSION = 1;
+// Bumped when `jti` was added. Version 1 tokens cannot be revoked server-side,
+// so they are rejected rather than honoured: the cost is that every admin
+// re-elevates once after this deploys, which is the safe direction.
+const SESSION_VERSION = 2;
 
 export interface MfaSession {
   uid: string;
   /** Unix epoch seconds. */
   expiresAt: number;
+  /** Session id, used by the revocation list. */
+  jti: string;
 }
 
 /**
@@ -86,13 +94,16 @@ function safeEqual(a: string, b: string): boolean {
 export function createMfaSessionToken(
   uid: string,
   now: number = Date.now()
-): { token: string; expiresAt: number } {
+): { token: string; expiresAt: number; jti: string } {
   const issuedAt = Math.floor(now / 1000);
   const expiresAt = issuedAt + Math.floor(MFA_SESSION_TTL_MS / 1000);
-  const payload = `${SESSION_VERSION}.${uid}.${issuedAt}.${expiresAt}`;
+  // Random per session, so revoking one leaves the account's other sessions
+  // alone. 128 bits is far more than enough to make collisions impossible.
+  const jti = crypto.randomBytes(16).toString("base64url");
+  const payload = `${SESSION_VERSION}.${uid}.${issuedAt}.${expiresAt}.${jti}`;
   const encoded = Buffer.from(payload, "utf8").toString("base64url");
 
-  return { token: `${encoded}.${sign(payload)}`, expiresAt };
+  return { token: `${encoded}.${sign(payload)}`, expiresAt, jti };
 }
 
 /** Verify a session token. Returns null for anything invalid or expired. */
@@ -119,9 +130,25 @@ export function verifyMfaSessionToken(
 
   if (!safeEqual(signature, sign(payload))) return null;
 
-  const [version, uid, issuedAt, expiresAt] = payload.split(".");
+  return parseMfaSessionPayload(payload, now);
+}
 
+/**
+ * Validate an already-signature-verified payload.
+ *
+ * Split out so the version and `jti` rules can be tested directly: a forged
+ * signature is rejected earlier, and a test cannot construct a validly signed
+ * version-1 payload without the signing key.
+ */
+export function parseMfaSessionPayload(
+  payload: string,
+  now: number = Date.now()
+): MfaSession | null {
+  const [version, uid, issuedAt, expiresAt, jti] = payload.split(".");
+
+  // Version 1 predates `jti`, so it cannot be revoked; it is rejected outright.
   if (version !== String(SESSION_VERSION) || !uid) return null;
+  if (!jti) return null;
 
   const expires = Number(expiresAt);
   const issued = Number(issuedAt);
@@ -135,7 +162,7 @@ export function verifyMfaSessionToken(
   // Reject tokens "issued in the future" beyond a small clock skew allowance.
   if (issued > nowSeconds + 60) return null;
 
-  return { uid, expiresAt: expires };
+  return { uid, expiresAt: expires, jti };
 }
 
 /** Read a cookie value from a request's `cookie` header. */
@@ -160,9 +187,32 @@ export function readRequestCookie(
   return null;
 }
 
-/** The verified MFA session on this request, if any. */
-export function getMfaSession(request: Request): MfaSession | null {
-  return verifyMfaSessionToken(readRequestCookie(request, MFA_SESSION_COOKIE));
+/**
+ * The verified, non-revoked MFA session on this request, if any.
+ *
+ * Async because revocation lives in Redis: a valid signature is no longer
+ * enough on its own once a session can be revoked before it expires.
+ */
+export async function getMfaSession(request: Request): Promise<MfaSession | null> {
+  const session = verifyMfaSessionToken(
+    readRequestCookie(request, MFA_SESSION_COOKIE)
+  );
+
+  if (!session) return null;
+
+  if (await isMfaSessionDenied(session.jti)) return null;
+
+  return session;
+}
+
+/**
+ * Revoke a session server-side, for the remainder of its lifetime.
+ *
+ * Called by sign-out: clearing the cookie only helps the browser that made the
+ * request, while this stops a copied token from verifying anywhere.
+ */
+export async function revokeMfaSession(session: MfaSession): Promise<void> {
+  await denyMfaSession(session.jti, session.expiresAt);
 }
 
 /** `Set-Cookie` value that starts a session. */

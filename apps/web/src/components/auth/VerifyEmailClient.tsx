@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, sendEmailVerification, reload } from "firebase/auth";
@@ -10,7 +10,13 @@ import { ArrowLeft, CheckCircle2, Loader2, Mail, RefreshCw } from "lucide-react"
 import { toast } from "sonner";
 
 import { auth } from "@/lib/firebase";
-import { clientEnv } from "@/config/env";
+import {
+  RESEND_COOLDOWN_MS,
+  isRateLimitedResend,
+  refreshVerifiedToken,
+  resendVerificationErrorMessage,
+  verificationEmailOptions,
+} from "@/lib/emailVerification";
 import "@/styles/verify-email.css";
 
 const fadeUp = {
@@ -27,16 +33,35 @@ export default function VerifyEmailClient() {
   const [email, setEmail] = useState<string | null>(null);
   const [verified, setVerified] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [polling, setPolling] = useState(true);
+  // Set only after Firebase rate-limits a resend. Clicking again immediately
+  // just fails again, so the button is held shut for a minute and says why.
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  // A ref, not an effect-local variable, so every exit path can stop the poll:
+  // unmount, a successful verification, a sign-out, or a navigation this
+  // component initiates. An interval that outlives the decision to leave fires
+  // a reload() against a page the user has already left.
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current !== null) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    setPolling(false);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!mounted) return;
 
       if (!user) {
+        // Signed out: stop before the redirect, so no tick survives it.
+        stopPolling();
         router.replace("/login");
         return;
       }
@@ -44,24 +69,29 @@ export default function VerifyEmailClient() {
       setEmail(user.email ?? null);
 
       if (user.emailVerified) {
+        // The cached ID token still carries email_verified:false for up to an
+        // hour. Refresh it here so the first dashboard request is accepted
+        // instead of coming back 403 EMAIL_VERIFICATION_REQUIRED.
+        await refreshVerifiedToken(user);
+        if (!mounted) return;
         setVerified(true);
-        setPolling(false);
-        if (pollTimer) clearInterval(pollTimer);
+        stopPolling();
         return;
       }
 
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       setPolling(true);
-      if (pollTimer) clearInterval(pollTimer);
-      pollTimer = setInterval(async () => {
+      pollTimerRef.current = setInterval(async () => {
         if (!mounted) return;
         const currentUser = auth.currentUser;
         if (!currentUser) return;
         try {
           await reload(currentUser);
           if (auth.currentUser?.emailVerified) {
+            await refreshVerifiedToken(auth.currentUser);
+            if (!mounted) return;
             setVerified(true);
-            setPolling(false);
-            if (pollTimer) clearInterval(pollTimer);
+            stopPolling();
           }
         } catch (error) {
           console.error("Verification poll failed:", error);
@@ -71,26 +101,54 @@ export default function VerifyEmailClient() {
 
     return () => {
       mounted = false;
-      if (pollTimer) clearInterval(pollTimer);
+      stopPolling();
       unsubscribe();
     };
-  }, [router]);
+  }, [router, stopPolling]);
+
+  useEffect(() => {
+    if (cooldownUntil === null) return;
+
+    const id = setInterval(() => {
+      if (Date.now() >= cooldownUntil) {
+        setCooldownUntil(null);
+      }
+      setNow(Date.now());
+    }, 250);
+
+    return () => clearInterval(id);
+  }, [cooldownUntil]);
+
+  const cooldownSeconds =
+    cooldownUntil === null
+      ? 0
+      : Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
+  const coolingDown = cooldownSeconds > 0;
 
   async function handleResend() {
     const user = auth.currentUser;
     if (!user || user.emailVerified) return;
+    // Belt and braces: the button is disabled, but a stale handler or an
+    // Enter key must not slip a doomed request past the cooldown either.
+    if (coolingDown) return;
     setSending(true);
+    setSendError(null);
     try {
-      await sendEmailVerification(user, {
-        url: `${clientEnv.NEXT_PUBLIC_APP_URL ?? ""}/verify-email`,
-      });
+      // Only pass a continue URL when it is an absolute http(s) URL: Firebase
+      // rejects a relative one with auth/invalid-continue-uri and sends no
+      // email at all.
+      await sendEmailVerification(user, verificationEmailOptions());
       toast.success("Verification email sent. Please check your inbox.");
     } catch (error) {
+      // The console entry is for diagnosis; the message below is what the user
+      // sees. A toast alone was too easy to miss next to the "Check your email"
+      // heading, so the failure is reported inline where the button lives.
       console.error("Resend verification failed:", error);
-      if ((error as { code?: string }).code === "auth/too-many-requests") {
-        toast.error("Too many attempts. Please wait a moment and try again.");
-      } else {
-        toast.error("Could not send verification email. Please try again.");
+      setSendError(resendVerificationErrorMessage(error));
+
+      if (isRateLimitedResend(error)) {
+        setNow(Date.now());
+        setCooldownUntil(Date.now() + RESEND_COOLDOWN_MS);
       }
     } finally {
       setSending(false);
@@ -99,12 +157,33 @@ export default function VerifyEmailClient() {
 
   async function handleContinue() {
     const user = auth.currentUser;
-    if (user && user.emailVerified) {
-      router.replace("/dashboard");
-      router.refresh();
-    } else {
-      toast.error("Please verify your email first.");
+
+    if (!user) {
+      toast.error("Please sign in again.");
+      return;
     }
+
+    // The verification link may have been opened in another tab, so press this
+    // button only reflecting stale client state. Reload before refusing.
+    if (!user.emailVerified) {
+      try {
+        await reload(user);
+      } catch (error) {
+        console.error("Verification reload failed:", error);
+      }
+    }
+
+    if (!user.emailVerified) {
+      toast.error("Please verify your email first.");
+      return;
+    }
+
+    await refreshVerifiedToken(user);
+    // Stop before navigating: the interval must not tick between the replace
+    // and the unmount, which would send a request for a page being left.
+    stopPolling();
+    router.replace("/dashboard");
+    router.refresh();
   }
 
   return (
@@ -147,17 +226,28 @@ export default function VerifyEmailClient() {
                 </p>
               )}
 
+              {sendError && (
+                <p className="verify__alert" role="alert" aria-live="assertive">
+                  {sendError}
+                </p>
+              )}
+
               <div className="verify__actions">
                 <button
                   type="button"
                   onClick={handleResend}
-                  disabled={sending}
+                  disabled={sending || coolingDown}
                   className="verify__btn verify__btn--ghost"
                 >
                   {sending ? (
                     <>
                       <Loader2 className="verify__spin" />
                       Sending...
+                    </>
+                  ) : coolingDown ? (
+                    <>
+                      <RefreshCw className="h-4 w-4" />
+                      Try again in {cooldownSeconds}s
                     </>
                   ) : (
                     <>

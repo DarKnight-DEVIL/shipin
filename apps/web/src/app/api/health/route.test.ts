@@ -13,12 +13,19 @@ const state = vi.hoisted(() => ({
   isProduction: false,
   url: '',
   token: '',
+  appCheckSiteKey: '',
+  appCheckEnforcement: '',
   errors: { web: 0, api: 0, strict: 0, login: 0 } as Record<string, number>,
 }));
 
 vi.mock('@/config/env', () => ({
   get isProduction() {
     return state.isProduction;
+  },
+  clientEnv: {
+    get NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY() {
+      return state.appCheckSiteKey;
+    },
   },
   serverEnv: {
     get UPSTASH_REDIS_REST_URL() {
@@ -27,6 +34,37 @@ vi.mock('@/config/env', () => ({
     get UPSTASH_REDIS_REST_TOKEN() {
       return state.token;
     },
+  },
+}));
+
+/**
+ * Stub the enforcement switch rather than importing the real module.
+ *
+ * Suites share one module registry (`isolate: false`), so importing the real
+ * `@/lib/appCheck` here would cache it bound to this file's env stub and break
+ * `appCheck.test.ts`, which asserts the real env coupling. That wiring is
+ * covered there; this file only checks how the route reports it.
+ */
+vi.mock('@/lib/appCheck', () => ({
+  isAppCheckEnforced: () => state.appCheckEnforcement === 'true',
+  // Mirrors the real mapping closely enough for this file's purpose: how the
+  // route *reports* the status, not how the status is derived (appCheck.test.ts
+  // covers that against the real env module).
+  getAppCheckStatus: () => {
+    const configured = Boolean(state.appCheckSiteKey);
+    const enforced = state.appCheckEnforcement === 'true';
+
+    return {
+      configured,
+      enforced,
+      status: enforced
+        ? configured
+          ? 'enforced'
+          : 'misconfigured'
+        : configured
+          ? 'configured'
+          : 'disabled',
+    } as const;
   },
 }));
 
@@ -57,6 +95,8 @@ beforeEach(() => {
   state.isProduction = false;
   state.url = '';
   state.token = '';
+  state.appCheckSiteKey = '';
+  state.appCheckEnforcement = '';
   state.errors = { web: 0, api: 0, strict: 0, login: 0 };
 });
 
@@ -96,6 +136,63 @@ describe('GET /api/health', () => {
     expect(response.status).toBe(200);
     expect(body.status).toBe('healthy');
     expect(body.redis.status).toBe('connected');
+  });
+
+  it('reports App Check as disabled when neither switch is set', async () => {
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.appCheck).toEqual({ configured: false, enforced: false, status: 'disabled' });
+  });
+
+  it('reports App Check as configured when only the site key is set', async () => {
+    state.appCheckSiteKey = 'site-key';
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.appCheck).toEqual({ configured: true, enforced: false, status: 'configured' });
+  });
+
+  it('reports App Check as enforced when both switches are set', async () => {
+    state.appCheckSiteKey = 'site-key';
+    state.appCheckEnforcement = 'true';
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.appCheck).toEqual({ configured: true, enforced: true, status: 'enforced' });
+    expect(body.appCheck.warning).toBeUndefined();
+  });
+
+  it('reports enforcement without a site key as misconfigured and degraded', async () => {
+    state.appCheckEnforcement = 'true';
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.appCheck).toEqual({
+      configured: false,
+      enforced: true,
+      status: 'misconfigured',
+      warning: expect.stringContaining('APP_CHECK_FAILED'),
+    });
+    // Healthy here would hide a deployment that rejects every browser request.
+    expect(body.status).toBe('degraded');
+  });
+
+  it('stays healthy when App Check is enforced and configured', async () => {
+    state.appCheckSiteKey = 'site-key';
+    state.appCheckEnforcement = 'true';
+
+    const response = await GET();
+    const body = await response.json();
+
+    // The control for the test above: correct App Check setup must not degrade
+    // the report, or the alert is noise nobody reads.
+    expect(body.status).toBe('healthy');
+    expect(body.appCheck.status).toBe('enforced');
   });
 
   it('reports degraded and exposes error details when Redis is failing', async () => {

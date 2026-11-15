@@ -98,7 +98,7 @@ export default function PrivacyPolicyPage() {
 
           <section id="cookies" className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">6. Cookies</h2>
-            <p className="mb-4">We use a single <strong>CSRF protection cookie</strong> (<code>csrf_token</code>). It is set with <code>HttpOnly</code>, <code>Secure</code>, and <code>SameSite=Strict</code> flags. It is not used for tracking or advertising.</p>
+            <p className="mb-4">We do not use cookies for tracking, advertising or analytics. The only cookie we set is an essential <strong>multi-factor authentication session cookie</strong> (<code>shipin_admin_mfa</code>), issued only after an administrator completes a security-check challenge. It is set with <code>HttpOnly</code>, <code>Secure</code>, and <code>SameSite=Strict</code> flags and expires after 30 minutes. All other requests are authenticated with a bearer token in the request header, never with an ambient cookie.</p>
           </section>
 
           <section id="data-retention" className="mb-12">

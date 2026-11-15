@@ -19,6 +19,7 @@ import {
   createMfaSessionCookieHeader,
   createMfaSessionToken,
   getMfaSession,
+  revokeMfaSession,
 } from "@/lib/mfaSession";
 import { addRateLimitHeaders, isRateLimited, loginRateLimiter } from "@/lib/rateLimiter";
 import { withErrorHandler } from "@/utils/errors";
@@ -144,7 +145,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
   if (caller instanceof NextResponse) return caller;
 
-  const session = getMfaSession(request);
+  const session = await getMfaSession(request);
   const elevated = Boolean(session && session.uid === caller.uid);
   const methods = availableMfaMethods(caller.profile as never);
 
@@ -367,8 +368,51 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
  * DELETE /api/auth/mfa/session
  *
  * Ends the elevated session (called on admin sign-out).
+ *
+ * A valid ID token is required. This is the only endpoint that clears the
+ * elevation cookie, and an unauthenticated caller should not be able to end
+ * someone else's session or use the route as a free cookie-setting primitive.
+ * The admin role is deliberately *not* required: an account whose role was just
+ * revoked must still be able to drop its own elevation, and with a non-admin
+ * role the cookie is useless anyway — `requireAdmin` re-reads the role on every
+ * request.
  */
-export const DELETE = withErrorHandler(async () => {
+export const DELETE = withErrorHandler(async (request: NextRequest) => {
+  const authorization = request.headers.get("authorization");
+
+  if (!authorization?.startsWith("Bearer ")) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Authentication required.",
+        code: "AUTHENTICATION_REQUIRED",
+      },
+      { status: 401, headers: NO_STORE }
+    );
+  }
+
+  const token = authorization.slice("Bearer ".length).trim();
+
+  try {
+    await adminAuth.verifyIdToken(token);
+  } catch {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Invalid authentication token.",
+        code: "INVALID_AUTHENTICATION",
+      },
+      { status: 401, headers: NO_STORE }
+    );
+  }
+
+  // Revoke server-side as well as clearing the browser copy: the cookie is
+  // only one holder of this session, and a token copied out of an earlier
+  // request would keep verifying for its full lifetime otherwise.
+  const session = await getMfaSession(request);
+
+  if (session) await revokeMfaSession(session);
+
   const response = NextResponse.json(
     { success: true, elevated: false },
     { status: 200, headers: NO_STORE }

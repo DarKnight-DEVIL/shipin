@@ -14,6 +14,8 @@ const PayPalCheckout = dynamic(
   { ssr: false }
 );
 import { calculatePayment } from "@/features/finance/services/calculatePayment";
+import { customerApi } from "@/lib/customerApiClient";
+import { newIdempotencyKey } from "@/lib/idempotencyKey";
 
 interface Props {
   request: Request;
@@ -36,22 +38,17 @@ export default function PaymentCard({ request, walletBalance }: Props) {
     try {
       setLoading(true);
 
-      const response = await fetch("/api/payment/complete-wallet", {
+      // The request is retried as-is if the connection drops, so the key has
+      // to be the same for every attempt: the route replays the first
+      // success instead of charging the wallet twice.
+      await customerApi("/api/payment/complete-wallet", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+        body: {
           requestId: request.id,
           amount: payment.walletApplied,
-        }),
+        },
+        idempotencyKey: newIdempotencyKey(),
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to complete wallet payment.");
-      }
 
       window.location.reload();
     } catch (err) {

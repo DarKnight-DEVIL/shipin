@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
 import Sidebar from "./Sidebar";
 import { auth } from "@/lib/firebase";
+import { endMfaSession } from "@/lib/mfaSessionClient";
 
 const display = Bricolage_Grotesque({
   subsets: ["latin"],
@@ -41,6 +42,19 @@ export default function PlatformShell({
 
   async function handleLogout() {
     try {
+      // An admin browsing the customer app still holds an admin elevation; a
+      // logout here has to drop it too, or it survives for its full window.
+      const idToken = await auth.currentUser?.getIdToken().catch(() => null);
+
+      if (idToken) {
+        try {
+          await endMfaSession(idToken);
+        } catch (error) {
+          // Never let the elevation clear block the actual sign-out.
+          console.error("Ending MFA session failed:", error);
+        }
+      }
+
       await signOut(auth);
       router.replace("/login");
     } catch (error) {

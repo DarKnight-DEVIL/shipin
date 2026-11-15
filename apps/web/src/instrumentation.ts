@@ -7,6 +7,7 @@
  */
 
 import { validateProductionRequiredEnv } from '@/config/env';
+import { reportAppCheckStatus } from '@/lib/appCheck';
 import { reportRateLimitStoreStatus } from '@/lib/redisRateLimiter';
 
 /**
@@ -26,4 +27,10 @@ export function register() {
   // sign-in included — unreachable over a rate-limit dependency. The gap is
   // logged here and surfaced as `degraded` by /api/health.
   reportRateLimitStoreStatus();
+
+  // Warn (never throw) when App Check is enforced without a site key: every
+  // browser request is rejected in that state, but crashing at boot would take
+  // the deployment down for a configuration a human can fix live. Logged here,
+  // surfaced as `degraded` by /api/health.
+  reportAppCheckStatus();
 }

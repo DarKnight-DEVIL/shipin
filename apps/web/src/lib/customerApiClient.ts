@@ -18,15 +18,18 @@ export class CustomerApiError extends ApiError {
 type CustomerApiOptions = {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;
+  /** Pass `newIdempotencyKey()` for writes the route deduplicates. */
+  idempotencyKey?: string;
 };
 
 export async function customerApi<T>(
   path: string,
-  { method = "GET", body }: CustomerApiOptions = {}
+  { method = "GET", body, idempotencyKey }: CustomerApiOptions = {}
 ): Promise<T> {
   return apiFetch<T>(path, {
     method,
     body,
+    idempotencyKey,
     errorClass: CustomerApiError,
   });
 }

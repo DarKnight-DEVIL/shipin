@@ -72,4 +72,15 @@
   line-height: 1.5;
   text-align: left;
 }
+/* Documentation link under the inline error (toast text cannot link) */
+.login__error-link {
+  margin-left: .25rem;
+  color: #ffd7b8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.login__error-link:focus-visible {
+  outline: 2px solid #ffd7b8;
+  outline-offset: 2px;
+}
 .login__input[aria-invalid="true"] { border-color: rgba(255, 107, 26, .7); }

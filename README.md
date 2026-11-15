@@ -33,7 +33,7 @@ src/
                    warehouse, notifications, finance, admin
   hooks/           Client hooks (auth, support, axe accessibility scans)
   lib/             Server/client primitives: auth, adminAuth, firebaseAdmin,
-                   paypal, wallet, mfa, webauthn, rate limiting, csrf, mailer
+                   paypal, wallet, mfa, webauthn, rate limiting, mailer
   config/env/      Validated server and client environment access
   proxy.ts         Request proxy (security headers, rate limiting, CORS)
   stores/          Zustand stores
@@ -124,11 +124,22 @@ Quality bar for changes: `npx tsc --noEmit`, `npm run lint` (0 errors), `npm tes
   verified elevated session cookie issued by `POST /api/auth/mfa/session`. That session also
   covers WebAuthn, which is verified there with a per-request challenge, signature and counter
   check; a bare `X-MFA-WebAuthn` header is never trusted.
+- **App Check via reCAPTCHA v3.** The client initializes App Check from
+  `NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY`, refreshes tokens in the background, and sends
+  `X-Firebase-AppCheck` on every API call. `APP_CHECK_ENFORCEMENT=true` makes API routes reject
+  requests without a valid token — the Admin SDK bypasses Firebase's own enforcement, so this is
+  the only thing that covers our handlers. Console setup: App Check → Apps → register the web app
+  with reCAPTCHA v3 (site key into the env var) → add every deployed domain → enforce for Identity
+  Toolkit, Cloud Firestore and Cloud Storage. Locally, `NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG=true`
+  registers a debug token, which must be added under App Check → Debug tokens.
 - **Rate limiting requires Redis in production.** If the shared store is not configured, a
   production instance refuses to start rather than falling back to per-instance in-memory limits
   that an attacker could bypass by spreading requests across serverless instances.
-- **CSRF** applies to cookie-authenticated state-changing requests. Bearer-token requests are
-  exempt by design, since browsers do not attach them automatically.
+- **No CSRF tokens, by design.** Every API route authenticates with a bearer token from the
+  `Authorization` header, which a cross-origin request cannot set. The only cookie the app issues is
+  the short-lived admin MFA session, and it is `HttpOnly` + `SameSite=Strict` and only ever
+  supplements a bearer-verified admin request, so it can neither be read by script nor sent
+  cross-site.
 - **Environment validation** fails fast in production for missing server secrets; client
   `NEXT_PUBLIC_*` values are validated at runtime so a partial build environment cannot break
   prerendering.
