@@ -152,13 +152,13 @@ describe("PlatformLayout: signed out", () => {
 
 describe("PlatformLayout: signed in", () => {
   it("holds the page behind the loading skeleton until the repair settles", async () => {
-    let resolveLookup!: (value: unknown) => void;
-    state.getDoc.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveLookup = resolve;
-        })
-    );
+    // Own the promise so no other test can overwrite getDoc's behaviour
+    // while React is waiting for the profile document.
+    let resolveProfile!: (value: unknown) => void;
+    const profilePromise = new Promise<unknown>((resolve) => {
+      resolveProfile = resolve;
+    });
+    state.getDoc.mockImplementation(() => profilePromise);
 
     render(<PlatformLayout>{page}</PlatformLayout>);
 
@@ -172,7 +172,7 @@ describe("PlatformLayout: signed in", () => {
     expect(screen.queryByTestId("page")).toBeNull();
 
     await act(async () => {
-      resolveLookup(existingProfile);
+      resolveProfile(existingProfile);
     });
 
     await waitFor(() => expect(screen.getByTestId("page")).toBeTruthy());
