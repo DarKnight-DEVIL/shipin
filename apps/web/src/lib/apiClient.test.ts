@@ -78,6 +78,10 @@ beforeEach(async () => {
   ({ apiFetch, ApiError } = await import('./apiClient'));
   state.currentUser = null;
   state.appCheckToken = null;
+  // Reset the forced value too: a test that leaves a fresh token behind makes
+  // the next rejection retry, and under `--sequence.shuffle` that turned an
+  // unrelated assertion into a real failure.
+  state.forcedAppCheckToken = null;
   fetchMock.mockReset();
   appCheckSignal.notifyAppCheckFailure.mockClear();
   appCheckSignal.clearAppCheckFailure.mockClear();
