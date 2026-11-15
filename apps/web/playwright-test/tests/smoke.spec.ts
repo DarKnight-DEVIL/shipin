@@ -18,9 +18,9 @@ test.describe('Public pages', () => {
 
   test('tracking page is accessible without auth', async ({ page }) => {
     await page.goto('/track');
-    // Should not redirect — public endpoint
-    const url = page.url();
-    expect(url.startsWith('http://localhost:3000/track')).toBe(true);
+    // Should not redirect — public endpoint. Compare the path, not the origin:
+    // CI runs this spec against the dev server and against a deployed origin.
+    expect(new URL(page.url()).pathname).toBe('/track');
   });
 });
 
@@ -47,9 +47,8 @@ test.describe('Security headers', () => {
 test.describe('Auth flows', () => {
   test('protected dashboard redirects to login when unauthenticated', async ({ page }) => {
     await page.goto('/dashboard');
-    // Should redirect away from protected route
-    const url = page.url();
-    expect(url.startsWith('http://localhost:3000/login') || url.startsWith('http://localhost:3000/verify-email')).toBe(true);
+    // Should redirect away from protected route, whatever origin serves it.
+    expect(['/login', '/verify-email']).toContain(new URL(page.url()).pathname);
   });
 
   test('login page renders without crashing', async ({ page }) => {

@@ -37,19 +37,18 @@ vi.mock('@/config/env', () => ({
   isTest: true,
 }));
 
-import {
-  APP_CHECK_HEADER,
-  getAppCheckStatus,
-  isAppCheckEnforced,
-  reportAppCheckStatus,
-  verifyAppCheckRequest,
-} from './appCheck';
+// Imported per file, after `vi.resetModules()`: with a shared module registry
+// another file can load `./appCheck` before this file's `@/config/env` mock is
+// registered, and the module then keeps the global mock's env forever.
+let appCheck: typeof import('./appCheck');
 
 function requestWithHeaders(headers: Record<string, string> = {}): Request {
   return new Request('https://shipin.test/api/thing', { headers });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules();
+  appCheck = await import('./appCheck');
   env.enforcement = undefined;
   env.siteKey = '';
   admin.verifyToken.mockReset();
@@ -61,21 +60,21 @@ afterEach(() => {
 
 describe('isAppCheckEnforced', () => {
   it('is off by default', () => {
-    expect(isAppCheckEnforced()).toBe(false);
+    expect(appCheck.isAppCheckEnforced()).toBe(false);
   });
 
   it('turns on only for the exact string "true"', () => {
     env.enforcement = 'true';
-    expect(isAppCheckEnforced()).toBe(true);
+    expect(appCheck.isAppCheckEnforced()).toBe(true);
 
     env.enforcement = '1';
-    expect(isAppCheckEnforced()).toBe(false);
+    expect(appCheck.isAppCheckEnforced()).toBe(false);
   });
 });
 
 describe('verifyAppCheckRequest', () => {
   it('reports not-enforced without looking at the request', async () => {
-    await expect(verifyAppCheckRequest(requestWithHeaders())).resolves.toBe(
+    await expect(appCheck.verifyAppCheckRequest(requestWithHeaders())).resolves.toBe(
       'not-enforced'
     );
     expect(admin.verifyToken).not.toHaveBeenCalled();
@@ -84,7 +83,7 @@ describe('verifyAppCheckRequest', () => {
   it('reports a missing token when enforced', async () => {
     env.enforcement = 'true';
 
-    await expect(verifyAppCheckRequest(requestWithHeaders())).resolves.toBe(
+    await expect(appCheck.verifyAppCheckRequest(requestWithHeaders())).resolves.toBe(
       'missing'
     );
     expect(admin.verifyToken).not.toHaveBeenCalled();
@@ -95,7 +94,7 @@ describe('verifyAppCheckRequest', () => {
     admin.verifyToken.mockResolvedValue({ appId: 'app-1' });
 
     await expect(
-      verifyAppCheckRequest(requestWithHeaders({ [APP_CHECK_HEADER]: 'good-token' }))
+      appCheck.verifyAppCheckRequest(requestWithHeaders({ [appCheck.APP_CHECK_HEADER]: 'good-token' }))
     ).resolves.toBe('ok');
     expect(admin.verifyToken).toHaveBeenCalledWith('good-token');
   });
@@ -105,7 +104,7 @@ describe('verifyAppCheckRequest', () => {
     admin.verifyToken.mockResolvedValue({ appId: 'app-1' });
 
     await expect(
-      verifyAppCheckRequest(requestWithHeaders({ 'X-Firebase-AppCheck': 'good-token' }))
+      appCheck.verifyAppCheckRequest(requestWithHeaders({ 'X-Firebase-AppCheck': 'good-token' }))
     ).resolves.toBe('ok');
   });
 
@@ -115,7 +114,7 @@ describe('verifyAppCheckRequest', () => {
     admin.verifyToken.mockRejectedValue(new Error('token expired'));
 
     await expect(
-      verifyAppCheckRequest(requestWithHeaders({ [APP_CHECK_HEADER]: 'stale-token' }))
+      appCheck.verifyAppCheckRequest(requestWithHeaders({ [appCheck.APP_CHECK_HEADER]: 'stale-token' }))
     ).resolves.toBe('invalid');
     expect(errorSpy).toHaveBeenCalled();
   });
@@ -126,14 +125,14 @@ describe('verifyAppCheckRequest', () => {
     admin.verifyToken.mockRejectedValue('string failure');
 
     await expect(
-      verifyAppCheckRequest(requestWithHeaders({ [APP_CHECK_HEADER]: 'bad' }))
+      appCheck.verifyAppCheckRequest(requestWithHeaders({ [appCheck.APP_CHECK_HEADER]: 'bad' }))
     ).resolves.toBe('invalid');
   });
 });
 
 describe('getAppCheckStatus', () => {
   it('is disabled when neither switch is set', () => {
-    expect(getAppCheckStatus()).toEqual({
+    expect(appCheck.getAppCheckStatus()).toEqual({
       configured: false,
       enforced: false,
       status: 'disabled',
@@ -142,13 +141,13 @@ describe('getAppCheckStatus', () => {
 
   it('is configured when only the site key is set', () => {
     env.siteKey = 'site-key';
-    expect(getAppCheckStatus().status).toBe('configured');
+    expect(appCheck.getAppCheckStatus().status).toBe('configured');
   });
 
   it('is enforced when both switches are set', () => {
     env.siteKey = 'site-key';
     env.enforcement = 'true';
-    expect(getAppCheckStatus()).toEqual({
+    expect(appCheck.getAppCheckStatus()).toEqual({
       configured: true,
       enforced: true,
       status: 'enforced',
@@ -157,7 +156,7 @@ describe('getAppCheckStatus', () => {
 
   it('is misconfigured when enforced without a site key', () => {
     env.enforcement = 'true';
-    expect(getAppCheckStatus()).toEqual({
+    expect(appCheck.getAppCheckStatus()).toEqual({
       configured: false,
       enforced: true,
       status: 'misconfigured',
@@ -170,7 +169,7 @@ describe('reportAppCheckStatus', () => {
     env.enforcement = 'true';
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const status = reportAppCheckStatus();
+    const status = appCheck.reportAppCheckStatus();
 
     expect(status.status).toBe('misconfigured');
     expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -185,13 +184,13 @@ describe('reportAppCheckStatus', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     // disabled
-    expect(reportAppCheckStatus().status).toBe('disabled');
+    expect(appCheck.reportAppCheckStatus().status).toBe('disabled');
     // configured
     env.siteKey = 'site-key';
-    expect(reportAppCheckStatus().status).toBe('configured');
+    expect(appCheck.reportAppCheckStatus().status).toBe('configured');
     // enforced
     env.enforcement = 'true';
-    expect(reportAppCheckStatus().status).toBe('enforced');
+    expect(appCheck.reportAppCheckStatus().status).toBe('enforced');
 
     expect(warnSpy).not.toHaveBeenCalled();
   });
