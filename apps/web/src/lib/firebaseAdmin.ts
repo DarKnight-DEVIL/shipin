@@ -8,6 +8,7 @@ import {
 import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { serverEnv } from '@/config/env';
+import { normalizePrivateKey } from '@/lib/privateKey';
 import { ShipINError } from '@/utils/errors';
 
 function getAdminApp(): App {
@@ -15,10 +16,9 @@ function getAdminApp(): App {
     return getApps()[0]!;
   }
 
-  const privateKey = serverEnv.FIREBASE_ADMIN_PRIVATE_KEY.replace(
-    /\\n/g,
-    '\n'
-  );
+  // Tolerates real newlines, `\n` escapes, the double-escaped `\\n` that
+  // `.env.local` stores, and base64-encoded keys — see privateKey.ts.
+  const privateKey = normalizePrivateKey(serverEnv.FIREBASE_ADMIN_PRIVATE_KEY);
 
   const projectId = serverEnv.FIREBASE_ADMIN_PROJECT_ID;
   const clientEmail = serverEnv.FIREBASE_ADMIN_CLIENT_EMAIL;

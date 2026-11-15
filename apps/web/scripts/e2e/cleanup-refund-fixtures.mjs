@@ -37,6 +37,7 @@
  *   node scripts/e2e/cleanup-refund-fixtures.mjs           # report only
  *   node scripts/e2e/cleanup-refund-fixtures.mjs --apply   # delete
  */
+import { normalizePrivateKey } from '../lib/private-key.mjs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
@@ -88,7 +89,7 @@ async function main() {
 
   const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID ?? '';
   const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL ?? '';
-  const privateKey = (process.env.FIREBASE_ADMIN_PRIVATE_KEY ?? '').replace(/\\n/g, '\n');
+  const privateKey = normalizePrivateKey(process.env.FIREBASE_ADMIN_PRIVATE_KEY);
   const confirm = process.env.E2E_SEED_CONFIRM ?? '';
 
   if (!projectId || !clientEmail || !privateKey) {

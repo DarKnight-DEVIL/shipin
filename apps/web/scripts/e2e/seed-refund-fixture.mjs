@@ -31,6 +31,7 @@
  *   node scripts/e2e/seed-refund-fixture.mjs            # write the fixture
  *   node scripts/e2e/seed-refund-fixture.mjs --dry-run  # print, write nothing
  */
+import { normalizePrivateKey } from '../lib/private-key.mjs';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 
@@ -57,7 +58,7 @@ function amountFromEnv(name, fallback) {
 
 const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID ?? '';
 const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL ?? '';
-const privateKey = (process.env.FIREBASE_ADMIN_PRIVATE_KEY ?? '').replace(/\\n/g, '\n');
+const privateKey = normalizePrivateKey(process.env.FIREBASE_ADMIN_PRIVATE_KEY);
 const confirm = process.env.E2E_SEED_CONFIRM ?? '';
 
 if (!projectId || !clientEmail || !privateKey) {
