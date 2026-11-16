@@ -56,8 +56,25 @@ function tokenFor(uid: string): string {
   ].join('.');
 }
 
+/**
+ * Stands in for `serverTimestamp()`.
+ *
+ * The rules compare `createdAt == request.time`, which only holds for a real
+ * REQUEST_TIME transform — a literal timestamp can never satisfy it, and that
+ * is the point (it blocks backdating). REST writes carry transforms in
+ * `updateTransforms`, so the value itself is encoded as null and listed there.
+ */
+const SERVER_TIMESTAMP = Symbol('serverTimestamp');
+
+function transformPaths(doc: Record<string, unknown>): string[] {
+  return Object.entries(doc)
+    .filter(([, value]) => value === SERVER_TIMESTAMP)
+    .map(([key]) => key);
+}
+
 /** Encode a JS value in the Firestore REST field format. */
 function encodeValue(value: unknown): Record<string, unknown> {
+  if (value === SERVER_TIMESTAMP) return { nullValue: null };
   if (value === null) return { nullValue: null };
   if (typeof value === 'string') return { stringValue: value };
   if (typeof value === 'boolean') return { booleanValue: value };
@@ -75,6 +92,42 @@ function encodeFields(doc: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(doc).map(([key, value]) => [key, encodeValue(value)]));
 }
 
+/**
+ * One write, as the REST `:commit` endpoint expects it.
+ *
+ * `serverTimestamp()` cannot be expressed on a plain document PATCH — the
+ * transform only exists in a Write, which the emulator rejects as an invalid
+ * payload outside `:commit`.
+ */
+function writeFor(
+  path: string,
+  data: Record<string, unknown>,
+  exists: boolean
+): Record<string, unknown> {
+  const transforms = transformPaths(data).map((fieldPath) => ({
+    fieldPath,
+    setToServerValue: 'REQUEST_TIME',
+  }));
+
+  return {
+    update: {
+      name: `projects/${PROJECT}/databases/(default)/documents/${path}`,
+      fields: encodeFields(data),
+    },
+    updateMask: { fieldPaths: Object.keys(data) },
+    ...(transforms.length > 0 ? { updateTransforms: transforms } : {}),
+    currentDocument: { exists },
+  };
+}
+
+function commit(actor: Actor, writes: Array<Record<string, unknown>>): Promise<Response> {
+  return fetch(`${DOCS}:commit`, {
+    method: 'POST',
+    headers: headersFor(actor, true),
+    body: JSON.stringify({ writes }),
+  });
+}
+
 type Actor = { uid: string } | 'owner' | 'anonymous';
 
 function headersFor(actor: Actor, withBody = false): Record<string, string> {
@@ -87,24 +140,12 @@ function headersFor(actor: Actor, withBody = false): Record<string, string> {
 
 /** Create a document; fails with 403 when the rules forbid creation. */
 function create(actor: Actor, path: string, data: Record<string, unknown>): Promise<Response> {
-  return fetch(`${DOCS}/${path}?currentDocument.exists=false`, {
-    method: 'PATCH',
-    headers: headersFor(actor, true),
-    body: JSON.stringify({ fields: encodeFields(data) }),
-  });
+  return commit(actor, [writeFor(path, data, false)]);
 }
 
 /** Update an existing document; fails with 403 when the rules forbid it. */
 function update(actor: Actor, path: string, data: Record<string, unknown>): Promise<Response> {
-  const mask = Object.keys(data)
-    .map((field) => `updateMask.fieldPaths=${encodeURIComponent(field)}`)
-    .join('&');
-
-  return fetch(`${DOCS}/${path}?currentDocument.exists=true&${mask}`, {
-    method: 'PATCH',
-    headers: headersFor(actor, true),
-    body: JSON.stringify({ fields: encodeFields(data) }),
-  });
+  return commit(actor, [writeFor(path, data, true)]);
 }
 
 function read(actor: Actor, path: string): Promise<Response> {
@@ -428,8 +469,14 @@ describe('paypalPaymentOrders', () => {
 /* -------------------------------------------------------------------------- */
 
 describe('refundRequests', () => {
-  it('lets a customer open a refund request for themselves', async () => {
-    await expectAllowed(
+  /*
+   * The collection has no rule block: nothing in the app reads or writes it
+   * (refunds go through /api/admin/requests/[requestId]/refund* with the Admin
+   * SDK). The old block let a customer create a document with their own userId
+   * and an unconstrained status/amount, so "default deny" is the fix.
+   */
+  it('blocks a customer creating a refund request from the browser', async () => {
+    await expectDenied(
       create(customer(), 'refundRequests/refund-1', { userId: CUSTOMER, reason: 'damaged' })
     );
   });
@@ -455,7 +502,8 @@ describe('notifications', () => {
     message: 'Your payment has been recorded.',
     type: 'payment',
     read: false,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    // What `serverTimestamp()` writes; the rule requires request.time.
+    createdAt: SERVER_TIMESTAMP,
     ...overrides,
   });
 
@@ -499,15 +547,55 @@ describe('notifications', () => {
 });
 
 describe('support', () => {
+  /*
+   * The payload is what `createSupportTicket` actually writes: the ticket
+   * fields, `status: 'open'` and two server timestamps. The rule rejects a
+   * create that is born resolved, backdated or carrying admin-owned fields.
+   */
+  const newTicket = (overrides: Record<string, unknown> = {}) => ({
+    ticketNumber: 'T-1',
+    requestId: 'req-1',
+    customerId: CUSTOMER,
+    category: 'Shipment',
+    subject: 'Help',
+    status: 'open',
+    createdAt: SERVER_TIMESTAMP,
+    updatedAt: SERVER_TIMESTAMP,
+    ...overrides,
+  });
+
   it('lets a customer open a ticket in their own name', async () => {
-    await expectAllowed(
-      create(customer(), 'supportTickets/ticket-1', { customerId: CUSTOMER, title: 'Help' })
-    );
+    await expectAllowed(create(customer(), 'supportTickets/ticket-1', newTicket()));
   });
 
   it('blocks opening a ticket in someone else name', async () => {
     await expectDenied(
-      create(customer(), 'supportTickets/ticket-2', { customerId: OTHER_CUSTOMER, title: 'Help' })
+      create(customer(), 'supportTickets/ticket-2', newTicket({ customerId: OTHER_CUSTOMER }))
+    );
+  });
+
+  it('blocks a ticket created already resolved', async () => {
+    await expectDenied(
+      create(customer(), 'supportTickets/ticket-7', newTicket({ status: 'resolved' }))
+    );
+  });
+
+  it('blocks admin-owned fields riding along with the create', async () => {
+    await expectDenied(
+      create(customer(), 'supportTickets/ticket-8', newTicket({ priority: 'urgent' }))
+    );
+    await expectDenied(
+      create(customer(), 'supportTickets/ticket-9', newTicket({ assignedTo: ADMIN }))
+    );
+  });
+
+  it('blocks a backdated createdAt', async () => {
+    await expectDenied(
+      create(
+        customer(),
+        'supportTickets/ticket-10',
+        newTicket({ createdAt: '2020-01-01T00:00:00.000Z' })
+      )
     );
   });
 

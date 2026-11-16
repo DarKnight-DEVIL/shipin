@@ -129,15 +129,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // -------------------------------------------------------- refund requests
-    match /refundRequests/{refundId} {
-      allow read: if isAdmin() || isSelf(resource.data.userId);
-
-      // A customer may open a refund request for themselves, but the status
-      // and amounts are admin-owned.
-      allow create: if isSelf(request.resource.data.userId);
-      allow update, delete: if false;
-    }
+    // There is no `refundRequests` rule block on purpose. The collection has no
+    // writer and no reader anywhere in the app — refunds go through
+    // /api/admin/requests/[requestId]/refund* with the Admin SDK — and the old
+    // block allowed a customer to create a document with any `userId` equal to
+    // their own while the rest of the payload (status, amounts) was
+    // unconstrained. Default deny is the correct rule for a collection nothing
+    // uses; a future writer has to add a rule, which is the point.
 
     // ----------------------------------------------------------- notifications
     // Read by the bell in the platform shell, which subscribes with
@@ -154,9 +152,28 @@ service cloud.firestore {
     match /notifications/{notificationId} {
       allow read: if isSelf(resource.data.userId);
 
+      // The browser payload is exactly [userId, requestId, title, message,
+      // type, read, createdAt] (features/requests/services/requests.ts). Anything
+      // else is rejected: without the allowlist a customer could seed their own
+      // bell with fields the bell renders but never expects.
       allow create: if signedIn()
         && (request.resource.data.userId == request.auth.uid || isAdmin())
-        && request.resource.data.read == false;
+        && request.resource.data.read == false
+        && request.resource.data.type in ['rejection', 'payment', 'quote', 'shipment', 'support']
+        && request.resource.data.title is string
+        && request.resource.data.message is string
+        && request.resource.data.title.size() <= 200
+        && request.resource.data.message.size() <= 2000
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.keys().hasOnly([
+             'userId',
+             'requestId',
+             'title',
+             'message',
+             'type',
+             'read',
+             'createdAt'
+           ]);
 
       allow update, delete: if false;
     }
@@ -183,8 +200,36 @@ service cloud.firestore {
         && request.resource.data.customerUnread == false
       );
 
-      allow create: if signedIn() &&
-        request.resource.data.customerId == request.auth.uid;
+      // The customer side of createSupportTicket sends customerId, category,
+      // subject, requestId, ticketNumber and the two timestamps. `status` is
+      // pinned to "open" (a ticket cannot be born resolved) and nothing else
+      // may ride along, so priority/assignment stay admin-owned.
+      allow create: if isSelf(request.resource.data.customerId)
+        && request.resource.data.status == 'open'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.category in [
+             'Shipment',
+             'Tracking',
+             'Payment',
+             'Refund',
+             'Customs',
+             'Missing Item',
+             'Wrong Item',
+             'Other'
+           ]
+        && request.resource.data.keys().hasOnly([
+             'ticketNumber',
+             'requestId',
+             'customerId',
+             'category',
+             'subject',
+             'status',
+             'customerUnread',
+             'adminUnread',
+             'createdAt',
+             'updatedAt'
+           ]);
       allow delete: if false;
     }
 
@@ -194,8 +239,31 @@ service cloud.firestore {
         resource.data.adminId == request.auth.uid ||
         isAdmin()
       );
-      allow create: if signedIn() &&
-        request.resource.data.customerId == request.auth.uid;
+
+      // Messages do not carry customerId on the client (features/support/
+      // services writes {ticketId, sender, message, createdAt}), so the old
+      // rule rejected every customer message, including the first one sent
+      // with a new ticket. Ownership is taken from the parent ticket instead:
+      // an admin may reply to any ticket, a customer only to their own, and
+      // only as the customer.
+      allow create: if signedIn()
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 5000
+        && request.resource.data.keys().hasOnly([
+             'ticketId',
+             'sender',
+             'message',
+             'createdAt'
+           ])
+        && (
+          isAdmin()
+          || (
+            request.resource.data.sender == 'customer'
+            && get(/databases/$(database)/documents/supportTickets/$(request.resource.data.ticketId)).data.customerId == request.auth.uid
+          )
+        );
       allow update, delete: if false;
     }
   }
