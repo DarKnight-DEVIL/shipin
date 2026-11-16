@@ -510,4 +510,81 @@ describe('support', () => {
       create(customer(), 'supportTickets/ticket-2', { customerId: OTHER_CUSTOMER, title: 'Help' })
     );
   });
+
+  /*
+   * A customer used to be able to update any field of their own ticket, so the
+   * support UI's read receipt was also a way to resolve, reprioritise or
+   * reassign a ticket from the browser. The rules now allow exactly the two
+   * keys `markSupportTicketRead` writes; everything else is admin-only.
+   */
+  const ticket = (overrides: Record<string, unknown> = {}) => ({
+    customerId: CUSTOMER,
+    title: 'Help',
+    status: 'open',
+    priority: 'normal',
+    adminUnread: true,
+    customerUnread: true,
+    updatedAt: 1,
+    ...overrides,
+  });
+
+  it('lets a customer clear their own unread flag', async () => {
+    await seed('supportTickets/ticket-3', ticket());
+
+    await expectAllowed(
+      update(customer(), 'supportTickets/ticket-3', { customerUnread: false, updatedAt: 2 })
+    );
+  });
+
+  it('blocks a customer resolving their own ticket', async () => {
+    await seed('supportTickets/ticket-4', ticket());
+
+    await expectDenied(
+      update(customer(), 'supportTickets/ticket-4', { status: 'resolved', updatedAt: 2 })
+    );
+  });
+
+  it('blocks a customer reprioritising or reassigning their ticket', async () => {
+    await seed('supportTickets/ticket-5', ticket());
+
+    await expectDenied(update(customer(), 'supportTickets/ticket-5', { priority: 'urgent' }));
+    await expectDenied(update(customer(), 'supportTickets/ticket-5', { assignedTo: ADMIN }));
+  });
+
+  it('blocks a customer touching the admin unread flag', async () => {
+    await seed('supportTickets/ticket-6', ticket());
+
+    await expectDenied(update(customer(), 'supportTickets/ticket-6', { adminUnread: false }));
+  });
+
+  it('blocks a customer re-marking their ticket unread', async () => {
+    await seed('supportTickets/ticket-7', ticket({ customerUnread: false }));
+
+    await expectDenied(
+      update(customer(), 'supportTickets/ticket-7', { customerUnread: true, updatedAt: 2 })
+    );
+  });
+
+  it('blocks a third party from updating the ticket', async () => {
+    await seed('supportTickets/ticket-8', ticket());
+
+    await expectDenied(
+      update({ uid: OTHER_CUSTOMER }, 'supportTickets/ticket-8', {
+        customerUnread: false,
+        updatedAt: 2,
+      })
+    );
+  });
+
+  it('still lets an admin resolve a ticket', async () => {
+    await seed('supportTickets/ticket-9', ticket());
+
+    await expectAllowed(
+      update({ uid: ADMIN }, 'supportTickets/ticket-9', {
+        status: 'resolved',
+        resolvedAt: 2,
+        updatedAt: 2,
+      })
+    );
+  });
 });
