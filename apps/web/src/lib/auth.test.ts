@@ -88,6 +88,22 @@ beforeAll(async () => {
   mockAdminAuth = adminAuth as unknown as { verifyIdToken: ReturnType<typeof vi.fn> };
 });
 
+/**
+ * `vi.clearAllMocks()` clears calls, not implementations — and several tests
+ * below install a throwing or not-found `adminDb.collection`. Whichever test ran
+ * next inherited that stub, so a success path answered 500 once the suite was
+ * shuffled (caught by the `test-order-independence` job). Every test starts from
+ * the healthy profile; cases that need another shape install it after this hook.
+ */
+beforeEach(async () => {
+  const { adminDb } = await import('@/lib/firebaseAdmin');
+  (adminDb as unknown as { collection: ReturnType<typeof vi.fn> }).collection.mockReturnValue({
+    doc: () => ({
+      get: async () => ({ exists: true, data: () => ({ role: 'customer' }) }),
+    }),
+  });
+});
+
 describe('extractAuth', () => {
   it('returns null when no Authorization header', () => {
     const req = { headers: { get: () => null } } as unknown as Request;
