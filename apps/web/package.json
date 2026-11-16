@@ -27,7 +27,7 @@
     "check:authorized-domains": "node scripts/check-authorized-domains.mjs"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1167.0",
+    "@aws-sdk/client-s3": "^3.1168.0",
     "@aws-sdk/s3-request-presigner": "^3.1167.0",
     "@paypal/react-paypal-js": "^10.3.0",
     "@react-pdf/renderer": "^4.5.1",
