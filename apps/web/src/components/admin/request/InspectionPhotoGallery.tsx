@@ -165,8 +165,11 @@ export default function InspectionPhotoGallery({
             rel="noopener noreferrer"
             className="group overflow-hidden rounded-xl border border-slate-800 bg-slate-950"
           >
+            {/* Presigned R2 URL (15-minute signature, per-account host): the
+                image optimizer cannot cache it, so it is bypassed. */}
             <Image
               src={photo.url}
+              unoptimized
               width={400}
               height={176}
               alt="Warehouse inspection"

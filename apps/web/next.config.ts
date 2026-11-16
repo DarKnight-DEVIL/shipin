@@ -1,6 +1,8 @@
 import type { NextConfig } from 'next';
 import withBundleAnalyzer from '@next/bundle-analyzer';
 
+import { initSentryConfig } from './sentry.config';
+
 const ANALYZE = process.env.ANALYZE === 'true';
 
 const nextConfig: NextConfig = {
@@ -12,6 +14,22 @@ const nextConfig: NextConfig = {
   // firebase-admin/jose/jwks-rsa are NOT transpiled — they are server-only.
   // Each file that imports them must have `import 'server-only'` at the top.
   transpilePackages: ['@shipin/config', '@shipin/shared', '@shipin/ui', '@shipin/utils'],
+  images: {
+    // Firebase Auth fills `photoURL` with the Google account picture, which is
+    // served from lh3. Without this entry next/image refuses the src at render
+    // time ("hostname is not configured") and every admin customer avatar is a
+    // broken image. The R2 photos are deliberately NOT listed: they are
+    // presigned, per-request URLs on <account>.r2.cloudflarestorage.com, so they
+    // cannot be cached by the optimizer at all (see the `unoptimized` props at
+    // the R2 call sites).
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
+        pathname: '/**',
+      },
+    ],
+  },
   experimental: {
     // Tree-shake barrel imports from these packages instead of bundling
     // their whole entry graph into every page that touches them.
@@ -43,4 +61,6 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withBundleAnalyzer({ enabled: ANALYZE })(nextConfig);
+// Sentry first: withSentryConfig wraps the finished config so the analyzer's
+// output is uploaded too. It is a no-op unless a DSN and an auth token exist.
+export default initSentryConfig(withBundleAnalyzer({ enabled: ANALYZE })(nextConfig));

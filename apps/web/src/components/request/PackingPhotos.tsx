@@ -2,6 +2,10 @@
 
 import Image from "next/image";
 
+// Every image here is a presigned R2 URL (per-account host, 15-minute
+// signature), so each <Image> bypasses the optimizer via `unoptimized`:
+// /_next/image cannot cache a signature and would expose it in our URL.
+
 interface Props {
   beforePacking?: string[];
 
@@ -35,6 +39,7 @@ export default function PackingPhotos({
               <Image
                 key={img}
                 src={img}
+                unoptimized
                 width={300}
                 height={200}
                 className="rounded-xl border border-slate-700"
@@ -56,6 +61,7 @@ export default function PackingPhotos({
               <Image
                 key={img}
                 src={img}
+                unoptimized
                 width={300}
                 height={200}
                 className="rounded-xl border border-slate-700"
@@ -75,6 +81,7 @@ export default function PackingPhotos({
 
             <Image
               src={shippingLabel}
+              unoptimized
               width={300}
               height={400}
               className="rounded-xl border border-slate-700 max-w-sm"

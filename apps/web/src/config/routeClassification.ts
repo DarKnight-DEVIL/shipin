@@ -17,8 +17,22 @@
  */
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { classifyRoute } from "./routeAuth";
+
+/**
+ * This app's API folder, resolved from the module rather than `process.cwd()`:
+ * the startup hook runs inside a compiled server where the working directory is
+ * not guaranteed to be the app root, and referencing `process.cwd` there makes
+ * the edge build warn about a Node API it cannot use.
+ */
+export const API_ROUTE_DIR = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "app",
+  "api"
+);
 
 const ROUTE_FILENAMES = new Set([
   "route.ts",
@@ -104,7 +118,7 @@ export class UnclassifiedRouteError extends Error {
  * enforcement point for those deployments.
  */
 export function assertAllRoutesClassified(
-  apiDir: string
+  apiDir: string = API_ROUTE_DIR
 ): { checked: number; skipped?: string } {
   if (!existsSync(apiDir)) {
     return { checked: 0, skipped: `no route source at ${apiDir}` };

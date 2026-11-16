@@ -361,9 +361,13 @@ export default function RequestDetailsPage() {
                     }}
                     className="group overflow-hidden rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50"
                   >
+                    {/* Presigned R2 URL: per-account host, signature expires in
+                        15 minutes — the optimizer cannot cache it and would
+                        leak the signature through /_next/image. */}
                     <Image
                       src={photo}
                       alt={`Inspection ${index + 1}`}
+                      unoptimized
                       width={400}
                       height={225}
                       className="aspect-video w-full object-cover transition duration-300 group-hover:scale-[1.02]"
