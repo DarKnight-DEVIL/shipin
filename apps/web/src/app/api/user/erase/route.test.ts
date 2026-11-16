@@ -38,6 +38,24 @@ vi.mock('firebase-admin/firestore', () => ({
 
 import { GET, POST } from './route';
 
+
+// A Query stub that supports chained where() and .get() returning a snapshot.
+// Default: empty. Tests override via the docs passed to makeQuery.
+function makeQuery(initialDocs: Array<{ id: string; data: () => unknown }> = []) {
+  const docs = initialDocs;
+  const q = {
+    where: () => q,
+    get: () => ({
+      empty: docs.length === 0,
+      docs,
+    }),
+  } as unknown as {
+    where: () => typeof q;
+    get: () => { empty: boolean; docs: Array<{ id: string; data: () => unknown }> };
+  };
+  return q;
+}
+
 function firestoreStub(rawDocs: Array<{ id: string; data: () => unknown }> = []) {
   // Real snapshots carry a `ref`; the handler deletes and updates through it.
   const docs = rawDocs.map((doc) => ({ ref: { id: doc.id }, ...doc }));
@@ -70,7 +88,7 @@ beforeEach(() => {
   mocks.auth.mockReset().mockResolvedValue({ profile: { uid: 'user-1' } });
   mocks.logRightsRequest.mockReset().mockResolvedValue('erasure-1');
   mocks.getUserRightsRequests.mockReset().mockResolvedValue([]);
-  mocks.collection.mockReset().mockImplementation(() => firestoreStub());
+  mocks.collection.mockReset().mockImplementation(() => makeQuery());
   mocks.deleteUser.mockReset().mockResolvedValue(undefined);
   batch = {
     delete: vi.fn(),
@@ -96,8 +114,34 @@ describe('POST /api/user/erase', () => {
   });
 
   it('logs the request, queues every user-scoped collection and commits', async () => {
-    mocks.collection.mockImplementation(() =>
-      firestoreStub([{ id: 'row-1', data: () => ({}) }])
+    const docWithRef = { id: 'row-1', ref: {} as unknown as ReturnType<typeof vi.fn>, data: () => ({}) };
+    mocks.collection.mockImplementation((name: string) =>
+      name === 'users'
+        ? {
+            doc: () => ({
+              update: async () => undefined,
+              collection: () => ({
+                get: async () => ({ empty: false, docs: [docWithRef] }),
+              }),
+            }),
+          }
+        : name === 'rightsRequests'
+          ? {
+              doc: () => ({
+                update: async () => undefined,
+              }),
+              add: () => ({
+                then: async () => undefined,
+              }),
+              where: () => {
+                const q = {
+                  where: () => q,
+                  get: async () => ({ empty: false, docs: [docWithRef] }),
+                };
+                return q;
+              },
+            }
+          : makeQuery([docWithRef])
     );
 
     const response = await POST(request());
@@ -151,7 +195,15 @@ describe('POST /api/user/erase', () => {
       { id: 'erasure-0', data: () => ({}) },
     ]);
     mocks.collection.mockImplementation((name: string) =>
-      name === 'rightsRequests' ? rights : firestoreStub()
+      name === 'rightsRequests' ? rights
+        : name === 'users'
+          ? {
+              doc: () => ({
+                update: async () => undefined,
+                collection: () => ({ get: async () => ({ empty: true, docs: [] }) }),
+              }),
+            }
+          : firestoreStub()
     );
 
     await POST(request());
@@ -179,6 +231,23 @@ describe('POST /api/user/erase', () => {
   });
 
   it('deletes the Firebase Auth user so the account cannot sign in again', async () => {
+    mocks.collection.mockImplementation((name: string) =>
+      name === 'users'
+        ? {
+            doc: () => ({
+              update: async () => undefined,
+              collection: () => ({ get: async () => ({ empty: true, docs: [] }) }),
+            }),
+          }
+        : (() => {
+            const q = {
+              where: () => q,
+              get: async () => ({ empty: true, docs: [] }),
+            };
+            return q;
+          })()
+    );
+
     const response = await POST(request());
 
     expect(response.status).toBe(200);
@@ -188,6 +257,22 @@ describe('POST /api/user/erase', () => {
   it('treats an already-deleted Auth user as success', async () => {
     mocks.deleteUser.mockRejectedValue(
       Object.assign(new Error('no user'), { code: 'auth/user-not-found' })
+    );
+    mocks.collection.mockImplementation((name: string) =>
+      name === 'users'
+        ? {
+            doc: () => ({
+              update: async () => undefined,
+              collection: () => ({ get: async () => ({ empty: true, docs: [] }) }),
+            }),
+          }
+        : (() => {
+            const q = {
+              where: () => q,
+              get: async () => ({ empty: true, docs: [] }),
+            };
+            return q;
+          })()
     );
 
     expect((await POST(request())).status).toBe(200);
@@ -217,16 +302,82 @@ describe('POST /api/user/erase', () => {
     mocks.deleteUser.mockRejectedValue(
       Object.assign(new Error('revoked'), { code: 'auth/internal-error' })
     );
+    mocks.collection.mockImplementation((name: string) =>
+      name === 'users'
+        ? {
+            doc: () => ({
+              update: async () => undefined,
+              collection: () => ({ get: async () => ({ empty: true, docs: [] }) }),
+            }),
+          }
+        : (() => {
+            const q = {
+              where: () => q,
+              get: async () => ({ empty: true, docs: [] }),
+            };
+            return q;
+          })()
+    );
 
     const response = await POST(request());
+    const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect((await response.json()).code).toBe('ERASURE_FAILED');
+    expect(body.code).toBe('ERASURE_FAILED');
     // The profile documents are already anonymised at this point; the failure
     // must still surface rather than reporting success.
     expect(mocks.deleteUser).toHaveBeenCalledTimes(1);
   });
 });
+
+  // If the pre-check finds active wallet obligations, the cascade is cancelled
+  // before anything is touched and before the Auth user is deleted, so the
+  // account and every Firestore record remain exactly as they were.
+  it('cancels the erasure request when active wallet obligations exist and leaves every record intact', async () => {
+    // The pre-check reads walletTransactions for the user with status in
+    // [pending, completed]. If any match, the request is cancelled (409) and
+    // no collection is touched.
+    mocks.collection.mockImplementation((name: string) => {
+      if (name === 'walletTransactions') {
+        const q: { where: () => typeof q; get: () => { empty: boolean; docs: Array<{ id: string; data: () => unknown }> } } = {
+          where: () => q,
+          get: () => ({
+            empty: false,
+            docs: [{ id: 'wtx-1', data: () => ({ userId: 'user-1', status: 'completed' }) }],
+          }),
+        };
+        return q;
+      }
+      if (name === 'rightsRequests') {
+        return {
+          doc: () => ({
+            update: async () => undefined,
+          }),
+          where: () => ({
+            get: async () => ({ empty: true, docs: [] }),
+          }),
+        };
+      }
+      return {
+        where: () => ({
+          get: async () => ({ empty: true, docs: [] }),
+        }),
+      };
+    });
+
+    const requestId = 'erasure-1';
+    const response = await POST(request());
+
+    // The request is marked cancelled; nothing else is touched.
+    expect(mocks.batch).not.toHaveBeenCalled();
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: 'ERASURE_CANCELLED',
+      requestId,
+    });
+  });
 
 describe('GET /api/user/erase', () => {
   it('rejects an unauthenticated caller', async () => {

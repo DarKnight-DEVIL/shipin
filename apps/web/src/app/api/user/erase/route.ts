@@ -36,6 +36,38 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const uid = auth.profile.uid;
 
   try {
+    // 2b. Pre-check: refuse to start erasure when the account still holds
+    // active financial obligations, so the user is not stranded mid-flow.
+    // This runs BEFORE any data is touched and BEFORE the Auth user is
+    // deleted, so a cancellation here leaves everything intact.
+    const obligationsSnap = await adminDb
+      .collection('walletTransactions')
+      .where('userId', '==', uid)
+      .where('status', 'in', ['pending', 'completed'])
+      .get();
+    if (obligationsSnap.docs.some((doc) => {
+      const status = doc.data().status;
+      return status === 'pending' || status === 'completed';
+    })) {
+      await adminDb.collection('rightsRequests').doc(requestId).update({
+        status: 'cancelled',
+        cancelledAt: FieldValue.serverTimestamp(),
+        cancelledReason: 'Active wallet obligations prevent erasure',
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Account erasure is blocked by active wallet transactions. Contact support to review.',
+          code: 'ERASURE_CANCELLED',
+          requestId,
+        },
+        { status: 409 }
+      );
+    }
+
+
     const batch = adminDb.batch();
 
     // 1. Delete the user's own subcollections and the records that exist only to

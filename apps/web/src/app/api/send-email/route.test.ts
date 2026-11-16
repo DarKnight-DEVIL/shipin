@@ -123,4 +123,15 @@ describe('POST /api/send-email', () => {
 
     expect(mocks.generateEmail.mock.calls[0][0]).toBe('shipped');
   });
+
+  // The route doubles as an admin action: every send is attributed to the admin
+  // who triggered it, both for audit and so an admin's credentials cannot be
+  // reused by someone who only got hold of the session.
+  it('records an admin audit entry for the send', async () => {
+    const response = await POST(request());
+
+    expect(mocks.record).toHaveBeenCalled();
+    expect(mocks.sendMail).toHaveBeenCalled();
+    expect(response.status).toBe(200);
+  });
 });

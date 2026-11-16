@@ -381,4 +381,43 @@ describe('POST /api/paypal/capture-wallet-topup', () => {
       code: 'INVALID_JSON',
     });
   });
+
+  // PayPal can return a non-COMPLETED status when the order has been approved or
+  // created but never captured (the money did not move). That is not a credit
+  // opportunity: it is a rejection, and nothing must be credited.
+  it('rejects a PayPal order that is only CREATED', async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'CREATED' }),
+    });
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: 'PayPal payment was not completed.',
+    });
+    expect(mocks.txSet).not.toHaveBeenCalled();
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a PayPal order that is only APPROVED', async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'APPROVED' }),
+    });
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: 'PayPal payment was not completed.',
+    });
+    expect(mocks.txSet).not.toHaveBeenCalled();
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
 });
