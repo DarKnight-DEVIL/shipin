@@ -18,9 +18,26 @@ import { validateRouteClassification } from '@/proxy';
  * a misconfigured deployment.
  */
 export function register() {
-  // Validate production-required env vars (e.g. PAYPAL_WEBHOOK_ID).
-  // Throws if any are missing when running in production.
-  validateProductionRequiredEnv();
+  // Validate production-required env vars (PAYPAL_WEBHOOK_ID and the shared
+  // rate-limit store).
+  try {
+    validateProductionRequiredEnv();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+
+    // Throwing alone is not enough: Next logs "an error occurred while loading
+    // the instrumentation hook" and keeps the server up, answering every
+    // request with a 500. A deployment missing its rate-limit store (or the
+    // PayPal webhook id) must not take traffic at all, so the process exits
+    // non-zero and the platform rolls the deployment back.
+    //
+    // The edge runtime has no `process.exit`; there the throw is all we can do.
+    if (process.env.NEXT_RUNTIME !== 'edge') {
+      process.exit(1);
+    }
+
+    throw error;
+  }
 
   // Warn (never throw) when production has no shared rate-limit store: limits
   // are then per-instance, the proxy fails open on infrastructure failures, and

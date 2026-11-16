@@ -122,10 +122,14 @@ const env = {
   // answered 429 ("RATE_LIMIT_ERROR") partway through a run, and a second run in
   // the same minute inherited a full bucket. Blanked here (not deleted: Next
   // will not override a key that is present) so the local run behaves like CI,
-  // where no store is configured: startup warns, /api/health reports degraded,
-  // and the proxy fails open.
+  // where no store is configured.
   UPSTASH_REDIS_REST_URL: "",
   UPSTASH_REDIS_REST_TOKEN: "",
+  // A production build with no store refuses to boot, because failing open is
+  // invisible in a real deployment. This runner is the one caller allowed past
+  // that check: throwaway database, no shared counters, single IP. Never set
+  // this anywhere else.
+  RATE_LIMIT_STORE_OPTIONAL: "1",
 };
 
 if (signedIn) {

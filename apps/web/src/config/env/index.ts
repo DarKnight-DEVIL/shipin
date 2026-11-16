@@ -134,13 +134,40 @@ const REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
  */
 const PRODUCTION_REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
   'PAYPAL_WEBHOOK_ID',
-  // UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are deliberately NOT
-  // here: a missing shared store degrades rate limiting (startup warns,
-  // /api/health reports degraded, the proxy fails open) instead of refusing to
-  // boot. Listing them here made that contract unreachable — a production
-  // build could not start without a real Upstash database, which is exactly
-  // what broke the local and CI E2E runs.
 ]);
+
+/**
+ * Shared rate-limit store credentials.
+ *
+ * Required in production. Without them the proxy cannot limit anything
+ * globally: every serverless instance keeps its own counters, and the
+ * `unavailable` branch fails open, so a deployment that forgot the variables
+ * runs with throttling effectively off — silently, and only visible to whoever
+ * reads /api/health. Failing at startup is the point: a misconfigured deploy
+ * must not serve traffic while its abuse protection is absent.
+ *
+ * The one exception is the local/CI E2E suite, which runs a PRODUCTION build
+ * against a throwaway database and must not touch the real Upstash counters
+ * (`scripts/e2e-local.mjs` and the `e2e` CI job). It opts out explicitly with
+ * {@link RATE_LIMIT_STORE_OPTIONAL_ENV}; nothing else sets it, and unset is
+ * the required path.
+ */
+const RATE_LIMIT_STORE_SERVER_ENV = [
+  'UPSTASH_REDIS_REST_URL',
+  'UPSTASH_REDIS_REST_TOKEN',
+] as const;
+
+/** Set to the exact string "1" to allow a production build with no rate-limit store (E2E only). */
+export const RATE_LIMIT_STORE_OPTIONAL_ENV = 'RATE_LIMIT_STORE_OPTIONAL';
+
+/**
+ * True only when the E2E opt-out is set explicitly. Any other value —
+ * including "true" — keeps the store required, so a typo cannot quietly
+ * disable the check.
+ */
+export function isRateLimitStoreOptional(): boolean {
+  return process.env[RATE_LIMIT_STORE_OPTIONAL_ENV] === '1';
+}
 
 /** Server-only vars that fall back to a default when unset. */
 const DEFAULT_SERVER_ENV: Record<string, string> = {
@@ -154,10 +181,9 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
   'PAYPAL_API_URL',
   // PAYPAL_WEBHOOK_ID is listed in PRODUCTION_REQUIRED_SERVER_ENV instead:
   // it may be absent in dev/test, but must be set in production.
-  // UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN stay optional so a
-  // missing shared store degrades rate limiting instead of crashing the app:
-  // startup logs a warning (reportRateLimitStoreStatus) and /api/health
-  // reports degraded.
+  // UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are not optional in
+  // production: see RATE_LIMIT_STORE_SERVER_ENV above. When they are absent
+  // with the E2E opt-out set, startup warns and /api/health reports degraded.
   'WHATSAPP_ACCESS_TOKEN',
   'WHATSAPP_PHONE_NUMBER_ID',
   'MFA_SESSION_SECRET',
@@ -180,17 +206,24 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
 export function validateProductionRequiredEnv(): void {
   if (!isProduction) return;
 
-  const missing: string[] = [];
-  for (const key of PRODUCTION_REQUIRED_SERVER_ENV) {
-    if (!process.env[key]) {
-      missing.push(key);
-    }
+  const required: string[] = [...PRODUCTION_REQUIRED_SERVER_ENV];
+
+  if (!isRateLimitStoreOptional()) {
+    required.push(...RATE_LIMIT_STORE_SERVER_ENV);
   }
 
+  const missing = required.filter((key) => !process.env[key]);
+
   if (missing.length > 0) {
+    const optOutHint = missing.some((key) =>
+      (RATE_LIMIT_STORE_SERVER_ENV as readonly string[]).includes(key)
+    )
+      ? ` Rate limiting has no shared store, so the deployment would run with per-instance limits and fail open. Set both variables; only the local/CI E2E suite may set ${RATE_LIMIT_STORE_OPTIONAL_ENV}=1 to opt out.`
+      : '';
+
     throw new Error(
       `[ShipIN] FATAL: Missing required production environment variables: ${missing.join(', ')}. ` +
-      'These must be set for production deployment.'
+        `These must be set for production deployment.${optOutHint}`
     );
   }
 }

@@ -74,7 +74,7 @@ Server-side:
 | `SMTP_EMAIL` / `SMTP_PASSWORD` | SMTP fallback for transactional mail |
 | `RESEND_API_KEY` | Resend API key |
 | `APP_URL` | Public origin used in emails and callbacks |
-| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Shared rate-limit store |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Shared rate-limit store — required in production, the server will not start without both |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` | Object storage |
 | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp Cloud API |
 

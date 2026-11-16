@@ -29,8 +29,8 @@ Set these in your Vercel project settings → Environment Variables:
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Yes | Cloudflare R2 uploads |
 | `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | Optional | WhatsApp Business API |
 | `MFA_SESSION_SECRET` | Optional | Admin MFA session signing (min 32 chars) |
-| `UPSTASH_REDIS_REST_URL` | **Critical** | **Upstash Redis for global rate limiting** |
-| `UPSTASH_REDIS_REST_TOKEN` | **Critical** | **Upstash Redis for global rate limiting** |
+| `UPSTASH_REDIS_REST_URL` | **Yes** | **Global rate limiting. The server refuses to start without it** |
+| `UPSTASH_REDIS_REST_TOKEN` | **Yes** | **Global rate limiting. The server refuses to start without it** |
 
 ### Domains and origins
 
@@ -158,8 +158,11 @@ Two adjacent settings are separate from this list:
 
 3. **Verify it works**:
    - Deploy to Vercel
-   - Check logs: `[ShipIN] WARNING: Running in production with in-memory rate limiting` should **NOT** appear
+   - The deploy should stay up: a production build with either variable missing now exits at startup with `[ShipIN] FATAL: Missing required production environment variables: UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN`, because a deployment that cannot enforce global limits must not serve traffic.
    - Rate limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`) should appear on responses
+   - `/api/health` should report the store as configured, not `degraded`
+
+   `RATE_LIMIT_STORE_OPTIONAL=1` bypasses that startup check. It exists only for the local/CI E2E suite, which builds production and runs against a throwaway database. Never set it on Production or Preview.
 
 ### Verifying Rate Limiting
 

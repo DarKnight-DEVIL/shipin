@@ -59,13 +59,44 @@ describe('register', () => {
     );
   });
 
-  it('propagates a missing required variable instead of continuing to boot', () => {
+  it('exits the process instead of continuing to boot', () => {
+    // Mock the exit so the assertion does not take the test worker down with it.
+    const exit = vi
+      .spyOn(process, 'exit')
+      .mockImplementation(((code?: number) => {
+        throw new Error(`process.exit(${code})`);
+      }) as never);
+
     hooks.validate.mockImplementation(() => {
       throw new Error('Missing required env: PAYPAL_WEBHOOK_ID');
     });
 
-    expect(() => register()).toThrow('PAYPAL_WEBHOOK_ID');
+    // A throw alone leaves Next serving 500s; the process has to die so the
+    // platform fails the deployment.
+    expect(() => register()).toThrow('process.exit(1)');
+    expect(exit).toHaveBeenCalledWith(1);
     expect(hooks.reportRateLimit).not.toHaveBeenCalled();
     expect(hooks.reportAppCheck).not.toHaveBeenCalled();
+
+    exit.mockRestore();
+  });
+
+  it('rethrows instead of exiting on the edge runtime, which has no process.exit', () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+    const previousRuntime = process.env.NEXT_RUNTIME;
+    process.env.NEXT_RUNTIME = 'edge';
+
+    hooks.validate.mockImplementation(() => {
+      throw new Error('Missing required env: PAYPAL_WEBHOOK_ID');
+    });
+
+    try {
+      expect(() => register()).toThrow('PAYPAL_WEBHOOK_ID');
+      expect(exit).not.toHaveBeenCalled();
+    } finally {
+      exit.mockRestore();
+      if (previousRuntime === undefined) delete process.env.NEXT_RUNTIME;
+      else process.env.NEXT_RUNTIME = previousRuntime;
+    }
   });
 });

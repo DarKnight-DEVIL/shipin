@@ -476,6 +476,12 @@ jobs:
           # `next start` binds an arbitrary port and the health check waits on
           # 3000 until it times out.
           PLAYWRIGHT_WEBSERVER_COMMAND: "npm run start -- -p 3000"
+          # This job has no Upstash store, and a production build refuses to
+          # boot without one (a real deployment must not serve traffic with
+          # rate limiting silently off). The E2E suite is the documented
+          # exception; nothing outside this step and scripts/e2e-local.mjs sets
+          # it.
+          RATE_LIMIT_STORE_OPTIONAL: "1"
 
       # The write path needs a service account; without one it would fail on a
       # missing variable instead of skipping, and a failing step takes the
