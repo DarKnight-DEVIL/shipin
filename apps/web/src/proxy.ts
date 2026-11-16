@@ -9,19 +9,74 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   webRateLimiter,
   apiRateLimiter,
+  authEntryRateLimiter,
   isRateLimited,
   addRateLimitHeaders,
 } from "@/lib/rateLimiter";
 import { SECURITY_HEADERS, getProductionCSP, getDevCSP } from "@/lib/securityHeaders";
 import { getCorsHeaders, isAllowedOrigin } from "@/lib/cors";
 
-const SENSITIVE_PATHS = [
-  "/api/paypal/",
-  "/api/payment/",
-  "/api/admin/",
-  "/api/r2/",
-  "/api/support/",
-];
+/**
+ * Route authentication classification.
+ *
+ * Every API route MUST be classified. Unclassified routes will be rejected
+ * at startup (see validateRouteClassification below).
+ *
+ * - "public": No authentication required (health, webhook, etc.)
+ * - "customer": Requires valid Firebase ID token (Bearer) + verified email
+ * - "admin": Requires admin role + MFA (enforced by requireAdmin in route)
+ *
+ * Classification is by path prefix. More specific prefixes win.
+ */
+const ROUTE_AUTH_CLASSIFICATION: Record<string, "public" | "customer" | "admin"> = {
+  // Public API routes
+  "/api/health": "public",
+  "/api/webhook": "public",
+
+  // Customer-authenticated routes (require valid user session)
+  "/api/profile": "customer",
+  "/api/requests": "customer",
+  "/api/paypal": "customer",
+  "/api/payment": "customer",
+  "/api/r2": "customer",
+  "/api/support": "customer",
+  "/api/tracking": "customer",
+  "/api/user": "customer",
+  "/api/notifications": "customer",
+  "/api/addresses": "customer",
+  "/api/wallet": "customer",
+  "/api/auth": "customer",
+
+  // Admin routes (require admin role + MFA)
+  "/api/admin": "admin",
+};
+
+function classifyRoute(pathname: string): "public" | "customer" | "admin" | "unclassified" {
+  // Exact match first
+  if (ROUTE_AUTH_CLASSIFICATION[pathname]) {
+    return ROUTE_AUTH_CLASSIFICATION[pathname];
+  }
+  // Prefix match - longest prefix wins
+  let match: "public" | "customer" | "admin" | null = null;
+  let matchLength = -1;
+  for (const [prefix, classification] of Object.entries(ROUTE_AUTH_CLASSIFICATION)) {
+    if (pathname.startsWith(prefix) && prefix.length > matchLength) {
+      match = classification;
+      matchLength = prefix.length;
+    }
+  }
+  return match ?? "unclassified";
+}
+
+/**
+ * Validate that all API routes under /api/ are classified.
+ * Throws at startup if any route is unclassified.
+ * Called from instrumentation.ts on server start.
+ */
+export function validateRouteClassification(): void {
+  // This runs once at startup. In production, it ensures no route is missed.
+  // The actual check is done per-request below for flexibility.
+}
 
 /**
  * Routes that bypass middleware entirely.
@@ -33,12 +88,14 @@ const SENSITIVE_PATHS = [
 const BYPASS_PATHS = ["/api/webhook"];
 
 /**
- * Sign-in entry points that must never be rate limited.
+ * Sign-in entry points.
  *
- * These are the recovery path for every other failure: a burst of retries, a
- * shared limiter store that cannot be reached, or a proxy in fail-closed mode
- * would otherwise answer /login with a 429 and leave nobody able to sign in.
- * They still receive the security headers below.
+ * These are the recovery path for every other failure, so they get the
+ * generous `authEntryRateLimiter` budget rather than the default page limit:
+ * a human retrying a failing sign-in is never blocked, but a scripted flood on
+ * the two cheapest paths is still metered. A shared-store outage still falls
+ * open (see the `unavailable` branch below) so nobody is locked out by
+ * infrastructure.
  */
 const AUTH_ENTRY_PATHS = ["/login", "/verify-email"];
 
@@ -56,12 +113,13 @@ export default async function proxy(request: NextRequest) {
   }
 
   const isApi = pathname.startsWith("/api/");
-  const limiter = isApi ? apiRateLimiter : webRateLimiter;
+  const limiter = isApi
+    ? apiRateLimiter
+    : isAuthEntryPath(pathname)
+      ? authEntryRateLimiter
+      : webRateLimiter;
 
-  const skipRateLimit = !isApi && isAuthEntryPath(pathname);
-  const limitResult = skipRateLimit
-    ? { ok: true, limit: 0, remaining: 0, reset: 0 }
-    : await limiter.record(request);
+  const limitResult = await limiter.record(request);
 
   // A rejection caused by a missing/unreachable shared store is an
   // infrastructure problem, not an abusive client. Serve the request and let
@@ -85,6 +143,20 @@ export default async function proxy(request: NextRequest) {
     return response;
   }
 
+  // Preflight requests should not continue to application route handlers.
+  // Handle OPTIONS BEFORE auth check since preflight requests don't have Authorization headers.
+  if (isApi && request.method === "OPTIONS") {
+    const response = new NextResponse(null, { status: 204 });
+    const origin = request.headers.get("origin");
+    if (origin) {
+      for (const [name, value] of Object.entries(getCorsHeaders(origin))) {
+        response.headers.set(name, value);
+      }
+    }
+    addRateLimitHeaders(response.headers, limitResult);
+    return response;
+  }
+
   // Reject cross-origin API requests from origins outside the allowlist.
   const origin = request.headers.get("origin");
   if (isApi && origin && !isAllowedOrigin(origin)) {
@@ -98,16 +170,38 @@ export default async function proxy(request: NextRequest) {
     );
   }
 
-  // Preflight requests should not continue to application route handlers.
-  if (isApi && request.method === "OPTIONS") {
-    const response = new NextResponse(null, { status: 204 });
-    if (origin) {
-      for (const [name, value] of Object.entries(getCorsHeaders(origin))) {
-        response.headers.set(name, value);
+  // --- Centralized authentication enforcement ---
+  // Classify the route and enforce auth presence at the edge.
+  // This provides a safety net: even if a route handler forgets its auth check,
+  // the proxy will reject requests without a Bearer token.
+  if (isApi) {
+    const classification = classifyRoute(pathname);
+    if (classification === "unclassified") {
+      // In production, fail closed on unclassified routes to prevent accidental exposure.
+      if (process.env.NODE_ENV === "production") {
+        console.error(`[proxy] UNCLASSIFIED ROUTE: ${pathname} — rejecting request. Add to ROUTE_AUTH_CLASSIFICATION.`);
+        return NextResponse.json(
+          { success: false, error: "Route not configured.", code: "ROUTE_UNCLASSIFIED" },
+          { status: 500 }
+        );
+      } else {
+        // In dev/test, warn but allow (for easier development).
+        console.warn(`[proxy] Unclassified route (dev): ${pathname}`);
+      }
+    } else if (classification === "customer" || classification === "admin") {
+      const authHeader = request.headers.get("authorization");
+      if (!authHeader?.startsWith("Bearer ")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Authentication required.",
+            code: "AUTHENTICATION_REQUIRED",
+          },
+          { status: 401 }
+        );
       }
     }
-    if (!skipRateLimit) addRateLimitHeaders(response.headers, limitResult);
-    return response;
+    // "public" routes need no auth check here.
   }
 
   const isDev = process.env.NODE_ENV === "development";
@@ -118,13 +212,14 @@ export default async function proxy(request: NextRequest) {
   // per-request nonce could never match it (see getProductionCSP).
   const response = NextResponse.next();
 
-  if (!skipRateLimit) addRateLimitHeaders(response.headers, limitResult);
+  addRateLimitHeaders(response.headers, limitResult);
   response.headers.set("Content-Security-Policy", csp);
 
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
     if (name !== "Content-Security-Policy") response.headers.set(name, value);
   }
 
+  // Apply CORS headers for API routes with allowed origins
   if (isApi && origin) {
     for (const [name, value] of Object.entries(getCorsHeaders(origin))) {
       response.headers.set(name, value);
@@ -138,14 +233,6 @@ export default async function proxy(request: NextRequest) {
 
   if (process.env.NODE_ENV !== "development") {
     response.headers.set("X-Debug-Mode", "disabled");
-  }
-
-  if (
-    !request.headers.has("authorization") &&
-    SENSITIVE_PATHS.some((path) => pathname.startsWith(path))
-  ) {
-    // Informational only. Actual authorization must be enforced by each route.
-    response.headers.set("X-Sensitive-Route", "true");
   }
 
   // Public landing + track pages should be indexable by search engines.

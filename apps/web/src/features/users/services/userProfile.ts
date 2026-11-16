@@ -73,6 +73,9 @@ export interface UserProfile {
   createdAt?: unknown;
 
   updatedAt?: unknown;
+
+  /** Document schema version for migrations. Default: 1 */
+  schemaVersion?: number;
 }
 
 export async function getUserProfile(

@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   KeyRound,
   ShoppingCart,
+  UserCog,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -249,6 +250,29 @@ export default function AdminLayout({
 
                 <span>
                   Security
+                </span>
+              </Link>
+
+              {/* USERS */}
+              <Link
+                href="/admin/users"
+                className="
+                  flex
+                  items-center
+                  gap-3
+                  rounded-xl
+                  px-4
+                  py-3
+                  text-slate-300
+                  transition
+                  hover:bg-slate-800
+                  hover:text-white
+                "
+              >
+                <UserCog size={19} />
+
+                <span>
+                  Users
                 </span>
               </Link>
 

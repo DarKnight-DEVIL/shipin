@@ -58,15 +58,18 @@ describe('POST /api/auth/mfa/backup-codes/regenerate', () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  it('requires an administrator', async () => {
+  it('lets a customer regenerate their own backup codes', async () => {
+    // Self-service: a customer manages their own second factor, so the old
+    // admin-only gate must not apply. The route still authenticates the caller.
     mocks.requireAuthWithProfile.mockResolvedValue({
       profile: { uid: 'user-1', role: 'customer' },
+      token: {},
     });
 
     const response = await POST(request());
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({ code: 'ADMIN_ACCESS_REQUIRED' });
+    expect(response.status).not.toBe(403);
+    expect(mocks.get).toHaveBeenCalled();
   });
 
   it('requires a six digit code', async () => {

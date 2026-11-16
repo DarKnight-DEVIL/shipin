@@ -77,9 +77,13 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     }
   } catch (error) {
     console.error("Webhook processing error:", error);
-    // Return 200 to prevent PayPal from retrying, but log the error
-    // The internal processing failure should be monitored separately
-    return NextResponse.json({ received: true, success: true });
+    // Return 500 so PayPal will retry the webhook delivery.
+    // handleCaptureCompleted is idempotent (checks captureId + request status),
+    // so retries are safe.
+    return NextResponse.json(
+      { success: false, error: "Webhook processing failed.", code: "WEBHOOK_PROCESSING_ERROR" },
+      { status: 500 }
+    );
   }
 
   // PayPal requires a 2xx to stop delivery; `received` is the provider contract.

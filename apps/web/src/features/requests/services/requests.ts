@@ -64,12 +64,27 @@ export async function createRequest(
   }
 }
 
+/**
+ * Sortable columns.
+ *
+ * A closed set on purpose: each field/direction pair below needs its own
+ * composite index, and `npm run check:firestore-indexes` can only prove an
+ * index exists for a literal `orderBy(field, direction)`. Free-form sorts
+ * failed at runtime with FAILED_PRECONDITION the first time a new column was
+ * requested.
+ */
+export const REQUEST_SORT_FIELDS = ['createdAt', 'updatedAt'] as const;
+export type RequestSortField = (typeof REQUEST_SORT_FIELDS)[number];
+
+/** Newest-N cap for the live listener (see subscribeToRequests). */
+export const REQUEST_SUBSCRIPTION_LIMIT = 200;
+
 export interface GetRequestsOptions {
   limit?: number;
   /** Firestore DocumentSnapshot to start after (for cursor pagination). */
   startAfter?: import("firebase/firestore").DocumentSnapshot;
-  /** Sort field (default: 'createdAt'). */
-  sortField?: string;
+  /** Sort field (default: 'createdAt'). Anything else is ignored. */
+  sortField?: RequestSortField;
   /** Sort direction (default: 'desc'). */
   sortDirection?: 'asc' | 'desc';
 }
@@ -90,18 +105,35 @@ export async function getRequests(
     const {
       limit: pageSize = 20,
       startAfter,
-      sortField = 'createdAt',
       sortDirection = 'desc',
     } = options;
+
+    // Validated, not merely typed: the value can arrive from a URL parameter.
+    const sortField: RequestSortField = REQUEST_SORT_FIELDS.includes(
+      options.sortField as RequestSortField
+    )
+      ? (options.sortField as RequestSortField)
+      : 'createdAt';
+    const direction = sortDirection === 'asc' ? 'asc' : 'desc';
 
     let q = query(
       collection(db, 'requests'),
       where('userId', '==', userId)
     );
 
-    // Apply ordering and cursor
-    // Note: Firestore requires a composite index for orderBy + where
-    q = query(q, orderBy(sortField, sortDirection));
+    // Literal field + direction pairs so each one maps to a declared composite
+    // index in firestore.indexes.json (checked in CI).
+    if (sortField === 'updatedAt') {
+      q = query(
+        q,
+        direction === 'asc' ? orderBy('updatedAt', 'asc') : orderBy('updatedAt', 'desc')
+      );
+    } else {
+      q = query(
+        q,
+        direction === 'asc' ? orderBy('createdAt', 'asc') : orderBy('createdAt', 'desc')
+      );
+    }
 
     if (startAfter) {
       const { startAfter: startAfterFn } = await import("firebase/firestore");
@@ -158,17 +190,33 @@ export async function updateRequestStatus(
 
 export function subscribeToRequests(
   userId: string,
-  callback: (requests: Request[]) => void
+  callback: (requests: Request[]) => void,
+  onError?: (error: Error) => void
 ): () => void {
-  const q = query(collection(db, 'requests'), where('userId', '==', userId));
-  return onSnapshot(q, (snapshot) => {
-    callback(
-      snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Request, 'id'>),
-      }))
-    );
-  });
+  // Bounded and ordered: this feeds /requests and the customer support card,
+  // and an unbounded listener re-downloads every request the customer has ever
+  // filed on every change. Newest 200 is far more than either view shows, and
+  // the error callback keeps a permission failure from becoming an unhandled
+  // rejection inside onSnapshot.
+  const q = query(
+    collection(db, 'requests'),
+    where('userId', '==', userId),
+    orderBy('createdAt', 'desc'),
+    limit(REQUEST_SUBSCRIPTION_LIMIT)
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      callback(
+        snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...(doc.data() as Omit<Request, 'id'>),
+        }))
+      );
+    },
+    onError
+  );
 }
 
 export function subscribeToRequest(

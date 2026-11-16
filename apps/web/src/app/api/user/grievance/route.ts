@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withErrorHandler } from '@/utils/errors';
 import { requireAuthWithProfile } from '@/lib/auth';
-import { logRightsRequest } from '@/lib/compliance/rightsOps';
+import { logRightsRequest } from '@/lib/compliance/rightsOps2';
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);

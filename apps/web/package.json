@@ -24,7 +24,8 @@
     "check:coverage-globs": "node scripts/check-coverage-globs.mjs",
     "check:compliance-tests": "node scripts/check-compliance-tests.mjs",
     "check:money-globs": "node scripts/check-money-globs.mjs",
-    "check:authorized-domains": "node scripts/check-authorized-domains.mjs"
+    "check:authorized-domains": "node scripts/check-authorized-domains.mjs",
+    "check:firestore-indexes": "node scripts/check-firestore-indexes.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1167.0",

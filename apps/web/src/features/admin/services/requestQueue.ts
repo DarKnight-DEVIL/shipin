@@ -1,18 +1,54 @@
-import { collection, getDocs } from "firebase/firestore";
+// No direct Firestore imports needed - using customerApi client
 
-import { db } from "@/lib/firebaseDb";
+import { customerApi } from "@/lib/customerApiClient";
 import { toShipINError } from "@/utils/errors";
 import type { Request } from "@/types/request";
 
 export type AdminRequestFilter = string | null;
 
+// Restore a serialized Firestore Timestamp into a shape compatible with Request.createdAt / updatedAt
+type TSSerialized = { seconds: number; nanoseconds: number };
+
+function restoreTs(ts?: TSSerialized): {
+  seconds: number;
+  nanoseconds: number;
+  toDate: () => Date;
+  toMillis: () => number;
+} | undefined {
+  if (!ts || typeof ts.seconds !== "number") return undefined;
+  const millis = ts.seconds * 1000 + (ts.nanoseconds ?? 0) / 1e6;
+  return {
+    seconds: ts.seconds,
+    nanoseconds: ts.nanoseconds ?? 0,
+    toDate: () => new Date(millis),
+    toMillis: () => millis,
+  };
+}
+
 export async function getAllRequests(): Promise<Request[]> {
   try {
-    const snapshot = await getDocs(collection(db, "requests"));
-    return snapshot.docs.map((document) => ({
-      id: document.id,
-      ...(document.data() as Omit<Request, "id">),
-    }));
+    const result = await customerApi<{ success: boolean; requests: Array<{
+      id: string;
+      userId: string;
+      customerName: string;
+      email: string;
+      status: string;
+      createdAt?: TSSerialized;
+      updatedAt?: TSSerialized;
+    }> }>(
+      "/api/admin/requests",
+      { method: "GET" }
+    );
+
+    return result.requests.map((doc) => ({
+      id: doc.id,
+      userId: doc.userId,
+      customerName: doc.customerName,
+      email: doc.email,
+      status: doc.status,
+      createdAt: restoreTs(doc.createdAt),
+      updatedAt: restoreTs(doc.updatedAt),
+    })) as unknown as Request[];
   } catch (error) {
     throw toShipINError(error);
   }

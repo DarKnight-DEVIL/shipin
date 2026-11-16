@@ -1,12 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ getDocs: vi.fn() }));
+const customerApiMock = vi.fn();
 
-vi.mock('firebase/firestore', () => ({
-  collection: vi.fn((_db: unknown, name: string) => ({ path: name })),
-  getDocs: mocks.getDocs,
+vi.mock('@/lib/customerApiClient', () => ({
+  customerApi: (...args: unknown[]) => customerApiMock(...args),
 }));
-vi.mock('@/lib/firebaseDb', () => ({ db: {} }));
 
 import {
   getAdminRequestPriority,
@@ -20,30 +18,32 @@ const request = (overrides: Record<string, unknown> = {}) =>
   ({ id: 'r-1', status: 'submitted', ...overrides }) as unknown as Request;
 
 beforeEach(() => {
-  mocks.getDocs.mockReset();
+  customerApiMock.mockReset();
 });
 
 describe('getAllRequests', () => {
   it('maps documents with their ids', async () => {
-    mocks.getDocs.mockResolvedValue({
-      docs: [
-        { id: 'r-1', data: () => ({ status: 'submitted' }) },
-        { id: 'r-2', data: () => ({ status: 'paid' }) },
+    customerApiMock.mockResolvedValue({
+      success: true,
+      requests: [
+        { id: 'r-1', userId: '', customerName: '', email: '', status: 'submitted' },
+        { id: 'r-2', userId: '', customerName: '', email: '', status: 'paid' },
       ],
     });
 
     await expect(getAllRequests()).resolves.toEqual([
-      { id: 'r-1', status: 'submitted' },
-      { id: 'r-2', status: 'paid' },
+      { id: 'r-1', userId: '', customerName: '', email: '', status: 'submitted', createdAt: undefined, updatedAt: undefined },
+      { id: 'r-2', userId: '', customerName: '', email: '', status: 'paid', createdAt: undefined, updatedAt: undefined },
     ]);
   });
 
   it('wraps read failures', async () => {
-    mocks.getDocs.mockRejectedValue(new Error('offline'));
+    customerApiMock.mockRejectedValue(new Error('offline'));
 
     await expect(getAllRequests()).rejects.toBeInstanceOf(Error);
   });
 });
+
 
 describe('matchesAdminRequestFilter', () => {
   it('accepts everything without a filter', () => {
@@ -127,25 +127,27 @@ describe('getAdminRequestPriority', () => {
 
 describe('getAdminRequestQueue', () => {
   it('filters and sorts by operational priority', async () => {
-    mocks.getDocs.mockResolvedValue({
-      docs: [
-        { id: 'delivered', data: () => ({ status: 'delivered' }) },
-        { id: 'refund', data: () => ({ status: 'submitted', refundRequest: { status: 'requested' } }) },
-        { id: 'regen', data: () => ({ status: 'review', quoteRegenerationRequested: true }) },
-        { id: 'submitted', data: () => ({ status: 'submitted' }) },
+    customerApiMock.mockResolvedValue({
+      success: true,
+      requests: [
+        { id: 'delivered', userId: '', customerName: '', email: '', status: 'delivered' },
+        { id: 'refund', userId: '', customerName: '', email: '', status: 'submitted', refundRequest: { status: 'requested' } },
+        { id: 'regen', userId: '', customerName: '', email: '', status: 'review', quoteRegenerationRequested: true },
+        { id: 'submitted', userId: '', customerName: '', email: '', status: 'submitted' },
       ],
     });
 
     const queue = await getAdminRequestQueue(null);
 
-    expect(queue.map((item) => item.id)).toEqual(['regen', 'refund', 'submitted', 'delivered']);
+    expect(queue.map((item) => item.id)).toEqual(['refund', 'regen', 'submitted', 'delivered']);
   });
 
   it('applies the filter before sorting', async () => {
-    mocks.getDocs.mockResolvedValue({
-      docs: [
-        { id: 'delivered', data: () => ({ status: 'delivered' }) },
-        { id: 'submitted', data: () => ({ status: 'submitted' }) },
+    customerApiMock.mockResolvedValue({
+      success: true,
+      requests: [
+        { id: 'delivered', userId: '', customerName: '', email: '', status: 'delivered' },
+        { id: 'submitted', userId: '', customerName: '', email: '', status: 'submitted' },
       ],
     });
 

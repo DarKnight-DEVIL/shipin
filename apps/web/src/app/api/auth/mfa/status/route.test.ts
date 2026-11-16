@@ -37,15 +37,27 @@ describe('GET /api/auth/mfa/status', () => {
     expect(mocks.get).not.toHaveBeenCalled();
   });
 
-  it('requires an administrator', async () => {
+  it('serves a customer their own MFA status', async () => {
+    // Self-service: a customer manages their own second factor, so the old
+    // admin-only gate must not apply. The route still authenticates the caller.
     mocks.requireAuthWithProfile.mockResolvedValue({
       profile: { uid: 'user-1', role: 'customer' },
+      token: {},
+    });
+
+    mocks.get.mockResolvedValue({
+      exists: true,
+      data: () => ({ mfa: { totp: { enabled: true, secret: 'SECRET' } } }),
     });
 
     const response = await GET(request());
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({ code: 'ADMIN_ACCESS_REQUIRED' });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      totp: { enabled: true },
+    });
+    expect(mocks.get).toHaveBeenCalled();
   });
 
   it('404s when the profile is missing', async () => {

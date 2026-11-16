@@ -399,6 +399,9 @@ export interface Request {
   email: string;
   customerName?: string;
 
+  /** Document schema version for migrations. Default: 1 */
+  schemaVersion?: number;
+
   status: RequestStatus;
 
   rejectionReason?: string;

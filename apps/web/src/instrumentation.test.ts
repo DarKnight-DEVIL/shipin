@@ -23,6 +23,10 @@ vi.mock('@/config/env', () => ({
 
 vi.mock('@/lib/redisRateLimiter', () => ({
   reportRateLimitStoreStatus: hooks.reportRateLimit,
+  createSharedRateLimiter: vi.fn(() => ({
+    record: vi.fn().mockResolvedValue({ ok: true, limit: 100, remaining: 100, reset: Date.now() + 60000 }),
+    getErrorCounts: vi.fn(() => []),
+  })),
 }));
 
 vi.mock('@/lib/appCheck', () => ({

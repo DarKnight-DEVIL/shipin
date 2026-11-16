@@ -13,6 +13,7 @@ vi.mock('firebase/firestore', () => ({
   query: vi.fn((ref: unknown) => ({ ref })),
   where: vi.fn(() => ({})),
   orderBy: vi.fn(() => ({})),
+  limit: vi.fn(() => ({})),
   serverTimestamp: vi.fn(() => '__SERVER_TS__'),
   addDoc: mocks.addDoc,
   updateDoc: mocks.updateDoc,

@@ -53,14 +53,18 @@ describe('DELETE /api/auth/mfa/webauthn/credentials', () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  it('requires an administrator', async () => {
+  it('lets a customer remove their own security key', async () => {
+    // Self-service: a customer manages their own second factor, so the old
+    // admin-only gate must not apply. The route still authenticates the caller.
     mocks.requireAuthWithProfile.mockResolvedValue({
       profile: { uid: 'user-1', role: 'customer' },
+      token: {},
     });
 
     const response = await DELETE(request());
 
-    expect(response.status).toBe(403);
+    expect(response.status).not.toBe(403);
+    expect(mocks.update).toHaveBeenCalled();
   });
 
   it('requires a credential id', async () => {

@@ -9,6 +9,7 @@
 import { validateProductionRequiredEnv } from '@/config/env';
 import { reportAppCheckStatus } from '@/lib/appCheck';
 import { reportRateLimitStoreStatus } from '@/lib/redisRateLimiter';
+import { validateRouteClassification } from '@/proxy';
 
 /**
  * Register is called once when the Next.js server starts.
@@ -21,12 +22,15 @@ export function register() {
   // Throws if any are missing when running in production.
   validateProductionRequiredEnv();
 
-  // Warn (never throw) if the rate-limiting shared store is missing in
-  // production. Per-instance in-memory limits cannot enforce global limits
-  // across serverless regions, but crashing at boot made the entire app —
-  // sign-in included — unreachable over a rate-limit dependency. The gap is
-  // logged here and surfaced as `degraded` by /api/health.
+  // Fail fast in production if the rate-limiting shared store is missing.
+  // Per-instance in-memory limits cannot enforce global limits across
+  // serverless regions — this is a hard failure for a financial application.
+  // In dev/test, falls back to in-memory limiter.
   reportRateLimitStoreStatus();
+
+  // Validate that all API routes are classified (public/customer/admin).
+  // In production, unclassified routes cause a startup failure.
+  validateRouteClassification();
 
   // Warn (never throw) when App Check is enforced without a site key: every
   // browser request is rejected in that state, but crashing at boot would take

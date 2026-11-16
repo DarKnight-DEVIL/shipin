@@ -35,6 +35,28 @@ function stripWrappingQuotes(value: string): string {
   }
 }
 
+/**
+ * Remove surrounding double-quotes that wrap the entire .env.local value.
+ * .env.local often stores the key as:
+ *   FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n..."
+ * This must be stripped BEFORE newline unescaping, otherwise the trailing
+ * quote ends up inside the PEM and breaks parsing.
+ * Also handles trailing commas that some tools erroneously append.
+ */
+function stripEnvValueQuotes(value: string): string {
+  let trimmed = value.trim();
+
+  // Strip trailing comma if present (some secret stores append one)
+  if (trimmed.endsWith(',')) {
+    trimmed = trimmed.slice(0, -1).trim();
+  }
+
+  if (trimmed.length >= 2 && trimmed[0] === '"' && trimmed[trimmed.length - 1] === '"') {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
 function decodeIfBase64(value: string): string {
   if (value.includes(PEM_BEGIN)) return value;
   // Standard or URL-safe base64, with or without padding.
@@ -71,7 +93,10 @@ export function normalizePrivateKey(
   const trimmed = raw.trim();
   if (!trimmed) return '';
 
-  return unescapeNewlines(decodeIfBase64(stripWrappingQuotes(trimmed)))
+  // Strip .env.local value wrapping quotes FIRST, before any unescaping.
+  const withoutEnvQuotes = stripEnvValueQuotes(trimmed);
+
+  return unescapeNewlines(decodeIfBase64(stripWrappingQuotes(withoutEnvQuotes)))
     // Copy-paste often leaves a trailing space on wrapped lines; OpenSSL
     // rejects the key for it, and no PEM line legitimately ends in whitespace.
     .replace(/[ \t]+\n/g, '\n')

@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { isAllowedOrigin, getCorsHeaders, getServerSideCorsHeaders } from './cors';
 
 const originalEnv = process.env.APP_ALLOWED_ORIGINS;
+const originalAppUrl = process.env.APP_URL;
+const originalPublicAppUrl = process.env.NEXT_PUBLIC_APP_URL;
 const originalVercelEnv = {
   VERCEL_URL: process.env.VERCEL_URL,
   VERCEL_BRANCH_URL: process.env.VERCEL_BRANCH_URL,
@@ -16,16 +18,40 @@ function restoreEnv(key: string, value: string | undefined) {
   }
 }
 
+// The deployment origin is configuration, not code. These tests set APP_URL the
+// way a deployment does, which is also the regression test for the old
+// hard-coded `shipin-psi.vercel.app` entry.
+beforeEach(() => {
+  process.env.APP_URL = 'https://shipin-psi.vercel.app';
+  delete process.env.NEXT_PUBLIC_APP_URL;
+});
+
 afterEach(() => {
   restoreEnv('APP_ALLOWED_ORIGINS', originalEnv);
+  restoreEnv('APP_URL', originalAppUrl);
+  restoreEnv('NEXT_PUBLIC_APP_URL', originalPublicAppUrl);
   for (const [key, value] of Object.entries(originalVercelEnv)) {
     restoreEnv(key, value);
   }
 });
 
 describe('isAllowedOrigin', () => {
-  it('allows the Vercel deployment', () => {
+  it('allows the origin configured in APP_URL', () => {
     expect(isAllowedOrigin('https://shipin-psi.vercel.app')).toBe(true);
+  });
+
+  it('follows a domain move without a code change', () => {
+    process.env.APP_URL = 'https://shipin.example.com';
+
+    expect(isAllowedOrigin('https://shipin.example.com')).toBe(true);
+    expect(isAllowedOrigin('https://shipin-psi.vercel.app')).toBe(false);
+  });
+
+  it('also honours NEXT_PUBLIC_APP_URL', () => {
+    delete process.env.APP_URL;
+    process.env.NEXT_PUBLIC_APP_URL = 'https://preview.example.com/app';
+
+    expect(isAllowedOrigin('https://preview.example.com')).toBe(true);
   });
 
   it('allows both Firebase Hosting domains', () => {

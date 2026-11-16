@@ -5,9 +5,8 @@
  * here takes routes offline before any route handler or layout can react. The
  * two behaviours that matter for sign-in:
  *
- *   - `/login` and `/verify-email` are never rate limited, so a burst of
- *     retries or an unhealthy limiter can never replace the sign-in form with
- *     a 429.
+ *   - `/login` and `/verify-email` get their own generous limiter, so a burst
+ *     of retries never sees a 429 but a scripted flood is still metered.
  *   - A limiter rejection caused by infrastructure (no shared store, Redis
  *     error) is not an abusive client and must fall through. Only a genuine
  *     over-limit result returns 429.
@@ -27,11 +26,13 @@ type LimitResult = {
 const state = vi.hoisted(() => ({
   web: { record: vi.fn() },
   api: { record: vi.fn() },
+  authEntry: { record: vi.fn() },
 }));
 
 vi.mock('@/lib/rateLimiter', () => ({
   webRateLimiter: state.web,
   apiRateLimiter: state.api,
+  authEntryRateLimiter: state.authEntry,
   // Mirrors the real implementation: any non-ok result is "limited".
   isRateLimited: (result: LimitResult) => !result.ok,
   addRateLimitHeaders: (headers: Headers, result: LimitResult) => {
@@ -79,14 +80,16 @@ function requestFor(pathname: string, init?: { method?: string; origin?: string 
 beforeEach(() => {
   state.web.record.mockReset().mockResolvedValue(allowed);
   state.api.record.mockReset().mockResolvedValue(allowed);
+  state.authEntry.record.mockReset().mockResolvedValue(allowed);
 });
 
-describe('proxy: sign-in entry points are never rate limited', () => {
+describe('proxy: sign-in entry points use the lenient limiter', () => {
   it.each(['/login', '/verify-email'])(
-    'does not consult the limiter for %s',
+    'meters %s through the auth-entry limiter only',
     async (pathname) => {
       const response = await proxy(requestFor(pathname));
 
+      expect(state.authEntry.record).toHaveBeenCalledTimes(1);
       expect(state.web.record).not.toHaveBeenCalled();
       expect(state.api.record).not.toHaveBeenCalled();
       expect(response.status).toBe(200);
@@ -99,20 +102,32 @@ describe('proxy: sign-in entry points are never rate limited', () => {
     }
   );
 
-  it('still renders /login when the limiter would reject every request', async () => {
-    // Fail-closed limiter state: every recorded request comes back rejected.
-    state.web.record.mockResolvedValue(overLimit);
-    state.api.record.mockResolvedValue(overLimit);
+  it('still renders /login when the shared limiter store is unavailable', async () => {
+    // Fail-open on infrastructure: an unreachable store must never lock
+    // everyone out of signing in.
+    state.authEntry.record.mockResolvedValue(unavailable);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const response = await proxy(requestFor('/login'));
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('X-RateLimit-Limit')).toBeNull();
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+
+    warn.mockRestore();
   });
 
-  it('skips the limiter for nested auth subpaths but keeps the security headers', async () => {
+  it('rejects a genuine /login flood with 429', async () => {
+    state.authEntry.record.mockResolvedValue(overLimit);
+
+    const response = await proxy(requestFor('/login'));
+
+    expect(response.status).toBe(429);
+  });
+
+  it('meters nested auth subpaths and keeps the security headers', async () => {
     const response = await proxy(requestFor('/login/help'));
 
+    expect(state.authEntry.record).toHaveBeenCalledTimes(1);
     expect(state.web.record).not.toHaveBeenCalled();
     expect(response.status).toBe(200);
     expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');

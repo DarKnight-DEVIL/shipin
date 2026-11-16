@@ -113,6 +113,11 @@ const loginLimiterMemory = new InMemoryRateLimiter({
   windowMs: 60_000,
   message: "Too many sign-in attempts, please wait a moment and try again.",
 });
+const authEntryLimiterMemory = new InMemoryRateLimiter({
+  maxRequests: 30,
+  windowMs: 60_000,
+  message: "Too many requests, please try again later.",
+});
 
 // Shared (Redis-backed) wrappers — fall back to in-memory if no Redis config
 export const webRateLimiter = createSharedRateLimiter(
@@ -149,6 +154,23 @@ export const loginRateLimiter = createSharedRateLimiter(
   5,
   60_000,
   loginLimiterMemory
+);
+
+/**
+ * Sign-in entry page limiter (/login, /verify-email).
+ *
+ * These pages used to skip rate limiting entirely, which left the cheapest
+ * paths for credential spraying and email enumeration completely unmetered.
+ * They now share a generous budget — a person retrying a failing sign-in is
+ * never blocked, a scripted flood is — while the fail-open path below still
+ * applies when the shared store itself is unreachable, so an outage cannot
+ * lock everyone out of signing in.
+ */
+export const authEntryRateLimiter = createSharedRateLimiter(
+  "auth-entry",
+  30,
+  60_000,
+  authEntryLimiterMemory
 );
 
 export function isRateLimited(result: import("./redisRateLimiter").RateLimitResult): boolean {

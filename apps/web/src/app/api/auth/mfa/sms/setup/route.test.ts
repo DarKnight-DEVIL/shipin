@@ -57,14 +57,18 @@ describe('POST /api/auth/mfa/sms/setup', () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  it('requires an administrator', async () => {
+  it('lets a customer start their own SMS setup', async () => {
+    // Self-service: a customer manages their own second factor, so the old
+    // admin-only gate must not apply. The route still authenticates the caller.
     mocks.requireAuthWithProfile.mockResolvedValue({
       profile: { uid: 'user-1', role: 'customer' },
+      token: {},
     });
 
     const response = await POST(request());
 
-    expect(response.status).toBe(403);
+    expect(response.status).not.toBe(403);
+    expect(mocks.update).toHaveBeenCalled();
   });
 
   it.each(['', '441234567890', '+0123456', '+44 1234'])(

@@ -96,7 +96,7 @@ export const SECURITY_HEADERS: Record<string, string> = {
    * permissive CSP from getDevCSP(). This is a fallback for requests that
    * bypass the proxy.
    */
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; font-src 'self'; connect-src 'self' https:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to 'csp-endpoint';",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' blob: data: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com https://*.firebasestorage.app https://cdn.vercel-insights.com https://analytics.vercel.com wss://*.firebaseio.com wss://*.firebasedatabase.app; frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://accounts.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to 'csp-endpoint';",
 
   /**
    * Discourages search engines from indexing the app.
@@ -180,7 +180,11 @@ export function getProductionCSP(): string {
     "connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com " +
     "https://graph.facebook.com https://www.google.com https://www.googletagmanager.com " +
     "https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com " +
-    "https://*.firebasestorage.app https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com wss: https:; " +
+    "https://*.firebasestorage.app https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com " +
+    // Narrowed from a blanket `wss: https:`: every host the app actually
+    // talks to is already listed above, so the wildcard only widened the
+    // exfiltration surface. Firebase Realtime Database sockets stay allowed.
+    "wss://*.firebaseio.com wss://*.firebasedatabase.app; " +
     "worker-src 'self' blob: https://cdn.spline.dev; " +
     "media-src 'self'; " +
     `frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://spline.dev https://cdn.spline.dev https://accounts.google.com https://apis.google.com https://www.google.com https://*.firebaseapp.com; ` +

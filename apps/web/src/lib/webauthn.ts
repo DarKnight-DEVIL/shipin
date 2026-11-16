@@ -29,29 +29,38 @@ export const WEBAUTHN_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 export const WEBAUTHN_RP_NAME = "ShipIN";
 
 /**
- * The deployment users are intended to reach.
+ * Normalize the configured deployment URL to an origin.
  *
- * `shipin-psi.vercel.app` is the canonical host: it is where verification
- * links and passkeys point. The Firebase Hosting aliases are not part of the
- * WebAuthn relying party, because `vercel.app`, `web.app` and
- * `firebaseapp.com` are separate registrable domains and a credential
- * registered on one is invalid on another.
+ * There is no hard-coded production host on purpose. A passkey is bound to one
+ * RP ID for its whole life, so silently falling back to the wrong origin
+ * registers credentials that can never be used again — and it hides the
+ * misconfiguration until a user tries to sign in with a security key. In
+ * production this therefore throws instead of guessing; development still
+ * falls back to loopback. The Firebase Hosting aliases are not accepted here
+ * either, because `vercel.app`, `web.app` and `firebaseapp.com` are separate
+ * registrable domains.
  */
-export const CANONICAL_APP_ORIGIN = "https://shipin-psi.vercel.app";
-
-/** Normalize a configured URL to an origin, falling back per environment. */
 export function resolveAppOrigin(
   appUrl: string | undefined,
   production: boolean = isProduction
 ): string {
-  const fallback = production ? CANONICAL_APP_ORIGIN : "http://localhost:3000";
-  const candidate = (appUrl || fallback).trim();
+  const candidate = appUrl?.trim();
 
-  try {
-    return new URL(candidate).origin;
-  } catch {
-    return fallback;
+  if (candidate) {
+    try {
+      return new URL(candidate).origin;
+    } catch {
+      // Invalid URL: fall through to the per-environment decision below.
+    }
   }
+
+  if (production) {
+    throw new Error(
+      "APP_URL must be an absolute URL in production: WebAuthn relies on it for the relying-party origin."
+    );
+  }
+
+  return "http://localhost:3000";
 }
 
 export interface StoredWebAuthnCredential {

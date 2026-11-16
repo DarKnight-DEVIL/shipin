@@ -22,12 +22,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
-  if (auth.profile.role !== "admin") {
-    return NextResponse.json(
-      { success: false, error: "Administrator access required.", code: "ADMIN_ACCESS_REQUIRED" },
-      { status: 403, headers: NO_STORE }
-    );
-  }
 
   const body = await request.json();
   const { credential, credentialName } = body as {

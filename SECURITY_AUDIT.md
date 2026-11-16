@@ -76,7 +76,7 @@ Zod schemas for all untrusted inputs:
 - Run `npm audit fix` for moderate/vulnerable packages ✅ Done (removed 11 deps, remaining are dev-only)
 - Some customer-facing request routes may need auth (quote, refund, etc.) — see P1 below
 - Add CSP nonce support if inline scripts are used — **CSP now applied in the request proxy** ✅ Done
-- Enable Redis-backed rate limiting in production by setting `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` — **✅ DONE**: Now a hard failure at startup in production (see `assertRateLimitStoreAvailable()`). Per-instance in-memory limits cannot enforce global limits across serverless regions.
+- Enable Redis-backed rate limiting in production by setting `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`. **Current behaviour (verified 2026-11-16):** the store is not mandatory. When it is configured, limits are global across serverless regions. When it is missing or unreachable, requests are still served: the limiter falls open (an infrastructure outage must not lock everyone out of signing in), and `/api/health` reports `degraded` with a one-line explanation so the gap is visible to uptime monitors. Per-instance in-memory limits cannot enforce global limits, so a production deployment without Upstash is throttled per instance only — set the two variables to close that gap. There is no `assertRateLimitStoreAvailable()` startup guard; an earlier revision of this document claimed one existed.
 
 ## Recommendations
 1. **✅ DONE**: CSP is now applied in the request proxy for all non-excluded routes — production uses strict policy (no unsafe-inline/eval)

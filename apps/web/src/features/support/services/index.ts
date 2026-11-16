@@ -213,31 +213,10 @@ export function subscribeToAllSupportTickets(
   });
 }
 
-// Convenience re-exports for compatibility
-export function subscribeToRequest(
-  requestId: string,
-  callback: (request: import('@/types/request').Request | null) => void
-): () => void {
-  return onSnapshot(doc(db, 'requests', requestId), (snapshot) => {
-    if (!snapshot.exists()) {
-      callback(null);
-      return;
-    }
-    callback({ id: snapshot.id, ...(snapshot.data() as Omit<import('@/types/request').Request, 'id'>) });
-  });
-}
-
-export function subscribeToRequests(
-  userId: string,
-  callback: (requests: import('@/types/request').Request[]) => void
-): () => void {
-  const q = query(collection(db, 'requests'), where('userId', '==', userId));
-  return onSnapshot(q, (snapshot) => {
-    callback(
-      snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<import('@/types/request').Request, 'id'>),
-      }))
-    );
-  });
-}
+// Same queries as the request service. They used to be duplicated here, which
+// meant the bound/error handling added there could silently be missing for the
+// support screens; re-export the single implementation instead.
+export {
+  subscribeToRequest,
+  subscribeToRequests,
+} from '@/features/requests/services/requests';

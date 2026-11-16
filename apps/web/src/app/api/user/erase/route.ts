@@ -3,7 +3,7 @@ import { withErrorHandler } from '@/utils/errors';
 import { requireAuthWithProfile } from '@/lib/auth';
 import { adminDb } from '@/lib/firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
-import { logRightsRequest } from '@/lib/compliance/rightsOps';
+import { logRightsRequest } from '@/lib/compliance/rightsOps2';
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);

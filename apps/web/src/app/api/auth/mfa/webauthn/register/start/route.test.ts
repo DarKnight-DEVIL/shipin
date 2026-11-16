@@ -54,14 +54,18 @@ describe('POST /api/auth/mfa/webauthn/register/start', () => {
     expect(mocks.buildRegistrationOptions).not.toHaveBeenCalled();
   });
 
-  it('requires an administrator', async () => {
+  it('lets a customer start their own security-key registration', async () => {
+    // Self-service: a customer manages their own second factor, so the old
+    // admin-only gate must not apply. The route still authenticates the caller.
     mocks.requireAuthWithProfile.mockResolvedValue({
       profile: { uid: 'user-1', role: 'customer' },
+      token: {},
     });
 
     const response = await POST(request());
 
-    expect(response.status).toBe(403);
+    expect(response.status).not.toBe(403);
+    expect(mocks.buildRegistrationOptions).toHaveBeenCalled();
   });
 
   it('404s when the profile is missing', async () => {

@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
+import crypto from 'crypto';
 
 const mocks = vi.hoisted(() => ({
   collection: vi.fn(),
@@ -80,7 +81,11 @@ describe('POST /api/admin/requests/quotes/expire — authentication', () => {
 
     const response = await POST(request('Bearer undefined'));
 
-    expect(response.status).toBe(401);
+    // When CRON_SECRET is missing, the endpoint returns 500 (config error)
+    // rather than 401 (unauthorized), because the deployment cannot start
+    // without this required secret.
+    expect(response.status).toBe(500);
+    expect((await response.json()).code).toBe('CONFIG_ERROR');
     expect(mocks.collection).not.toHaveBeenCalled();
   });
 });
@@ -149,5 +154,103 @@ describe('POST /api/admin/requests/quotes/expire — sweep', () => {
     const response = await POST(request(`Bearer ${CRON_SECRET}`));
 
     expect(response.headers.get('cache-control')).toBe('no-store');
+  });
+});
+
+describe('POST /api/admin/requests/quotes/expire — signed cron request', () => {
+  const sign = (timestamp: string, body = '', secret = CRON_SECRET) =>
+    crypto.createHmac('sha256', secret).update(`${timestamp}|${body}`).digest('hex');
+
+  const signedRequest = (headers: Record<string, string>) =>
+    new NextRequest('http://localhost/api/admin/requests/quotes/expire', {
+      method: 'POST',
+      headers,
+    });
+
+  it('accepts a fresh timestamp with a valid HMAC signature', async () => {
+    const timestamp = String(Date.now());
+    mocks.collection.mockReturnValue({ get: vi.fn(async () => ({ docs: [] })) });
+
+    const response = await POST(
+      signedRequest({
+        'x-cron-timestamp': timestamp,
+        'x-cron-signature': sign(timestamp),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).success).toBe(true);
+  });
+
+  it('rejects a timestamp older than the replay window', async () => {
+    const timestamp = String(Date.now() - 6 * 60 * 1000);
+
+    const response = await POST(
+      signedRequest({
+        'x-cron-timestamp': timestamp,
+        'x-cron-signature': sign(timestamp),
+      })
+    );
+
+    expect(response.status).toBe(401);
+    expect(mocks.collection).not.toHaveBeenCalled();
+  });
+
+  it('rejects a timestamp too far in the future', async () => {
+    const timestamp = String(Date.now() + 2 * 60 * 1000);
+
+    const response = await POST(
+      signedRequest({
+        'x-cron-timestamp': timestamp,
+        'x-cron-signature': sign(timestamp),
+      })
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it('rejects a non-numeric timestamp', async () => {
+    const response = await POST(
+      signedRequest({
+        'x-cron-timestamp': 'not-a-number',
+        'x-cron-signature': sign('not-a-number'),
+      })
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it('rejects a signature computed with the wrong secret', async () => {
+    const timestamp = String(Date.now());
+
+    const response = await POST(
+      signedRequest({
+        'x-cron-timestamp': timestamp,
+        'x-cron-signature': sign(timestamp, '', 'different-secret'),
+      })
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it('rejects a malformed signature of the wrong length', async () => {
+    const response = await POST(
+      signedRequest({
+        'x-cron-timestamp': String(Date.now()),
+        'x-cron-signature': 'abc',
+      })
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it('still falls back to the legacy bearer secret', async () => {
+    mocks.collection.mockReturnValue({ get: vi.fn(async () => ({ docs: [] })) });
+
+    const response = await POST(
+      signedRequest({ authorization: `Bearer ${CRON_SECRET}` })
+    );
+
+    expect(response.status).toBe(200);
   });
 });

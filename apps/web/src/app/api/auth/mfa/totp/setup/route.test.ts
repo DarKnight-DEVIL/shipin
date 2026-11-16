@@ -64,15 +64,18 @@ describe('POST /api/auth/mfa/totp/setup', () => {
     expect(mocks.generateTotpSecret).not.toHaveBeenCalled();
   });
 
-  it('requires an administrator', async () => {
+  it('lets a customer start an authenticator enrolment', async () => {
+    // Self-service: a customer manages their own second factor, so the old
+    // admin-only gate must not apply. The route still authenticates the caller.
     mocks.requireAuthWithProfile.mockResolvedValue({
       profile: { uid: 'user-1', role: 'customer' },
+      token: {},
     });
 
     const response = await POST(request());
 
-    expect(response.status).toBe(403);
-    expect(mocks.generateTotpSecret).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(mocks.generateTotpSecret).toHaveBeenCalled();
   });
 
   it('404s when the profile is missing', async () => {
@@ -94,7 +97,7 @@ describe('POST /api/auth/mfa/totp/setup', () => {
     });
     expect(mocks.getTotpQrUrl).toHaveBeenCalledWith(
       'NEWSECRET',
-      'ShipIN Admin',
+      'ShipIN',
       'admin@example.com'
     );
     expect(response.status).toBe(200);

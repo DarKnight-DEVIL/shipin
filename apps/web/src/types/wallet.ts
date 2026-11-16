@@ -6,6 +6,9 @@ export interface Wallet {
   currency: "USD";
 
   updatedAt?: Timestamp;
+
+  /** Document schema version for migrations. Default: 1 */
+  schemaVersion?: number;
 }
 
 export interface WalletTransaction {

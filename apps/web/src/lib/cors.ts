@@ -16,29 +16,57 @@
  */
 
 /**
- * Frontend origins this deployment answers for by default.
+ * Origins that are not deployment-specific.
  *
- * Firebase Hosting serves the same app from the project's default domains
- * (`*.web.app` and `*.firebaseapp.com`), so they are listed explicitly
- * rather than relying on a wildcard. Further deployments can be added at
- * runtime with APP_ALLOWED_ORIGINS instead of editing this list.
+ * The deployment's own origin is deliberately NOT hard-coded: it is read from
+ * APP_URL / NEXT_PUBLIC_APP_URL at runtime, so moving the app to a new domain
+ * is a configuration change rather than a code change. The Firebase Hosting
+ * aliases stay here because they belong to the Firebase project itself, and
+ * APP_ALLOWED_ORIGINS remains the escape hatch for anything else.
  */
 const DEFAULT_ALLOWED_ORIGINS = [
-  "https://shipin-psi.vercel.app", // Vercel
   "https://shipin-9576a.web.app", // Firebase Hosting (default domain)
   "https://shipin-9576a.firebaseapp.com", // Firebase Hosting (alternate domain)
   "http://localhost:3000", // Local development
   "http://127.0.0.1:3000", // Local development (loopback alias)
 ];
 
-/** Parse a comma-separated origin list from the environment. */
+/**
+ * Parse a comma-separated origin list from the environment.
+ *
+ * Entries are normalized to a bare origin: a deployment usually sets
+ * NEXT_PUBLIC_APP_URL with a path or a trailing slash, and comparing
+ * `https://app.example.com/login` against an `Origin` header would never
+ * match.
+ */
 function parseOriginList(value: string | undefined): string[] {
   if (!value) return [];
 
   return value
     .split(",")
-    .map((origin) => origin.trim().toLowerCase().replace(/\/+$/, ""))
-    .filter((origin) => origin.length > 0);
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .map((entry) => {
+      try {
+        return new URL(entry).origin.toLowerCase();
+      } catch {
+        return entry.toLowerCase().replace(/\/+$/, "");
+      }
+    });
+}
+
+/**
+ * The origins this deployment declares for itself.
+ *
+ * APP_URL is the canonical deployment origin (the same value WebAuthn uses);
+ * NEXT_PUBLIC_APP_URL is included because it is available in the browser
+ * bundle and is sometimes the only one set on a preview build.
+ */
+function appOrigins(): string[] {
+  return [
+    ...parseOriginList(process.env.APP_URL),
+    ...parseOriginList(process.env.NEXT_PUBLIC_APP_URL),
+  ];
 }
 
 /**
@@ -79,6 +107,7 @@ function allowedOrigins(): string[] {
   return Array.from(
     new Set([
       ...DEFAULT_ALLOWED_ORIGINS,
+      ...appOrigins(),
       ...vercelDeploymentOrigins(),
       ...parseOriginList(process.env.APP_ALLOWED_ORIGINS),
     ])

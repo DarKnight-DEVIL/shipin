@@ -1,10 +1,12 @@
 /**
  * `lib/appCheck.ts` — server-side App Check verification.
  *
- * The important property is the default: nothing is enforced unless the
- * deployment opts in with `APP_CHECK_ENFORCEMENT=true`. A gate that silently
- * switched itself on would break every local run and every CI job that has no
- * Firebase project behind it.
+ * The important property is the default: a production build that ships a site
+ * key enforces the check (a forgotten variable must not leave a live
+ * deployment unprotected), while `false` disables it and a build with no site
+ * key — local development, CI, previews — stays off. A gate that switched
+ * itself on without a site key would break every run with no Firebase project
+ * behind it.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -16,6 +18,7 @@ const admin = vi.hoisted(() => ({ verifyToken: vi.fn() }));
 const env = vi.hoisted(() => ({
   enforcement: undefined as string | undefined,
   siteKey: '' as string,
+  production: false as boolean,
 }));
 
 vi.mock('firebase-admin/app-check', () => ({
@@ -32,7 +35,9 @@ vi.mock('@/config/env', () => ({
       NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY: env.siteKey,
     };
   },
-  isProduction: false,
+  get isProduction() {
+    return env.production;
+  },
   isDevelopment: true,
   isTest: true,
 }));
@@ -51,6 +56,7 @@ beforeEach(async () => {
   appCheck = await import('./appCheck');
   env.enforcement = undefined;
   env.siteKey = '';
+  env.production = false;
   admin.verifyToken.mockReset();
 });
 
@@ -63,12 +69,40 @@ describe('isAppCheckEnforced', () => {
     expect(appCheck.isAppCheckEnforced()).toBe(false);
   });
 
-  it('turns on only for the exact string "true"', () => {
+  it('turns on for the exact string "true"', () => {
     env.enforcement = 'true';
     expect(appCheck.isAppCheckEnforced()).toBe(true);
+  });
 
+  it('enforces by default in production when a site key is configured', () => {
+    env.production = true;
+    env.siteKey = 'site-key';
+
+    expect(appCheck.isAppCheckEnforced()).toBe(true);
+  });
+
+  it('stays off in production without a site key', () => {
+    env.production = true;
+    env.siteKey = '';
+
+    expect(appCheck.isAppCheckEnforced()).toBe(false);
+  });
+
+  it('lets a deployment disable it explicitly', () => {
+    env.production = true;
+    env.siteKey = 'site-key';
+    env.enforcement = 'false';
+
+    expect(appCheck.isAppCheckEnforced()).toBe(false);
+  });
+
+  it('ignores unrecognised flag values and falls back to the default', () => {
     env.enforcement = '1';
     expect(appCheck.isAppCheckEnforced()).toBe(false);
+
+    env.production = true;
+    env.siteKey = 'site-key';
+    expect(appCheck.isAppCheckEnforced()).toBe(true);
   });
 });
 

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
-import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
+import { adminDb } from "@/lib/firebaseAdmin";
+import { requireAdmin, getAdminAuthError } from "@/lib/adminAuth";
 import { recordAdminAudit } from "@/lib/adminAudit";
 
 import {
@@ -16,24 +17,29 @@ function roundMoney(value: number) {
   return Number(value.toFixed(2));
 }
 
+/** Turn a requireAdmin rejection into the 401/403 the admin client expects. */
+async function requireAdminOrThrow(request: NextRequest) {
+  try {
+    return await requireAdmin(request);
+  } catch (error) {
+    const authError = getAdminAuthError(error);
+    throw createShipINError(
+      authError.error,
+      "AUTHORIZATION_ERROR",
+      authError.status
+    );
+  }
+}
+
 export const POST = withErrorHandler(
   async (
     request: NextRequest,
     context: { params: Promise<{ requestId: string }> }
   ) => {
-    const authorization = request.headers.get("authorization");
-
-    if (!authorization?.startsWith("Bearer ")) {
-      throw createShipINError("Authentication required.", "AUTHENTICATION_REQUIRED", 401);
-    }
-
-    const token = authorization.substring(7);
-    let admin;
-    try {
-      admin = await adminAuth.verifyIdToken(token);
-    } catch {
-      throw createShipINError("Invalid authentication token.", "AUTHENTICATION_REQUIRED", 401);
-    }
+    // Admin-only: this route writes a refund completion plus its audit trail.
+    // `requireAdmin` also enforces MFA elevation, so a customer or a
+    // half-authenticated admin session cannot reach the transaction below.
+    const admin = await requireAdminOrThrow(request);
 
     /*
      * Validate params (requestId) and body together.

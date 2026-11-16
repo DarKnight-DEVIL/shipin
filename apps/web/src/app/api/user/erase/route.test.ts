@@ -19,10 +19,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/auth', () => ({ requireAuthWithProfile: mocks.auth }));
-vi.mock('@/lib/compliance/rightsOps', () => ({
-  logRightsRequest: mocks.logRightsRequest,
-}));
 vi.mock('@/lib/compliance/rightsOps2', () => ({
+  logRightsRequest: mocks.logRightsRequest,
   getUserRightsRequests: mocks.getUserRightsRequests,
 }));
 vi.mock('@/lib/firebaseAdmin', () => ({

@@ -8,7 +8,12 @@ vi.mock('@/lib/firebaseAdmin', () => ({
   adminDb: {
     collection: vi.fn(() => ({
       doc: vi.fn(() => ({
-        get: vi.fn(),
+        // Default: an ordinary, active customer, so tests that only care about
+        // the token path do not have to stub the profile read.
+        get: vi.fn(async () => ({
+          exists: true,
+          data: () => ({ role: 'customer' }),
+        })),
       })),
     })),
   },
@@ -170,6 +175,55 @@ describe('requireAuth', () => {
     const result = await requireAuth(req);
     expect(result).toEqual({ uid: 'user-1', email_verified: true });
   });
+
+  it.each([
+    [{ disabled: true }, 'ACCOUNT_DISABLED'],
+    [{ suspended: true }, 'ACCOUNT_SUSPENDED'],
+    [{ banned: true }, 'ACCOUNT_BANNED'],
+    [{ deletedAt: new Date() }, 'ACCOUNT_DELETED'],
+    [{ suspended: 'chargeback investigation' }, 'ACCOUNT_SUSPENDED'],
+  ])('rejects a blocked account (%j)', async (profile, code) => {
+    mockAdminAuth.verifyIdToken.mockResolvedValueOnce({ uid: 'user-1', email_verified: true });
+    mockProfile({ role: 'customer', ...profile });
+
+    const req = { headers: { get: () => 'Bearer good-token' } } as unknown as Request;
+    const result = (await requireAuth(req)) as Response;
+
+    expect(result.status).toBe(403);
+    expect(await result.json()).toMatchObject({ success: false, code });
+  });
+
+  it('still accepts an account whose blocks are explicitly false', async () => {
+    mockAdminAuth.verifyIdToken.mockResolvedValueOnce({ uid: 'user-1', email_verified: true });
+    mockProfile({ role: 'customer', disabled: false, banned: false, deletedAt: null });
+
+    const req = { headers: { get: () => 'Bearer good-token' } } as unknown as Request;
+
+    await expect(requireAuth(req)).resolves.toMatchObject({ uid: 'user-1' });
+  });
+
+  it('accepts a token with no profile document (route decides)', async () => {
+    mockAdminAuth.verifyIdToken.mockResolvedValueOnce({ uid: 'user-1', email_verified: true });
+    mockProfile(null);
+
+    const req = { headers: { get: () => 'Bearer good-token' } } as unknown as Request;
+
+    await expect(requireAuth(req)).resolves.toMatchObject({ uid: 'user-1' });
+  });
+
+  it('returns 500 when the account state cannot be read', async () => {
+    mockAdminAuth.verifyIdToken.mockResolvedValueOnce({ uid: 'user-1', email_verified: true });
+    (adminDb as unknown as { collection: ReturnType<typeof vi.fn> }).collection.mockReturnValue({
+      doc: () => ({ get: async () => { throw new Error('firestore down'); } }),
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const req = { headers: { get: () => 'Bearer good-token' } } as unknown as Request;
+    const result = (await requireAuth(req)) as Response;
+
+    expect(result.status).toBe(500);
+    expect(await result.json()).toMatchObject({ code: 'INTERNAL_ERROR' });
+  });
 });
 
 import { NextResponse } from 'next/server';
@@ -278,6 +332,21 @@ describe('requireAuthWithProfile', () => {
 
     expect(result.status).toBe(500);
     expect(await result.json()).toMatchObject({ code: 'INTERNAL_ERROR' });
+  });
+
+  it.each([
+    [{ disabled: true }, 'ACCOUNT_DISABLED'],
+    [{ suspended: true }, 'ACCOUNT_SUSPENDED'],
+    [{ banned: true }, 'ACCOUNT_BANNED'],
+    [{ deletedAt: '2026-01-01T00:00:00.000Z' }, 'ACCOUNT_DELETED'],
+  ])('refuses a blocked profile before any role check (%j)', async (block, code) => {
+    // An administrator who has been banned must not reach the console either.
+    mockProfile({ role: 'admin', ...block });
+
+    const result = (await requireAuthWithProfile(request, ['admin'])) as Response;
+
+    expect(result.status).toBe(403);
+    expect(await result.json()).toMatchObject({ success: false, code });
   });
 });
 

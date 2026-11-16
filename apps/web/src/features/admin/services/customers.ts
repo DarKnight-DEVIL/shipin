@@ -1,6 +1,6 @@
-import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+// No direct Firestore imports needed - using customerApi client
 
-import { db } from "@/lib/firebaseDb";
+import { customerApi } from "@/lib/customerApiClient";
 import { toShipINError } from "@/utils/errors";
 
 export interface AdminCustomer {
@@ -22,35 +22,43 @@ export interface RefundRequestDetails {
   walletRefundAmount: number;
 }
 
+interface RefundRequestData {
+  refundRequest?: {
+    preference?: string;
+    amount?: number;
+    walletAmount?: number;
+  };
+  preference?: string;
+  amount?: number;
+  walletAmount?: number;
+  payment?: { walletAmount?: number };
+  id?: string;
+  userId?: string;
+}
+
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+async function fetchCustomers(): Promise<AdminCustomer[]> {
+  const result = await customerApi<{ success: boolean; customers: AdminCustomer[] }>(
+    "/api/admin/customers",
+    { method: "GET" }
+  );
+  return result.customers;
+}
+
+async function fetchRefundData(requestId: string): Promise<RefundRequestData> {
+  const result = await customerApi<{ success: boolean; data: RefundRequestData }>(
+    `/api/admin/customers?requestId=${encodeURIComponent(requestId)}`,
+    { method: "GET" }
+  );
+  return result.data;
+}
+
+// ─── public API ─────────────────────────────────────────────────────────────
+
 export async function getCustomersWithWallets(): Promise<AdminCustomer[]> {
   try {
-    const [usersSnapshot, walletsSnapshot] = await Promise.all([
-      getDocs(collection(db, "users")),
-      getDocs(collection(db, "wallets")),
-    ]);
-
-    const walletBalances = new Map<string, number>();
-    walletsSnapshot.docs.forEach((walletDocument) => {
-      const balance = Number(walletDocument.data().balance ?? 0);
-      walletBalances.set(
-        walletDocument.id,
-        Number.isFinite(balance) ? balance : 0
-      );
-    });
-
-    return usersSnapshot.docs
-      .map((userDocument) => {
-        const data = userDocument.data();
-        return {
-          id: userDocument.id,
-          displayName: data.displayName || "Unnamed Customer",
-          email: data.email || "",
-          photoURL: data.photoURL || "",
-          role: data.role || "customer",
-          walletBalance: walletBalances.get(userDocument.id) ?? 0,
-        };
-      })
-      .filter((customer) => customer.role !== "admin");
+    return await fetchCustomers();
   } catch (error) {
     throw toShipINError(error);
   }
@@ -60,45 +68,32 @@ export async function getRefundRequestDetails(
   requestId: string
 ): Promise<RefundRequestDetails> {
   try {
-    const snapshot = await getDoc(doc(db, "requests", requestId));
+    const data = await fetchRefundData(requestId);
 
-    if (!snapshot.exists()) {
-      throw new Error("Refund request not found.");
-    }
-
-    const data = snapshot.data();
     const preference =
-      data.refundRequest?.preference ?? data.preference ?? "wallet";
-    const totalRefundAmount = Number(
-      data.refundRequest?.amount ?? data.amount ?? 0
-    );
+      (data.refundRequest?.preference ?? data.preference ?? "wallet") as string;
+    const totalRefundAmount = Number(data.refundRequest?.amount ?? data.amount ?? 0);
     const originalWalletAmount = Number(
-      data.refundRequest?.walletAmount ??
+      (data.refundRequest?.walletAmount ??
         data.payment?.walletAmount ??
         data.walletAmount ??
-        0
+        0) as number
     );
 
-    let walletRefundAmount = 0;
-
-    if (preference === "wallet") {
-      walletRefundAmount = totalRefundAmount;
-    } else if (
-      preference === "original_sources" ||
-      preference === "original_payment"
-    ) {
-      walletRefundAmount = originalWalletAmount;
-    }
+    const walletRefundAmount =
+      preference === "wallet"
+        ? totalRefundAmount
+        : ["original_sources", "original_payment"].includes(preference)
+          ? originalWalletAmount
+          : 0;
 
     if (!Number.isFinite(walletRefundAmount) || walletRefundAmount <= 0) {
-      throw new Error(
-        "This refund does not contain a wallet refund amount."
-      );
+      throw new Error("This refund does not contain a wallet refund amount.");
     }
 
     return {
-      id: snapshot.id,
-      userId: data.userId ?? "",
+      id: String(data.id ?? requestId),
+      userId: String(data.userId ?? ""),
       preference,
       totalRefundAmount,
       walletRefundAmount,

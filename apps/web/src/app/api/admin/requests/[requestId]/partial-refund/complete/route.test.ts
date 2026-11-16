@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
-  verifyIdToken: vi.fn(),
+  requireAdmin: vi.fn(),
   get: vi.fn(),
   runTransaction: vi.fn(),
   txGet: vi.fn(),
@@ -12,7 +12,6 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/firebaseAdmin', () => ({
-  adminAuth: { verifyIdToken: mocks.verifyIdToken },
   adminDb: {
     collection: (name: string) => ({
       doc: (id?: string) => {
@@ -27,6 +26,17 @@ vi.mock('@/lib/firebaseAdmin', () => ({
     }),
     runTransaction: mocks.runTransaction,
   },
+}));
+vi.mock('@/lib/adminAuth', () => ({
+  requireAdmin: mocks.requireAdmin,
+  // Mirrors the real mapping: a missing/invalid token is 401, a signed-in
+  // non-admin (or an unelevated admin session) is 403.
+  getAdminAuthError: (error: { code?: string }) =>
+    error?.code === 'ADMIN_ACCESS_REQUIRED' ||
+    error?.code === 'MFA_REQUIRED' ||
+    error?.code === 'MFA_SETUP_REQUIRED'
+      ? { status: 403, error: 'Admin access required.' }
+      : { status: 401, error: 'Authentication required.' },
 }));
 vi.mock('@/lib/validation', () => ({
   requestIdSchema: {
@@ -76,7 +86,7 @@ const snapshot = (data: Record<string, unknown> | undefined) => ({
 });
 
 beforeEach(() => {
-  mocks.verifyIdToken.mockReset().mockResolvedValue({ uid: 'admin-1', email: 'a@x.com' });
+  mocks.requireAdmin.mockReset().mockResolvedValue({ uid: 'admin-1', email: 'a@x.com' });
   mocks.get.mockReset().mockResolvedValue(snapshot(requestDoc));
   mocks.walletGet.mockReset().mockResolvedValue(snapshot({ balance: 10, currency: 'EUR' }));
   mocks.txGet.mockReset().mockImplementation(async (ref: { __kind?: string }) =>
@@ -176,7 +186,7 @@ describe('POST /api/admin/requests/[requestId]/partial-refund/complete', () => {
   });
 
   it('defaults a missing wallet document and blank optional fields', async () => {
-    mocks.verifyIdToken.mockResolvedValue({ uid: 'admin-1', email: '' });
+    mocks.requireAdmin.mockResolvedValue({ uid: 'admin-1', email: '' });
     mocks.get.mockResolvedValue(
       snapshot({
         userId: 'user-1',
@@ -237,18 +247,42 @@ describe('POST /api/admin/requests/[requestId]/partial-refund/complete', () => {
   });
 
   it('requires a bearer token', async () => {
+    mocks.requireAdmin.mockRejectedValue(
+      Object.assign(new Error('Authentication required.'), {
+        code: 'AUTHENTICATION_REQUIRED',
+      })
+    );
+
     const response = await POST(request(undefined, ''), context());
 
+    expect(mocks.requireAdmin).toHaveBeenCalledTimes(1);
     expect(response.status).toBe(401);
     expect(mocks.runTransaction).not.toHaveBeenCalled();
   });
 
-  it('rejects an unverifiable token', async () => {
-    mocks.verifyIdToken.mockRejectedValue(new Error('bad token'));
+  it('rejects a signed-in customer who is not an administrator', async () => {
+    mocks.requireAdmin.mockRejectedValue(
+      Object.assign(new Error('Admin access required.'), {
+        code: 'ADMIN_ACCESS_REQUIRED',
+      })
+    );
 
     const response = await POST(request(), context());
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
+    expect(mocks.get).not.toHaveBeenCalled();
+    expect(mocks.runTransaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects an administrator whose MFA session is not elevated', async () => {
+    mocks.requireAdmin.mockRejectedValue(
+      Object.assign(new Error('MFA required.'), { code: 'MFA_REQUIRED' })
+    );
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(403);
+    expect(mocks.runTransaction).not.toHaveBeenCalled();
   });
 
   it('rejects an invalid request id', async () => {

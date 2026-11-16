@@ -63,14 +63,18 @@ describe('POST /api/auth/mfa/totp/verify', () => {
     expect(mocks.verifyTotp).not.toHaveBeenCalled();
   });
 
-  it('requires an administrator', async () => {
+  it('lets a customer confirm their own authenticator', async () => {
+    // Self-service: a customer manages their own second factor, so the old
+    // admin-only gate must not apply. The route still authenticates the caller.
     mocks.requireAuthWithProfile.mockResolvedValue({
       profile: { uid: 'user-1', role: 'customer' },
+      token: {},
     });
 
     const response = await POST(request());
 
-    expect(response.status).toBe(403);
+    expect(response.status).not.toBe(403);
+    expect(mocks.get).toHaveBeenCalled();
   });
 
   it('rejects an unreadable body', async () => {

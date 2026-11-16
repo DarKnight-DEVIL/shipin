@@ -106,6 +106,15 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Addresses subcollection under user document
+    match /users/{userId}/addresses {
+      allow read: if isSelf(userId);
+    }
+
+    match /users/{userId}/addresses/{addressId} {
+      allow read, write: if isSelf(userId);
+    }
+
     match /paypalPaymentOrders/{orderId} {
       allow read: if isAdmin() || isSelf(resource.data.userId);
       allow write: if false;
@@ -154,10 +163,26 @@ service cloud.firestore {
 
     // ---------------------------------------------------------------- support
     match /supportTickets/{ticketId} {
-      allow read, update: if signedIn() && (
+      allow read: if signedIn() && (
         resource.data.customerId == request.auth.uid ||
         isAdmin()
       );
+
+      // A customer may only clear their own unread flag. Status, priority,
+      // assignment, resolution and every other admin-owned field stay
+      // admin-only: the previous `allow read, update` let a customer resolve,
+      // reassign or rewrite their own ticket with a single client PATCH.
+      // `markSupportTicketRead` is the only customer write in the app, and it
+      // touches exactly these two keys.
+      allow update: if isAdmin() || (
+        isSelf(resource.data.customerId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+             'customerUnread',
+             'updatedAt'
+           ])
+        && request.resource.data.customerUnread == false
+      );
+
       allow create: if signedIn() &&
         request.resource.data.customerId == request.auth.uid;
       allow delete: if false;

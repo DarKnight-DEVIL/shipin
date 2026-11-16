@@ -3,6 +3,11 @@
 import dynamic from "next/dynamic";
 import PageHeader from "@/components/ui/PageHeader";
 import { useHydrated } from "@/hooks/useHydrated";
+import { useTheme } from "next-themes";
+import { usePasswordSettings } from "@/features/auth/hooks/usePasswordSettings";
+import { useNotificationSettings } from "@/features/notifications/hooks/useNotificationSettings";
+import { useDashboardMetricSettings } from "@/features/users/hooks/useDashboardMetricSettings";
+import { useProfileSettings } from "@/features/users/hooks/useProfileSettings";
 
 const AccountSection = dynamic(
   () => import("@/components/settings/AccountSection").then((mod) => mod.default),
@@ -28,12 +33,6 @@ const SecuritySection = dynamic(
   () => import("@/components/settings/SecuritySection").then((mod) => mod.default),
   { ssr: false, loading: () => <div className="h-48 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
 );
-
-import { useTheme } from "next-themes";
-import { usePasswordSettings } from "@/features/auth/hooks/usePasswordSettings";
-import { useNotificationSettings } from "@/features/notifications/hooks/useNotificationSettings";
-import { useDashboardMetricSettings } from "@/features/users/hooks/useDashboardMetricSettings";
-import { useProfileSettings } from "@/features/users/hooks/useProfileSettings";
 
 const SECTIONS = [
   ["account", "Account"],

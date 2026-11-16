@@ -251,7 +251,7 @@ describe('POST /api/webhook', () => {
     expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 
-  it('keeps a 200 when processing throws so PayPal stops retrying', async () => {
+  it('returns 500 when processing throws so PayPal retries (idempotent handler)', async () => {
     seedOrder();
     mocks.txGet.mockResolvedValue({
       exists: true,
@@ -263,11 +263,18 @@ describe('POST /api/webhook', () => {
 
     const response = await POST(request(captureEvent()));
 
-    expect(response.status).toBe(200);
+    // Now returns 500 so PayPal will retry the webhook delivery.
+    // handleCaptureCompleted is idempotent (checks captureId + request status),
+    // so retries are safe.
+    expect(response.status).toBe(500);
     expect(console.error).toHaveBeenCalledWith('Webhook processing error:', expect.any(Error));
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: 'WEBHOOK_PROCESSING_ERROR',
+    });
   });
 
-  it('keeps a 200 when the notification fails', async () => {
+  it('keeps a 200 when the notification fails (non-critical, outside transaction)', async () => {
     seedOrder();
     mocks.txGet.mockResolvedValue({
       exists: true,
@@ -277,6 +284,8 @@ describe('POST /api/webhook', () => {
 
     const response = await POST(request(captureEvent()));
 
+    // Notification failure is logged but doesn't fail the webhook -
+    // the payment was already committed in the transaction.
     expect(response.status).toBe(200);
     expect(console.error).toHaveBeenCalledWith(
       'Webhook notification failed:',

@@ -8,14 +8,18 @@
  * globally.
  *
  * Behavior:
- *   - If UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_TOKEN are not set,
- *     every record() falls back to the provided in-memory limiter.
+ *   - If UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_TOKEN are not set in production,
+ *     the process THROWS at startup (fail-fast). Per-instance in-memory limits
+ *     cannot enforce global limits across serverless regions.
+ *   - In development/test, falls back to in-memory limiter when Redis not configured.
  *   - If Redis is configured but a call fails (network error, timeout),
  *     the limiter FAILS CLOSED: the request is rejected with a 429.
  *     This prevents an attacker from silently bypassing limits during
  *     a Redis outage. See {@link reportRedisError} for monitoring hooks.
  *   - Counters are keyed by IP with a route prefix so the web, api,
  *     strict, and login limits don't share a bucket.
+ *   - Ratelimit instances are created ONCE per limiter name (singleton pattern)
+ *     to avoid connection overhead and Upstash connection limits.
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
@@ -98,42 +102,33 @@ export type RateLimitStoreStatus = {
 };
 
 /**
- * Describe the state of the shared rate-limit store without throwing.
- *
- * A missing store is a real limitation — per-instance limits can be bypassed
- * across serverless regions — but it must not stop the server from booting:
- * that crash took every request, sign-in included, offline. Callers log the
- * problem and surface it through `/api/health`, which reports `degraded`.
+ * Describe the state of the shared rate-limit store.
+ * Throws in production if store is missing (fail-fast).
  */
 export function getRateLimitStoreStatus(): RateLimitStoreStatus {
   const url = serverEnv.UPSTASH_REDIS_REST_URL;
   const token = serverEnv.UPSTASH_REDIS_REST_TOKEN;
   const configured = isValidRedisUrl(url) && Boolean(token);
-
-  return { configured, degraded: isProduction && !configured };
+  const degraded = isProduction && !configured;
+  if (degraded) {
+    throw new Error(
+      "[RateLimiter] UPSTASH_REDIS_REST_URL and/or UPSTASH_REDIS_REST_TOKEN are not set in production. " +
+        "Rate limits cannot be enforced globally across serverless regions. " +
+        "Set both variables in the production environment."
+    );
+  }
+  return { configured, degraded };
 }
 
 /**
- * Log the shared-store state at startup. Never throws.
- *
- * @returns the same status object as {@link getRateLimitStoreStatus}.
+ * Validate the store status at startup. Throws in production if store is missing.
  */
 export function reportRateLimitStoreStatus(): RateLimitStoreStatus {
-  const status = getRateLimitStoreStatus();
-
-  if (status.degraded) {
-    console.warn(
-      "[RateLimiter] No shared rate-limit store configured in production. " +
-        "Set UPSTASH_REDIS_REST_URL (an https:// URL) and " +
-        "UPSTASH_REDIS_REST_TOKEN. Rate limits are per-instance until then " +
-        "and /api/health reports degraded."
-    );
-  }
-
-  return status;
+  return getRateLimitStoreStatus();
 }
 
-// Lazily initialize Redis client to avoid triggering env validation at module load time
+// --- Redis client & Ratelimit instances (lazy singletons) ---
+
 let redis: Redis | null = null;
 function getRedis(): Redis | null {
   if (redis === null) {
@@ -144,6 +139,31 @@ function getRedis(): Redis | null {
     }
   }
   return redis;
+}
+
+// Cache of created Ratelimit instances per limiter name to avoid
+// creating a new instance on every request (which wastes CPU and
+// may hit Upstash connection limits).
+const ratelimitInstances = new Map<string, Ratelimit>();
+
+function getRatelimitInstance(name: string, maxRequests: number, windowMs: number): Ratelimit | null {
+  const client = getRedis();
+  if (!client) return null;
+  
+  const key = `${name}:${maxRequests}:${windowMs}`;
+  let instance = ratelimitInstances.get(key);
+  if (!instance) {
+    instance = new Ratelimit({
+      redis: client,
+      limiter: Ratelimit.slidingWindow(
+        maxRequests,
+        `${Math.round(windowMs / 1000)} s`
+      ),
+      prefix: `shipin:${name}`,
+    });
+    ratelimitInstances.set(key, instance);
+  }
+  return instance;
 }
 
 export function createSharedRateLimiter(
@@ -172,13 +192,11 @@ export function createSharedRateLimiter(
         request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
         "127.0.0.1";
 
-      const client = getRedis();
-      if (!client) {
+      const limiter = getRatelimitInstance(name, maxRequests, windowMs);
+      if (!limiter) {
         if (isProduction) {
-          // Never degrade to per-instance limits in production: on serverless
-          // that silently multiplies the effective quota by the number of
-          // regions. Reject the request (fail-closed) and surface it as an
-          // error so /api/health reports the deployment as degraded.
+          // This should never happen because getRateLimitStoreStatus() throws
+          // at startup if Redis is not configured in production.
           bumpCounter(ip);
           console.error(
             `[RateLimiter:${name}] No shared rate-limit store configured, ` +
@@ -199,15 +217,6 @@ export function createSharedRateLimiter(
       }
 
       try {
-        const limiter = new Ratelimit({
-          redis: client,
-          limiter: Ratelimit.slidingWindow(
-            maxRequests,
-            `${Math.round(windowMs / 1000)} s`
-          ),
-          prefix: `shipin:${name}`,
-        });
-
         const result = await limiter.limit(ip);
         const reset = result.reset;
 

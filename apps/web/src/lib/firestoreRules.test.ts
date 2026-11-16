@@ -46,6 +46,88 @@ describe('Firestore rules — supportTickets', () => {
     });
     expect(allowed).toBe(false);
   });
+
+  /**
+   * Mirrors the customer branch of the update rule in firestore.rules:
+   *   isSelf(resource.data.customerId)
+   *   && request.resource.data.diff(resource.data).affectedKeys()
+   *        .hasOnly(['customerUnread', 'updatedAt'])
+   *   && request.resource.data.customerUnread == false
+   * (admins keep an unrestricted update and are covered separately by the
+   * admin branch, which this simulation does not model.)
+   */
+  const customerUpdateRule = (ctx: {
+    uid: string;
+    resourceData?: Record<string, unknown>;
+  }): boolean => {
+    const before = ctx.resourceData ?? {};
+    const after = (ctx.resourceData?.after as Record<string, unknown>) ?? {};
+    const affected = Object.keys(after).filter((key) => after[key] !== before[key]);
+
+    return (
+      before.customerId === ctx.uid &&
+      affected.length > 0 &&
+      affected.every((key) => key === 'customerUnread' || key === 'updatedAt') &&
+      after.customerUnread === false
+    );
+  };
+
+  const ticket = {
+    customerId: 'user-1',
+    status: 'open',
+    priority: 'normal',
+    adminUnread: true,
+    customerUnread: true,
+    updatedAt: 1,
+  };
+
+  it('lets a customer clear their own unread flag', () => {
+    const allowed = customerUpdateRule({
+      uid: 'user-1',
+      resourceData: { ...ticket, after: { ...ticket, customerUnread: false, updatedAt: 2 } },
+    });
+    expect(allowed).toBe(true);
+  });
+
+  it('blocks a customer resolving their own ticket', () => {
+    const allowed = customerUpdateRule({
+      uid: 'user-1',
+      resourceData: { ...ticket, after: { ...ticket, status: 'resolved' } },
+    });
+    expect(allowed).toBe(false);
+  });
+
+  it('blocks a customer reassigning or re-pricing a ticket', () => {
+    expect(
+      customerUpdateRule({
+        uid: 'user-1',
+        resourceData: { ...ticket, after: { ...ticket, priority: 'urgent' } },
+      })
+    ).toBe(false);
+
+    expect(
+      customerUpdateRule({
+        uid: 'user-1',
+        resourceData: { ...ticket, after: { ...ticket, assignedTo: 'someone-else' } },
+      })
+    ).toBe(false);
+  });
+
+  it('blocks a customer touching the admin unread flag', () => {
+    const allowed = customerUpdateRule({
+      uid: 'user-1',
+      resourceData: { ...ticket, after: { ...ticket, adminUnread: false } },
+    });
+    expect(allowed).toBe(false);
+  });
+
+  it('blocks a third party from updating the ticket at all', () => {
+    const allowed = customerUpdateRule({
+      uid: 'attacker',
+      resourceData: { ...ticket, after: { ...ticket, customerUnread: false, updatedAt: 2 } },
+    });
+    expect(allowed).toBe(false);
+  });
 });
 
 describe('Firestore rules — supportMessages', () => {

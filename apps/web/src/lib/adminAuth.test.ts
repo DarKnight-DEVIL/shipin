@@ -113,6 +113,14 @@ describe('requireAdmin — authentication', () => {
 
     await expect(requireAdmin(bearer())).rejects.toThrow('INVALID_AUTHENTICATION');
   });
+
+  it('checks the token for revocation so a ban takes effect immediately', async () => {
+    await expect(requireAdmin(bearer())).rejects.toThrow('MFA_REQUIRED');
+
+    // 1h-stale ID tokens still verify; only the revoked-token check (the second
+    // argument) makes a disabled/revoked Firebase account stop working now.
+    expect(mocks.verifyIdToken).toHaveBeenCalledWith('id-token', true);
+  });
 });
 
 describe('requireAdmin — profile and role', () => {
@@ -126,6 +134,24 @@ describe('requireAdmin — profile and role', () => {
     mocks.users.set(UID, adminUser({ role: 'customer' }));
 
     await expect(requireAdmin(bearer())).rejects.toThrow('ADMIN_ACCESS_REQUIRED');
+  });
+
+  it.each([
+    [{ disabled: true }, 'ACCOUNT_DISABLED'],
+    [{ suspended: true }, 'ACCOUNT_SUSPENDED'],
+    [{ banned: true }, 'ACCOUNT_BANNED'],
+    [{ deletedAt: new Date() }, 'ACCOUNT_DELETED'],
+  ])('refuses a blocked administrator (%j)', async (block, code) => {
+    mocks.users.set(UID, adminUser(block));
+
+    await expect(requireAdmin(bearer({ 'x-mfa-totp': '123456' }))).rejects.toThrow(code);
+  });
+
+  it('checks account state before MFA so a banned admin never reaches a factor', async () => {
+    mocks.users.set(UID, adminUser({ banned: true }));
+
+    await expect(requireAdmin(bearer())).rejects.toThrow('ACCOUNT_BANNED');
+    expect(mocks.verifyTotp).not.toHaveBeenCalled();
   });
 });
 
@@ -312,6 +338,10 @@ describe('getAdminAuthError', () => {
     ['ADMIN_ACCESS_REQUIRED', 403, 'Administrator access required.'],
     ['MFA_REQUIRED', 401, 'Multi-factor authentication required.'],
     ['MFA_SETUP_REQUIRED', 403, 'Multi-factor authentication is required'],
+    ['ACCOUNT_DISABLED', 403, 'no longer allowed'],
+    ['ACCOUNT_SUSPENDED', 403, 'no longer allowed'],
+    ['ACCOUNT_BANNED', 403, 'no longer allowed'],
+    ['ACCOUNT_DELETED', 403, 'no longer allowed'],
   ])('maps %s to %i', (message, status, error) => {
     const result = getAdminAuthError(new Error(message));
 

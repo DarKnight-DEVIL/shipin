@@ -56,6 +56,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "coverage/**",
+    // Migration scripts and tooling are not application source.
+    "scripts/**",
     // Agent tooling and imported scratch artifacts are not project source.
     ".claude/**",
     ".cloud-attachments/**",

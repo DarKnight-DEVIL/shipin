@@ -1,3 +1,5 @@
+import 'server-only';
+
 import {
   adminAuth,
   adminDb,
@@ -5,6 +7,7 @@ import {
 import { FieldValue } from "firebase-admin/firestore";
 import { verifyTotp, verifyBackupCode, hashSmsCode } from "@/lib/mfa";
 import { getMfaSession } from "@/lib/mfaSession";
+import { getAccountBlock } from "@/lib/accountStatus";
 
 export interface AdminUser {
   uid: string;
@@ -78,9 +81,17 @@ export async function requireAdmin(
   let decodedToken;
 
   try {
+    /*
+     * checkRevoked: the administrator gate pays for one extra user lookup so
+     * a revoked, disabled or deleted Firebase account stops working on its
+     * next request instead of when the current ID token expires (up to 1h).
+     * Customer routes skip this — their account state is read from Firestore
+     * instead, which costs nothing extra.
+     */
     decodedToken =
       await adminAuth.verifyIdToken(
-        idToken
+        idToken,
+        true
       );
   } catch (error) {
     console.error(
@@ -116,6 +127,24 @@ export async function requireAdmin(
 
   const userData =
     userSnapshot.data();
+
+  /*
+   * ========================================
+   * ACCOUNT STATE CHECK
+   * ========================================
+   * A banned, suspended, disabled or deleted administrator must lose the
+   * console even while their ID token still verifies. The flags live on the
+   * profile (only an admin can write them — firestore.rules blocks self-writes).
+   */
+
+  const accountBlock =
+    getAccountBlock(userData);
+
+  if (accountBlock) {
+    throw new Error(
+      accountBlock.code
+    );
+  }
 
   /*
    * ========================================
@@ -292,6 +321,23 @@ export function getAdminAuthError(
       status: 401,
       error:
         "Multi-factor authentication required. Provide one of: X-MFA-TOTP, X-MFA-Backup, or X-MFA-SMS (a code issued via the SMS MFA setup flow).",
+    };
+  }
+
+  if (
+    message ===
+    "ACCOUNT_DELETED" ||
+    message ===
+    "ACCOUNT_BANNED" ||
+    message ===
+    "ACCOUNT_SUSPENDED" ||
+    message ===
+    "ACCOUNT_DISABLED"
+  ) {
+    return {
+      status: 403,
+      error:
+        "This account is no longer allowed to access the administrator console.",
     };
   }
 

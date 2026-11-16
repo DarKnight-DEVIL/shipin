@@ -57,6 +57,7 @@ export default defineConfig({
         'src/styles/**',
         'src/components/**', // UI components are covered by E2E
         'src/lib/firebase.ts', // lazy singleton with no unit-level exercise path
+        'src/lib/pdf/index.ts', // re-export barrel: no executable statements
         'src/features/**/types/README.md', // feature docs, not runtime code
         '**/README.md',
       ],

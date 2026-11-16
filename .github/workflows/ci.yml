@@ -54,6 +54,13 @@ jobs:
       - name: TypeScript check
         run: npm run typecheck
 
+      # Parses every Firestore query with the TypeScript compiler and fails when
+      # one needs a composite index that firestore.indexes.json does not declare.
+      # The dashboard list once shipped without its index and every page load
+      # failed with FAILED_PRECONDITION; this turns that into a static check.
+      - name: Verify Firestore indexes cover the queries
+        run: npm run check:firestore-indexes
+
   build:
     name: Build
     runs-on: ubuntu-latest

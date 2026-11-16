@@ -9,8 +9,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   // Workspace packages ship TypeScript sources rather than a build output, so
   // Next has to compile them as part of the app graph.
-  // firebase-admin/jose/jwks-rsa bundled here to avoid ESM/CJS interop issues on Vercel.
-  transpilePackages: ['@shipin/config', '@shipin/shared', '@shipin/ui', '@shipin/utils', 'firebase-admin', 'jose', 'jwks-rsa'],
+  // firebase-admin/jose/jwks-rsa are NOT transpiled — they are server-only.
+  // Each file that imports them must have `import 'server-only'` at the top.
+  transpilePackages: ['@shipin/config', '@shipin/shared', '@shipin/ui', '@shipin/utils'],
   experimental: {
     // Tree-shake barrel imports from these packages instead of bundling
     // their whole entry graph into every page that touches them.

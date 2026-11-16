@@ -1,12 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ getDocs: vi.fn() }));
+const customerApiMock = vi.fn();
 
-vi.mock('firebase/firestore', () => ({
-  collection: vi.fn((_db: unknown, name: string) => ({ path: name })),
-  getDocs: mocks.getDocs,
+vi.mock('@/lib/customerApiClient', () => ({
+  customerApi: (...args: unknown[]) => customerApiMock(...args),
 }));
-vi.mock('@/lib/firebaseDb', () => ({ db: {} }));
+
 
 import {
   getDashboardStats,
@@ -20,25 +19,126 @@ import {
 
 const day = 86_400_000;
 
-const req = (overrides: Record<string, unknown> = {}) => ({
+interface TestRequest extends Record<string, unknown> {
+  id: string;
+  status: string;
+  userId?: string;
+  customerName?: string;
+  email?: string;
+  payment?: { amount: number };
+  quote?: { breakdown?: QuoteBreakdown };
+  quoteRegenerationRequested?: boolean;
+  refundRequest?: { status?: string };
+  createdAt?: { toDate: () => Date };
+  updatedAt?: { toMillis: () => number; toDate: () => Date };
+}
+
+interface QuoteBreakdown {
+  grandTotal?: number;
+  serviceFee?: number;
+  productsTotal?: number;
+  domesticShipping?: number;
+  internationalShipping?: number;
+}
+
+const req = (overrides: Partial<TestRequest> = {}) => ({
   id: 'req-1',
   status: 'submitted',
   ...overrides,
-});
+}) as TestRequest;
 
 const stamp = (ms: number) => ({
   toMillis: () => ms,
   toDate: () => new Date(ms),
 });
 
-function seed(...requests: Record<string, unknown>[]) {
-  mocks.getDocs.mockResolvedValue({
-    docs: requests.map((data) => ({ id: data.id, data: () => data })),
-  });
+/** Build the full AnalyticsApiResponse that /api/admin/analytics would return for these requests. */
+function buildResponse(requests: TestRequest[]) {
+  const reviewed = requests.filter((r) => r.status === 'review').length;
+  const paidStatuses = new Set(['paid','purchased','warehouse_received','packed','shipped','delivered']);
+  let grossRevenue = 0, serviceFees = 0, productCost = 0, shippingCost = 0, paidOrders = 0;
+  const months: Record<string, number> = {};
+  const customerMap = new Map<string, { name: string; email: string; revenue: number; count: number }>();
+
+  for (const r of requests) {
+    const rev = (r.payment?.amount ?? r.quote?.breakdown?.grandTotal ?? 0) as number;
+    if (paidStatuses.has(String(r.status ?? ''))) {
+      paidOrders++;
+      const bd = r.quote?.breakdown;
+      grossRevenue += (bd?.grandTotal ?? 0) as number;
+      serviceFees += (bd?.serviceFee ?? 0) as number;
+      productCost += (bd?.productsTotal ?? 0) as number;
+      shippingCost += ((bd?.domesticShipping ?? 0) as number) + ((bd?.internationalShipping ?? 0) as number);
+    }
+    const createdAt = r.createdAt;
+    if (createdAt) {
+      const month = createdAt.toDate().toLocaleString('default', { month: 'short' });
+      months[month] = (months[month] ?? 0) + rev;
+    }
+    const uid = String(r.userId ?? 'unknown');
+    const existing = customerMap.get(uid) ?? { name: String(r.customerName ?? 'Unknown'), email: String(r.email ?? '-'), revenue: 0, count: 0 };
+    customerMap.set(uid, { ...existing, revenue: existing.revenue + rev, count: existing.count + 1 });
+  }
+
+  const todayStr = new Date().toDateString();
+  return {
+    success: true,
+    stats: {
+      totalRequests: requests.length, total: requests.length,
+      submitted: requests.filter((r) => r.status === 'submitted').length,
+      review: reviewed, quoteReady: reviewed,
+      quoteUpdates: requests.filter((r) => r.quoteRegenerationRequested === true && r.status !== 'rejected' && r.status !== 'refunded').length,
+      refundRequested: requests.filter((r) => (r.refundRequest?.status === 'requested')).length,
+      awaitingPayment: requests.filter((r) => r.status === 'awaiting_payment').length,
+      warehouse: requests.filter((r) => r.status === 'warehouse_received' || r.status === 'packed').length,
+      shipped: requests.filter((r) => r.status === 'shipped').length,
+      delivered: requests.filter((r) => r.status === 'delivered').length,
+      revenue: requests.reduce((s, r) => s + ((r.payment?.amount ?? r.quote?.breakdown?.grandTotal ?? 0) as number), 0),
+    },
+    monthlyRevenue: Object.entries(months).map(([m, r]) => ({ month: m, revenue: r })),
+    statusDistribution: [
+      { name: 'Submitted', value: requests.filter((r) => r.status === 'submitted').length },
+      { name: 'Review', value: reviewed },
+      { name: 'Awaiting Payment', value: requests.filter((r) => r.status === 'awaiting_payment').length },
+      { name: 'Warehouse', value: requests.filter((r) => r.status === 'warehouse_received' || r.status === 'packed').length },
+      { name: 'Shipped', value: requests.filter((r) => r.status === 'shipped').length },
+      { name: 'Delivered', value: requests.filter((r) => r.status === 'delivered').length },
+    ],
+    recentActivity: [...requests].sort((a, b) => {
+      const aT = (a.updatedAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+      const bT = (b.updatedAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+      return bT - aT;
+    }).slice(0, 10).map((r) => ({
+      id: String(r.id),
+      title: `Request #${String(r.id).slice(0, 6)}`,
+      description: `Status changed to ${r.status}`,
+      createdAt: (r.updatedAt as { toDate?: () => Date } | undefined)?.toDate?.(),
+    })),
+    topCustomers: Array.from(customerMap.entries())
+      .map(([id, d]) => ({ id, name: d.name, email: d.email, requests: d.count, revenue: d.revenue }))
+      .sort((a, b) => b.revenue - a.revenue).slice(0, 10),
+    operations: {
+      awaitingQuote: reviewed,
+      awaitingPayment: requests.filter((r) => r.status === 'awaiting_payment').length,
+      warehouse: requests.filter((r) => r.status === 'warehouse_received' || r.status === 'packed').length,
+      readyToShip: requests.filter((r) => r.status === 'ready_for_international_shipping').length,
+      shippedToday: requests.filter((r) => r.status === 'shipped' && (r.updatedAt as { toDate: () => Date } | undefined)?.toDate?.()?.toDateString() === todayStr).length,
+      overdue: requests.filter((r) => {
+        if (!r.updatedAt || r.status === 'delivered') return false;
+        return (Date.now() - (r.updatedAt as { toMillis: () => number }).toMillis()) / 86400000 > 14;
+      }).length,
+    },
+    financials: { grossRevenue, serviceFees, productCost, shippingCost, paidOrders, averageOrderValue: paidOrders === 0 ? 0 : grossRevenue / paidOrders },
+  };
 }
 
+function seed(...requests: TestRequest[]) {
+  customerApiMock.mockResolvedValue(buildResponse(requests));
+}
+
+
 beforeEach(() => {
-  mocks.getDocs.mockReset();
+  customerApiMock.mockReset();
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -77,7 +177,7 @@ describe('getDashboardStats', () => {
   });
 
   it('wraps read failures', async () => {
-    mocks.getDocs.mockRejectedValue(new Error('offline'));
+    customerApiMock.mockRejectedValue(new Error('offline'));
 
     await expect(getDashboardStats()).rejects.toBeInstanceOf(Error);
   });
@@ -106,7 +206,7 @@ describe('getMonthlyRevenue', () => {
   });
 
   it('wraps read failures', async () => {
-    mocks.getDocs.mockRejectedValue(new Error('offline'));
+    customerApiMock.mockRejectedValue(new Error('offline'));
 
     await expect(getMonthlyRevenue()).rejects.toBeInstanceOf(Error);
   });
@@ -133,7 +233,7 @@ describe('getStatusDistribution', () => {
   });
 
   it('wraps read failures', async () => {
-    mocks.getDocs.mockRejectedValue(new Error('offline'));
+    customerApiMock.mockRejectedValue(new Error('offline'));
 
     await expect(getStatusDistribution()).rejects.toBeInstanceOf(Error);
   });
@@ -165,7 +265,7 @@ describe('getRecentActivity', () => {
   });
 
   it('wraps read failures', async () => {
-    mocks.getDocs.mockRejectedValue(new Error('offline'));
+    customerApiMock.mockRejectedValue(new Error('offline'));
 
     await expect(getRecentActivity()).rejects.toBeInstanceOf(Error);
   });
@@ -194,7 +294,7 @@ describe('getTopCustomers', () => {
   });
 
   it('wraps read failures', async () => {
-    mocks.getDocs.mockRejectedValue(new Error('offline'));
+    customerApiMock.mockRejectedValue(new Error('offline'));
 
     await expect(getTopCustomers()).rejects.toBeInstanceOf(Error);
   });
@@ -231,7 +331,7 @@ describe('getOperationsOverview', () => {
   });
 
   it('wraps read failures', async () => {
-    mocks.getDocs.mockRejectedValue(new Error('offline'));
+    customerApiMock.mockRejectedValue(new Error('offline'));
 
     await expect(getOperationsOverview()).rejects.toBeInstanceOf(Error);
   });
@@ -274,7 +374,7 @@ describe('getFinancialOverview', () => {
   });
 
   it('wraps read failures', async () => {
-    mocks.getDocs.mockRejectedValue(new Error('offline'));
+    customerApiMock.mockRejectedValue(new Error('offline'));
 
     await expect(getFinancialOverview()).rejects.toBeInstanceOf(Error);
   });
