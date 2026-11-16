@@ -86,8 +86,8 @@ Zod schemas for all untrusted inputs:
 5. **✅ DONE**: Added 75 new unit tests covering payment fee math, money precision, support message validation, MFA status shaping, and axe-core contract
 6. **✅ DONE**: Bundle analyzer integrated (`@next/bundle-analyzer`) — run `npm run analyze` to inspect bundle composition
 7. **✅ DONE**: Playwright E2E smoke tests added (`playwright-test/tests/smoke.spec.ts`) — 7 tests covering pages, API health, headers, and auth redirects
-8. **✅ DONE**: CI enhanced with multi-Node matrix (18/20/22), coverage reporting, E2E job, and a11y audit job
-9. **✅ DONE**: Node.js version pinned to >=20 via `.nvmrc` and `engines` field
+8. **✅ DONE**: CI enhanced with a Node 22/24 matrix, coverage reporting, E2E job, rules job, and a11y audit job
+9. **✅ DONE**: Node 24 pinned in `.nvmrc`, the Dockerfile and CI; `engines` requires >=22.12, which the matrix still tests
 10. **✅ DONE**: ESLint accessibility rules enabled (`jsx-a11y/*`) — alt text, anchor content, ARIA props, heading content
 11. **✅ DONE**: Production startup warning emits if Redis rate limit store is missing
 12. **✅ DONE**: Removed 18MB `file_list.txt` artifact from repository root
@@ -113,7 +113,7 @@ Zod schemas for all untrusted inputs:
 - `SECURITY_AUDIT.md` — Updated status and recommendations
 - `.github/workflows/ci.yml` — Enhanced: test coverage reporting, multi-Node matrix (18/20/22), E2E Playwright job
 - `playwright.config.ts` — **New**: Playwright config with Chromium project and webServer auto-start
-- `playwright-test/tests/smoke.spec.ts` — **New**: 7 E2E smoke tests (page loads, API health, security headers, auth redirects, login page)
+- `playwright-test/tests/` — E2E specs: smoke, hydration, sitemap, signed-in smoke, checkout/wallet/admin-refund contracts (money-path authorization and validation), plus the staging-only refund chain
 - `src/config/env/index.ts` — **Updated**: added `warnOnMissingRateLimitStore()` startup warning for production without Redis
 - `src/app/api/support/[ticketId]/message/route.ts` — **Updated**: message trimmed once before validation; `rawMessage` variable used consistently
 - `CONTRIBUTING.md` — **New**: contribution guidelines, dev setup, testing docs, PR standards, security reminders
@@ -124,5 +124,22 @@ Zod schemas for all untrusted inputs:
 - `src/lib/supportRoute.test.ts` — **New**: 11 tests for support message validation and role checks
 - `src/lib/mfaStatus.test.ts` — **New**: 9 tests for MFA credential reading, TOTP detection, and phone masking
 
+## Hardening pass (current)
+
+Fixes applied after the original report, with the tests that now lock them in:
+
+| Area | Was | Now |
+|------|-----|-----|
+| Route classification | `validateRouteClassification()` was an empty stub; `/api/auth/login-intent`, `/api/auth/password-leak-check`, `/api/csp-report`, `/api/send-email`, `/api/whatsapp` and `/api/compliance` were unclassified, so anonymous sign-in was 401, CSP reports were dropped and admin routes answered 500 `ROUTE_UNCLASSIFIED` | Table lives in `src/config/routeAuth.ts`; `src/config/routeClassification.ts` enumerates every `route.ts` and throws at boot (`routeClassification.test.ts`) |
+| Right to erasure | `adminAuth.deleteUser` was commented out and `requests` were never touched, so an erased user could still sign in and their name/email/address stayed queryable | Auth user deleted last, requests anonymised, real audit id threaded through, failures recorded and returned as 500 (`user/erase/route.test.ts`) |
+| Wallet top-up | A capture could succeed while the credit failed; every retry returned ORDER_ALREADY_CAPTURED and the customer was told the payment failed | `capturePending` written before PayPal, duplicate captures reconciled from the order, 409 `CAPTURE_PENDING_RECONCILIATION` when the lookup fails |
+| R2 inspection photos | Any signed-in account could upload into another customer's request folder or exchange a leaked key for a signed URL | `src/lib/r2Access.ts`: owner or admin only, same 404 for missing and not-owned (`r2Access.test.ts`, `tests/rules` suite) |
+| Firestore rules | `supportTickets` create accepted any payload with the caller's customerId (born-resolved, self-assigned); `notifications` create accepted any type and size; `supportMessages` create required a field the client never sends, so every customer message was denied; `refundRequests` had a rule for a collection nothing uses | Creates pinned to the documented payloads with `createdAt == request.time`, ownership derived from the parent ticket, `refundRequests` removed (default deny) — verified by the emulator suite |
+| CSP reporting | `/api/csp-report` was customer-classified despite browsers sending no Authorization header | `public`, with a bounded body and Sentry forwarding |
+| Image hosts | No `images.remotePatterns`, so Google avatars from Firebase `photoURL` were refused at render time | `lh3.googleusercontent.com` allowed; presigned R2 URLs marked `unoptimized` instead |
+| Observability | Sentry configs existed but nothing initialised them | Server/edge/client init via instrumentation, `onRequestError`, build wrapper gated on DSN + auth token |
+| Dead workflow | `expire-quotes-cron.yml` was UTF-16, which GitHub cannot parse — the hourly job never ran | Re-encoded UTF-8/LF, and `npm run check:workflows` (CI) rejects BOMs, NUL bytes and invalid UTF-8 |
+| Runtimes | Docker image pinned Node 22 while `.nvmrc` and CI used 24 | Dockerfile on `node:24-alpine`; `engines` >=22.12 documents the floor CI still tests |
+
 ---
-*Last updated: Security hardening completed for ShipIN v0.1.0*
+*Last updated: hardening pass on route classification, erasure, wallet capture, R2 access, Firestore rules, Sentry and workflow encoding.*

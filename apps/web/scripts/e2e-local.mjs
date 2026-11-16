@@ -146,9 +146,26 @@ if (signedIn) {
 // Paths include `tests/`: Playwright treats each positional argument as a
 // regex over the file path, and a bare `smoke.spec.ts` also matches
 // `signed-in-smoke.spec.ts` — which then skips itself for the wrong reason.
+const API_CONTRACT_SPECS = [
+  // Money-path contracts. The authenticated cases skip unless the Auth
+  // emulator is running, so the default suite still covers the 401/403
+  // boundary on every run.
+  "tests/checkout-flow.spec.ts",
+  "tests/wallet-topup.spec.ts",
+  "tests/admin-refund-local.spec.ts",
+].join(" ");
+
 const specs = signedIn
-  ? "tests/signed-in-smoke.spec.ts"
-  : "tests/smoke.spec.ts tests/hydration.spec.ts tests/sitemap-check.spec.ts";
+  ? // With the Auth emulator up, the same contracts also exercise their
+    // authenticated branches (validation 400s, unknown fixture 404s, the
+    // non-admin 403), which is where an authorization regression shows up.
+    `tests/signed-in-smoke.spec.ts ${API_CONTRACT_SPECS}`
+  : [
+      "tests/smoke.spec.ts",
+      "tests/hydration.spec.ts",
+      "tests/sitemap-check.spec.ts",
+    ].join(" ") +
+    ` ${API_CONTRACT_SPECS}`;
 
 const playwright = [
   "npx playwright test --config=playwright.config.ts",

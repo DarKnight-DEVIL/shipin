@@ -211,9 +211,11 @@ This opens an interactive treemap. Look for:
 Required Vercel Environment Variables:
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NEXT_PUBLIC_SENTRY_DSN` | Yes | Sentry DSN for client-side tracking |
-| `SENTRY_DSN` | Yes | Sentry DSN for server-side tracking |
-| `SENTRY_AUTH_TOKEN` | Yes | Auth token for source map upload |
+| `NEXT_PUBLIC_SENTRY_DSN` | Yes for error capture | Sentry DSN; the browser SDK is initialised from `instrumentation-client.ts` and the server/edge SDKs from `sentry.server.config.ts` / `sentry.edge.config.ts` via `instrumentation.ts`. Without it the SDK stays disabled and errors are only logged. |
+| `SENTRY_DSN` | Optional | Server-side override; falls back to `NEXT_PUBLIC_SENTRY_DSN`. |
+| `SENTRY_AUTH_TOKEN` | Optional (build) | Only for source-map upload. Build-time only: `sentry.config.ts` skips `withSentryConfig` when it is absent, so a build without it still succeeds. Also set `SENTRY_ORG` and `SENTRY_PROJECT` for the upload to resolve. |
+
+Runtime capture does not depend on the auth token — a deployment with only the DSN reports errors, just without readable stack traces.
 
 ### Docker Deployment
 

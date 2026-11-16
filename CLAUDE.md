@@ -4,7 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Tech Stack
 
-- **Framework**: Next.js 16.3.8 (App Router) with React 19.2.4
+- **Framework**: Next.js 16.4.6 (App Router) with React 19.3.1
+- **Runtime**: Node 24 (`.nvmrc`, Docker image, CI `NODE_VERSION`); `engines` allows >=22.12 and CI also tests Node 22
 - **Language**: TypeScript with strict mode
 - **Styling**: Tailwind CSS v4
 - **Database**: Firebase (Firestore for data, Auth for authentication, Storage for files)
@@ -26,7 +27,20 @@ npm run start            # Start production server
 npm run lint             # Run ESLint (config in package.json)
 ```
 
-**Testing**: Vitest unit tests live next to the modules they cover (`*.test.ts` / `*.test.tsx`). Run `npm test`. ESLint: `npm run lint`.
+**Testing** (all commands from the repo root):
+
+```bash
+npm test                      # Vitest unit suite (2058 tests, run from apps/web)
+npm run typecheck             # tsc --noEmit
+npm run test:coverage         # unit suite + the coverage floors
+npm run test:rules            # Firestore rules against the emulator (needs a JDK)
+npm run test:e2e:local        # production build + Firestore emulator + Playwright
+npm run test:e2e:local -- --signed-in   # + Auth emulator, seeded admin
+npm run check:workflows       # every .github/workflows file is UTF-8 YAML
+npm run check:bundle-budget   # bundle size budgets
+```
+
+`test:e2e:local` needs a JDK on PATH (the emulators are Java). Unit tests live next to the modules they cover (`*.test.ts` / `*.test.tsx`); the emulator-level suites live in `playwright-test/` and `tests/rules/`. Add tests with the code they cover — a bug fix without a regression test is not finished.
 
 ## gstack Skills
 
@@ -139,6 +153,29 @@ src/
 3. **Email**: Triggered via `/api/send-email` and feature notification services
 4. **PDF Documents**: Generated via `react-pdf/renderer` (client) or `firebase-admin` (server)
 
+### API Auth Classification (required for every route)
+
+- `src/config/routeAuth.ts` holds the path table (`public` / `customer` / `admin`). The proxy only checks that a Bearer token is present for customer/admin routes; each handler does the real verification.
+- `src/config/routeClassification.ts` enumerates `src/app/api/**/route.ts` and throws for anything unclassified. `src/instrumentation.ts` calls it at boot (exit 1 on failure) and `routeClassification.test.ts` runs the same walk in CI. Adding a route without a classification fails the build, not just a request.
+- Anonymous endpoints must be listed explicitly: `/api/auth/login-intent`, `/api/auth/password-leak-check`, `/api/csp-report` are `public` even though their prefixes are not.
+
+### Startup Checks (`src/instrumentation.ts`)
+
+`register()` runs before the server accepts traffic:
+
+1. Sentry init for the current runtime (`sentry.server.config.ts` / `sentry.edge.config.ts`).
+2. `validateProductionRequiredEnv()` — exits 1 when the rate-limit store (or `PAYPAL_WEBHOOK_ID`) is missing in production. `RATE_LIMIT_STORE_OPTIONAL=1` is the single documented opt-out, used only by `scripts/e2e-local.mjs` and the `e2e` CI job.
+3. Route classification (above).
+4. Warning-only reporters: missing rate-limit store, App Check enforced without a site key. These show up as `degraded` on `/api/health` instead of crashing.
+
+`onRequestError` forwards uncaught route errors to Sentry; the browser SDK loads via `instrumentation-client.ts`.
+
+### Money Paths
+
+- Wallet top-ups persist `capturePending: true` before calling PayPal, and a duplicate capture response is reconciled from the order instead of reported as a failure (`/api/paypal/capture-wallet-topup`). Never remove that flag write: it is the only trace of a charge whose credit failed.
+- Erasure (`/api/user/erase`) anonymises `requests` and the profile, deletes the Auth user last, and keeps its own rights-request document as the audit trail.
+- R2 inspection photos are authorised through `src/lib/r2Access.ts` (request owner or admin). Keys are `inspection/<requestId>/<uuid>.<ext>`; presigned URLs expire in 15 minutes, so those `<Image>` call sites are `unoptimized`.
+
 ### Path Aliases
 - `@/*` → `./src/*` (configured in tsconfig.json)
 
@@ -176,7 +213,6 @@ Critical env vars required:
 - Use centralized types in `src/types/*`
 
 ### DON'T
-- Add test files unless specifically requested (none exist)
 - Duplicate layout HOCs (use AdminGuard pattern)
 - Apply the "skip features, options" philosophy to admin functionality—admin workflows are specific and purposeful
 - Commit Firebase or PayPal secrets to repo
