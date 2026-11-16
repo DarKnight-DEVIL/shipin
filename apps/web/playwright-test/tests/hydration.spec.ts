@@ -197,7 +197,14 @@ test.describe('Production hydration', () => {
     const violations = watchForCspViolations(page);
     const consoleErrors: string[] = [];
     page.on('console', (message) => {
-      if (message.type() === 'error') consoleErrors.push(message.text());
+      if (message.type() !== 'error') return;
+      // A failed request logs "Failed to load resource" with the URL only in
+      // `location()`. Carry it along so the Vercel rule below can match, and so
+      // a real 404 names the resource instead of reading as anonymous noise.
+      const { url } = message.location();
+      consoleErrors.push(
+        url && !message.text().includes(url) ? `${message.text()} (${url})` : message.text()
+      );
     });
 
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
@@ -219,7 +226,7 @@ test.describe('Production hydration', () => {
 
     // Vercel Analytics/Speed Insights scripts 404 outside Vercel; ignore those.
     const unexpected = consoleErrors.filter(
-      (text) => !/_vercel\/(insights|speed-insights)/.test(text)
+      (entry) => !/_vercel\/(insights|speed-insights)/.test(entry)
     );
     expect(unexpected, 'dashboard logged console errors').toEqual([]);
   });

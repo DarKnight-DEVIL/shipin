@@ -134,8 +134,12 @@ const REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
  */
 const PRODUCTION_REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
   'PAYPAL_WEBHOOK_ID',
-  'UPSTASH_REDIS_REST_URL',
-  'UPSTASH_REDIS_REST_TOKEN',
+  // UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are deliberately NOT
+  // here: a missing shared store degrades rate limiting (startup warns,
+  // /api/health reports degraded, the proxy fails open) instead of refusing to
+  // boot. Listing them here made that contract unreachable — a production
+  // build could not start without a real Upstash database, which is exactly
+  // what broke the local and CI E2E runs.
 ]);
 
 /** Server-only vars that fall back to a default when unset. */

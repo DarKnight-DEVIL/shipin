@@ -213,12 +213,11 @@ export function createSharedRateLimiter(
           // No shared store configured. Report it as an infrastructure failure
           // (so the caller may fail open and /api/health says `degraded`) rather
           // than as a client that exceeded its limit.
+          //
+          // No per-request log: `reportRateLimitStoreStatus` already warns once
+          // at startup and /api/health reports the gap, so a line per request
+          // only buried real errors in the local E2E output.
           bumpCounter(ip);
-          console.error(
-            `[RateLimiter:${name}] No shared rate-limit store configured, ` +
-              "rejecting request (fail-closed). Set UPSTASH_REDIS_REST_URL and " +
-              "UPSTASH_REDIS_REST_TOKEN."
-          );
           return {
             ok: false,
             unavailable: true,

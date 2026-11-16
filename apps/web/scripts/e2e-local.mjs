@@ -117,6 +117,15 @@ const env = {
   // Also baked into the browser bundle, so the client SDK talks to the
   // emulators instead of the project in .env.local.
   NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST: FIRESTORE_EMULATOR,
+  // `.env.local` carries real Upstash credentials, and the suite arrives from a
+  // single IP (127.0.0.1) well inside one 60s window — so the app's own limiter
+  // answered 429 ("RATE_LIMIT_ERROR") partway through a run, and a second run in
+  // the same minute inherited a full bucket. Blanked here (not deleted: Next
+  // will not override a key that is present) so the local run behaves like CI,
+  // where no store is configured: startup warns, /api/health reports degraded,
+  // and the proxy fails open.
+  UPSTASH_REDIS_REST_URL: "",
+  UPSTASH_REDIS_REST_TOKEN: "",
 };
 
 if (signedIn) {
