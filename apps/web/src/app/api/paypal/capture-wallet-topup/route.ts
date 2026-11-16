@@ -13,6 +13,19 @@ import { requireAuthWithProfile } from "@/lib/auth";
 import { withErrorHandler } from '@/utils/errors';
 import { serverEnv } from "@/config/env";
 
+/**
+ * PayPal answers ORDER_ALREADY_CAPTURED when a capture for this order exists.
+ *
+ * That is not a failure: it is the shape of a retry after the money moved but
+ * the wallet credit did not (a Firestore error, a timeout, a crashed instance).
+ * The caller must reconcile with PayPal instead of telling the customer their
+ * payment failed while their balance stayed flat.
+ */
+function isAlreadyCaptured(payload: unknown): boolean {
+  const details = (payload as { details?: Array<{ issue?: string }> } | null)?.details;
+  return Array.isArray(details) && details.some((d) => d?.issue === "ORDER_ALREADY_CAPTURED");
+}
+
 export const POST = withErrorHandler(async (request: NextRequest) => {
   // --- 1. Authenticate and authorize the caller ---
   const auth = await requireAuthWithProfile(request);
@@ -162,6 +175,22 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const accessToken =
       await getPayPalAccessToken();
 
+    /*
+     * Mark the capture as in flight BEFORE calling PayPal. If the process dies
+     * between the capture and the wallet credit, this flag is what tells a
+     * retry (and support) that money may have moved for this order, so the
+     * capture is reconciled rather than blindly reported as failed.
+     *
+     * Written first on purpose: a failure here happens before any charge.
+     */
+    await topupOrderRef.set(
+      {
+        capturePending: true,
+        captureStartedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
     const baseUrl =
       serverEnv.PAYPAL_API_URL ??
       "https://api-m.sandbox.paypal.com";
@@ -177,28 +206,63 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         }
       );
 
-    const paypalData =
+    let paypalData =
       await paypalResponse.json();
 
     /*
      * PayPal can return an error if this
-     * order was already captured.
-     *
-     * We don't blindly credit the wallet.
+     * order was already captured: the previous attempt charged the customer but
+     * did not credit the wallet. Fetch the order and let the idempotent credit
+     * below finish the job (it keys on the capture id).
      */
     if (!paypalResponse.ok) {
-      console.error(
-        "PayPal wallet capture error:",
-        paypalData
+      if (!isAlreadyCaptured(paypalData)) {
+        console.error(
+          "PayPal wallet capture error:",
+          paypalData
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Unable to process payment. Please try again.",
+          },
+          { status: paypalResponse.status }
+        );
+      }
+
+      console.warn("[capture-wallet-topup] reconciling an already-captured order", {
+        orderID,
+      });
+
+      const orderDetails = await fetchWithTimeout(
+        `${baseUrl}/v2/checkout/orders/${orderID}`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
       );
 
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Unable to process payment. Please try again.",
-        },
-        { status: paypalResponse.status }
-      );
+      paypalData = await orderDetails.json();
+
+      if (!orderDetails.ok) {
+        console.error(
+          "PayPal order lookup after a duplicate capture failed:",
+          paypalData
+        );
+
+        // The capture is pending and money may have moved: keep the flag so a
+        // retry or the webhook reconciliation can pick it up.
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Payment was captured but the wallet credit could not be confirmed. Please contact support.",
+            code: "CAPTURE_PENDING_RECONCILIATION",
+          },
+          { status: 409 }
+        );
+      }
     }
 
     /*
@@ -470,6 +534,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
               captureId,
 
               capturedAmount,
+
+              // The capture is no longer outstanding: the credit is committed
+              // in this same transaction.
+              capturePending: false,
 
               completedAt:
                 FieldValue.serverTimestamp(),

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const mocks = vi.hoisted(() => ({
   requireAuthWithProfile: vi.fn(),
   topupGet: vi.fn(),
+  topupSet: vi.fn(),
   getPayPalAccessToken: vi.fn(),
   fetch: vi.fn(),
   txGet: vi.fn(),
@@ -17,7 +18,8 @@ vi.mock('@/lib/firebaseAdmin', () => ({
   adminDb: {
     collection: (name: string) => ({
       doc: (id?: string) => {
-        if (name === 'walletTopupOrders') return { id, __kind: 'topup', get: mocks.topupGet };
+        if (name === 'walletTopupOrders')
+          return { id, __kind: 'topup', get: mocks.topupGet, set: mocks.topupSet };
         if (name === 'wallets') return { id, __kind: 'wallet' };
         return { id, __kind: 'wtx' };
       },
@@ -60,6 +62,7 @@ const body = { orderID: 'order-1', amount: 25 };
 beforeEach(() => {
   mocks.requireAuthWithProfile.mockReset().mockResolvedValue({ token: { uid: 'user-1' }, profile: { uid: 'user-1' } });
   mocks.topupGet.mockReset().mockResolvedValue(snap({ userId: 'user-1', amount: 25 }));
+  mocks.topupSet.mockReset().mockResolvedValue(undefined);
   mocks.getPayPalAccessToken.mockReset().mockResolvedValue('access-token');
   mocks.fetch.mockReset().mockResolvedValue({ ok: true, status: 200, json: async () => completedCapture });
   mocks.txGet.mockReset().mockImplementation(async (ref: { __kind?: string }) =>
@@ -276,6 +279,66 @@ describe('POST /api/paypal/capture-wallet-topup', () => {
       expect.objectContaining({ __kind: 'topup' }),
       expect.objectContaining({ status: 'completed', captureId: 'cap-1' })
     );
+  });
+
+  it('marks the capture as pending before calling PayPal', async () => {
+    await POST(request(body));
+
+    expect(mocks.topupSet).toHaveBeenCalledWith(
+      expect.objectContaining({ capturePending: true }),
+      { merge: true }
+    );
+    // Order matters: the flag has to be durable before any money can move, or a
+    // crash between capture and credit leaves no trace of the in-flight charge.
+    expect(mocks.topupSet.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.fetch.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('reconciles an already-captured order instead of reporting failure', async () => {
+    // First call: PayPal says the capture already exists (the crash-after-charge
+    // retry). Second: the order lookup returns the completed capture.
+    mocks.fetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: async () => ({ details: [{ issue: 'ORDER_ALREADY_CAPTURED' }] }),
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => completedCapture });
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      captureId: 'cap-1',
+      balance: 35,
+    });
+    expect(mocks.fetch).toHaveBeenNthCalledWith(
+      2,
+      'https://paypal.test/v2/checkout/orders/order-1',
+      expect.objectContaining({ method: 'GET' })
+    );
+  });
+
+  it('returns 409 with the pending code when reconciliation cannot confirm the capture', async () => {
+    mocks.fetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: async () => ({ details: [{ issue: 'ORDER_ALREADY_CAPTURED' }] }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) });
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: 'CAPTURE_PENDING_RECONCILIATION',
+    });
+    // Nothing was credited, so the customer must not be told it succeeded.
+    expect(mocks.txSet).not.toHaveBeenCalled();
   });
 
   it('creates a wallet when the customer has none', async () => {
