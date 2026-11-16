@@ -15,72 +15,13 @@ import {
 } from "@/lib/rateLimiter";
 import { SECURITY_HEADERS, getProductionCSP, getDevCSP } from "@/lib/securityHeaders";
 import { getCorsHeaders, isAllowedOrigin } from "@/lib/cors";
+import { classifyRoute } from "@/config/routeAuth";
 
-/**
- * Route authentication classification.
- *
- * Every API route MUST be classified. Unclassified routes will be rejected
- * at startup (see validateRouteClassification below).
- *
- * - "public": No authentication required (health, webhook, etc.)
- * - "customer": Requires valid Firebase ID token (Bearer) + verified email
- * - "admin": Requires admin role + MFA (enforced by requireAdmin in route)
- *
- * Classification is by path prefix. More specific prefixes win.
- */
-const ROUTE_AUTH_CLASSIFICATION: Record<string, "public" | "customer" | "admin"> = {
-  // Public API routes
-  "/api/health": "public",
-  "/api/webhook": "public",
-  // Customers look up their own shipment from /track without an account, and
-  // the route itself only accepts a ShipIN number and returns a field-by-field
-  // projection. Classifying it "customer" made a signed-out visitor's first
-  // lookup 401, so the public tracking page could never show anything.
-  "/api/tracking": "public",
-
-  // Customer-authenticated routes (require valid user session)
-  "/api/profile": "customer",
-  "/api/requests": "customer",
-  "/api/paypal": "customer",
-  "/api/payment": "customer",
-  "/api/r2": "customer",
-  "/api/support": "customer",
-  "/api/user": "customer",
-  "/api/notifications": "customer",
-  "/api/addresses": "customer",
-  "/api/wallet": "customer",
-  "/api/auth": "customer",
-
-  // Admin routes (require admin role + MFA)
-  "/api/admin": "admin",
-};
-
-function classifyRoute(pathname: string): "public" | "customer" | "admin" | "unclassified" {
-  // Exact match first
-  if (ROUTE_AUTH_CLASSIFICATION[pathname]) {
-    return ROUTE_AUTH_CLASSIFICATION[pathname];
-  }
-  // Prefix match - longest prefix wins
-  let match: "public" | "customer" | "admin" | null = null;
-  let matchLength = -1;
-  for (const [prefix, classification] of Object.entries(ROUTE_AUTH_CLASSIFICATION)) {
-    if (pathname.startsWith(prefix) && prefix.length > matchLength) {
-      match = classification;
-      matchLength = prefix.length;
-    }
-  }
-  return match ?? "unclassified";
-}
-
-/**
- * Validate that all API routes under /api/ are classified.
- * Throws at startup if any route is unclassified.
- * Called from instrumentation.ts on server start.
- */
-export function validateRouteClassification(): void {
-  // This runs once at startup. In production, it ensures no route is missed.
-  // The actual check is done per-request below for flexibility.
-}
+// The classification table lives in `@/config/routeAuth` so the Node-only
+// startup validator (src/config/routeClassification.ts) can enumerate every
+// route under src/app/api and compare it against the same table this bundle
+// enforces per request. An unclassified route answers 500 here at runtime, so
+// that validator throws at boot instead of shipping the gap.
 
 /**
  * Routes that bypass middleware entirely.

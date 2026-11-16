@@ -54,6 +54,12 @@ jobs:
       - name: TypeScript check
         run: npm run typecheck
 
+      # A UTF-16 workflow file is invisible to GitHub: no run, no failure, no
+      # notification. expire-quotes-cron.yml sat that way, so the hourly job
+      # never ran at all. Encoding needs a machine, not a reviewer.
+      - name: Verify workflow files are UTF-8 YAML
+        run: npm run check:workflows
+
       # Parses every Firestore query with the TypeScript compiler and fails when
       # one needs a composite index that firestore.indexes.json does not declare.
       # The dashboard list once shipped without its index and every page load

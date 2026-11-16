@@ -26,7 +26,8 @@
     "check:compliance-tests": "npm run check:compliance-tests --workspace=@shipin/web",
     "check:money-globs": "npm run check:money-globs --workspace=@shipin/web",
     "check:authorized-domains": "npm run check:authorized-domains --workspace=@shipin/web",
-    "check:firestore-indexes": "npm run check:firestore-indexes --workspace=@shipin/web"
+    "check:firestore-indexes": "npm run check:firestore-indexes --workspace=@shipin/web",
+    "check:workflows": "node scripts/check-workflow-encoding.mjs"
   },
   "devDependencies": {
     "turbo": "^2.5.6"
