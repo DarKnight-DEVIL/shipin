@@ -2,9 +2,10 @@
  * `POST|GET /api/user/erase` — DPDP right to erasure (Sec 12).
  *
  * The cascade is destructive, so the tests assert that every user-scoped
- * collection is queued for deletion, that the profile is anonymised rather
- * than removed outright (legal/tax retention), and that a failure surfaces as
- * a 500 instead of a silent success.
+ * collection is queued for deletion, that the profile and the user's requests
+ * are anonymised rather than removed outright (legal/tax retention), that the
+ * Firebase Auth user is actually deleted, and that a failure surfaces as a 500
+ * instead of a silent success.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   getUserRightsRequests: vi.fn(),
   collection: vi.fn(),
   batch: vi.fn(),
+  deleteUser: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({ requireAuthWithProfile: mocks.auth }));
@@ -25,14 +27,20 @@ vi.mock('@/lib/compliance/rightsOps2', () => ({
 }));
 vi.mock('@/lib/firebaseAdmin', () => ({
   adminDb: { collection: mocks.collection, batch: mocks.batch },
+  adminAuth: { deleteUser: mocks.deleteUser },
 }));
 vi.mock('firebase-admin/firestore', () => ({
-  FieldValue: { serverTimestamp: () => '__TS__' },
+  FieldValue: {
+    serverTimestamp: () => '__TS__',
+    delete: () => '__DELETE__',
+  },
 }));
 
 import { GET, POST } from './route';
 
-function firestoreStub(docs: Array<{ id: string; data: () => unknown }> = []) {
+function firestoreStub(rawDocs: Array<{ id: string; data: () => unknown }> = []) {
+  // Real snapshots carry a `ref`; the handler deletes and updates through it.
+  const docs = rawDocs.map((doc) => ({ ref: { id: doc.id }, ...doc }));
   const q: Record<string, unknown> = {
     docs,
     empty: docs.length === 0,
@@ -52,14 +60,23 @@ function firestoreStub(docs: Array<{ id: string; data: () => unknown }> = []) {
 const request = () => new NextRequest('http://localhost/api/user/erase');
 
 let errorSpy: ReturnType<typeof vi.spyOn>;
-let batch: { delete: ReturnType<typeof vi.fn>; commit: ReturnType<typeof vi.fn> };
+let batch: {
+  delete: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+  commit: ReturnType<typeof vi.fn>;
+};
 
 beforeEach(() => {
   mocks.auth.mockReset().mockResolvedValue({ profile: { uid: 'user-1' } });
   mocks.logRightsRequest.mockReset().mockResolvedValue('erasure-1');
   mocks.getUserRightsRequests.mockReset().mockResolvedValue([]);
   mocks.collection.mockReset().mockImplementation(() => firestoreStub());
-  batch = { delete: vi.fn(), commit: vi.fn(async () => undefined) };
+  mocks.deleteUser.mockReset().mockResolvedValue(undefined);
+  batch = {
+    delete: vi.fn(),
+    update: vi.fn(),
+    commit: vi.fn(async () => undefined),
+  };
   mocks.batch.mockReset().mockReturnValue(batch);
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -117,8 +134,63 @@ describe('POST /api/user/erase', () => {
         photoURL: '',
         dateOfBirth: null,
         erasedAt: '__TS__',
+        // The real audit id, not the placeholder the handler used to write.
+        erasureRequestId: 'erasure-1',
       })
     );
+
+    // The rights-request document is closed, not left pending.
+    expect(users.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'rejected' })
+    );
+  });
+
+  it('keeps the audit request that is being served and deletes the other ones', async () => {
+    const rights = firestoreStub([
+      { id: 'erasure-1', data: () => ({}) },
+      { id: 'erasure-0', data: () => ({}) },
+    ]);
+    mocks.collection.mockImplementation((name: string) =>
+      name === 'rightsRequests' ? rights : firestoreStub()
+    );
+
+    await POST(request());
+
+    const deleted = batch.delete.mock.calls.map((call) => call[0].id);
+    expect(deleted).not.toContain('erasure-1');
+    expect(deleted).toContain('erasure-0');
+  });
+
+  it('anonymises the user\'s requests instead of leaving their PII queryable', async () => {
+    const requests = firestoreStub([{ id: 'req-1', data: () => ({}) }]);
+    mocks.collection.mockImplementation((name: string) =>
+      name === 'requests' ? requests : firestoreStub()
+    );
+
+    await POST(request());
+
+    expect(batch.update).toHaveBeenCalledWith(expect.objectContaining({ id: 'req-1' }), {
+      email: 'deleted@user.local',
+      customerName: 'Deleted User',
+      shippingAddress: '__DELETE__',
+      erasureRequestId: 'erasure-1',
+      erasedAt: '__TS__',
+    });
+  });
+
+  it('deletes the Firebase Auth user so the account cannot sign in again', async () => {
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.deleteUser).toHaveBeenCalledWith('user-1');
+  });
+
+  it('treats an already-deleted Auth user as success', async () => {
+    mocks.deleteUser.mockRejectedValue(
+      Object.assign(new Error('no user'), { code: 'auth/user-not-found' })
+    );
+
+    expect((await POST(request())).status).toBe(200);
   });
 
   it('returns 500 and does not claim success when the cascade fails', async () => {
@@ -136,6 +208,23 @@ describe('POST /api/user/erase', () => {
     expect(response.status).toBe(500);
     expect(body.code).toBe('ERASURE_FAILED');
     expect(batch.commit).not.toHaveBeenCalled();
+    // The Auth account must survive a failed cascade, or the user loses access
+    // to data that was never purged.
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when the Auth delete fails for any other reason', async () => {
+    mocks.deleteUser.mockRejectedValue(
+      Object.assign(new Error('revoked'), { code: 'auth/internal-error' })
+    );
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(500);
+    expect((await response.json()).code).toBe('ERASURE_FAILED');
+    // The profile documents are already anonymised at this point; the failure
+    // must still surface rather than reporting success.
+    expect(mocks.deleteUser).toHaveBeenCalledTimes(1);
   });
 });
 
