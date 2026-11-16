@@ -6,11 +6,18 @@ const mocks = vi.hoisted(() => ({
   getR2Client: vi.fn(),
   getR2BucketName: vi.fn(),
   command: vi.fn(),
+  authorize: vi.fn(),
 }));
 
 vi.mock('@/lib/firebaseAdmin', () => ({
   adminAuth: { verifyIdToken: mocks.verifyIdToken },
   adminDb: {},
+}));
+// Ownership rules are covered in lib/r2Access.test.ts; this file asserts the
+// route consults them before writing anything.
+vi.mock('@/lib/r2Access', () => ({
+  authorizeInspectionAccess: mocks.authorize,
+  parseInspectionKey: () => 'req-1',
 }));
 vi.mock('@/lib/r2', () => ({
   getR2Client: mocks.getR2Client,
@@ -58,6 +65,7 @@ beforeEach(() => {
   mocks.getR2Client.mockReset().mockReturnValue({ send: mocks.send });
   mocks.getR2BucketName.mockReset().mockReturnValue('shipin-bucket');
   mocks.command.mockReset();
+  mocks.authorize.mockReset().mockResolvedValue(null);
   vi.stubGlobal('crypto', { randomUUID: () => 'uuid-1' });
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -147,6 +155,30 @@ describe('POST /api/r2/upload', () => {
     });
     expect(mocks.send).toHaveBeenCalled();
     expect(body.success).toBe(true);
+  });
+
+  it('checks ownership of the target request before uploading', async () => {
+    const file = new File([new Uint8Array([1])], 'photo.jpg', { type: 'image/jpeg' });
+
+    await POST(uploadRequest({ token: 'good', file, requestId: 'req/1!' }));
+
+    // The sanitised id is what the object key uses, so it is what must be
+    // authorized.
+    expect(mocks.authorize).toHaveBeenCalledWith('admin-1', 'req1');
+  });
+
+  it('refuses to upload into a request the caller does not own', async () => {
+    mocks.authorize.mockResolvedValue({
+      status: 404,
+      error: 'Request not found.',
+      code: 'REQUEST_NOT_FOUND',
+    });
+
+    const response = await POST(uploadRequest({ token: 'good' }));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ code: 'REQUEST_NOT_FOUND' });
+    expect(mocks.send).not.toHaveBeenCalled();
   });
 
   it('reports an upload failure without leaking details', async () => {

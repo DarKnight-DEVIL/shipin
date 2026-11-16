@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getR2Client: vi.fn(),
   getR2BucketName: vi.fn(),
   command: vi.fn(),
+  authorize: vi.fn(),
 }));
 
 vi.mock('@aws-sdk/client-s3', () => ({
@@ -27,13 +28,20 @@ vi.mock('@/lib/firebaseAdmin', () => ({
   adminAuth: { verifyIdToken: mocks.verifyIdToken },
 }));
 
+// The ownership rules themselves live in lib/r2Access.test.ts; here only the
+// wiring matters, so the decision is stubbed and the key parser stays real.
+vi.mock('@/lib/r2Access', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/r2Access')>();
+  return { ...actual, authorizeInspectionAccess: mocks.authorize };
+});
+
 import { POST } from './route';
 
 const request = (options: { token?: string; body?: unknown } = {}) =>
   new NextRequest('http://localhost/api/r2/view', {
     method: 'POST',
     headers: options.token === undefined ? {} : { authorization: `Bearer ${options.token}` },
-    body: JSON.stringify(options.body ?? { key: 'inspection/box.jpg' }),
+    body: JSON.stringify(options.body ?? { key: 'inspection/req-1/box.jpg' }),
   });
 
 beforeEach(() => {
@@ -42,6 +50,7 @@ beforeEach(() => {
   mocks.getR2Client.mockReset().mockReturnValue({ client: true });
   mocks.getR2BucketName.mockReset().mockReturnValue('shipin-bucket');
   mocks.command.mockReset();
+  mocks.authorize.mockReset().mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -89,12 +98,39 @@ describe('POST /api/r2/view', () => {
     expect(mocks.getSignedUrl).not.toHaveBeenCalled();
   });
 
+  it('refuses a key whose request belongs to somebody else', async () => {
+    mocks.authorize.mockResolvedValue({
+      status: 404,
+      error: 'Request not found.',
+      code: 'REQUEST_NOT_FOUND',
+    });
+
+    const response = await POST(request({ token: 'good' }));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ code: 'REQUEST_NOT_FOUND' });
+    // No signed URL may be minted for a denied key.
+    expect(mocks.getSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it('rejects a key without a request segment', async () => {
+    const response = await POST(
+      request({ token: 'good', body: { key: 'inspection/box.jpg' } })
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.authorize).not.toHaveBeenCalled();
+    expect(mocks.getSignedUrl).not.toHaveBeenCalled();
+  });
+
   it('returns a short-lived signed url', async () => {
     const response = await POST(request({ token: 'good' }));
 
+    // The key's request id is what authorization is keyed on.
+    expect(mocks.authorize).toHaveBeenCalledWith('user-1', 'req-1');
     expect(mocks.command).toHaveBeenCalledWith({
       Bucket: 'shipin-bucket',
-      Key: 'inspection/box.jpg',
+      Key: 'inspection/req-1/box.jpg',
     });
     expect(mocks.getSignedUrl).toHaveBeenCalledWith({ client: true }, expect.anything(), {
       expiresIn: 900,

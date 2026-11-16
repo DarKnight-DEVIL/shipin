@@ -18,6 +18,11 @@ import {
   adminAuth,
 } from "@/lib/firebaseAdmin";
 
+import {
+  authorizeInspectionAccess,
+  parseInspectionKey,
+} from "@/lib/r2Access";
+
 export const runtime = "nodejs";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
@@ -49,10 +54,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const idToken =
     authorization.slice(7);
 
+  let uid: string;
+
   try {
-    await adminAuth.verifyIdToken(
-      idToken
-    );
+    const decoded =
+      await adminAuth.verifyIdToken(
+        idToken
+      );
+
+    uid = decoded.uid;
   } catch {
     return NextResponse.json(
       {
@@ -122,6 +132,33 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       Key:
         key,
     });
+
+  /*
+   * Ownership: the key identifies a request, and only that request's customer
+   * or an admin may read its photos. Being signed in was previously enough to
+   * turn any leaked key into a URL.
+   */
+  const keyRequestId = parseInspectionKey(key);
+
+  if (!keyRequestId) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Invalid inspection photo path.",
+        code: "INVALID_REQUEST_BODY",
+      },
+      { status: 400, headers: NO_STORE }
+    );
+  }
+
+  const denial = await authorizeInspectionAccess(uid, keyRequestId);
+
+  if (denial) {
+    return NextResponse.json(
+      { success: false, error: denial.error, code: denial.code },
+      { status: denial.status, headers: NO_STORE }
+    );
+  }
 
   /*
    * Temporary private URL.

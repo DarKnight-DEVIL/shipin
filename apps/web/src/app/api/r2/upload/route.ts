@@ -12,6 +12,8 @@ import {
 
 import { adminAuth } from "@/lib/firebaseAdmin";
 
+import { authorizeInspectionAccess } from "@/lib/r2Access";
+
 export const runtime = "nodejs";
 
 const MAX_FILE_SIZE =
@@ -50,10 +52,15 @@ export const POST = withErrorHandler(async (request: Request) => {
     const idToken =
       authorization.slice(7);
 
+    let uid: string;
+
     try {
-      await adminAuth.verifyIdToken(
-        idToken
-      );
+      const decoded =
+        await adminAuth.verifyIdToken(
+          idToken
+        );
+
+      uid = decoded.uid;
     } catch {
       return NextResponse.json(
         {
@@ -144,6 +151,23 @@ export const POST = withErrorHandler(async (request: Request) => {
         /[^a-zA-Z0-9_-]/g,
         ""
       );
+
+    /*
+     * Ownership: without this, any signed-in account could write objects into
+     * another customer's request folder — warehouse evidence is shown to that
+     * customer and to admins.
+     */
+    const denial = await authorizeInspectionAccess(
+      uid,
+      safeRequestId
+    );
+
+    if (denial) {
+      return NextResponse.json(
+        { success: false, error: denial.error, code: denial.code },
+        { status: denial.status }
+      );
+    }
 
     const extension =
       file.type === "image/png"
