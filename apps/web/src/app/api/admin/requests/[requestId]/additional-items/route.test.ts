@@ -90,3 +90,14 @@ describe('PATCH /api/admin/requests/[requestId]/additional-items', () => {
     expect(console.error).toHaveBeenCalled();
   });
 });
+
+  it('requires an administrator when requireAdmin rejects', async () => {
+    mocks.requireAdmin.mockRejectedValue(new Error('Administrator access required.'));
+    const response = await PATCH(request(), context());
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: 'Administrator access required.',
+    });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });

@@ -150,3 +150,14 @@ describe('PATCH /api/admin/requests/[requestId]/purchase', () => {
     expect(response.status).toBe(404);
   });
 });
+
+  it('requires an administrator (rejects when requireAdmin throws)', async () => {
+    mocks.requireAdmin.mockRejectedValue(new Error('ADMIN_ACCESS_REQUIRED'));
+    const response = await PATCH(patch(purchase()), context());
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'INTERNAL_ERROR',
+      error: 'ADMIN_ACCESS_REQUIRED',
+    });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
