@@ -460,11 +460,13 @@ jobs:
         # The old summary block here read `playwright-report/report.json`, which
         # the config never writes (reporter: 'html'), so it only ever produced an
         # empty code fence. Playwright's own failure output is the report.
-        if: env.E2E_STAGING_URL == ''
-        run: |
-          npx --yes firebase-tools@15.36.0 --config firebase.json \
-            emulators:exec --only firestore --project shipin-e2e \
-            "npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/hydration.spec.ts apps/web/playwright-test/tests/smoke.spec.ts"
+        #
+        # TEMPORARY, this branch only: this repo has E2E_STAGING_URL set, so the
+        # normal guard skipped the local recipe and the Linux proof never ran.
+        # Runs the documented one-command recipe itself (java probe, build,
+        # shell-quoted `emulators:exec`), not a copy of its command line.
+        if: always()
+        run: npm run test:e2e:local
         env:
           # The server started here validates the same startup variables the
           # build did; without them Playwright times out waiting for it.
