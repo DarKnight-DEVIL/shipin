@@ -137,34 +137,22 @@ const PRODUCTION_REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Shared rate-limit store credentials.
+ * Shared rate-limit store credentials: required in production, because
+ * without them every instance limits on its own and the proxy fails open — a
+ * misconfigured deploy would serve traffic with abuse protection off.
  *
- * Required in production. Without them the proxy cannot limit anything
- * globally: every serverless instance keeps its own counters, and the
- * `unavailable` branch fails open, so a deployment that forgot the variables
- * runs with throttling effectively off — silently, and only visible to whoever
- * reads /api/health. Failing at startup is the point: a misconfigured deploy
- * must not serve traffic while its abuse protection is absent.
- *
- * The one exception is the local/CI E2E suite, which runs a PRODUCTION build
- * against a throwaway database and must not touch the real Upstash counters
- * (`scripts/e2e-local.mjs` and the `e2e` CI job). It opts out explicitly with
- * {@link RATE_LIMIT_STORE_OPTIONAL_ENV}; nothing else sets it, and unset is
- * the required path.
+ * Only the local/CI E2E suite (a production build against a throwaway
+ * database) may opt out, via {@link RATE_LIMIT_STORE_OPTIONAL_ENV}.
  */
 const RATE_LIMIT_STORE_SERVER_ENV = [
   'UPSTASH_REDIS_REST_URL',
   'UPSTASH_REDIS_REST_TOKEN',
 ] as const;
 
-/** Set to the exact string "1" to allow a production build with no rate-limit store (E2E only). */
+/** Set to exactly "1" to allow booting production with no rate-limit store (E2E only). */
 export const RATE_LIMIT_STORE_OPTIONAL_ENV = 'RATE_LIMIT_STORE_OPTIONAL';
 
-/**
- * True only when the E2E opt-out is set explicitly. Any other value —
- * including "true" — keeps the store required, so a typo cannot quietly
- * disable the check.
- */
+/** Any other value, including "true", keeps the store required. */
 export function isRateLimitStoreOptional(): boolean {
   return process.env[RATE_LIMIT_STORE_OPTIONAL_ENV] === '1';
 }
@@ -218,7 +206,7 @@ export function validateProductionRequiredEnv(): void {
     const optOutHint = missing.some((key) =>
       (RATE_LIMIT_STORE_SERVER_ENV as readonly string[]).includes(key)
     )
-      ? ` Rate limiting has no shared store, so the deployment would run with per-instance limits and fail open. Set both variables; only the local/CI E2E suite may set ${RATE_LIMIT_STORE_OPTIONAL_ENV}=1 to opt out.`
+      ? ` Rate limiting would be per-instance and fail open; set both, or set ${RATE_LIMIT_STORE_OPTIONAL_ENV}=1 for the E2E suite only.`
       : '';
 
     throw new Error(

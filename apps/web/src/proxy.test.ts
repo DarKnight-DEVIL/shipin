@@ -179,9 +179,9 @@ describe('proxy: infrastructure failures fall through', () => {
     expect(response.headers.get('content-type') ?? '').not.toContain(
       'application/json'
     );
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('rate-limit store unavailable')
-    );
+    // Degradation is reported once at startup and through /api/health, not per
+    // request: otherwise every request in this state adds a log line.
+    expect(warn).not.toHaveBeenCalled();
 
     warn.mockRestore();
   });

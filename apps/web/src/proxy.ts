@@ -126,14 +126,12 @@ export default async function proxy(request: NextRequest) {
   const limitResult = await limiter.record(request);
 
   // A rejection caused by a missing/unreachable shared store is an
-  // infrastructure problem, not an abusive client. Serve the request and let
-  // /api/health report the deployment as degraded.
-  if (isRateLimited(limitResult) && limitResult.unavailable) {
-    console.warn(
-      `[proxy] rate-limit store unavailable for ${pathname}; allowing request.`
-    );
-  }
-
+  // infrastructure problem, not an abusive client. Serve the request.
+  //
+  // Nothing is logged here on purpose: with no store configured this is every
+  // request (the E2E suite alone produced 111 of these), and with a store that
+  // is down the limiter's own error counter, the startup warning and
+  // /api/health already carry the signal.
   if (isRateLimited(limitResult) && !limitResult.unavailable) {
     const response = NextResponse.json(
       {

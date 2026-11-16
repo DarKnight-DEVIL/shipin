@@ -117,18 +117,12 @@ const env = {
   // Also baked into the browser bundle, so the client SDK talks to the
   // emulators instead of the project in .env.local.
   NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST: FIRESTORE_EMULATOR,
-  // `.env.local` carries real Upstash credentials, and the suite arrives from a
-  // single IP (127.0.0.1) well inside one 60s window — so the app's own limiter
-  // answered 429 ("RATE_LIMIT_ERROR") partway through a run, and a second run in
-  // the same minute inherited a full bucket. Blanked here (not deleted: Next
-  // will not override a key that is present) so the local run behaves like CI,
-  // where no store is configured.
+  // `.env.local` holds real Upstash credentials, and the whole suite arrives
+  // from one IP inside a 60s window: the app's limiter answered 429 partway
+  // through a run. Blanked (not deleted — Next will not override a present
+  // key) and opted out of the startup check, which exists for real deploys.
   UPSTASH_REDIS_REST_URL: "",
   UPSTASH_REDIS_REST_TOKEN: "",
-  // A production build with no store refuses to boot, because failing open is
-  // invisible in a real deployment. This runner is the one caller allowed past
-  // that check: throwaway database, no shared counters, single IP. Never set
-  // this anywhere else.
   RATE_LIMIT_STORE_OPTIONAL: "1",
 };
 
