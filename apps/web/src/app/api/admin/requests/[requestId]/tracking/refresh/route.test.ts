@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
@@ -52,6 +52,10 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe('POST /api/admin/requests/[requestId]/tracking/refresh', () => {
   it('returns the auth response for a non-admin caller', async () => {
     mocks.requireAdmin.mockResolvedValue(
@@ -71,6 +75,17 @@ describe('POST /api/admin/requests/[requestId]/tracking/refresh', () => {
     expect(mocks.resolveTracking).toHaveBeenCalledWith('SHP-2026-000001', {
       force: true,
     });
+  });
+
+  it('requires an administrator (rejects when requireAdmin throws)', async () => {
+    mocks.requireAdmin.mockRejectedValue(new Error('ADMIN_ACCESS_REQUIRED'));
+    const response = await POST(post(), context());
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      error: 'ADMIN_ACCESS_REQUIRED',
+    });
+    expect(mocks.resolveTracking).not.toHaveBeenCalled();
   });
 
   it('returns 404 for an unknown request', async () => {

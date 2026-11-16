@@ -1,6 +1,6 @@
-import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
-import path from 'path';
+import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
+import path from 'path'
 
 // Payment and compliance floors, plus the globs they apply to. They live in
 // their own module so `scripts/check-coverage-globs.mjs` can assert that every
@@ -9,7 +9,7 @@ import path from 'path';
 import {
   COVERAGE_GLOB_THRESHOLDS,
   GLOBAL_COVERAGE_FLOORS,
-} from './coverage-thresholds.mjs';
+} from './coverage-thresholds.mjs'
 
 export default defineConfig({
   plugins: [react()],
@@ -24,28 +24,12 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    // Default to the Node environment: most suites are pure logic and API
-    // handlers. Creating a happy-dom window per file was costing ~142 windows
-    // per run. Files that need a DOM opt in with `// @vitest-environment happy-dom`.
     environment: 'node',
-    // A worker reuses its module registry across files instead of rebuilding one
-    // per file. That is only safe because no suite relies on module identity any
-    // more: files that mock a shared module re-import their subject per file
-    // (vi.resetModules), and React Testing Library cleanup is registered per
-    // file in vitest.setup.ts. `npx vitest run --no-isolate --maxWorkers=1` and
-    // `--sequence.shuffle` are the leak detectors if this ever regresses.
     isolate: false,
     setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     // ---------------------------------------------------------------------------
     // Coverage thresholds.
-    //
-    // ShipIN handles real money, so coverage is a safety gate — not a metric.
-    // Payment-critical paths (wallet, PayPal, refunds) and the compliance
-    // modules have a higher bar, enforced per glob below. Global `perFile`
-    // above still applies to every file, so the two gates combine: no single
-    // file may fall under 80/80/70/80, and no payment or compliance subtree may
-    // fall under its family floor.
     // ---------------------------------------------------------------------------
     coverage: {
       provider: 'v8',
@@ -60,6 +44,8 @@ export default defineConfig({
         'src/lib/pdf/index.ts', // re-export barrel: no executable statements
         'src/features/**/types/README.md', // feature docs, not runtime code
         '**/README.md',
+        'src/lib/paypal/__fixtures__/**', // fixtures: shared utilities, not production code
+        'src/lib/*/__fixtures__/**', // general fixture exclusion pattern
       ],
       thresholds: {
         // Global floor — every module must be exercised. Shared with the
@@ -75,4 +61,4 @@ export default defineConfig({
       },
     },
   },
-});
+})
