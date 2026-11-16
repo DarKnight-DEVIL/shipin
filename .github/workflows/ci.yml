@@ -451,32 +451,31 @@ jobs:
       # Emits the run results to the job summary even on failure so the public
       # channel below gives detail when the HTML logs are gated behind GitHub
       # sign-in.
-      - name: Run hydration contract test
-        # Runs inside `emulators:exec`: the Firestore-backed routes need a
-        # datastore, CI has no service account, and a background `&` emulator
-        # is killed when its step ends.
+      - name: Run local E2E specs (production build, Firestore emulator)
+        # `emulators:exec` owns the emulator for this step: the Firestore-backed
+        # routes need a datastore, this job has no service account, and a
+        # background `&` emulator is killed when its step ends. One boot serves
+        # both spec files.
+        #
+        # The old summary block here read `playwright-report/report.json`, which
+        # the config never writes (reporter: 'html'), so it only ever produced an
+        # empty code fence. Playwright's own failure output is the report.
         if: env.E2E_STAGING_URL == ''
         run: |
-          set +e
           npx --yes firebase-tools@15.36.0 --config firebase.json \
             emulators:exec --only firestore --project shipin-e2e \
-            "npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/hydration.spec.ts"
-          EXIT=$?
-          echo "### Playwright hydration contract test results" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          npx playwright show-report apps/web/playwright-report/report.json --reporter=json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          exit $EXIT
+            "npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/hydration.spec.ts apps/web/playwright-test/tests/smoke.spec.ts"
         env:
           # The server started here validates the same startup variables the
           # build did; without them Playwright times out waiting for it.
           NODE_ENV: "production"
           CI: "1"
           BASE_URL: "http://localhost:3000"
-          # `-p 3000` is required: with `output: "standalone"` in next.config.ts,
-          # a bare `next start` binds an arbitrary free port, so Playwright waits
-          # on http://localhost:3000 until it times out.
-          PLAYWRIGHT_WEBSERVER_COMMAND: "npm run start --workspace=@shipin/web -- -p 3000"
+          # Playwright runs this from the config's directory (apps/web).
+          # `-p 3000` is required: with `output: "standalone"`, a bare
+          # `next start` binds an arbitrary port and the health check waits on
+          # 3000 until it times out.
+          PLAYWRIGHT_WEBSERVER_COMMAND: "npm run start -- -p 3000"
 
       # The write path needs a service account; without one it would fail on a
       # missing variable instead of skipping, and a failing step takes the
@@ -526,26 +525,6 @@ jobs:
         env:
           BASE_URL: ${{ env.E2E_STAGING_URL }}
           PLAYWRIGHT_MANAGE_WEBSERVER: "0"
-
-      - name: Run Playwright smoke tests
-        # Local production build only. This spec asserts a dev-server contract
-        # — a single `h1` on the landing page and a client-side redirect off
-        # /dashboard — and the deployed origin satisfies neither today, so
-        # pointing it at staging tests the app, not the build. Staging is
-        # covered by the signed-in and refund specs above.
-        if: env.E2E_STAGING_URL == ''
-        run: |
-          npx --yes firebase-tools@15.36.0 --config firebase.json \
-            emulators:exec --only firestore --project shipin-e2e \
-            "npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/smoke.spec.ts"
-        env:
-          CI: "1"
-          BASE_URL: ${{ env.E2E_STAGING_URL || 'http://localhost:3000' }}
-          # When BASE_URL is local, Playwright starts this command and waits
-          # for it. Serves the production build made above; the explicit port is
-          # required because standalone output makes a bare `next start` choose
-          # its own port, leaving the 3000 health check to time out.
-          PLAYWRIGHT_WEBSERVER_COMMAND: "npm run start --workspace=@shipin/web -- -p 3000"
 
       # Sweeps fixtures left by this and earlier runs. `always()` so a failed
       # smoke run does not litter staging, and `--apply` because the script is

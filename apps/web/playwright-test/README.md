@@ -11,9 +11,11 @@ npm run test:e2e:local
 From the repo root (or `apps/web`). It builds, starts the Firestore emulator, serves the build on port 3000, and runs `smoke.spec.ts`, `hydration.spec.ts` and `sitemap-check.spec.ts`. Extra arguments go to `playwright test`:
 
 ```bash
-npm run test:e2e:local -- smoke.spec.ts
+npm run test:e2e:local -- tests/smoke.spec.ts
 npm run test:e2e:local -- -g PayPal
 ```
+
+Extra arguments are pasted into one shell-quoted command, so ones containing double quotes, `$` or backticks are rejected with an explanation instead of being mangled. `playwright test` treats each positional argument as a **path regex** — spell out `tests/<file>.spec.ts`, because a bare `smoke.spec.ts` also matches `signed-in-smoke.spec.ts`.
 
 No Upstash database, no staging credentials and no Firebase service account are involved.
 
@@ -39,14 +41,17 @@ The runner pins `NEXT_PUBLIC_FIREBASE_PROJECT_ID=shipin-e2e` for this mode. The 
 
 ## Prerequisites
 
-1. **A JDK, 11 or newer.** The Firestore emulator is a Java process. If `java -version` works you are done; if it does not, either restart the shell so PATH picks up the install, or export it for the run:
+1. **A JDK, 11 or newer.** The Firestore emulator is a Java process. If `java -version` works you are done; if it does not, install one and make sure `bin` is on PATH:
 
    ```bash
-   export JAVA_HOME="/c/Program Files/Java/jdk-27.0.1.0.3"
+   # Debian/Ubuntu        macOS
+   sudo apt-get install default-jre-headless   # brew install openjdk
+
+   export JAVA_HOME=/usr/lib/jvm/<jdk>          # or the Windows path below
    export PATH="$JAVA_HOME/bin:$PATH"
    ```
 
-   The runner checks this first and prints exactly this hint, because the raw emulator failure (`Could not spawn 'java -version'`) does not say what to fix.
+   Windows Git Bash: `export JAVA_HOME="/c/Program Files/Java/jdk-27"`. The runner checks this first and prints the platform-appropriate hint, because the raw emulator failure (`Could not spawn 'java -version'`) does not say what to fix. CI needs nothing here — `ubuntu-latest` ships a JDK.
 
 2. **Playwright's Chromium.** `npx playwright install chromium` once per machine (`--with-deps` too on Linux).
 

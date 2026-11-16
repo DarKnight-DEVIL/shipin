@@ -15,10 +15,10 @@
  *     terminal or CI step).
  *   - Playwright must serve the PRODUCTION build, so the web-server command has
  *     to be overridden per run; setting that inline is not portable across
- *     shells (Windows `cmd` vs bash).
+ *     shells.
  *   - The emulator is a Java process. When `java` is missing, the failure
  *     arrives as an opaque "Could not spawn `java -version`", so this checks
- *     first and prints the fix.
+ *     first and says what to install.
  *
  * `--signed-in` also starts the Auth emulator, seeds an admin account
  * (`scripts/e2e/seed-auth-user.mjs`) and runs signed-in-smoke.spec.ts, so the
@@ -34,11 +34,17 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const isWindows = process.platform === "win32";
 
 /**
- * Commands run as single shell strings, not argv arrays: `emulators:exec` takes
- * its script as one quoted argument, and a Windows argv array is re-quoted in a
- * way the CLI splits back into "too many arguments".
+ * Run one command line through the platform shell (`/bin/sh -c` on POSIX,
+ * `cmd.exe /c` on Windows).
+ *
+ * A single string, not an argv array: `emulators:exec` takes its script as one
+ * quoted argument, and passing that through an argv array makes the CLI split
+ * it back into "too many arguments". Quoting here is limited to that one
+ * double-quoted script, so an argument containing `"` is rejected below rather
+ * than silently mangling the command.
  */
 function run(command, env) {
   const result = spawnSync(command, {
@@ -51,28 +57,50 @@ function run(command, env) {
   return result.status ?? 1;
 }
 
-// No shell for the probe: redirect syntax is not portable (`/dev/null` is not
-// a cmd.exe path), and an `.exe` on PATH spawns directly.
-const javaPresent = spawnSync("java", ["-version"], { stdio: "ignore" }).status === 0;
+const signedIn = process.argv.includes("--signed-in");
+const extraArgs = process.argv.slice(2).filter((arg) => arg !== "--signed-in");
 
-if (!javaPresent) {
+const quotedArg = extraArgs.find((arg) => arg.includes('"') || arg.includes("$"));
+if (quotedArg) {
   console.error(
-    [
-      "The Firestore emulator is a Java process and `java` is not on PATH.",
-      "",
-      "Install a JDK (11 or newer), then either restart the shell so PATH picks",
-      "it up or point JAVA_HOME at it for this run:",
-      "",
-      '  export JAVA_HOME="/c/Program Files/Java/jdk-27.0.1.0.3"',
-      '  export PATH="$JAVA_HOME/bin:$PATH"',
-      "",
-    ].join("\n")
+    `Passing "${quotedArg}" to Playwright through this runner is not supported: ` +
+      "the argument is embedded in one shell-quoted command, so double quotes, " +
+      "dollar signs and backticks cannot be escaped reliably.\n" +
+      "Run `npx playwright test` directly, with the server already running, if you need them."
   );
   process.exit(1);
 }
 
-const signedIn = process.argv.includes("--signed-in");
-const extraArgs = process.argv.slice(2).filter((arg) => arg !== "--signed-in");
+// Direct spawn (no shell): `java -version` writes to stderr, and shell redirect
+// syntax is not portable between /bin/sh and cmd.exe.
+const java = spawnSync("java", ["-version"], { stdio: "ignore" });
+
+if (java.error?.code === "ENOENT" || (java.status ?? 1) !== 0) {
+  console.error(
+    [
+      java.error?.code === "ENOENT"
+        ? "The Firestore emulator is a Java process and `java` is not on PATH."
+        : "`java -version` failed, so the Firestore emulator cannot start (needs a working JDK 11+).",
+      "",
+      "Install a JDK 11 or newer, then restart the shell so PATH picks it up:",
+      "",
+      ...(isWindows
+        ? [
+            '  export JAVA_HOME="/c/Program Files/Java/jdk-27"',
+            '  export PATH="$JAVA_HOME/bin:$PATH"',
+          ]
+        : [
+            "  # Debian/Ubuntu: sudo apt-get install default-jre-headless",
+            "  # macOS:         brew install openjdk",
+            "  export JAVA_HOME=/usr/lib/jvm/<jdk>",
+            '  export PATH="$JAVA_HOME/bin:$PATH"',
+          ]),
+      "",
+      "CI does not need this: ubuntu-latest images ship a JDK.",
+    ].join("\n")
+  );
+  process.exit(1);
+}
 
 const FIRESTORE_EMULATOR = "127.0.0.1:8080";
 const AUTH_EMULATOR = "127.0.0.1:9099";
@@ -97,8 +125,8 @@ if (signedIn) {
     NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: AUTH_EMULATOR,
     // The emulators namespace users and documents by project id, and the
     // seeder writes under "shipin-e2e". Without pinning the same id here the
-    // browser signs in against a namespace that has no seeded account ("Unable
-    // to sign in") even though both sides point at the same emulator.
+    // browser signs in against a namespace with no seeded account ("Unable to
+    // sign in") even though both sides point at the same emulator.
     NEXT_PUBLIC_FIREBASE_PROJECT_ID: "shipin-e2e",
     FIREBASE_ADMIN_PROJECT_ID: "shipin-e2e",
     // The spec and the seeder share these; the seeder would create the account
@@ -115,9 +143,11 @@ const specs = signedIn
   ? "tests/signed-in-smoke.spec.ts"
   : "tests/smoke.spec.ts tests/hydration.spec.ts tests/sitemap-check.spec.ts";
 
-const playwright = `npx playwright test --config=playwright.config.ts ${specs}${
-  extraArgs.length > 0 ? ` ${extraArgs.join(" ")}` : ""
-}`;
+const playwright = [
+  "npx playwright test --config=playwright.config.ts",
+  specs,
+  ...extraArgs,
+].join(" ");
 
 // The seeder runs in the same `emulators:exec` script so the Auth emulator is
 // already listening, and its users survive only for this run.
