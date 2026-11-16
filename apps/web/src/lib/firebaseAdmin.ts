@@ -25,6 +25,18 @@ function getAdminApp(): App {
   const projectId = serverEnv.FIREBASE_ADMIN_PROJECT_ID;
   const clientEmail = serverEnv.FIREBASE_ADMIN_CLIENT_EMAIL;
 
+  // Emulator mode. The Firestore/Auth emulators verify no credentials, so a
+  // service account is neither needed nor available to a local E2E run; the
+  // emulator answers every request from a scratch database. These variables are
+  // never set on a deployment, so production still requires the trio below.
+  const emulatorHost =
+    process.env.FIRESTORE_EMULATOR_HOST?.trim() ||
+    process.env.FIREBASE_AUTH_EMULATOR_HOST?.trim();
+
+  if (emulatorHost) {
+    return initializeApp({ projectId: projectId || "demo-shipin" });
+  }
+
   if (!projectId || !clientEmail || !privateKey) {
     // Must be a ShipINError: `toShipINError` only maps Error instances and
     // would turn this into a generic INTERNAL_ERROR, hiding the real cause.

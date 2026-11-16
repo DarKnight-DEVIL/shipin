@@ -217,46 +217,45 @@ describe('createSharedRateLimiter with Redis configured', () => {
 });
 
 describe('reportRateLimitStoreStatus', () => {
-  it('throws in production when the shared store is missing (fail-fast)', () => {
+  it('warns but keeps the server up in production when the shared store is missing', () => {
     state.isProduction = true;
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    // In production, missing Redis is a hard failure - fail fast at startup.
-    expect(() => reportRateLimitStoreStatus()).toThrow(
-      '[RateLimiter] UPSTASH_REDIS_REST_URL and/or UPSTASH_REDIS_REST_TOKEN are not set in production'
-    );
-    expect(errorSpy).not.toHaveBeenCalled(); // No console.error, the error is thrown
+    // Boot must survive this: the proxy fails open and /api/health reports
+    // `degraded`, so a missing store costs global limits, not the deployment.
+    expect(reportRateLimitStoreStatus()).toEqual({ configured: false, degraded: true });
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Rate limits are per-instance only'));
 
-    errorSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
-  it('throws in production when the Redis URL is not https', () => {
+  it('is degraded in production when the Redis URL is not https', () => {
     state.isProduction = true;
     state.url = 'http://insecure.example';
     state.token = 'tok';
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    expect(() => reportRateLimitStoreStatus()).toThrow(
-      '[RateLimiter] UPSTASH_REDIS_REST_URL and/or UPSTASH_REDIS_REST_TOKEN are not set in production'
-    );
+    expect(reportRateLimitStoreStatus()).toEqual({ configured: false, degraded: true });
   });
 
-  it('throws in production when the token is missing', () => {
+  it('is degraded in production when the token is missing', () => {
     state.isProduction = true;
     state.url = 'https://t.upstash.io';
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    expect(() => reportRateLimitStoreStatus()).toThrow(
-      '[RateLimiter] UPSTASH_REDIS_REST_URL and/or UPSTASH_REDIS_REST_TOKEN are not set in production'
-    );
+    expect(reportRateLimitStoreStatus()).toEqual({ configured: false, degraded: true });
   });
 
   it('reports configured and not degraded for a complete production configuration', () => {
     state.isProduction = true;
     configureRedis();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     expect(reportRateLimitStoreStatus()).toEqual({
       configured: true,
       degraded: false,
     });
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 
   it('is not degraded outside production (dev/test falls back to in-memory)', () => {

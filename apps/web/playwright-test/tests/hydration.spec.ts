@@ -153,6 +153,16 @@ test.describe('Production hydration', () => {
   // www.paypal.com live and www.sandbox.paypal.com in sandbox mode; when the
   // sandbox host was missing, the buttons silently never rendered.
   test('/wallet/topup loads the PayPal SDK without CSP refusals', async ({ page }) => {
+    // The SDK's script URL is built from the client id, so a placeholder value
+    // means `window.paypal` can never appear and the assertion would fail for a
+    // configuration reason rather than a policy one. Run it where a real
+    // (sandbox) id is configured.
+    const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID ?? '';
+    test.skip(
+      clientId === '' || clientId === 'test',
+      'Needs a real NEXT_PUBLIC_PAYPAL_CLIENT_ID (sandbox) to load the PayPal SDK.'
+    );
+
     const violations = watchForCspViolations(page);
 
     await page.goto('/wallet/topup', { waitUntil: 'networkidle' });

@@ -45,15 +45,22 @@ test.describe('Security headers', () => {
 });
 
 test.describe('Auth flows', () => {
-  test('protected dashboard redirects to login when unauthenticated', async ({ page }) => {
+  test('the signed-out dashboard shows no customer data', async ({ page }) => {
+    // The platform shell is prerendered and renders signed out on purpose (see
+    // hydration.spec.ts). What must never leak is data: every customer API is
+    // token-protected, so the empty state is the honest one. This previously
+    // asserted a /login redirect the app never performed.
     await page.goto('/dashboard');
-    // The redirect runs once Firebase reports "signed out", so it lands after
-    // hydration: sample the URL only after it moves, or this reads /dashboard
-    // and calls a working redirect a failure.
-    await page.waitForURL(
-      (url) => url.pathname === '/login' || url.pathname === '/verify-email',
-      { timeout: 15_000 }
-    );
+
+    await expect(page.getByText('No requests yet')).toBeVisible({ timeout: 20_000 });
+    expect(new URL(page.url()).pathname).toBe('/dashboard');
+  });
+
+  test('protected customer APIs reject an anonymous request', async ({ request }) => {
+    // Data protection is the real boundary, not the shell.
+    const res = await request.get('/api/requests');
+
+    expect(res.status()).toBe(401);
   });
 
   test('login page renders without crashing', async ({ page }) => {

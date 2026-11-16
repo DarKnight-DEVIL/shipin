@@ -9,13 +9,18 @@
  *
  * Behavior:
  *   - If UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_TOKEN are not set in production,
- *     the process THROWS at startup (fail-fast). Per-instance in-memory limits
- *     cannot enforce global limits across serverless regions.
- *   - In development/test, falls back to in-memory limiter when Redis not configured.
- *   - If Redis is configured but a call fails (network error, timeout),
- *     the limiter FAILS CLOSED: the request is rejected with a 429.
- *     This prevents an attacker from silently bypassing limits during
- *     a Redis outage. See {@link reportRedisError} for monitoring hooks.
+ *     the deployment is DEGRADED, not down: startup logs one warning, limits
+ *     fall back to the per-instance in-memory path, and /api/health reports
+ *     `degraded` so uptime monitoring can see the gap. Per-instance limits
+ *     cannot enforce global limits across serverless regions, which is exactly
+ *     why this must be visible rather than silent.
+ *   - In development/test, falls back to in-memory limiter when Redis is not configured.
+ *   - If Redis is configured but a call fails (network error, timeout), the
+ *     limiter returns `unavailable`: the request is NOT rejected, because a
+ *     store outage must never lock every user out (see the fail-open branch in
+ *     `proxy.ts`). The failure is counted, reported to Sentry via
+ *     {@link reportRedisError}, and surfaced by /api/health.
+ *   - Genuine over-limit rejections (a reachable store saying "no") are 429s.
  *   - Counters are keyed by IP with a route prefix so the web, api,
  *     strict, and login limits don't share a bucket.
  *   - Ratelimit instances are created ONCE per limiter name (singleton pattern)
@@ -103,28 +108,38 @@ export type RateLimitStoreStatus = {
 
 /**
  * Describe the state of the shared rate-limit store.
- * Throws in production if store is missing (fail-fast).
+ *
+ * Missing configuration in production is a degraded deployment, not a fatal
+ * error. The proxy fails open on `unavailable` results and /api/health reports
+ * `degraded`; throwing here contradicted both, and it meant no production
+ * build could boot without a real Upstash database (local E2E, previews).
  */
 export function getRateLimitStoreStatus(): RateLimitStoreStatus {
   const url = serverEnv.UPSTASH_REDIS_REST_URL;
   const token = serverEnv.UPSTASH_REDIS_REST_TOKEN;
   const configured = isValidRedisUrl(url) && Boolean(token);
   const degraded = isProduction && !configured;
-  if (degraded) {
-    throw new Error(
-      "[RateLimiter] UPSTASH_REDIS_REST_URL and/or UPSTASH_REDIS_REST_TOKEN are not set in production. " +
-        "Rate limits cannot be enforced globally across serverless regions. " +
-        "Set both variables in the production environment."
-    );
-  }
+
   return { configured, degraded };
 }
 
 /**
- * Validate the store status at startup. Throws in production if store is missing.
+ * Log the store status once at startup. Never throws: a missing store degrades
+ * rate limiting, and taking the whole deployment down over a variable a human
+ * can set live would deny service instead of protecting it.
  */
 export function reportRateLimitStoreStatus(): RateLimitStoreStatus {
-  return getRateLimitStoreStatus();
+  const status = getRateLimitStoreStatus();
+
+  if (status.degraded) {
+    console.warn(
+      "[RateLimiter] UPSTASH_REDIS_REST_URL and/or UPSTASH_REDIS_REST_TOKEN are not set in production. " +
+        "Rate limits are per-instance only; /api/health reports this as degraded. " +
+        "Set both variables to enforce limits across serverless regions."
+    );
+  }
+
+  return status;
 }
 
 // --- Redis client & Ratelimit instances (lazy singletons) ---
@@ -195,8 +210,9 @@ export function createSharedRateLimiter(
       const limiter = getRatelimitInstance(name, maxRequests, windowMs);
       if (!limiter) {
         if (isProduction) {
-          // This should never happen because getRateLimitStoreStatus() throws
-          // at startup if Redis is not configured in production.
+          // No shared store configured. Report it as an infrastructure failure
+          // (so the caller may fail open and /api/health says `degraded`) rather
+          // than as a client that exceeded its limit.
           bumpCounter(ip);
           console.error(
             `[RateLimiter:${name}] No shared rate-limit store configured, ` +

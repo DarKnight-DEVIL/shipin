@@ -5,8 +5,11 @@ test.describe('SEO files', () => {
     const response = await request.get('/robots.txt');
     expect(response.status(), `robots.txt status: ${response.status()} body: ${await response.text()}`).toBe(200);
     const body = await response.text();
-    expect(body).toContain('User-agent:');
-    expect(body).toContain('Sitemap:');
+    // Directive names are case-insensitive (RFC 9309), and Next emits
+    // `User-Agent:` / `Sitemap:` — asserting a lowercase form failed on a
+    // correct file.
+    expect(body.toLowerCase()).toContain('user-agent:');
+    expect(body.toLowerCase()).toContain('sitemap:');
     expect(body).toContain('/sitemap.xml');
   });
 

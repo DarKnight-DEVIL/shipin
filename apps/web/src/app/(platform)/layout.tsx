@@ -96,7 +96,7 @@ export default function PlatformLayout({
 
   // Child effects run before the layout's, so without this gate a page issues
   // its first API call while the repair is still in flight. Signed-out visitors
-  // are unaffected: they render as before, and the routes themselves redirect.
+  // are unaffected: they render as before, and every data route rejects them.
   const profileReady = !signedInUid || readyUid === signedInUid;
 
   return (

@@ -32,6 +32,11 @@ const ROUTE_AUTH_CLASSIFICATION: Record<string, "public" | "customer" | "admin">
   // Public API routes
   "/api/health": "public",
   "/api/webhook": "public",
+  // Customers look up their own shipment from /track without an account, and
+  // the route itself only accepts a ShipIN number and returns a field-by-field
+  // projection. Classifying it "customer" made a signed-out visitor's first
+  // lookup 401, so the public tracking page could never show anything.
+  "/api/tracking": "public",
 
   // Customer-authenticated routes (require valid user session)
   "/api/profile": "customer",
@@ -40,7 +45,6 @@ const ROUTE_AUTH_CLASSIFICATION: Record<string, "public" | "customer" | "admin">
   "/api/payment": "customer",
   "/api/r2": "customer",
   "/api/support": "customer",
-  "/api/tracking": "customer",
   "/api/user": "customer",
   "/api/notifications": "customer",
   "/api/addresses": "customer",

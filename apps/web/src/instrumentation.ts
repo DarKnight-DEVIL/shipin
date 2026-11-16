@@ -22,10 +22,11 @@ export function register() {
   // Throws if any are missing when running in production.
   validateProductionRequiredEnv();
 
-  // Fail fast in production if the rate-limiting shared store is missing.
-  // Per-instance in-memory limits cannot enforce global limits across
-  // serverless regions — this is a hard failure for a financial application.
-  // In dev/test, falls back to in-memory limiter.
+  // Warn (never throw) when production has no shared rate-limit store: limits
+  // are then per-instance, the proxy fails open on infrastructure failures, and
+  // /api/health reports `degraded` so monitoring can see it. Crashing at boot
+  // would deny service over a variable a human can fix live, and it made a
+  // production build impossible to run without a real Upstash database.
   reportRateLimitStoreStatus();
 
   // Validate that all API routes are classified (public/customer/admin).
