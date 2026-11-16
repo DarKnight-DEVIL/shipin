@@ -234,10 +234,13 @@ service cloud.firestore {
     }
 
     match /supportMessages/{messageId} {
+      // Messages do not carry customerId, so ownership comes from the parent
+      // ticket. Use `resource` here, not `request.resource`: on a read there is
+      // no proposed document, so `request.resource` is null and reading into it
+      // errors — which denies the request, and with it every customer read.
       allow read: if signedIn() && (
-        resource.data.customerId == request.auth.uid ||
-        resource.data.adminId == request.auth.uid ||
         isAdmin()
+        || get(/databases/$(database)/documents/supportTickets/$(resource.data.ticketId)).data.customerId == request.auth.uid
       );
 
       // Messages do not carry customerId on the client (features/support/

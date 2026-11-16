@@ -1,38 +1,70 @@
-import { Timestamp } from "firebase/firestore";
+import type { Timestamp } from "firebase/firestore";
 
-function toMillis(value?: Timestamp | Date | string): number | null {
+/**
+ * Milliseconds for a quote expiry, or null when there is no readable one.
+ *
+ * Accepts every shape a quote has carried historically:
+ *
+ *   Firestore Timestamp   duck-typed, not `instanceof`. The client SDK, the
+ *                         Admin SDK and test doubles each export their own
+ *                         Timestamp constructor for the same value, so an
+ *                         identity check treats a real expiry as "no expiry" —
+ *                         which is how expired quotes stayed valid on the server.
+ *   Date                  what server-side writers pass before Firestore stores it
+ *   string                an ISO date, from a client that sent JSON
+ *   number                epoch milliseconds
+ *   { seconds, nanos }    a Timestamp that went through JSON
+ */
+export function parseQuoteExpiry(value?: unknown): number | null {
   if (!value) return null;
 
-  // Duck-type instead of `value instanceof Timestamp`. The client SDK, the
-  // Admin SDK and test doubles each provide their own Timestamp constructor for
-  // the same value, so an identity check silently treats a real expiry as "no
-  // expiry" — which is how expired quotes stayed valid on the server.
-  if (typeof (value as unknown as { toMillis?: () => number }).toMillis === "function") {
-    return (value as unknown as { toMillis: () => number }).toMillis();
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  const duck = value as { toMillis?: () => number };
+  if (typeof duck.toMillis === "function") {
+    const ms = duck.toMillis();
+    return Number.isFinite(ms) ? ms : null;
   }
 
   if (value instanceof Date) {
-    return value.getTime();
+    const ms = value.getTime();
+    return Number.isFinite(ms) ? ms : null;
   }
 
-  // value is now narrowed to string (Timestamp handled above by duck-type).
-  // Cast through unknown because TypeScript cannot narrow past the duck-type
-  // check, and Timestamp is not directly comparable to string.
-  const d = new Date(value as unknown as string);
-  return Number.isFinite(d.getTime()) ? d.getTime() : null;
+  if (typeof value === "string") {
+    const ms = new Date(value).getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  return parseSerializedTimestamp(value);
+}
+
+/** A Timestamp serialized as a plain object: `{ seconds, nanoseconds }`. */
+function parseSerializedTimestamp(value: unknown): number | null {
+  if (typeof value !== "object" || value === null) return null;
+
+  const record = value as Record<string, unknown>;
+  const seconds = record.seconds ?? record._seconds;
+  if (typeof seconds !== "number" || !Number.isFinite(seconds)) return null;
+
+  const nanoseconds = record.nanoseconds ?? record._nanoseconds;
+  const millis = typeof nanoseconds === "number" ? Math.floor(nanoseconds / 1e6) : 0;
+
+  return seconds * 1000 + millis;
 }
 
 /** True only when an expiry is set and that time has passed. */
 export function isQuoteExpired(
   expiresAt?: Timestamp | Date | string
 ): boolean {
-  const ms = toMillis(expiresAt);
-  if (ms === null) return false;
-  return ms <= Date.now();
+  const ms = parseQuoteExpiry(expiresAt);
+  return ms !== null && ms <= Date.now();
 }
 
 export function getRemainingTime(expiresAt?: Timestamp | Date | string) {
-  const ms = toMillis(expiresAt);
+  const ms = parseQuoteExpiry(expiresAt);
   if (ms === null) {
     return { hours: 0, minutes: 0, seconds: 0, expired: false, totalMs: 0 };
   }

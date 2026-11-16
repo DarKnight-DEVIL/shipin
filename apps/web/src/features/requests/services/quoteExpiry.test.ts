@@ -10,9 +10,9 @@ const mocks = vi.hoisted(() => {
   return { FakeTimestamp };
 });
 
-vi.mock('firebase/firestore', () => ({ Timestamp: mocks.FakeTimestamp }));
-
-import { getRemainingTime, isQuoteExpired } from './quoteExpiry';
+// No firebase/firestore mock: quoteExpiry only imports Timestamp as a type. The
+// fake below stands in for a real Timestamp through the duck-typed toMillis().
+import { getRemainingTime, isQuoteExpired, parseQuoteExpiry } from './quoteExpiry';
 
 const NOW = new Date('2026-02-01T12:00:00Z').getTime();
 
@@ -25,7 +25,44 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('parseQuoteExpiry', () => {
+  it('reads a timestamp, a date and an ISO string', () => {
+    expect(parseQuoteExpiry(new mocks.FakeTimestamp(NOW) as never)).toBe(NOW);
+    expect(parseQuoteExpiry(new Date(NOW))).toBe(NOW);
+    expect(parseQuoteExpiry(new Date(NOW).toISOString())).toBe(NOW);
+  });
+
+  it('reads epoch milliseconds and a Timestamp that went through JSON', () => {
+    expect(parseQuoteExpiry(NOW)).toBe(NOW);
+    expect(parseQuoteExpiry({ seconds: NOW / 1000, nanoseconds: 0 })).toBe(NOW);
+    expect(parseQuoteExpiry({ _seconds: NOW / 1000, _nanoseconds: 500_000_000 })).toBe(
+      NOW + 500
+    );
+  });
+
+  it('returns null for anything it cannot read', () => {
+    expect(parseQuoteExpiry(undefined)).toBeNull();
+    expect(parseQuoteExpiry(null)).toBeNull();
+    expect(parseQuoteExpiry(Number.NaN)).toBeNull();
+    expect(parseQuoteExpiry(new Date('nope'))).toBeNull();
+    expect(parseQuoteExpiry('not a date')).toBeNull();
+    expect(parseQuoteExpiry({ toMillis: () => Number.NaN })).toBeNull();
+    expect(parseQuoteExpiry({ seconds: 'nope' })).toBeNull();
+    expect(parseQuoteExpiry({ hello: 'world' })).toBeNull();
+    expect(parseQuoteExpiry([])).toBeNull();
+  });
+});
+
 describe('isQuoteExpired', () => {
+  it('recognizes an expiry stored as a JSON timestamps object', () => {
+    expect(
+      isQuoteExpired({
+        _seconds: Math.floor((NOW - 60_000) / 1000),
+        _nanoseconds: 0,
+      } as never)
+    ).toBe(true);
+  });
+
   it('treats a missing expiry as not expired', () => {
     expect(isQuoteExpired(undefined)).toBe(false);
   });

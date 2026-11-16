@@ -17,22 +17,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // about the real one, so opt out of that mock locally.
 vi.unmock('@/config/env');
 
-const STORE_KEYS = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'] as const;
+const STORE_URL = 'UPSTASH_REDIS_REST_URL';
+const STORE_TOKEN = 'UPSTASH_REDIS_REST_TOKEN';
 const OPT_OUT = 'RATE_LIMIT_STORE_OPTIONAL';
 
-const ENV_KEYS = [
-  'NODE_ENV',
-  'NEXT_PHASE',
-  'PAYPAL_WEBHOOK_ID',
-  ...STORE_KEYS,
-  OPT_OUT,
+/** Server-only vars that `validateProductionRequiredEnv` requires in production. */
+const SERVER_ENV_KEYS = [
+  'FIREBASE_ADMIN_PROJECT_ID',
+  'FIREBASE_ADMIN_CLIENT_EMAIL',
+  'FIREBASE_ADMIN_PRIVATE_KEY',
+  'PAYPAL_CLIENT_ID',
+  'PAYPAL_CLIENT_SECRET',
+  'SMTP_EMAIL',
+  'SMTP_PASSWORD',
+  'RESEND_API_KEY',
+  'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET_NAME',
+  'APP_URL',
 ] as const;
 
-/**
- * The real module builds `clientEnv` on import and throws when these are
- * missing outside `next build`. They are unrelated to what is under test here,
- * so they get dummy values and stay out of the way.
- */
+/** Client vars, so importing the module does not trip other assertions. */
 const CLIENT_KEYS = [
   'NEXT_PUBLIC_PAYPAL_CLIENT_ID',
   'NEXT_PUBLIC_APP_URL',
@@ -49,15 +55,37 @@ async function loadEnvModule() {
   return import('./index');
 }
 
+/**
+ * Sets every production-required variable EXCEPT the rate-limit store, so the
+ * only thing a case can be missing is the pair it is testing. Callers that test
+ * a different missing variable (or the store) start from here and adjust.
+ */
+function setEverythingButStore() {
+  vi.stubEnv('NODE_ENV', 'production');
+  vi.stubEnv('PAYPAL_WEBHOOK_ID', 'WH-1');
+  vi.stubEnv('FIREBASE_ADMIN_PROJECT_ID', 'test-project');
+  vi.stubEnv('FIREBASE_ADMIN_CLIENT_EMAIL', 'test@test.iam.gserviceaccount.com');
+  vi.stubEnv('FIREBASE_ADMIN_PRIVATE_KEY', 'private-key-placeholder');
+  vi.stubEnv('PAYPAL_CLIENT_ID', 'test-client-id');
+  vi.stubEnv('PAYPAL_CLIENT_SECRET', 'test-client-secret');
+  vi.stubEnv('SMTP_EMAIL', 'test@example.com');
+  vi.stubEnv('SMTP_PASSWORD', 'test-pass');
+  vi.stubEnv('RESEND_API_KEY', 're-test-key');
+  vi.stubEnv('R2_ACCOUNT_ID', 'test-account');
+  vi.stubEnv('R2_ACCESS_KEY_ID', 'test-key-id');
+  vi.stubEnv('R2_SECRET_ACCESS_KEY', 'test-secret');
+  vi.stubEnv('R2_BUCKET_NAME', 'test-bucket');
+  vi.stubEnv('APP_URL', 'https://example.com');
+}
+
 function setStoreConfigured() {
-  vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://example.upstash.io');
-  vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'token');
+  vi.stubEnv(STORE_URL, 'https://example.upstash.io');
+  vi.stubEnv(STORE_TOKEN, 'token');
 }
 
 beforeEach(() => {
-  for (const key of [...ENV_KEYS, ...CLIENT_KEYS]) vi.stubEnv(key, '');
+  for (const key of [...SERVER_ENV_KEYS, 'PAYPAL_WEBHOOK_ID', OPT_OUT]) vi.stubEnv(key, '');
   for (const key of CLIENT_KEYS) vi.stubEnv(key, 'test-value');
-  vi.stubEnv('PAYPAL_WEBHOOK_ID', 'WH-1');
 });
 
 afterEach(() => {
@@ -65,7 +93,6 @@ afterEach(() => {
 });
 
 describe('validateProductionRequiredEnv', () => {
-
   it('does nothing outside production', async () => {
     vi.stubEnv('NODE_ENV', 'test');
     const { validateProductionRequiredEnv } = await loadEnvModule();
@@ -74,14 +101,16 @@ describe('validateProductionRequiredEnv', () => {
   });
 
   it('throws in production when the shared rate-limit store is unset', async () => {
-    vi.stubEnv('NODE_ENV', 'production');
+    // Everything else is set, so the store pair is the only thing missing.
+    setEverythingButStore();
     const { validateProductionRequiredEnv } = await loadEnvModule();
 
-    expect(() => validateProductionRequiredEnv()).toThrow(/UPSTASH_REDIS_REST_URL/);
+    expect(() => validateProductionRequiredEnv()).toThrow(new RegExp(STORE_URL));
   });
 
   it('names both store variables and the opt-out, so the failure is actionable', async () => {
-    vi.stubEnv('NODE_ENV', 'production');
+    // Everything else is set, so the message is purely about the store.
+    setEverythingButStore();
     const { validateProductionRequiredEnv } = await loadEnvModule();
 
     let message = '';
@@ -91,23 +120,25 @@ describe('validateProductionRequiredEnv', () => {
       message = error instanceof Error ? error.message : String(error);
     }
 
-    expect(message).toContain('UPSTASH_REDIS_REST_URL');
-    expect(message).toContain('UPSTASH_REDIS_REST_TOKEN');
+    expect(message).toContain(STORE_URL);
+    expect(message).toContain(STORE_TOKEN);
     expect(message).toContain('RATE_LIMIT_STORE_OPTIONAL=1');
     // The hint must describe the consequence, not just the missing key.
     expect(message).toMatch(/fail open|per-instance limits/);
+    // No unrelated variable should be reported missing.
+    expect(message).not.toContain('FIREBASE_ADMIN_PROJECT_ID');
   });
 
   it('throws when only one of the two store variables is set', async () => {
-    vi.stubEnv('NODE_ENV', 'production');
-    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://example.upstash.io');
+    setEverythingButStore();
+    vi.stubEnv(STORE_URL, 'https://example.upstash.io');
     const { validateProductionRequiredEnv } = await loadEnvModule();
 
-    expect(() => validateProductionRequiredEnv()).toThrow(/UPSTASH_REDIS_REST_TOKEN/);
+    expect(() => validateProductionRequiredEnv()).toThrow(new RegExp(STORE_TOKEN));
   });
 
   it('passes in production when both store variables are set', async () => {
-    vi.stubEnv('NODE_ENV', 'production');
+    setEverythingButStore();
     setStoreConfigured();
     const { validateProductionRequiredEnv } = await loadEnvModule();
 
@@ -115,7 +146,7 @@ describe('validateProductionRequiredEnv', () => {
   });
 
   it('allows the missing store only when the E2E opt-out is exactly "1"', async () => {
-    vi.stubEnv('NODE_ENV', 'production');
+    setEverythingButStore();
     vi.stubEnv(OPT_OUT, '1');
     const { validateProductionRequiredEnv } = await loadEnvModule();
 
@@ -123,15 +154,15 @@ describe('validateProductionRequiredEnv', () => {
   });
 
   it('still requires the store for other opt-out values, so a typo cannot disable it', async () => {
-    vi.stubEnv('NODE_ENV', 'production');
+    setEverythingButStore();
     vi.stubEnv(OPT_OUT, 'true');
     const { validateProductionRequiredEnv } = await loadEnvModule();
 
-    expect(() => validateProductionRequiredEnv()).toThrow(/UPSTASH_REDIS_REST_URL/);
+    expect(() => validateProductionRequiredEnv()).toThrow(new RegExp(STORE_URL));
   });
 
   it('does not let the opt-out hide a different missing production variable', async () => {
-    vi.stubEnv('NODE_ENV', 'production');
+    setEverythingButStore();
     vi.stubEnv(OPT_OUT, '1');
     vi.stubEnv('PAYPAL_WEBHOOK_ID', '');
     const { validateProductionRequiredEnv } = await loadEnvModule();
@@ -142,7 +173,6 @@ describe('validateProductionRequiredEnv', () => {
 
 describe('isRateLimitStoreOptional', () => {
   it('is false by default', async () => {
-    vi.stubEnv(OPT_OUT, '');
     const { isRateLimitStoreOptional } = await loadEnvModule();
 
     expect(isRateLimitStoreOptional()).toBe(false);

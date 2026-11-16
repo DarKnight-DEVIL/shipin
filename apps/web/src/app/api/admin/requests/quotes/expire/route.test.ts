@@ -4,6 +4,11 @@
  * This endpoint is reachable without Firebase auth, so the shared-secret check
  * is the only thing standing between the public internet and a mass mutation
  * of every open quote. The tests pin that check, then the selection rules.
+ *
+ * The sweep no longer reads the whole `requests` collection: it runs one
+ * bounded, indexed range query. The fake below records the constraints the query
+ * was built with, so the tests can pin both "which rows are selected" and "how
+ * much work a single run may do".
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -31,11 +36,16 @@ const CRON_SECRET = 'cron-secret-value';
 const past = new Date(Date.now() - 60_000).toISOString();
 const future = new Date(Date.now() + 3_600_000).toISOString();
 
+/** Mirrors SWEEP_LIMIT in the route. */
+const SWEEP_LIMIT = 200;
+
 const request = (authorization?: string) =>
   new NextRequest('http://localhost/api/admin/requests/quotes/expire', {
     method: 'POST',
     headers: authorization ? { authorization } : {},
   });
+
+type QuoteDoc = ReturnType<typeof quoteDoc>;
 
 function quoteDoc(id: string, data: Record<string, unknown>) {
   return {
@@ -43,6 +53,54 @@ function quoteDoc(id: string, data: Record<string, unknown>) {
     data: () => data,
     ref: { update: vi.fn(async () => undefined) },
   };
+}
+
+interface FakeQuery {
+  where: (field: string, op: string, value: unknown) => FakeQuery;
+  orderBy: (field: string, direction: string) => FakeQuery;
+  limit: (size: number) => FakeQuery;
+  get: () => Promise<{ docs: QuoteDoc[]; size: number }>;
+}
+
+/** What the route asked Firestore for, per test. */
+const queryCalls = {
+  where: [] as Array<[string, string, unknown]>,
+  orderBy: [] as Array<[string, string]>,
+  limit: [] as number[],
+  reads: 0,
+};
+
+/**
+ * Fake the single query the sweep builds. One run performs exactly one read:
+ * there is no cursor, because marking a row expired removes it from the result
+ * set and the next hourly run starts from the new head.
+ */
+function mockRequestQuery(docs: QuoteDoc[]) {
+  queryCalls.where = [];
+  queryCalls.orderBy = [];
+  queryCalls.limit = [];
+  queryCalls.reads = 0;
+
+  const query: FakeQuery = {
+    where: (field, op, value) => {
+      queryCalls.where.push([field, op, value]);
+      return query;
+    },
+    orderBy: (field, direction) => {
+      queryCalls.orderBy.push([field, direction]);
+      return query;
+    },
+    limit: (size) => {
+      queryCalls.limit.push(size);
+      return query;
+    },
+    get: async () => {
+      queryCalls.reads += 1;
+      return { docs, size: docs.length };
+    },
+  };
+
+  mocks.collection.mockReturnValue(query);
 }
 
 let errorSpy: ReturnType<typeof vi.spyOn>;
@@ -90,6 +148,46 @@ describe('POST /api/admin/requests/quotes/expire — authentication', () => {
   });
 });
 
+describe('POST /api/admin/requests/quotes/expire — query shape', () => {
+  it('selects only unexpired quotes past their deadline, oldest first', async () => {
+    mockRequestQuery([]);
+
+    await POST(request(`Bearer ${CRON_SECRET}`));
+
+    // An equality filter on the flag we mutate (so processed rows leave the
+    // result set) plus a range on the deadline. This is what makes the sweep
+    // cost proportional to expired quotes rather than to request history.
+    expect(queryCalls.where).toEqual([
+      ['quote.expired', '==', false],
+      ['quote.expiresAt', '<=', expect.any(Date)],
+    ]);
+    expect(queryCalls.orderBy).toEqual([['quote.expiresAt', 'asc']]);
+    expect(queryCalls.limit).toEqual([SWEEP_LIMIT]);
+  });
+
+  it('reads exactly one bounded page per run', async () => {
+    mockRequestQuery(
+      Array.from({ length: SWEEP_LIMIT }, (_, index) =>
+        quoteDoc(`r${index}`, { userId: 'u', quote: { expiresAt: past } })
+      )
+    );
+
+    const body = await (await POST(request(`Bearer ${CRON_SECRET}`))).json();
+
+    expect(queryCalls.reads).toBe(1);
+    expect(body).toMatchObject({ scanned: SWEEP_LIMIT, expired: SWEEP_LIMIT });
+  });
+
+  it('reads nothing when no quote has expired', async () => {
+    mockRequestQuery([]);
+
+    const body = await (await POST(request(`Bearer ${CRON_SECRET}`))).json();
+
+    expect(body).toMatchObject({ scanned: 0, expired: 0 });
+    expect(queryCalls.reads).toBe(1);
+  });
+});
+
 describe('POST /api/admin/requests/quotes/expire — sweep', () => {
   it('expires only quotes that are unexpired and past their deadline', async () => {
     const docs = [
@@ -99,7 +197,7 @@ describe('POST /api/admin/requests/quotes/expire — sweep', () => {
       quoteDoc('r4', { userId: 'u4', quote: { expiresAt: past } }),
       quoteDoc('r5', { userId: 'u5', quote: { expiresAt: future } }),
     ];
-    mocks.collection.mockReturnValue({ get: vi.fn(async () => ({ docs })) });
+    mockRequestQuery(docs);
 
     const response = await POST(request(`Bearer ${CRON_SECRET}`));
     const body = await response.json();
@@ -117,8 +215,7 @@ describe('POST /api/admin/requests/quotes/expire — sweep', () => {
   });
 
   it('notifies the customer for each expired quote', async () => {
-    const docs = [quoteDoc('r1', { userId: 'u1', quote: { expiresAt: past } })];
-    mocks.collection.mockReturnValue({ get: vi.fn(async () => ({ docs })) });
+    mockRequestQuery([quoteDoc('r1', { userId: 'u1', quote: { expiresAt: past } })]);
 
     await POST(request(`Bearer ${CRON_SECRET}`));
 
@@ -133,7 +230,7 @@ describe('POST /api/admin/requests/quotes/expire — sweep', () => {
 
   it('keeps the expiry when the notification fails', async () => {
     const docs = [quoteDoc('r1', { userId: 'u1', quote: { expiresAt: past } })];
-    mocks.collection.mockReturnValue({ get: vi.fn(async () => ({ docs })) });
+    mockRequestQuery(docs);
     mocks.createNotification.mockRejectedValue(new Error('resend down'));
 
     const response = await POST(request(`Bearer ${CRON_SECRET}`));
@@ -149,7 +246,7 @@ describe('POST /api/admin/requests/quotes/expire — sweep', () => {
   });
 
   it('does not cache the sweep response', async () => {
-    mocks.collection.mockReturnValue({ get: vi.fn(async () => ({ docs: [] })) });
+    mockRequestQuery([]);
 
     const response = await POST(request(`Bearer ${CRON_SECRET}`));
 
@@ -169,7 +266,7 @@ describe('POST /api/admin/requests/quotes/expire — signed cron request', () =>
 
   it('accepts a fresh timestamp with a valid HMAC signature', async () => {
     const timestamp = String(Date.now());
-    mocks.collection.mockReturnValue({ get: vi.fn(async () => ({ docs: [] })) });
+    mockRequestQuery([]);
 
     const response = await POST(
       signedRequest({
@@ -245,7 +342,7 @@ describe('POST /api/admin/requests/quotes/expire — signed cron request', () =>
   });
 
   it('still falls back to the legacy bearer secret', async () => {
-    mocks.collection.mockReturnValue({ get: vi.fn(async () => ({ docs: [] })) });
+    mockRequestQuery([]);
 
     const response = await POST(
       signedRequest({ authorization: `Bearer ${CRON_SECRET}` })

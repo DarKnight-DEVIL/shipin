@@ -675,4 +675,47 @@ describe('support', () => {
       })
     );
   });
+
+  /*
+   * Messages carry no customerId (see the create rule above), so a read is
+   * authorised through the parent ticket. A read rule that reaches into
+   * `request.resource` instead of `resource` looks plausible and denies every
+   * customer, because a read has no proposed document — which is what the
+   * support thread silently turning up empty was.
+   */
+  const message = (overrides: Record<string, unknown> = {}) => ({
+    ticketId: 'ticket-11',
+    sender: 'customer',
+    message: 'Where is my parcel?',
+    createdAt: 1,
+    ...overrides,
+  });
+
+  it('lets a customer read the thread on their own ticket', async () => {
+    await seed('supportTickets/ticket-11', ticket());
+    await seed('supportMessages/message-1', message());
+
+    await expectAllowed(read(customer(), 'supportMessages/message-1'));
+  });
+
+  it("blocks reading another customer's thread", async () => {
+    await seed('supportTickets/ticket-11', ticket());
+    await seed('supportMessages/message-2', message());
+
+    await expectDenied(read({ uid: OTHER_CUSTOMER }, 'supportMessages/message-2'));
+  });
+
+  it('lets an admin read any thread', async () => {
+    await seed('supportTickets/ticket-11', ticket());
+    await seed('supportMessages/message-3', message({ sender: 'admin' }));
+
+    await expectAllowed(read({ uid: ADMIN }, 'supportMessages/message-3'));
+  });
+
+  it('blocks an anonymous read of a thread', async () => {
+    await seed('supportTickets/ticket-11', ticket());
+    await seed('supportMessages/message-4', message());
+
+    await expectDenied(read(anonymous, 'supportMessages/message-4'));
+  });
 });

@@ -7,6 +7,7 @@ const ANALYZE = process.env.ANALYZE === 'true';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  output: 'standalone',
   productionBrowserSourceMaps: false,
   poweredByHeader: false,
   // Workspace packages ship TypeScript sources rather than a build output, so

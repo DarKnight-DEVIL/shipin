@@ -190,11 +190,16 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
  * Validate that all production-required environment variables are set.
  * Throws if any are missing when running in production.
  * Should be called at application startup.
+ *
+ * In production, this checks every variable in REQUIRED_SERVER_ENV (15 vars)
+ * plus PAYPAL_WEBHOOK_ID (which is not in that set but is production-critical),
+ * plus the rate-limit store vars. Previously only PAYPAL_WEBHOOK_ID was validated,
+ * leaving Firebase Admin, PayPal credentials, SMTP, and R2 to fail lazily at runtime.
  */
 export function validateProductionRequiredEnv(): void {
   if (!isProduction) return;
 
-  const required: string[] = [...PRODUCTION_REQUIRED_SERVER_ENV];
+  const required: string[] = [...REQUIRED_SERVER_ENV, 'PAYPAL_WEBHOOK_ID'];
 
   if (!isRateLimitStoreOptional()) {
     required.push(...RATE_LIMIT_STORE_SERVER_ENV);

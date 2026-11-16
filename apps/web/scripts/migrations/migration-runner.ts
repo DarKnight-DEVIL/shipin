@@ -7,8 +7,12 @@
  *
  * Each migration is a TypeScript file in scripts/migrations/ that exports:
  *   - name: string
- *   - up: (db: Firestore, batchSize?: number) => Promise<{ processed: number; failed: number }>
+ *   - up: (db: Firestore, batchSize?: number, dryRun?: boolean) => Promise<{ processed: number; failed: number }>
  *   - down?: (db: Firestore) => Promise<void>  // optional rollback
+ *
+ * `up` must honour `dryRun` by reading and counting without committing. The
+ * runner cannot enforce that, and a dry run that silently wrote would be worse
+ * than no flag at all.
  *
  * Migrations are tracked in the `migrations` collection to ensure idempotency.
  */
@@ -25,7 +29,11 @@ const MIGRATIONS_DIR = join(__dirname, "..", "migrations");
 
 interface Migration {
   name: string;
-  up: (db: Firestore, batchSize?: number) => Promise<{ processed: number; failed: number }>;
+  up: (
+    db: Firestore,
+    batchSize?: number,
+    dryRun?: boolean
+  ) => Promise<{ processed: number; failed: number }>;
   down?: (db: Firestore) => Promise<void>;
 }
 
@@ -101,7 +109,7 @@ async function runMigration(
   const startTime = Date.now();
 
   try {
-    const result = await migration.up(db, batchSize);
+    const result = await migration.up(db, batchSize, dryRun);
     const duration = Date.now() - startTime;
 
     if (!dryRun) {

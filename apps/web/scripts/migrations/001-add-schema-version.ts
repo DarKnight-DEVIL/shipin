@@ -19,13 +19,22 @@ export const name = "001-add-schema-version";
 const COLLECTIONS = ["users", "requests", "wallets", "walletTransactions"] as const;
 const BATCH_LIMIT = 500;
 
-export async function up(db: Firestore, batchSize = BATCH_LIMIT): Promise<{ processed: number; failed: number }> {
+export async function up(
+  db: Firestore,
+  batchSize = BATCH_LIMIT,
+  dryRun = false
+): Promise<{ processed: number; failed: number }> {
   let totalProcessed = 0;
   let totalFailed = 0;
 
   for (const collectionName of COLLECTIONS) {
     console.log(`\n📦 Processing ${collectionName}...`);
-    const { processed, failed } = await addSchemaVersionToCollection(db, collectionName, batchSize);
+    const { processed, failed } = await addSchemaVersionToCollection(
+      db,
+      collectionName,
+      batchSize,
+      dryRun
+    );
     totalProcessed += processed;
     totalFailed += failed;
   }
@@ -36,7 +45,8 @@ export async function up(db: Firestore, batchSize = BATCH_LIMIT): Promise<{ proc
 async function addSchemaVersionToCollection(
   db: Firestore,
   collectionName: string,
-  batchSize: number
+  batchSize: number,
+  dryRun: boolean
 ): Promise<{ processed: number; failed: number }> {
   let processed = 0;
   let failed = 0;
@@ -63,7 +73,9 @@ async function addSchemaVersionToCollection(
       processed++;
     }
 
-    if (batchCount > 0) {
+    if (batchCount > 0 && dryRun) {
+      console.log(`   🔍 Would update ${batchCount} documents (total: ${processed})`);
+    } else if (batchCount > 0) {
       try {
         await batch.commit();
         console.log(`   ✅ Committed batch of ${batchCount} documents (total: ${processed})`);
