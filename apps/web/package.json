@@ -35,7 +35,7 @@
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.1.0",
     "@splinetool/react-spline": "^4.1.0",
-    "@upstash/ratelimit": "^2.2.0",
+    "@upstash/ratelimit": "^2.2.1",
     "@upstash/redis": "^1.41.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
