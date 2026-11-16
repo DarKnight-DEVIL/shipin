@@ -99,6 +99,9 @@ Never commit `.env*` files that contain real credentials.
 | `npm run test:watch` | Vitest in watch mode |
 | `npm run test:coverage` | Vitest with per-file coverage thresholds |
 | `npm run test:security` | Focused suite: auth, MFA session, Firestore rules |
+| `npm run test:rules` | Firestore rules against the emulator (needs a JDK) |
+| `npm run test:e2e:local` | E2E against a production build + Firestore emulator (see `apps/web/playwright-test/README.md`) |
+| `npm run test:e2e:signed-in` | Same, plus the Auth emulator and a seeded admin, for the sign-in spec |
 
 Quality bar for changes: `npx tsc --noEmit`, `npm run lint` (0 errors), `npm test`,
 `npm run build`, and `npm run test:coverage` must all pass. Coverage is enforced per file

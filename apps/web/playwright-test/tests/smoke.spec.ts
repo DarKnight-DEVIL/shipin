@@ -65,12 +65,18 @@ test.describe('Auth flows', () => {
 
   test('login page renders without crashing', async ({ page }) => {
     await page.goto('/login');
-    // The login form should contain at least one submit button or recognizable element
-    const submitButtons = await page.locator('button[type="submit"], button:has-text("Sign"), input[type="submit"]').count();
-    await expect(page.locator('body')).toBeVisible();
-    const googleWidget = await page.locator('[data-testid="google-signin"], [aria-label*="Google" i], iframe[title*="Google" i]').count();
-    // Login may delegate to a third-party Google widget, so accept either affordance.
-    expect(submitButtons + googleWidget).toBeGreaterThan(0);
+
+    // Sign-in may be a form button or the third-party Google widget, so accept
+    // either affordance. Wait for it instead of counting immediately: the
+    // client-rendered form is not in the DOM at first paint, and counting then
+    // made this test flaky rather than wrong.
+    await expect(
+      page
+        .locator(
+          'button[type="submit"], button:has-text("Sign"), input[type="submit"], [data-testid="google-signin"], iframe[title*="Google" i]'
+        )
+        .first()
+    ).toBeVisible({ timeout: 20_000 });
   });
 });
 

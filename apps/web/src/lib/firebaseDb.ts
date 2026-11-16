@@ -1,4 +1,10 @@
-import { getFirestore, type Firestore } from "firebase/firestore";
+import {
+  connectFirestoreEmulator,
+  getFirestore,
+  type Firestore,
+} from "firebase/firestore";
+
+import { clientEnv } from "@/config/env";
 
 import { ensureFirebaseApp } from "./firebase";
 
@@ -15,7 +21,18 @@ let _db: Firestore | null = null;
 /** Returns the Firestore client, initializing it once against the shared app. */
 export function getFirebaseDb(): Firestore {
   if (_db === null) {
-    _db = getFirestore(ensureFirebaseApp().app);
+    const db = getFirestore(ensureFirebaseApp().app);
+
+    // Local E2E only: point the client SDK at the emulator so the signed-in
+    // specs read seeded documents instead of a real project. Browser-only; a
+    // server render must never connect to a loopback datastore.
+    const emulatorHost = clientEnv.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST.trim();
+    if (emulatorHost && typeof window !== "undefined") {
+      const [host, port] = emulatorHost.split(":");
+      connectFirestoreEmulator(db, host, Number(port ?? 8080));
+    }
+
+    _db = db;
   }
   return _db;
 }

@@ -5,7 +5,7 @@
  * private-key normalisation, config validation and the lazy proxies.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // vitest.setup.ts mocks this module globally; the real implementation is what
 // this suite is here to cover.
@@ -54,6 +54,25 @@ beforeEach(() => {
   });
   mocks.serverEnv.FIREBASE_ADMIN_PROJECT_ID = 'shipin-test';
   mocks.serverEnv.FIREBASE_ADMIN_CLIENT_EMAIL = 'admin@shipin.test';
+});
+
+describe('adminDb in emulator mode', () => {
+  afterEach(() => {
+    delete process.env.FIRESTORE_EMULATOR_HOST;
+  });
+
+  it('starts without a service account when the emulator host is set', async () => {
+    // Local E2E: the emulator verifies nothing, so there is no service account
+    // and `cert()` must not be called with a placeholder key.
+    process.env.FIRESTORE_EMULATOR_HOST = '127.0.0.1:8080';
+    mocks.serverEnv.FIREBASE_ADMIN_PROJECT_ID = 'shipin-e2e';
+
+    const { adminDb } = await import('./firebaseAdmin');
+    void adminDb.collection;
+
+    expect(mocks.initializeApp).toHaveBeenCalledWith({ projectId: 'shipin-e2e' });
+    expect(mocks.cert).not.toHaveBeenCalled();
+  });
 });
 
 describe('adminDb', () => {

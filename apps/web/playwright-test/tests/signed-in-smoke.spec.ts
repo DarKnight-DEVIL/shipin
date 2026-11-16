@@ -1,5 +1,5 @@
 /**
- * Signed-in smoke test (staging only).
+ * Signed-in smoke test (staging, or the local emulators).
  *
  * The hydration contract and the page smoke tests both visit the app signed
  * out: they prove every route renders and hydrates, but the prerendered HTML
@@ -20,9 +20,15 @@
  * Read-only: it signs in and looks, it never mutates staging data. That is
  * deliberate — the destructive path is covered by admin-refund.spec.ts.
  *
+ * It also runs locally against the Auth + Firestore emulators, which is what
+ * `npm run test:e2e:local -- --signed-in` does: the client connects to the
+ * emulators (NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST /
+ * NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST) and a seeded admin account is created by
+ * `scripts/e2e/seed-auth-user.mjs`.
+ *
  * Required environment:
- *   BASE_URL            staging origin (skips on localhost)
- *   E2E_ADMIN_EMAIL     staging admin account
+ *   BASE_URL            staging origin, or localhost with the emulators
+ *   E2E_ADMIN_EMAIL     admin account (staging) or the seeded emulator user
  *   E2E_ADMIN_PASSWORD  its password
  *
  * Use a dedicated staging admin. Never run this with production credentials.
@@ -34,14 +40,18 @@ const baseUrl = env.BASE_URL ?? '';
 const isRemoteTarget = !!baseUrl && !baseUrl.startsWith('http://localhost');
 const email = env.E2E_ADMIN_EMAIL ?? '';
 const password = env.E2E_ADMIN_PASSWORD ?? '';
+const authEmulator = env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ?? '';
+const firestoreEmulator = env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST ?? '';
 
 const missing = [
-  !isRemoteTarget && 'BASE_URL (must point at staging)',
+  !isRemoteTarget &&
+    !authEmulator &&
+    'BASE_URL (staging) or NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST (local)',
   !email && 'E2E_ADMIN_EMAIL',
   !password && 'E2E_ADMIN_PASSWORD',
 ].filter(Boolean) as string[];
 
-test.describe('Signed-in smoke (staging)', () => {
+test.describe('Signed-in smoke', () => {
   test.skip(missing.length > 0, `signed-in smoke needs: ${missing.join(', ')}`);
 
   test.setTimeout(120_000);
@@ -49,9 +59,21 @@ test.describe('Signed-in smoke (staging)', () => {
   test('an admin signs in, the dashboard reads Firestore, and the admin area renders', async ({
     page,
   }) => {
+    // Firestore traffic goes to the real host in staging and to the emulator
+    // locally; either one proves a signed-in data path ran.
+    const dataHosts = ['firestore.googleapis.com'];
+    if (firestoreEmulator) dataHosts.push(firestoreEmulator);
+
+    // The login page reports a generic "Unable to sign in"; the real cause is
+    // only in the console, so carry it into the failure message.
+    const consoleErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text().split('\n')[0]);
+    });
+
     const firestoreRequests: string[] = [];
     page.on('request', (request) => {
-      if (request.url().includes('firestore.googleapis.com')) {
+      if (dataHosts.some((host) => request.url().includes(host))) {
         firestoreRequests.push(request.url());
       }
     });
@@ -81,7 +103,8 @@ test.describe('Signed-in smoke (staging)', () => {
       const text = await page.evaluate(() => document.body.innerText);
       throw new Error(
         `sign-in never reached the admin area (url: ${page.url()}). ` +
-          `If this is /verify-email, verify the staging admin's address. ` +
+          `If this is /verify-email, verify the account's address. ` +
+          `Console: ${consoleErrors.join(' | ') || '(none)'}. ` +
           `Page text: ${text.replace(/\s+/g, ' ').slice(0, 400)}`
       );
     }
@@ -97,9 +120,9 @@ test.describe('Signed-in smoke (staging)', () => {
       'the admin area tripped its error boundary'
     ).not.toContain('Something went wrong');
 
-    // The customer dashboard as a signed-in user: the only way a
-    // firestore.googleapis.com request happens is with a live session, so this
-    // is the assertion that the real data path ran.
+    // The customer dashboard as a signed-in user: the only way a Firestore
+    // request happens is with a live session, so this is the assertion that the
+    // real data path ran.
     await page.goto('/dashboard');
 
     await expect

@@ -19,6 +19,8 @@
     "test:security": "npm run test:security --workspace=@shipin/web",
     "test:rules": "npm run test:rules --workspace=@shipin/web",
     "test:e2e": "npm run test:e2e --workspace=@shipin/web",
+    "test:e2e:local": "npm run test:e2e:local --workspace=@shipin/web --",
+    "test:e2e:signed-in": "npm run test:e2e:signed-in --workspace=@shipin/web --",
     "check:bundle-budget": "npm run check:bundle-budget --workspace=@shipin/web",
     "check:coverage-globs": "npm run check:coverage-globs --workspace=@shipin/web",
     "check:compliance-tests": "npm run check:compliance-tests --workspace=@shipin/web",

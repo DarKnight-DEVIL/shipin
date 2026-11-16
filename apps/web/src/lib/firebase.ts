@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
 import type { AppCheck } from "firebase/app-check";
 
 import { clientEnv } from "@/config/env";
@@ -123,6 +123,18 @@ export function ensureFirebaseApp(): { app: FirebaseApp; auth: Auth } {
     };
     app = getApps().length ? getApp() : initializeApp(firebaseConfig);
     _auth = getAuth(app);
+
+    // Local E2E only. Without this the sign-in specs need a real staging
+    // account; with it they sign in against the Auth emulator, whose tokens the
+    // Admin SDK also accepts (FIREBASE_AUTH_EMULATOR_HOST). Browser-only: the
+    // emulator connection has no meaning in a server render.
+    const authEmulatorHost = clientEnv.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST.trim();
+    if (authEmulatorHost && typeof window !== "undefined") {
+      connectAuthEmulator(_auth, `http://${authEmulatorHost}`, {
+        disableWarnings: true,
+      });
+    }
+
     startAppCheck(app);
   }
 

@@ -1,3 +1,7 @@
+// happy-dom so `typeof window` is defined: the emulator connection is
+// browser-only, and that is the branch under test.
+// @vitest-environment happy-dom
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -6,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   initializeApp: vi.fn(),
   getAuth: vi.fn(),
   getFirestore: vi.fn(),
+  connectFirestoreEmulator: vi.fn(),
 }));
 
 vi.mock('firebase/app', () => ({
@@ -20,6 +25,7 @@ vi.mock('firebase/auth', () => ({
 
 vi.mock('firebase/firestore', () => ({
   getFirestore: mocks.getFirestore,
+  connectFirestoreEmulator: mocks.connectFirestoreEmulator,
 }));
 
 // The shared setup mocks the app's firebase modules; this file tests the real
@@ -67,5 +73,39 @@ describe('firebaseDb', () => {
 
     expect(mod.db).toEqual({ name: 'firestore' });
     expect(mocks.getFirestore).toHaveBeenCalledTimes(1);
+  });
+
+  it('connects to the Firestore emulator when one is configured', async () => {
+    // The host comes from clientEnv, which the shared setup mocks as empty, so
+    // replace it for this test only.
+    vi.resetModules();
+    vi.doMock('@/config/env', () => ({
+      clientEnv: {
+        NODE_ENV: 'test',
+        NEXT_PUBLIC_FIREBASE_API_KEY: 'test-key',
+        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: 'test.firebaseapp.com',
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: 'shipin-e2e',
+        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: 'test-bucket',
+        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '123456',
+        NEXT_PUBLIC_FIREBASE_APP_ID: '1:123456:web:abcdef',
+        NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY: '',
+        NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG: '',
+        NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: '',
+        NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080',
+      },
+      serverEnv: {},
+      isProduction: false,
+      isDevelopment: true,
+      isTest: true,
+    }));
+
+    const { getFirebaseDb } = await import('./firebaseDb');
+    getFirebaseDb();
+
+    expect(mocks.connectFirestoreEmulator).toHaveBeenCalledWith(
+      { name: 'firestore' },
+      '127.0.0.1',
+      8080
+    );
   });
 });

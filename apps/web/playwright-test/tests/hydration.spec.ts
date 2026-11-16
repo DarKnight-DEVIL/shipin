@@ -165,7 +165,9 @@ test.describe('Production hydration', () => {
     const sdkScript = page.locator('script[src*="paypal.com/sdk/js"]');
     const requested = await sdkScript
       .first()
-      .waitFor({ state: 'attached', timeout: 15_000 })
+      // Generous on purpose: the provider injects the tag after hydration, and
+      // under a full-suite run that step is slower than `-g PayPal` alone.
+      .waitFor({ state: 'attached', timeout: 30_000 })
       .then(() => true)
       .catch(() => false);
 

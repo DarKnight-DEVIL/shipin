@@ -85,6 +85,11 @@ vi.mock('@/config/env', () => ({
     NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: 'test-bucket',
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '123456',
     NEXT_PUBLIC_FIREBASE_APP_ID: '1:123456:web:abcdef',
+    NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY: '',
+    NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG: '',
+    /** Empty: only a local E2E build sets these (see scripts/e2e-local.mjs). */
+    NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: '',
+    NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST: '',
   },
   isProduction: false,
   isDevelopment: true,

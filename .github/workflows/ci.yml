@@ -385,11 +385,7 @@ jobs:
       # Playwright lives in them.
       PAYPAL_CLIENT_ID: "test"
       PAYPAL_CLIENT_SECRET: "test"
-      # Optional sandbox client id. The public id is baked into the browser
-      # bundle, so it is not a secret in the security sense, but keeping it in
-      # repository secrets means it is not committed. Set it to let the
-      # /wallet/topup PayPal SDK spec actually load the SDK; unset, that spec
-      # skips itself rather than loading a script from a placeholder id.
+      # Optional sandbox id; unset, the PayPal SDK spec skips itself.
       NEXT_PUBLIC_PAYPAL_CLIENT_ID: ${{ secrets.E2E_PAYPAL_CLIENT_ID || 'test' }}
       PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
       PAYPAL_ENV: "sandbox"
@@ -415,12 +411,8 @@ jobs:
       # Points firebase-admin at the emulator started below instead of at a
       # service account. Never set in a real deployment.
       FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080"
-      # Optional. Without a shared store the production server still boots and
-      # serves: startup only warns, the proxy fails open on `unavailable`, and
-      # /api/health reports `degraded`. Set these (a throwaway database — never
-      # production) only to also exercise cross-instance rate limiting in the
-      # local specs. A fake URL is worse than none: it makes every limiter call
-      # fail, which is counted as a degraded deployment.
+      # Optional, and never required: without a store the server warns and
+      # /api/health reports `degraded`.
       UPSTASH_REDIS_REST_URL: ${{ secrets.E2E_UPSTASH_REDIS_REST_URL }}
       UPSTASH_REDIS_REST_TOKEN: ${{ secrets.E2E_UPSTASH_REDIS_REST_TOKEN }}
     steps:
@@ -450,12 +442,6 @@ jobs:
           # `npm ci` skip devDependencies. The dummies come from the job env.
           NODE_ENV: "production"
 
-      # The specs that touch customer data (/api/tracking, the API status
-      # assertions) need a datastore. CI has no service account and must not
-      # have one, so they run inside `emulators:exec`: it starts the emulator,
-      # runs the command, and stops the emulator, all in ONE step. A background
-      # `&` process does not survive the end of its step, so the emulator has to
-      # live in the same step as the spec that uses it.
       # A production build must actually execute its JavaScript. This catches
       # the failure mode where every page renders correctly but nothing
       # hydrates — a CSP with a nonce the prerendered HTML can never carry,
@@ -466,8 +452,9 @@ jobs:
       # channel below gives detail when the HTML logs are gated behind GitHub
       # sign-in.
       - name: Run hydration contract test
-        # No external services: a missing shared rate-limit store only degrades
-        # the deployment, so the production build serves traffic without one.
+        # Runs inside `emulators:exec`: the Firestore-backed routes need a
+        # datastore, CI has no service account, and a background `&` emulator
+        # is killed when its step ends.
         if: env.E2E_STAGING_URL == ''
         run: |
           set +e
@@ -481,9 +468,8 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           exit $EXIT
         env:
-          # The server this step starts validates the same startup variables the
-          # build did; without NODE_ENV and the job-level dummies the
-          # instrumentation hook throws and Playwright times out waiting.
+          # The server started here validates the same startup variables the
+          # build did; without them Playwright times out waiting for it.
           NODE_ENV: "production"
           CI: "1"
           BASE_URL: "http://localhost:3000"
@@ -491,14 +477,6 @@ jobs:
           # a bare `next start` binds an arbitrary free port, so Playwright waits
           # on http://localhost:3000 until it times out.
           PLAYWRIGHT_WEBSERVER_COMMAND: "npm run start --workspace=@shipin/web -- -p 3000"
-
-      # A skipped step is green, so say out loud that the staging specs did not
-      # run and why. Without the warning the job would look like it covered
-      # staging when it covered only the local build.
-      - name: Note skipped staging specs
-        if: env.E2E_STAGING_URL == ''
-        run: |
-          echo "::notice::E2E_STAGING_URL is not set, so the staging-only specs (signed-in smoke, admin refund, fixture seed/cleanup) did not run. The local smoke and hydration specs above cover the production build."
 
       # The write path needs a service account; without one it would fail on a
       # missing variable instead of skipping, and a failing step takes the

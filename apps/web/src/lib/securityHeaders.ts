@@ -19,6 +19,27 @@
 import { isProduction } from "@/config/env";
 
 /**
+ * Loopback origins for the local Firebase emulators, or an empty string.
+ *
+ * `connect-src` has no http source, so a local E2E build could not reach
+ * 127.0.0.1:9099 and sign-in failed with `auth/network-request-failed` while
+ * the CSP error was the only clue. These hosts are empty in every deployment
+ * build (the NEXT_PUBLIC_* values are inlined at build time), so this cannot
+ * widen a real deployment's policy.
+ */
+function emulatorConnectSources(): string {
+  const origins = [
+    process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST,
+    process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST,
+  ]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+    .map((host) => `http://${host}`);
+
+  return origins.length > 0 ? ` ${[...new Set(origins)].join(" ")}` : "";
+}
+
+/**
  * Development CSP: allows inline scripts and styles for Turbopack/Next.js dev server.
  * This is less secure but necessary for development hot-reloading.
  */
@@ -35,7 +56,9 @@ export function getDevCSP(): string {
     "connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com " +
     "https://graph.facebook.com https://www.google.com https://www.googletagmanager.com " +
     "https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com " +
-    "https://*.firebasestorage.app https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com https://va.vercel-scripts.com wss: https:; " +
+    "https://*.firebasestorage.app https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com https://va.vercel-scripts.com" +
+    emulatorConnectSources() +
+    " wss: https:; " +
     "worker-src 'self' blob: https://cdn.spline.dev; " +
     "media-src 'self'; " +
     "frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://spline.dev https://cdn.spline.dev https://accounts.google.com https://apis.google.com https://www.google.com https://*.firebaseapp.com; " +
@@ -184,7 +207,9 @@ export function getProductionCSP(): string {
     // Narrowed from a blanket `wss: https:`: every host the app actually
     // talks to is already listed above, so the wildcard only widened the
     // exfiltration surface. Firebase Realtime Database sockets stay allowed.
-    "wss://*.firebaseio.com wss://*.firebasedatabase.app; " +
+    "wss://*.firebaseio.com wss://*.firebasedatabase.app" +
+    emulatorConnectSources() +
+    "; " +
     "worker-src 'self' blob: https://cdn.spline.dev; " +
     "media-src 'self'; " +
     `frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://spline.dev https://cdn.spline.dev https://accounts.google.com https://apis.google.com https://www.google.com https://*.firebaseapp.com; ` +

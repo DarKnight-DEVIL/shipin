@@ -82,6 +82,14 @@ interface ClientEnv {
   NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY: string;
   /** `'true'` registers a local App Check debug token instead of calling reCAPTCHA. */
   NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG: string;
+  /**
+   * `host:port` of a local Firebase Auth emulator. Empty everywhere except a
+   * local E2E run; the client then signs in against the emulator instead of the
+   * real project. Must be NEXT_PUBLIC_* because the browser SDK reads it.
+   */
+  NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: string;
+  /** `host:port` of a local Firestore emulator, same rules as the auth host. */
+  NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST: string;
 }
 
 export function readEnv(key: string, required: boolean = false): string | undefined {
@@ -289,6 +297,9 @@ export const clientEnv: ClientEnv = {
   // the build, so a project without enforcement still runs.
   NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY: process.env.NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY ?? '',
   NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG: process.env.NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG ?? '',
+  // Optional: only a local E2E run sets these, and a deployment must not.
+  NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ?? '',
+  NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST: process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST ?? '',
 };
 
 /** Whether the app is running in production. */
