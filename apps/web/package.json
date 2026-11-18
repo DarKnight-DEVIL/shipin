@@ -22,6 +22,7 @@
     "test:e2e": "playwright test",
     "test:e2e:local": "node scripts/e2e-local.mjs",
     "test:e2e:signed-in": "node scripts/e2e-local.mjs --signed-in",
+    "test:e2e:dev": "cross-env PLAYWRIGHT_DEV=1 playwright test",
     "test:e2e:ui": "playwright test --ui",
     "analyze": "cross-env ANALYZE=true next build",
     "check:bundle-budget": "node scripts/check-bundle-budgets.mjs",

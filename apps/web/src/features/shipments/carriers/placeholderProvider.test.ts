@@ -48,6 +48,32 @@ describe('placeholder tracking provider', () => {
     expect(new Date(snapshot.estimatedDelivery!).getTime()).toBeGreaterThan(fixedNow);
   });
 
+  it('keeps a known number on a known day byte-identical', async () => {
+    // A golden value: the seed comes from the hash of the carrier number, so a
+    // change to that hash silently rewrites every customer's tracking history.
+    const fixedNow = new Date('2027-03-15T10:00:00.000Z').getTime();
+    const dated = createPlaceholderProvider({ now: () => fixedNow });
+
+    await expect(dated.fetchTracking('EE123456789IN')).resolves.toEqual({
+      carrierStatus: 'in_transit',
+      events: [
+        {
+          code: 'ITEM_BOOKED',
+          description: 'Item booked at the origin post office',
+          location: 'Mumbai, IN',
+          occurredAt: '2027-03-13T03:34:00.000Z',
+        },
+        {
+          code: 'IN_TRANSIT',
+          description: 'In transit to the destination country',
+          location: 'Mumbai, IN',
+          occurredAt: '2027-03-14T09:34:00.000Z',
+        },
+      ],
+      estimatedDelivery: '2027-03-21',
+    });
+  });
+
   it('varies the feed by carrier number', async () => {
     const a = await provider.fetchTracking('EE111111111IN');
     const b = await provider.fetchTracking('EE999999999IN');

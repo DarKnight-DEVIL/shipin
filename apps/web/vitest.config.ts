@@ -36,12 +36,24 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
-      include: ['src/lib/**', 'src/features/**/*.ts', 'src/app/api/**/*.ts'],
+      // Component `.ts` modules are hooks and pure helpers with real logic
+      // (metric links, count-up animation, relative dates); they are measured
+      // here. The `.tsx` presentational components stay out — they are covered
+      // by the E2E pass and their behaviour only shows up in a browser.
+      include: [
+        'src/lib/**',
+        'src/features/**/*.ts',
+        'src/app/api/**/*.ts',
+        'src/components/**/*.ts',
+      ],
       exclude: [
         'src/app/api/**/route.test.ts', // test files are not production code
         'src/types/**',
         'src/styles/**',
-        'src/components/**', // UI components are covered by E2E
+        'src/components/**/*.tsx', // presentational; exercised by the E2E pass
+        'src/components/ui/index.ts', // re-export barrel: no executable statements
+        'src/components/settings/settingsStyles.ts', // static class names, no logic
+        'src/components/landing/types.ts', // type declarations only
         'src/lib/firebase.ts', // lazy singleton with no unit-level exercise path
         'src/lib/pdf/index.ts', // re-export barrel: no executable statements
         'src/features/**/types/README.md', // feature docs, not runtime code

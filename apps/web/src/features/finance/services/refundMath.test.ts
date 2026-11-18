@@ -25,6 +25,103 @@ describe('roundMoney', () => {
   });
 });
 
+/**
+ * Deterministic PRNG, so a failing case is reproducible from its seed rather
+ * than only from a reporter's "it happened once" note.
+ */
+function mulberry32(seed: number): () => number {
+  let state = seed;
+
+  return () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Amounts between 0 and 5000, with the cents noise real orders produce. */
+function amount(random: () => number): number {
+  return Math.round(random() * 500000) / 100;
+}
+
+describe('refund math invariants', () => {
+  const random = mulberry32(20261118);
+  const cases = Array.from({ length: 300 }, () => ({
+    paid: amount(random),
+    refunded: amount(random),
+    credit: amount(random),
+  }));
+
+  it('roundMoney is idempotent and always two decimal places', () => {
+    for (const { paid } of cases) {
+      const once = roundMoney(paid);
+      expect(roundMoney(once)).toBe(once);
+      expect(Math.round(once * 100) / 100).toBeCloseTo(once, 10);
+    }
+  });
+
+  it('rounding before or after addition differs by at most a cent', () => {
+    for (const { paid, refunded } of cases) {
+      expect(
+        Math.abs(roundMoney(paid + refunded) - roundMoney(roundMoney(paid) + roundMoney(refunded)))
+      ).toBeLessThanOrEqual(0.01);
+    }
+  });
+
+  it('remaining refundable never exceeds what was paid', () => {
+    for (const { paid, refunded } of cases) {
+      const remaining = remainingRefundable(paid, refunded);
+
+      expect(remaining).toBeCloseTo(roundMoney(paid) - roundMoney(refunded), 10);
+      expect(remaining + roundMoney(refunded)).toBeCloseTo(roundMoney(paid), 10);
+    }
+  });
+
+  it('a split always sums back to the refunded amount', () => {
+    for (const { paid, refunded } of cases) {
+      const perCase = mulberry32(Math.round(paid * 100) + Math.round(refunded * 100));
+      const payment = {
+        walletAmount: amount(perCase),
+        paypalAmount: amount(perCase),
+      };
+      const split = computeRefundSplit(refunded, payment);
+
+      expect(split.walletRefund + split.paypalRefund).toBeCloseTo(
+        roundMoney(refunded),
+        10
+      );
+      expect(split.walletRefund).toBeGreaterThanOrEqual(0);
+      expect(split.paypalRefund).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('covers wallet first and only reports an overflow once PayPal is short', () => {
+    for (const { paid, refunded } of cases) {
+      const perCase = mulberry32(Math.round(paid * 100) + 7);
+      const walletAmount = amount(perCase);
+      const paypalAmount = amount(perCase);
+      const split = computeRefundSplit(refunded, { walletAmount, paypalAmount });
+
+      expect(split.walletRefund).toBeLessThanOrEqual(
+        Math.min(roundMoney(refunded), roundMoney(walletAmount)) + 1e-9
+      );
+      expect(split.exceedsOriginalSources).toBe(
+        split.paypalRefund > roundMoney(paypalAmount) + 0.01
+      );
+    }
+  });
+
+  it('credits are additive regardless of order', () => {
+    for (const { paid, credit } of cases) {
+      expect(walletBalanceAfterCredit(paid, credit)).toBeCloseTo(
+        roundMoney(roundMoney(credit) + roundMoney(paid)),
+        10
+      );
+    }
+  });
+});
+
 describe('computeRefundSplit', () => {
   it('splits refund between wallet and PayPal when both have sufficient funds', () => {
     const payment = { walletAmount: 50, paypalAmount: 50 };
