@@ -169,7 +169,7 @@ describe('sendNotification — email', () => {
 });
 
 describe('sendNotification — WhatsApp', () => {
-  const whatsapp = { templateName: 'quote_ready' };
+  const whatsapp = { templateName: 'shipin_payment_received' };
 
   function consented(overrides: Record<string, unknown> = {}) {
     return user({
@@ -190,7 +190,7 @@ describe('sendNotification — WhatsApp', () => {
 
     expect(mocks.sendWhatsAppTemplate).toHaveBeenCalledWith({
       to: '+919876543210',
-      templateName: 'quote_ready',
+      templateName: 'shipin_payment_received',
       languageCode: 'en_US',
       components: [],
     });
@@ -203,13 +203,28 @@ describe('sendNotification — WhatsApp', () => {
     await sendNotification({
       ...base,
       channels: { whatsapp: true },
-      whatsapp: { templateName: 'quote_ready', languageCode: 'en_GB', components },
+      whatsapp: { templateName: 'shipin_payment_received', languageCode: 'en_GB', components },
     });
 
     expect(mocks.sendWhatsAppTemplate.mock.calls[0][0]).toMatchObject({
       languageCode: 'en_GB',
       components,
     });
+  });
+
+  it('refuses a template that is not registered', async () => {
+    mocks.getUser.mockResolvedValue(consented());
+
+    await sendNotification({
+      ...base,
+      channels: { whatsapp: true },
+      whatsapp: { templateName: 'typo_template' },
+    });
+
+    expect(mocks.sendWhatsAppTemplate).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('"typo_template" is not a registered template')
+    );
   });
 
   it('skips WhatsApp without consent', async () => {
@@ -249,7 +264,10 @@ describe('sendNotification — WhatsApp', () => {
     await expect(
       sendNotification({ ...base, channels: { whatsapp: true }, whatsapp })
     ).resolves.toBeUndefined();
-    expect(console.error).toHaveBeenCalledWith('WhatsApp notification failed:', expect.any(Error));
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('shipin_payment_received'),
+      expect.any(Error)
+    );
   });
 });
 
@@ -269,7 +287,7 @@ describe('sendNotification — ordering', () => {
     await sendNotification({
       ...base,
       channels: { inApp: true, email: true, whatsapp: true },
-      whatsapp: { templateName: 'quote_ready' },
+      whatsapp: { templateName: 'shipin_payment_received' },
     });
 
     expect(mocks.addNotification).toHaveBeenCalledTimes(1);

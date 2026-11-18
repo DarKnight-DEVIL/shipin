@@ -11,6 +11,7 @@ const config = {
   endpoint: 'https://cept.example.test/track',
   clientId: 'client',
   clientSecret: 'secret',
+  retryDelayMs: 0,
 };
 
 describe('mapIndiaPostResponse', () => {
@@ -158,7 +159,53 @@ describe('createIndiaPostProvider', () => {
     );
   });
 
-  it('reports a non-OK response as a carrier error', async () => {
+  it('retries a transient 503 and returns the answer', async () => {
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(new Response('busy', { status: 503 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: 'In Transit',
+            events: [
+              {
+                eventCode: 'IN_TRANSIT',
+                eventDescription: 'In transit',
+                eventDate: '2026-05-20T09:30:00Z',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      );
+
+    const provider = createIndiaPostProvider(config);
+    const snapshot = await provider.fetchTracking('EE1IN');
+
+    expect(snapshot.carrierStatus).toBe('in_transit');
+    expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a dropped connection', async () => {
+    vi.mocked(global.fetch)
+      .mockRejectedValueOnce(new Error('ECONNRESET'))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'In Transit' }), { status: 200 }));
+
+    const provider = createIndiaPostProvider(config);
+    await provider.fetchTracking('EE1IN');
+
+    expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry a client error', async () => {
+    vi.mocked(global.fetch).mockResolvedValue(new Response('bad request', { status: 400 }));
+
+    const provider = createIndiaPostProvider(config);
+
+    await expect(provider.fetchTracking('EE1IN')).rejects.toMatchObject({ status: 400 });
+    expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up after the attempt budget and reports the last status', async () => {
     vi.mocked(global.fetch).mockResolvedValue(new Response('nope', { status: 503 }));
 
     const provider = createIndiaPostProvider(config);
@@ -167,6 +214,7 @@ describe('createIndiaPostProvider', () => {
       name: 'CarrierRequestError',
       status: 503,
     });
+    expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(3);
   });
 
   it('reports a transport failure as a carrier error', async () => {

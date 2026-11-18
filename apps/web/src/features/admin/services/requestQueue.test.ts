@@ -6,6 +6,8 @@ vi.mock('@/lib/customerApiClient', () => ({
   customerApi: (...args: unknown[]) => customerApiMock(...args),
 }));
 
+import { Timestamp } from 'firebase/firestore';
+
 import {
   getAdminRequestPriority,
   getAdminRequestQueue,
@@ -35,6 +37,29 @@ describe('getAllRequests', () => {
       { id: 'r-1', userId: '', customerName: '', email: '', status: 'submitted', createdAt: undefined, updatedAt: undefined },
       { id: 'r-2', userId: '', customerName: '', email: '', status: 'paid', createdAt: undefined, updatedAt: undefined },
     ]);
+  });
+
+  it('restores real Firestore Timestamps', async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      requests: [
+        {
+          id: 'r-1',
+          userId: '',
+          customerName: '',
+          email: '',
+          status: 'submitted',
+          createdAt: { seconds: 1_800_000_000, nanoseconds: 500_000_000 },
+        },
+      ],
+    });
+
+    const [record] = await getAllRequests();
+
+    expect(record.createdAt).toBeInstanceOf(Timestamp);
+    expect(record.createdAt!.toDate().toISOString()).toBe(
+      new Date(1_800_000_000_500).toISOString()
+    );
   });
 
   it('wraps read failures', async () => {

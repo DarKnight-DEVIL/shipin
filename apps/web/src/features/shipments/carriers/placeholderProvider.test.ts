@@ -32,6 +32,22 @@ describe('placeholder tracking provider', () => {
     expect(snapshot.estimatedDelivery).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
+  it('anchors the feed to the current day, so it neither goes stale nor dates events ahead', async () => {
+    const fixedNow = new Date('2027-03-15T10:00:00.000Z').getTime();
+    const dated = createPlaceholderProvider({ now: () => fixedNow });
+
+    const snapshot = await dated.fetchTracking('EE123456789IN');
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+
+    for (const event of snapshot.events) {
+      const occurred = new Date(event.occurredAt).getTime();
+      expect(occurred).toBeLessThan(fixedNow);
+      expect(fixedNow - occurred).toBeLessThan(weekMs);
+    }
+
+    expect(new Date(snapshot.estimatedDelivery!).getTime()).toBeGreaterThan(fixedNow);
+  });
+
   it('varies the feed by carrier number', async () => {
     const a = await provider.fetchTracking('EE111111111IN');
     const b = await provider.fetchTracking('EE999999999IN');

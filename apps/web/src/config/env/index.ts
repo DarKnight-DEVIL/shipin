@@ -33,6 +33,13 @@ interface ServerEnv {
   PAYPAL_WEBHOOK_ID?: string;
   SMTP_EMAIL: string;
   SMTP_PASSWORD: string;
+  /** Non-Gmail SMTP relay. Unset keeps the Gmail service shortcut. */
+  SMTP_HOST?: string;
+  SMTP_PORT?: string;
+  /** `'true'` for implicit TLS (usually port 465). */
+  SMTP_SECURE?: string;
+  /** Nodemailer service name when `SMTP_HOST` is unset, e.g. `gmail`. */
+  SMTP_SERVICE?: string;
   RESEND_API_KEY: string;
   UPSTASH_REDIS_REST_URL?: string;
   UPSTASH_REDIS_REST_TOKEN?: string;
@@ -40,6 +47,10 @@ interface ServerEnv {
   R2_ACCESS_KEY_ID: string;
   R2_SECRET_ACCESS_KEY: string;
   R2_BUCKET_NAME: string;
+  /** S3-compatible region; defaults to `auto` (Cloudflare R2). */
+  R2_REGION?: string;
+  /** Overrides the Cloudflare account endpoint, e.g. for AWS S3 or MinIO. */
+  R2_ENDPOINT?: string;
   APP_URL: string;
   WHATSAPP_ACCESS_TOKEN?: string;
   WHATSAPP_PHONE_NUMBER_ID?: string;
@@ -175,6 +186,7 @@ const DEFAULT_SERVER_ENV: Record<string, string> = {
   NODE_ENV: 'development',
   PAYPAL_ENV: 'sandbox',
   WHATSAPP_API_VERSION: 'v25.0',
+  R2_REGION: 'auto',
 };
 
 /** Server-only vars that are optional (no default, no throw). */
@@ -187,8 +199,14 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
   // with the E2E opt-out set, startup warns and /api/health reports degraded.
   'WHATSAPP_ACCESS_TOKEN',
   'WHATSAPP_PHONE_NUMBER_ID',
-  'MFA_SESSION_SECRET',
+  // MFA_SESSION_SECRET is NOT optional: it lives in PRODUCTION_REQUIRED_SERVER_ENV.
   'APP_CHECK_ENFORCEMENT',
+  'R2_REGION',
+  'R2_ENDPOINT',
+  'SMTP_HOST',
+  'SMTP_PORT',
+  'SMTP_SECURE',
+  'SMTP_SERVICE',
   'INDIA_POST_TRACKING_URL',
   'INDIA_POST_CLIENT_ID',
   'INDIA_POST_CLIENT_SECRET',
@@ -277,6 +295,7 @@ export const serverEnv: ServerEnv = new Proxy({} as ServerEnv, {
   ownKeys(_target) {
     return [
       ...REQUIRED_SERVER_ENV,
+      ...PRODUCTION_REQUIRED_SERVER_ENV,
       ...Object.keys(DEFAULT_SERVER_ENV),
       ...OPTIONAL_SERVER_ENV,
     ];

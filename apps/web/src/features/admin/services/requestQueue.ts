@@ -1,4 +1,4 @@
-// No direct Firestore imports needed - using customerApi client
+import { Timestamp } from "firebase/firestore";
 
 import { customerApi } from "@/lib/customerApiClient";
 import { toShipINError } from "@/utils/errors";
@@ -6,23 +6,13 @@ import type { Request } from "@/types/request";
 
 export type AdminRequestFilter = string | null;
 
-// Restore a serialized Firestore Timestamp into a shape compatible with Request.createdAt / updatedAt
+// Restore a serialized Firestore Timestamp into a real one, so code that
+// checks `instanceof Timestamp` or writes the value back keeps working.
 type TSSerialized = { seconds: number; nanoseconds: number };
 
-function restoreTs(ts?: TSSerialized): {
-  seconds: number;
-  nanoseconds: number;
-  toDate: () => Date;
-  toMillis: () => number;
-} | undefined {
+function restoreTs(ts?: TSSerialized): Timestamp | undefined {
   if (!ts || typeof ts.seconds !== "number") return undefined;
-  const millis = ts.seconds * 1000 + (ts.nanoseconds ?? 0) / 1e6;
-  return {
-    seconds: ts.seconds,
-    nanoseconds: ts.nanoseconds ?? 0,
-    toDate: () => new Date(millis),
-    toMillis: () => millis,
-  };
+  return new Timestamp(ts.seconds, ts.nanoseconds ?? 0);
 }
 
 export async function getAllRequests(): Promise<Request[]> {

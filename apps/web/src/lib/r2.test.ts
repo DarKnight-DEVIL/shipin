@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
     R2_ACCESS_KEY_ID: 'access-key',
     R2_SECRET_ACCESS_KEY: 'secret-key',
     R2_BUCKET_NAME: 'shipin-bucket',
+    R2_REGION: 'auto',
+    R2_ENDPOINT: '',
   },
 }));
 
@@ -55,6 +57,27 @@ describe('getR2Client', () => {
         secretAccessKey: 'secret-key',
       },
     });
+  });
+
+  it('honours a configured region and endpoint for a non-R2 store', async () => {
+    mocks.serverEnv.R2_REGION = 'ap-south-1';
+    mocks.serverEnv.R2_ENDPOINT = 'https://s3.ap-south-1.amazonaws.com';
+
+    try {
+      const { getR2Client } = await loadModule();
+
+      getR2Client();
+
+      expect(mocks.S3Client).toHaveBeenCalledWith(
+        expect.objectContaining({
+          region: 'ap-south-1',
+          endpoint: 'https://s3.ap-south-1.amazonaws.com',
+        })
+      );
+    } finally {
+      mocks.serverEnv.R2_REGION = 'auto';
+      mocks.serverEnv.R2_ENDPOINT = '';
+    }
   });
 
   it('caches the client across calls', async () => {

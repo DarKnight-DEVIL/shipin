@@ -2,6 +2,7 @@ import "server-only";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
+import { isKnownWhatsAppTemplate } from "@/features/notifications/templates";
 import { sendMail } from "@/lib/mailer";
 
 import {
@@ -207,12 +208,25 @@ export async function sendNotification({
     preferences.whatsapp.phone &&
     whatsapp
   ) {
+    const templateName = whatsapp.templateName;
+
+    if (!isKnownWhatsAppTemplate(templateName)) {
+      /*
+       * An unregistered name means one of two things: a typo, or a template
+       * that was never submitted for Meta approval. Either way Meta rejects
+       * the send, so say so plainly instead of letting the notification vanish.
+       */
+      console.error(
+        `WhatsApp notification skipped: "${templateName}" is not a registered template. Add it to WHATSAPP_TEMPLATES and get it approved in Meta Business Manager before sending.`
+      );
+      return;
+    }
+
     try {
       await sendWhatsAppTemplate({
         to: preferences.whatsapp.phone,
 
-        templateName:
-          whatsapp.templateName,
+        templateName,
 
         languageCode:
           whatsapp.languageCode ??
@@ -227,7 +241,7 @@ export async function sendNotification({
        * the order/status operation.
        */
       console.error(
-        "WhatsApp notification failed:",
+        `WhatsApp notification failed for template "${templateName}" (check Meta approval and language code):`,
         error
       );
     }

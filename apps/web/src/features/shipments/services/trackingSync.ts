@@ -160,13 +160,14 @@ function normalizeEvents(raw: unknown): PublicTrackingEvent[] {
  * dedupe is what keeps the document from growing.
  */
 export function mergeEvents(
-  stored: PublicTrackingEvent[],
-  incoming: CarrierEvent[],
+  /** Absent on a first sync; a single call site can hand one over. */
+  stored: PublicTrackingEvent[] | undefined,
+  incoming: CarrierEvent[] | undefined,
   limit: number = MAX_STORED_EVENTS
 ): PublicTrackingEvent[] {
   const merged = new Map<string, PublicTrackingEvent>();
 
-  for (const event of [...stored, ...normalizeEvents(incoming)]) {
+  for (const event of [...(stored ?? []), ...normalizeEvents(incoming)]) {
     const key = `${event.code}|${event.occurredAt}|${event.location ?? ""}`;
     if (!merged.has(key)) merged.set(key, event);
   }

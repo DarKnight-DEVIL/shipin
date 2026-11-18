@@ -13,6 +13,11 @@ const mailerLog = childLogger({ service: "mailer" });
 let resend: Resend | null = null;
 let smtpEmail: string | undefined;
 let smtpPassword: string | undefined;
+/** Empty means "use SMTP_SERVICE, or Gmail", the historical behaviour. */
+let smtpHost: string | undefined;
+let smtpPort: number | undefined;
+let smtpSecure = false;
+let smtpService: string | undefined;
 
 export interface SendMailOptions {
   to: string;
@@ -35,11 +40,24 @@ export async function sendMail({
     const envResendKey = readEnv('RESEND_API_KEY');
     const envSmtpEmail = readEnv('SMTP_EMAIL');
     const envSmtpPassword = readEnv('SMTP_PASSWORD');
+    const envSmtpHost = readEnv('SMTP_HOST');
+    const envSmtpPort = readEnv('SMTP_PORT');
+    const envSmtpSecure = readEnv('SMTP_SECURE');
+    const envSmtpService = readEnv('SMTP_SERVICE');
 
     // SMTP credentials are needed for the fallback path even when Resend is
     // configured, so they are always captured.
     smtpEmail = envSmtpEmail;
     smtpPassword = envSmtpPassword;
+
+    // SMTP_HOST is for non-Gmail providers (SendGrid, Mailgun, a self-hosted
+    // relay). Unset keeps the old Gmail service shortcut.
+    smtpHost = envSmtpHost;
+    smtpService = envSmtpService;
+    smtpSecure = envSmtpSecure === 'true';
+
+    const parsedPort = Number.parseInt(envSmtpPort ?? '', 10);
+    smtpPort = Number.isFinite(parsedPort) ? parsedPort : undefined;
 
     if (envResendKey && envResendKey !== 'dummy_for_build') {
       resend = new Resend(envResendKey);
@@ -78,13 +96,26 @@ export async function sendMail({
 
   // Fallback to SMTP (only if we have email + password)
   if (smtpPassword && smtpPassword !== 'dummy_for_build') {
-    const smtpTransporter = nodemailer.createTransport({
-      service: "gmail",
+    const timeoutOptions = {
       auth: { user: smtpEmail, pass: smtpPassword },
       connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
       greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
       socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
-    });
+    };
+
+    const smtpTransporter = nodemailer.createTransport(
+      smtpHost
+        ? {
+            host: smtpHost,
+            port: smtpPort ?? (smtpSecure ? 465 : 587),
+            secure: smtpSecure,
+            ...timeoutOptions,
+          }
+        : {
+            service: smtpService || 'gmail',
+            ...timeoutOptions,
+          }
+    );
     const info = await smtpTransporter.sendMail({
       from: fromAddress,
       to,

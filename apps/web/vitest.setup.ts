@@ -71,6 +71,8 @@ vi.mock('@/config/env', () => ({
     R2_ACCESS_KEY_ID: 'test-key-id',
     R2_SECRET_ACCESS_KEY: 'test-secret-key',
     R2_BUCKET_NAME: 'test-bucket',
+    R2_REGION: 'auto',
+    R2_ENDPOINT: '',
     APP_URL: 'http://localhost:3000',
     MFA_SESSION_SECRET: 'test-mfa-session-secret-0123456789abcdef',
     BREACH_ALERT_WEBHOOK_URL: '',

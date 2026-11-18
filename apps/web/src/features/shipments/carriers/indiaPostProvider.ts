@@ -22,12 +22,28 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 8000;
 const MAX_EVENTS = 100;
+/** One call plus two retries: enough to ride out a blip, short enough to bound a sync. */
+const DEFAULT_MAX_ATTEMPTS = 3;
+const DEFAULT_RETRY_DELAY_MS = 250;
 
 export interface IndiaPostConfig {
   endpoint: string;
   clientId: string;
   clientSecret: string;
   timeoutMs?: number;
+  /** Total attempts, including the first. Defaults to 3. */
+  maxAttempts?: number;
+  /** First backoff delay; doubles per retry. Defaults to 250 ms. */
+  retryDelayMs?: number;
+}
+
+/** 408, 429 and 5xx are worth another attempt; other 4xx are not. */
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function sleep(ms: number): Promise<void> {
+  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -134,8 +150,15 @@ export function mapIndiaPostResponse(payload: unknown): CarrierSnapshot {
 export function createIndiaPostProvider(
   config: IndiaPostConfig
 ): TrackingProvider {
-  const { endpoint, clientId, clientSecret, timeoutMs = DEFAULT_TIMEOUT_MS } =
-    config;
+  const {
+    endpoint,
+    clientId,
+    clientSecret,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    maxAttempts = DEFAULT_MAX_ATTEMPTS,
+    retryDelayMs = DEFAULT_RETRY_DELAY_MS,
+  } = config;
+  const attempts = Math.max(1, maxAttempts);
 
   return {
     id: "indiapost",
@@ -151,33 +174,54 @@ export function createIndiaPostProvider(
         "utf8"
       ).toString("base64");
 
-      let response: Response;
+      // A momentary carrier outage would otherwise fail every sync in the
+      // cycle, so transient failures (network errors, 408/429/5xx) are retried
+      // with exponential backoff, each attempt keeping its own timeout.
+      let response: Response | null = null;
+      let lastError: unknown;
+      let lastStatus: number | undefined;
 
-      try {
-        response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Basic ${authorization}`,
-          },
-          body: JSON.stringify({ trackingNumber: carrierNumber }),
-          signal: AbortSignal.timeout(timeoutMs),
-          cache: "no-store",
-        });
-      } catch (error) {
-        throw new CarrierRequestError(
-          "India Post",
-          error instanceof Error
-            ? `India Post tracking request failed: ${error.message}`
-            : "India Post tracking request failed."
-        );
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        if (attempt > 0) {
+          await sleep(retryDelayMs * 2 ** (attempt - 1));
+        }
+
+        try {
+          const candidate = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Basic ${authorization}`,
+            },
+            body: JSON.stringify({ trackingNumber: carrierNumber }),
+            signal: AbortSignal.timeout(timeoutMs),
+            cache: "no-store",
+          });
+
+          if (candidate.ok) {
+            response = candidate;
+            break;
+          }
+
+          lastStatus = candidate.status;
+
+          if (!isRetryableStatus(candidate.status)) {
+            break;
+          }
+        } catch (error) {
+          lastError = error;
+        }
       }
 
-      if (!response.ok) {
+      if (!response) {
         throw new CarrierRequestError(
           "India Post",
-          `India Post tracking returned ${response.status}.`,
-          response.status
+          lastStatus !== undefined
+            ? `India Post tracking returned ${lastStatus}.`
+            : lastError instanceof Error
+              ? `India Post tracking request failed: ${lastError.message}`
+              : "India Post tracking request failed.",
+          lastStatus
         );
       }
 

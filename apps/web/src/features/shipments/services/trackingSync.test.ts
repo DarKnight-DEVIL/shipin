@@ -342,6 +342,14 @@ describe('mergeEvents', () => {
     expect(merged.map((item) => item.code)).toEqual(['B', 'A']);
   });
 
+  it('treats a missing stored history as empty', () => {
+    const merged = mergeEvents(undefined, [
+      { code: 'A', description: 'a', occurredAt: '2026-01-01T00:00:00.000Z' },
+    ]);
+
+    expect(merged.map((item) => item.code)).toEqual(['A']);
+  });
+
   it('caps the stored history', () => {
     const many = Array.from({ length: 50 }, (_, index) => ({
       code: `E${index}`,

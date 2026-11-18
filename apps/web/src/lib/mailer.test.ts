@@ -137,6 +137,41 @@ describe('sendMail', () => {
     );
   });
 
+  it('uses an explicit SMTP relay when one is configured', async () => {
+    mocks.env.SMTP_EMAIL = 'team@shipin.app';
+    mocks.env.SMTP_PASSWORD = 'app-password';
+    mocks.env.SMTP_HOST = 'smtp.sendgrid.net';
+    mocks.env.SMTP_PORT = '465';
+    mocks.env.SMTP_SECURE = 'true';
+
+    const { sendMail } = await loadMailer();
+
+    await sendMail(message);
+
+    expect(mocks.createTransport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        host: 'smtp.sendgrid.net',
+        port: 465,
+        secure: true,
+        auth: { user: 'team@shipin.app', pass: 'app-password' },
+      })
+    );
+  });
+
+  it('falls back to port 587 without SMTP_PORT', async () => {
+    mocks.env.SMTP_EMAIL = 'team@shipin.app';
+    mocks.env.SMTP_PASSWORD = 'app-password';
+    mocks.env.SMTP_HOST = 'smtp.mailgun.org';
+
+    const { sendMail } = await loadMailer();
+
+    await sendMail(message);
+
+    expect(mocks.createTransport).toHaveBeenCalledWith(
+      expect.objectContaining({ host: 'smtp.mailgun.org', port: 587, secure: false })
+    );
+  });
+
   it('rejects when no sender address is configured', async () => {
     const { sendMail } = await loadMailer();
 
