@@ -9,7 +9,10 @@
 import { useState } from "react";
 
 import { MfaApiError } from "@/lib/mfaApi";
-import { regenerateBackupCodes, type MfaConfigStatus } from "@/lib/mfaSetupClient";
+import {
+  regenerateBackupCodes,
+  type MfaConfigStatus,
+} from "@/lib/mfaSetupClient";
 import BackupCodeList from "./BackupCodeList";
 import SecurityCard, { StatusPill } from "./SecurityCard";
 
@@ -63,11 +66,7 @@ export default function BackupCodesCard({
       badge={
         <StatusPill
           enabled={remaining > 0}
-          label={
-            remaining > 0
-              ? `${remaining} unused`
-              : "None available"
-          }
+          label={remaining > 0 ? `${remaining} unused` : "None available"}
         />
       }
     >
@@ -132,7 +131,9 @@ export default function BackupCodesCard({
               }}
               className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-700"
             >
-              {remaining > 0 ? "Regenerate backup codes" : "Generate backup codes"}
+              {remaining > 0
+                ? "Regenerate backup codes"
+                : "Generate backup codes"}
             </button>
           )
         ) : null}

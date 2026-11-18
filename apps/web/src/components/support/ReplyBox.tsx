@@ -15,20 +15,13 @@ export default function ReplyBox({
 }: Props) {
   return (
     <div className="space-y-3">
-
       <textarea
         value={value}
         disabled={disabled}
-        onChange={(e) =>
-          onChange(e.target.value)
-        }
+        onChange={(e) => onChange(e.target.value)}
         rows={4}
         className="w-full resize-none rounded-xl border border-slate-300 bg-white p-4 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-600 dark:disabled:bg-slate-900 dark:disabled:text-slate-500"
-        placeholder={
-          disabled
-            ? "Conversation closed."
-            : "Type your reply..."
-        }
+        placeholder={disabled ? "Conversation closed." : "Type your reply..."}
       />
 
       {!disabled && (
@@ -41,7 +34,6 @@ export default function ReplyBox({
           Send
         </button>
       )}
-
     </div>
   );
 }

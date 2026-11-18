@@ -24,9 +24,7 @@ export default function FAQSection({ items }: FAQSectionProps) {
               <button
                 type="button"
                 className={`faq__question ${openIndex === index ? "open" : ""}`}
-                onClick={() =>
-                  setOpenIndex(openIndex === index ? null : index)
-                }
+                onClick={() => setOpenIndex(openIndex === index ? null : index)}
                 aria-expanded={openIndex === index}
                 aria-controls={`faq-answer-${index}`}
               >

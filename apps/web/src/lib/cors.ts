@@ -104,9 +104,7 @@ function vercelDeploymentOrigins(): string[] {
 
   return hosts
     .filter((host): host is string => Boolean(host))
-    .map((host) =>
-      /^https?:\/\//i.test(host) ? host : `https://${host}`
-    )
+    .map((host) => (/^https?:\/\//i.test(host) ? host : `https://${host}`))
     .map((origin) => origin.toLowerCase().trim().replace(/\/+$/, ""));
 }
 
@@ -164,8 +162,7 @@ export function isAllowedOrigin(origin: string | null): boolean {
     if (candidate.startsWith("https://*.")) {
       const base = candidate.slice("https://*.".length);
       return (
-        normalized.startsWith("https://") &&
-        normalized.endsWith("." + base)
+        normalized.startsWith("https://") && normalized.endsWith("." + base)
       );
     }
     return false;

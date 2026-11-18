@@ -43,11 +43,17 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("next/link", () => ({
   default: ({ href, children }: { href: unknown; children: unknown }) =>
-    React.createElement("a", { href: String(href) }, children as React.ReactNode),
+    React.createElement(
+      "a",
+      { href: String(href) },
+      children as React.ReactNode
+    ),
 }));
 
 vi.mock("@/components/ui", () => ({
-  ErrorBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  ErrorBoundary: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
   AppCheckBanner: () => null,
   RetryNotice: () => null,
 }));

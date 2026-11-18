@@ -105,10 +105,7 @@ export default function WalletTopupPage() {
               })}
             </div>
 
-            <label
-              htmlFor="wallet-amount"
-              className="app-label mt-5 mb-1.5"
-            >
+            <label htmlFor="wallet-amount" className="app-label mt-5 mb-1.5">
               Custom amount
             </label>
 

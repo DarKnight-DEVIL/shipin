@@ -40,8 +40,23 @@ export default function NotFound() {
                 <stop offset="1" stopColor="#ff3d6e" />
               </linearGradient>
             </defs>
-            <circle cx="50" cy="50" r="38" fill="none" stroke="url(#nf-grad)" strokeWidth="13" />
-            <circle cx="50" cy="50" r="23" fill="none" stroke="#3d362d" strokeWidth="1.5" strokeDasharray="3 5" />
+            <circle
+              cx="50"
+              cy="50"
+              r="38"
+              fill="none"
+              stroke="url(#nf-grad)"
+              strokeWidth="13"
+            />
+            <circle
+              cx="50"
+              cy="50"
+              r="23"
+              fill="none"
+              stroke="#3d362d"
+              strokeWidth="1.5"
+              strokeDasharray="3 5"
+            />
             <circle cx="50" cy="50" r="4" fill="#ff6b1a" />
           </svg>
           <span className="nf__digit">4</span>

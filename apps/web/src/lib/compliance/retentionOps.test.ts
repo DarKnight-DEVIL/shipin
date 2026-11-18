@@ -8,9 +8,9 @@
  * here keeps each file self-contained, and `vi.resetModules()` in the hoisted
  * block clears whatever a previous file left behind before these imports run.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import * as retentionOps from './retentionOps';
+import * as retentionOps from "./retentionOps";
 
 vi.hoisted(() => {
   vi.resetModules();
@@ -49,7 +49,7 @@ function fakeQuery(docs: ReturnType<typeof fakeDoc>[], profileExists = false) {
   return query;
 }
 
-vi.mock('@/lib/firebaseAdmin', () => ({
+vi.mock("@/lib/firebaseAdmin", () => ({
   adminAuth: { deleteUser: mocks.deleteUser, listUsers: mocks.listUsers },
   adminDb: {
     collection: mocks.collection,
@@ -62,20 +62,22 @@ vi.mock('@/lib/firebaseAdmin', () => ({
   },
 }));
 
-vi.mock('@/lib/logger', () => ({ logger: mocks.logger }));
+vi.mock("@/lib/logger", () => ({ logger: mocks.logger }));
 
 function stubCollections(
   factory: (name: string) => ReturnType<typeof fakeQuery>
 ): void {
   (
     mocks.collection as unknown as {
-      mockImplementation: (impl: (name: string) => ReturnType<typeof fakeQuery>) => void;
+      mockImplementation: (
+        impl: (name: string) => ReturnType<typeof fakeQuery>
+      ) => void;
     }
   ).mockImplementation(factory);
 }
 
 const oldDoc = (id: string, extra: Record<string, unknown> = {}) =>
-  fakeDoc(id, { createdAt: new Date(0), userId: 'user-1', ...extra });
+  fakeDoc(id, { createdAt: new Date(0), userId: "user-1", ...extra });
 
 beforeEach(() => {
   mocks.collection.mockReset().mockImplementation(() => fakeQuery([]));
@@ -89,10 +91,10 @@ beforeEach(() => {
   mocks.logger.error.mockReset();
 });
 
-describe('compliance retention sweep', () => {
-  it('reports expired documents without deleting them in a dry run', async () => {
+describe("compliance retention sweep", () => {
+  it("reports expired documents without deleting them in a dry run", async () => {
     stubCollections((name) =>
-      name === 'rightsRequests' ? fakeQuery([]) : fakeQuery([oldDoc('old-1')])
+      name === "rightsRequests" ? fakeQuery([]) : fakeQuery([oldDoc("old-1")])
     );
 
     const result = await retentionOps.executeRetentionCleanup(true);
@@ -101,29 +103,31 @@ describe('compliance retention sweep', () => {
     expect(result.deleted).toBe(0);
     expect(mocks.deleted).toEqual([]);
     expect(mocks.commit).not.toHaveBeenCalled();
-    expect(result.details.some((detail) => detail.docId === 'old-1')).toBe(true);
+    expect(result.details.some((detail) => detail.docId === "old-1")).toBe(
+      true
+    );
   });
 
-  it('deletes expired documents through a batch when not a dry run', async () => {
+  it("deletes expired documents through a batch when not a dry run", async () => {
     stubCollections((name) =>
-      name === 'rightsRequests' ? fakeQuery([]) : fakeQuery([oldDoc('old-1')])
+      name === "rightsRequests" ? fakeQuery([]) : fakeQuery([oldDoc("old-1")])
     );
 
     const result = await retentionOps.executeRetentionCleanup(false);
 
-    expect(mocks.deleted).toContain('collection/old-1');
+    expect(mocks.deleted).toContain("collection/old-1");
     expect(mocks.commit).toHaveBeenCalled();
     expect(result.deleted).toBeGreaterThan(0);
   });
 
-  it('keeps documents under any hold flag', async () => {
+  it("keeps documents under any hold flag", async () => {
     stubCollections((name) =>
-      name === 'rightsRequests'
+      name === "rightsRequests"
         ? fakeQuery([])
         : fakeQuery([
-            oldDoc('held-1', { legalHold: true }),
-            oldDoc('held-2', { litigationHold: true }),
-            oldDoc('held-3', { auditHold: true }),
+            oldDoc("held-1", { legalHold: true }),
+            oldDoc("held-2", { litigationHold: true }),
+            oldDoc("held-3", { auditHold: true }),
           ])
     );
 
@@ -133,9 +137,11 @@ describe('compliance retention sweep', () => {
     expect(result.skipped).toBeGreaterThan(0);
   });
 
-  it('keeps documents whose owner has an open rights request', async () => {
+  it("keeps documents whose owner has an open rights request", async () => {
     stubCollections((name) =>
-      name === 'rightsRequests' ? fakeQuery([oldDoc('open')]) : fakeQuery([oldDoc('doc-1')])
+      name === "rightsRequests"
+        ? fakeQuery([oldDoc("open")])
+        : fakeQuery([oldDoc("doc-1")])
     );
 
     const result = await retentionOps.executeRetentionCleanup(false);
@@ -144,12 +150,12 @@ describe('compliance retention sweep', () => {
     expect(result.expired).toBe(0);
   });
 
-  it('never deletes a live account just because it is old', async () => {
+  it("never deletes a live account just because it is old", async () => {
     stubCollections((name) => {
-      if (name === 'users') {
+      if (name === "users") {
         return fakeQuery([
-          oldDoc('user-1', { userId: undefined }),
-          oldDoc('closed-1', { deletedAt: new Date() }),
+          oldDoc("user-1", { userId: undefined }),
+          oldDoc("closed-1", { deletedAt: new Date() }),
         ]);
       }
       return fakeQuery([]);
@@ -157,59 +163,63 @@ describe('compliance retention sweep', () => {
 
     await retentionOps.executeRetentionCleanup(false);
 
-    expect(mocks.deleted).toContain('collection/closed-1');
-    expect(mocks.deleted).not.toContain('collection/user-1');
+    expect(mocks.deleted).toContain("collection/closed-1");
+    expect(mocks.deleted).not.toContain("collection/user-1");
   });
 
-  it('deletes the Auth account before removing a closed profile', async () => {
+  it("deletes the Auth account before removing a closed profile", async () => {
     stubCollections((name) => {
-      if (name === 'users') {
-        return fakeQuery([oldDoc('closed-1', { deletedAt: new Date() })]);
+      if (name === "users") {
+        return fakeQuery([oldDoc("closed-1", { deletedAt: new Date() })]);
       }
       return fakeQuery([]);
     });
 
     await retentionOps.executeRetentionCleanup(false);
 
-    expect(mocks.deleteUser).toHaveBeenCalledWith('closed-1');
-    expect(mocks.deleted).toContain('collection/closed-1');
+    expect(mocks.deleteUser).toHaveBeenCalledWith("closed-1");
+    expect(mocks.deleted).toContain("collection/closed-1");
   });
 
-  it('keeps a profile when the Auth account cannot be deleted', async () => {
-    mocks.deleteUser.mockRejectedValue({ code: 'auth/internal-error' });
+  it("keeps a profile when the Auth account cannot be deleted", async () => {
+    mocks.deleteUser.mockRejectedValue({ code: "auth/internal-error" });
     stubCollections((name) => {
-      if (name === 'users') {
-        return fakeQuery([oldDoc('closed-2', { deletedAt: new Date() })]);
+      if (name === "users") {
+        return fakeQuery([oldDoc("closed-2", { deletedAt: new Date() })]);
       }
       return fakeQuery([]);
     });
 
     const result = await retentionOps.executeRetentionCleanup(false);
 
-    expect(mocks.deleteUser).toHaveBeenCalledWith('closed-2');
-    expect(mocks.deleted).not.toContain('collection/closed-2');
-    expect(result.errors.some((error) => error.includes('could not delete the Auth account'))).toBe(true);
+    expect(mocks.deleteUser).toHaveBeenCalledWith("closed-2");
+    expect(mocks.deleted).not.toContain("collection/closed-2");
+    expect(
+      result.errors.some((error) =>
+        error.includes("could not delete the Auth account")
+      )
+    ).toBe(true);
   });
 
-  it('deletes the profile when the Auth account is already gone', async () => {
-    mocks.deleteUser.mockRejectedValue({ code: 'auth/user-not-found' });
+  it("deletes the profile when the Auth account is already gone", async () => {
+    mocks.deleteUser.mockRejectedValue({ code: "auth/user-not-found" });
     stubCollections((name) => {
-      if (name === 'users') {
-        return fakeQuery([oldDoc('closed-3', { deletedAt: new Date() })]);
+      if (name === "users") {
+        return fakeQuery([oldDoc("closed-3", { deletedAt: new Date() })]);
       }
       return fakeQuery([]);
     });
 
     await retentionOps.executeRetentionCleanup(false);
 
-    expect(mocks.deleted).toContain('collection/closed-3');
+    expect(mocks.deleted).toContain("collection/closed-3");
   });
 
-  it('records a failure ledger entry when Auth keeps refusing', async () => {
-    mocks.deleteUser.mockRejectedValue({ code: 'auth/internal-error' });
+  it("records a failure ledger entry when Auth keeps refusing", async () => {
+    mocks.deleteUser.mockRejectedValue({ code: "auth/internal-error" });
     stubCollections((name) => {
-      if (name === 'users') {
-        return fakeQuery([oldDoc('stuck-1', { deletedAt: new Date() })]);
+      if (name === "users") {
+        return fakeQuery([oldDoc("stuck-1", { deletedAt: new Date() })]);
       }
       return fakeQuery([]);
     });
@@ -217,15 +227,15 @@ describe('compliance retention sweep', () => {
     await retentionOps.executeRetentionCleanup(false);
 
     expect(mocks.failureSet).toHaveBeenCalledWith(
-      expect.objectContaining({ uid: 'stuck-1', needsReview: true }),
+      expect.objectContaining({ uid: "stuck-1", needsReview: true }),
       { merge: true }
     );
   });
 
-  it('clears a failure ledger entry once Auth deletion succeeds', async () => {
+  it("clears a failure ledger entry once Auth deletion succeeds", async () => {
     stubCollections((name) => {
-      if (name === 'users') {
-        return fakeQuery([oldDoc('closed-5', { deletedAt: new Date() })]);
+      if (name === "users") {
+        return fakeQuery([oldDoc("closed-5", { deletedAt: new Date() })]);
       }
       return fakeQuery([]);
     });
@@ -235,10 +245,10 @@ describe('compliance retention sweep', () => {
     expect(mocks.failureDelete).toHaveBeenCalled();
   });
 
-  it('does not delete Auth accounts during a dry run', async () => {
+  it("does not delete Auth accounts during a dry run", async () => {
     stubCollections((name) => {
-      if (name === 'users') {
-        return fakeQuery([oldDoc('closed-4', { deletedAt: new Date() })]);
+      if (name === "users") {
+        return fakeQuery([oldDoc("closed-4", { deletedAt: new Date() })]);
       }
       return fakeQuery([]);
     });
@@ -248,75 +258,91 @@ describe('compliance retention sweep', () => {
     expect(mocks.deleteUser).not.toHaveBeenCalled();
   });
 
-  it('collects errors and keeps sweeping other collections', async () => {
+  it("collects errors and keeps sweeping other collections", async () => {
     stubCollections((name) => {
-      if (name === 'requests') throw new Error('index missing');
+      if (name === "requests") throw new Error("index missing");
       return fakeQuery([]);
     });
 
     const result = await retentionOps.executeRetentionCleanup(true);
 
-    expect(result.errors.some((error) => error.includes('index missing'))).toBe(true);
+    expect(result.errors.some((error) => error.includes("index missing"))).toBe(
+      true
+    );
     expect(mocks.logger.error).toHaveBeenCalled();
   });
 
-  it('retentionCleanupHandler defaults to a dry run', async () => {
+  it("retentionCleanupHandler defaults to a dry run", async () => {
     const json = vi.fn();
     const status = vi.fn(() => ({ json }));
 
     await retentionOps.retentionCleanupHandler({ query: {} }, { status });
 
     expect(status).toHaveBeenCalledWith(200);
-    expect(json).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true, success: true }));
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({ dryRun: true, success: true })
+    );
   });
 
-  it('retentionCleanupHandler deletes when dryRun=false', async () => {
+  it("retentionCleanupHandler deletes when dryRun=false", async () => {
     stubCollections((name) =>
-      name === 'rightsRequests' ? fakeQuery([]) : fakeQuery([oldDoc('old-1')])
+      name === "rightsRequests" ? fakeQuery([]) : fakeQuery([oldDoc("old-1")])
     );
     const json = vi.fn();
     const status = vi.fn(() => ({ json }));
 
-    await retentionOps.retentionCleanupHandler({ query: { dryRun: 'false' } }, { status });
+    await retentionOps.retentionCleanupHandler(
+      { query: { dryRun: "false" } },
+      { status }
+    );
 
-    expect(mocks.deleted).toContain('collection/old-1');
-    expect(json).toHaveBeenCalledWith(expect.objectContaining({ dryRun: false }));
+    expect(mocks.deleted).toContain("collection/old-1");
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({ dryRun: false })
+    );
   });
 
-  it('retentionCleanupHandler returns 500 when the sweep throws', async () => {
+  it("retentionCleanupHandler returns 500 when the sweep throws", async () => {
     mocks.logger.info.mockImplementationOnce(() => {
-      throw new Error('boom');
+      throw new Error("boom");
     });
     const json = vi.fn();
     const status = vi.fn(() => ({ json }));
 
     await retentionOps.retentionCleanupHandler(
-      { query: { dryRun: 'false' } },
+      { query: { dryRun: "false" } },
       { status }
     );
 
     expect(status).toHaveBeenCalledWith(500);
   });
 
-  it('runRetentionCleanupManually returns the result it logged', async () => {
+  it("runRetentionCleanupManually returns the result it logged", async () => {
     const result = await retentionOps.runRetentionCleanupManually(true);
 
     expect(result).toEqual(expect.objectContaining({ deleted: 0, expired: 0 }));
     expect(mocks.logger.info).toHaveBeenCalledWith(
-      'Manual retention cleanup finished',
+      "Manual retention cleanup finished",
       expect.objectContaining({ dryRun: true })
     );
   });
 });
 
-describe('orphaned Auth accounts', () => {
+describe("orphaned Auth accounts", () => {
   const oldAccount = (uid: string) => ({
     uid,
-    metadata: { creationTime: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() },
+    metadata: {
+      creationTime: new Date(
+        Date.now() - 30 * 24 * 60 * 60 * 1000
+      ).toISOString(),
+    },
   });
 
-  it('reports orphans without deleting them in a dry run', async () => {
-    mocks.listUsers.mockResolvedValue({ users: [oldAccount('ghost-1')], pageToken: undefined });
+  it("reports orphans without deleting them in a dry run", async () => {
+    mocks.listUsers.mockResolvedValue({
+      users: [oldAccount("ghost-1")],
+      pageToken: undefined,
+    });
     stubCollections(() => fakeQuery([]));
 
     const result = await retentionOps.deleteOrphanedAuthAccounts();
@@ -325,107 +351,144 @@ describe('orphaned Auth accounts', () => {
     expect(mocks.deleteUser).not.toHaveBeenCalled();
   });
 
-  it('deletes an old Auth account with no profile', async () => {
-    mocks.listUsers.mockResolvedValue({ users: [oldAccount('ghost-2')], pageToken: undefined });
+  it("deletes an old Auth account with no profile", async () => {
+    mocks.listUsers.mockResolvedValue({
+      users: [oldAccount("ghost-2")],
+      pageToken: undefined,
+    });
     stubCollections(() => fakeQuery([]));
 
-    const result = await retentionOps.deleteOrphanedAuthAccounts({ dryRun: false });
+    const result = await retentionOps.deleteOrphanedAuthAccounts({
+      dryRun: false,
+    });
 
-    expect(mocks.deleteUser).toHaveBeenCalledWith('ghost-2');
+    expect(mocks.deleteUser).toHaveBeenCalledWith("ghost-2");
     expect(result.deleted).toBe(1);
   });
 
-  it('keeps an account that still has a profile', async () => {
-    mocks.listUsers.mockResolvedValue({ users: [oldAccount('user-1')], pageToken: undefined });
+  it("keeps an account that still has a profile", async () => {
+    mocks.listUsers.mockResolvedValue({
+      users: [oldAccount("user-1")],
+      pageToken: undefined,
+    });
     stubCollections((name) =>
-      name === 'users' ? fakeQuery([], true) : fakeQuery([])
+      name === "users" ? fakeQuery([], true) : fakeQuery([])
     );
 
-    const result = await retentionOps.deleteOrphanedAuthAccounts({ dryRun: false });
+    const result = await retentionOps.deleteOrphanedAuthAccounts({
+      dryRun: false,
+    });
 
     expect(result.orphaned).toBe(0);
     expect(mocks.deleteUser).not.toHaveBeenCalled();
   });
 
-  it('leaves a freshly created account alone', async () => {
+  it("leaves a freshly created account alone", async () => {
     mocks.listUsers.mockResolvedValue({
-      users: [{ uid: 'new-1', metadata: { creationTime: new Date().toISOString() } }],
+      users: [
+        { uid: "new-1", metadata: { creationTime: new Date().toISOString() } },
+      ],
       pageToken: undefined,
     });
     stubCollections(() => fakeQuery([]));
 
-    const result = await retentionOps.deleteOrphanedAuthAccounts({ dryRun: false });
+    const result = await retentionOps.deleteOrphanedAuthAccounts({
+      dryRun: false,
+    });
 
     expect(result.examined).toBe(1);
     expect(result.orphaned).toBe(0);
     expect(mocks.deleteUser).not.toHaveBeenCalled();
   });
 
-  it('paginates through the Auth user list', async () => {
+  it("paginates through the Auth user list", async () => {
     mocks.listUsers
-      .mockResolvedValueOnce({ users: [oldAccount('ghost-a')], pageToken: 'page-2' })
-      .mockResolvedValueOnce({ users: [oldAccount('ghost-b')], pageToken: undefined });
+      .mockResolvedValueOnce({
+        users: [oldAccount("ghost-a")],
+        pageToken: "page-2",
+      })
+      .mockResolvedValueOnce({
+        users: [oldAccount("ghost-b")],
+        pageToken: undefined,
+      });
     stubCollections(() => fakeQuery([]));
 
-    const result = await retentionOps.deleteOrphanedAuthAccounts({ dryRun: false });
+    const result = await retentionOps.deleteOrphanedAuthAccounts({
+      dryRun: false,
+    });
 
     expect(mocks.listUsers).toHaveBeenCalledTimes(2);
     expect(result.deleted).toBe(2);
   });
 
-  it('treats an already-deleted Auth user as gone', async () => {
-    mocks.listUsers.mockResolvedValue({ users: [oldAccount('ghost-4')], pageToken: undefined });
-    mocks.deleteUser.mockRejectedValue({ code: 'auth/user-not-found' });
+  it("treats an already-deleted Auth user as gone", async () => {
+    mocks.listUsers.mockResolvedValue({
+      users: [oldAccount("ghost-4")],
+      pageToken: undefined,
+    });
+    mocks.deleteUser.mockRejectedValue({ code: "auth/user-not-found" });
     stubCollections(() => fakeQuery([]));
 
-    const result = await retentionOps.deleteOrphanedAuthAccounts({ dryRun: false });
+    const result = await retentionOps.deleteOrphanedAuthAccounts({
+      dryRun: false,
+    });
 
     expect(result.errors).toEqual([]);
     expect(result.deleted).toBe(0);
   });
 
-  it('skips an account without a creation time', async () => {
-    mocks.listUsers.mockResolvedValue({ users: [{ uid: 'no-meta' }], pageToken: undefined });
+  it("skips an account without a creation time", async () => {
+    mocks.listUsers.mockResolvedValue({
+      users: [{ uid: "no-meta" }],
+      pageToken: undefined,
+    });
     stubCollections(() => fakeQuery([]));
 
-    const result = await retentionOps.deleteOrphanedAuthAccounts({ dryRun: false });
+    const result = await retentionOps.deleteOrphanedAuthAccounts({
+      dryRun: false,
+    });
 
     expect(result.orphaned).toBe(0);
   });
 
-  it('keeps the sweep alive when the failure ledger cannot be written', async () => {
-    mocks.failureSet.mockRejectedValue(new Error('ledger down'));
-    mocks.deleteUser.mockRejectedValue({ code: 'auth/internal-error' });
+  it("keeps the sweep alive when the failure ledger cannot be written", async () => {
+    mocks.failureSet.mockRejectedValue(new Error("ledger down"));
+    mocks.deleteUser.mockRejectedValue({ code: "auth/internal-error" });
     stubCollections((name) =>
-      name === 'users'
-        ? fakeQuery([oldDoc('stuck-2', { deletedAt: new Date() })])
+      name === "users"
+        ? fakeQuery([oldDoc("stuck-2", { deletedAt: new Date() })])
         : fakeQuery([])
     );
 
     const result = await retentionOps.executeRetentionCleanup(false);
 
-    expect(result.errors.some((error) => error.includes('stuck-2'))).toBe(true);
+    expect(result.errors.some((error) => error.includes("stuck-2"))).toBe(true);
   });
 
-  it('survives a failure ledger entry that cannot be cleared', async () => {
-    mocks.failureDelete.mockRejectedValue(new Error('ledger down'));
+  it("survives a failure ledger entry that cannot be cleared", async () => {
+    mocks.failureDelete.mockRejectedValue(new Error("ledger down"));
     stubCollections((name) =>
-      name === 'users'
-        ? fakeQuery([oldDoc('closed-6', { deletedAt: new Date() })])
+      name === "users"
+        ? fakeQuery([oldDoc("closed-6", { deletedAt: new Date() })])
         : fakeQuery([])
     );
 
     await retentionOps.executeRetentionCleanup(false);
 
-    expect(mocks.deleted).toContain('collection/closed-6');
+    expect(mocks.deleted).toContain("collection/closed-6");
   });
 
-  it('reports a failed orphan deletion without stopping the sweep', async () => {
-    mocks.listUsers.mockResolvedValue({ users: [oldAccount('ghost-3')], pageToken: undefined });
-    mocks.deleteUser.mockRejectedValue({ code: 'auth/internal-error' });
+  it("reports a failed orphan deletion without stopping the sweep", async () => {
+    mocks.listUsers.mockResolvedValue({
+      users: [oldAccount("ghost-3")],
+      pageToken: undefined,
+    });
+    mocks.deleteUser.mockRejectedValue({ code: "auth/internal-error" });
     stubCollections(() => fakeQuery([]));
 
-    const result = await retentionOps.deleteOrphanedAuthAccounts({ dryRun: false });
+    const result = await retentionOps.deleteOrphanedAuthAccounts({
+      dryRun: false,
+    });
 
     expect(result.errors).toHaveLength(1);
     expect(result.deleted).toBe(0);

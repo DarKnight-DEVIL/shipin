@@ -7,10 +7,10 @@ import {
   where,
   orderBy,
   getDocs,
-} from 'firebase/firestore';
+} from "firebase/firestore";
 
 import { db } from "@/lib/firebaseDb";
-import { toShipINError } from '@/utils/errors';
+import { toShipINError } from "@/utils/errors";
 
 export interface WalletData {
   balance: number;
@@ -19,19 +19,19 @@ export interface WalletData {
 
 export async function getWallet(userId: string): Promise<WalletData> {
   try {
-    const ref = doc(db, 'wallets', userId);
+    const ref = doc(db, "wallets", userId);
 
     const snap = await getDoc(ref);
 
     if (!snap.exists()) {
       await setDoc(ref, {
         balance: 0,
-        currency: 'USD',
+        currency: "USD",
       });
 
       return {
         balance: 0,
-        currency: 'USD',
+        currency: "USD",
       };
     }
 
@@ -46,9 +46,9 @@ export async function getWalletTransactions(
 ): Promise<unknown[]> {
   try {
     const q = query(
-      collection(db, 'walletTransactions'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
+      collection(db, "walletTransactions"),
+      where("userId", "==", userId),
+      orderBy("createdAt", "desc")
     );
 
     const snapshot = await getDocs(q);

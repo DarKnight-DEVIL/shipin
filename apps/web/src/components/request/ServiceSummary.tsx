@@ -11,15 +11,11 @@ interface Props {
   shipping: Shipping;
 }
 
-export default function ServiceSummary({
-  inspection,
-  shipping,
-}: Props) {
+export default function ServiceSummary({ inspection, shipping }: Props) {
   const inspectionService = PRICING.inspection[inspection];
   const shippingService = PRICING.shipping[shipping];
 
-  const total =
-    inspectionService.price + shippingService.price;
+  const total = inspectionService.price + shippingService.price;
 
   return (
     <SectionCard
@@ -30,9 +26,7 @@ export default function ServiceSummary({
         <div className="flex items-center justify-between">
           <div>
             <p className="font-medium text-white">Inspection</p>
-            <p className="text-sm text-slate-400">
-              {inspectionService.name}
-            </p>
+            <p className="text-sm text-slate-400">{inspectionService.name}</p>
           </div>
 
           <span className="font-semibold text-white">
@@ -45,9 +39,7 @@ export default function ServiceSummary({
         <div className="flex items-center justify-between">
           <div>
             <p className="font-medium text-white">Shipping Preference</p>
-            <p className="text-sm text-slate-400">
-              {shippingService.name}
-            </p>
+            <p className="text-sm text-slate-400">{shippingService.name}</p>
           </div>
 
           <span className="font-semibold text-white">

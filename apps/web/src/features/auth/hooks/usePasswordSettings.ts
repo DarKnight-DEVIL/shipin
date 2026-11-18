@@ -59,9 +59,7 @@ export function usePasswordSettings(hasPasswordProvider: boolean) {
     } catch (caught) {
       console.error(caught);
       setError(
-        caught instanceof Error
-          ? caught.message
-          : "Failed to update password."
+        caught instanceof Error ? caught.message : "Failed to update password."
       );
     } finally {
       setChanging(false);

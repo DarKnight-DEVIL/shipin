@@ -18,7 +18,6 @@ export default function SupportTicketList({
 }: Props) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
-
       {/* HEADER */}
       <div className="border-b border-slate-200 p-6 dark:border-slate-800">
         <h2 className="text-xl font-bold text-slate-950 dark:text-white">
@@ -37,11 +36,9 @@ export default function SupportTicketList({
 
       {/* TICKET LIST */}
       {tickets.map((ticket) => {
-        const selected =
-          selectedTicket === ticket.id;
+        const selected = selectedTicket === ticket.id;
 
-        const resolved =
-          ticket.status === "resolved";
+        const resolved = ticket.status === "resolved";
 
         return (
           <button
@@ -55,7 +52,6 @@ export default function SupportTicketList({
             }`}
           >
             <div className="flex items-start justify-between gap-3">
-
               <div className="min-w-0">
                 <div
                   className={`truncate font-semibold ${
@@ -80,16 +76,12 @@ export default function SupportTicketList({
                     : "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-400"
                 }`}
               >
-                {resolved
-                  ? "Resolved"
-                  : "Open"}
+                {resolved ? "Resolved" : "Open"}
               </span>
-
             </div>
           </button>
         );
       })}
-
     </div>
   );
 }

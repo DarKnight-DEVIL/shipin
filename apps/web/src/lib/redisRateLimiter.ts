@@ -65,7 +65,7 @@ function reportRedisError(limiterName: string, clientIp: string): void {
   if (!isProduction) return;
   try {
     // Lazy require avoids bundling Sentry into non-production bundles.
-     
+
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const Sentry = require("@sentry/nextjs") as typeof import("@sentry/nextjs");
     Sentry.withScope((scope) => {
@@ -189,10 +189,14 @@ export function resetSharedRedisClientForTests(): void {
 // may hit Upstash connection limits).
 const ratelimitInstances = new Map<string, Ratelimit>();
 
-function getRatelimitInstance(name: string, maxRequests: number, windowMs: number): Ratelimit | null {
+function getRatelimitInstance(
+  name: string,
+  maxRequests: number,
+  windowMs: number
+): Ratelimit | null {
   const client = getRedis();
   if (!client) return null;
-  
+
   const key = `${name}:${maxRequests}:${windowMs}`;
   let instance = ratelimitInstances.get(key);
   if (!instance) {
@@ -218,7 +222,10 @@ export function createSharedRateLimiter(
   // Error counters are local *and* mirrored to Redis, so /api/health reports
   // the same totals from every instance. The local map stays the fallback for
   // when the store itself is unavailable.
-  const errorCounters = new Map<string, { errors: number; lastErrorAt: number }>();
+  const errorCounters = new Map<
+    string,
+    { errors: number; lastErrorAt: number }
+  >();
 
   function bumpCounter(key: string): void {
     const now = Date.now();
@@ -232,7 +239,9 @@ export function createSharedRateLimiter(
       // Fire and forget: health reporting must never delay or fail a request.
       void client
         .hset(ERROR_HASH_PREFIX + name, { [key]: JSON.stringify(next) })
-        .then(() => client.expire(ERROR_HASH_PREFIX + name, ERROR_HASH_TTL_SECONDS))
+        .then(() =>
+          client.expire(ERROR_HASH_PREFIX + name, ERROR_HASH_TTL_SECONDS)
+        )
         .catch(() => {
           /* counters are best effort */
         });
@@ -319,12 +328,16 @@ export function createSharedRateLimiter(
           for (const [ip, raw] of Object.entries(stored ?? {})) {
             const parsed =
               typeof raw === "string"
-                ? (JSON.parse(raw) as { errors?: unknown; lastErrorAt?: unknown })
+                ? (JSON.parse(raw) as {
+                    errors?: unknown;
+                    lastErrorAt?: unknown;
+                  })
                 : (raw as { errors?: unknown; lastErrorAt?: unknown });
 
             const errors = Number(parsed?.errors);
             const lastErrorAt = Number(parsed?.lastErrorAt);
-            if (!Number.isFinite(errors) || !Number.isFinite(lastErrorAt)) continue;
+            if (!Number.isFinite(errors) || !Number.isFinite(lastErrorAt))
+              continue;
 
             const existing = merged.get(ip);
             merged.set(ip, {

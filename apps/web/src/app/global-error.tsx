@@ -33,7 +33,10 @@ export default function GlobalError({
       <body>
         <div className="error-container">
           <h1>Something went wrong</h1>
-          <p>An unexpected error occurred. Please try again or contact support if the problem persists.</p>
+          <p>
+            An unexpected error occurred. Please try again or contact support if
+            the problem persists.
+          </p>
           <button onClick={() => reset()}>Try again</button>
         </div>
       </body>

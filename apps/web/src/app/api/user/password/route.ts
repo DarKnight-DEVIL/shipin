@@ -20,7 +20,10 @@ const NO_STORE = { "Cache-Control": "no-store" } as const;
  * signs in with a password, so a stolen ID token cannot be used to set a new
  * password on its own.
  */
-async function verifyCurrentPassword(email: string, password: string): Promise<boolean> {
+async function verifyCurrentPassword(
+  email: string,
+  password: string
+): Promise<boolean> {
   const apiKey = clientEnv.NEXT_PUBLIC_FIREBASE_API_KEY;
 
   if (!apiKey) return false;
@@ -60,7 +63,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   if (typeof newPassword !== "string") {
     return NextResponse.json(
-      { success: false, error: "A new password is required.", code: "VALIDATION_ERROR" },
+      {
+        success: false,
+        error: "A new password is required.",
+        code: "VALIDATION_ERROR",
+      },
       { status: 400, headers: NO_STORE }
     );
   }
@@ -84,7 +91,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   if (!email) {
     return NextResponse.json(
-      { success: false, error: "This account has no email address.", code: "VALIDATION_ERROR" },
+      {
+        success: false,
+        error: "This account has no email address.",
+        code: "VALIDATION_ERROR",
+      },
       { status: 400, headers: NO_STORE }
     );
   }
@@ -99,14 +110,22 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   if (hasPasswordProvider) {
     if (typeof currentPassword !== "string" || currentPassword.length === 0) {
       return NextResponse.json(
-        { success: false, error: "Enter your current password.", code: "CURRENT_PASSWORD_REQUIRED" },
+        {
+          success: false,
+          error: "Enter your current password.",
+          code: "CURRENT_PASSWORD_REQUIRED",
+        },
         { status: 400, headers: NO_STORE }
       );
     }
 
     if (!(await verifyCurrentPassword(email, currentPassword))) {
       return NextResponse.json(
-        { success: false, error: "Your current password is incorrect.", code: "INVALID_CREDENTIALS" },
+        {
+          success: false,
+          error: "Your current password is incorrect.",
+          code: "INVALID_CREDENTIALS",
+        },
         { status: 401, headers: NO_STORE }
       );
     }
@@ -114,7 +133,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   if (currentPassword === newPassword) {
     return NextResponse.json(
-      { success: false, error: "New password must be different.", code: "SAME_PASSWORD" },
+      {
+        success: false,
+        error: "New password must be different.",
+        code: "SAME_PASSWORD",
+      },
       { status: 400, headers: NO_STORE }
     );
   }
@@ -125,5 +148,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   // keep working from a device that no longer knows the credential.
   await adminAuth.revokeRefreshTokens(auth.profile.uid);
 
-  return NextResponse.json({ success: true }, { status: 200, headers: NO_STORE });
+  return NextResponse.json(
+    { success: true },
+    { status: 200, headers: NO_STORE }
+  );
 });

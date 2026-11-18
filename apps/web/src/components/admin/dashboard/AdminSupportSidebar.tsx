@@ -45,7 +45,12 @@ interface SupportMessage {
 /** Only the fields this panel renders, sourced from the canonical type. */
 type RequestData = Pick<
   ShipINRequest,
-  "id" | "status" | "payment" | "totalRefundedAmount" | "refundOffer" | "refundRequest"
+  | "id"
+  | "status"
+  | "payment"
+  | "totalRefundedAmount"
+  | "refundOffer"
+  | "refundRequest"
 >;
 
 export default function AdminSupportSidebar() {
@@ -65,10 +70,11 @@ export default function AdminSupportSidebar() {
   const [partialRefundOpen, setPartialRefundOpen] = useState(false);
   const [partialRefundAmount, setPartialRefundAmount] = useState("");
   const [partialRefundReason, setPartialRefundReason] = useState("");
-  const [partialRefundProcessing, setPartialRefundProcessing] =
-    useState(false);
+  const [partialRefundProcessing, setPartialRefundProcessing] = useState(false);
 
-  const [lastSelectedTicketId, setLastSelectedTicketId] = useState<string | null>(null);
+  const [lastSelectedTicketId, setLastSelectedTicketId] = useState<
+    string | null
+  >(null);
   if (selectedTicket?.id !== lastSelectedTicketId) {
     setLastSelectedTicketId(selectedTicket?.id ?? null);
     if (!selectedTicket && messages.length > 0) {
@@ -95,9 +101,7 @@ export default function AdminSupportSidebar() {
           return null;
         }
 
-        return (
-          data.find((ticket) => ticket.id === current.id) || null
-        );
+        return data.find((ticket) => ticket.id === current.id) || null;
       });
 
       setLoading(false);
@@ -136,19 +140,16 @@ export default function AdminSupportSidebar() {
       return;
     }
 
-    const unsubscribe = subscribeToRequest(
-      selectedTicket.requestId,
-      (req) => {
-        if (!req) {
-          return;
-        }
-
-        setRequests((current) => ({
-          ...current,
-          [req.id]: req,
-        }));
+    const unsubscribe = subscribeToRequest(selectedTicket.requestId, (req) => {
+      if (!req) {
+        return;
       }
-    );
+
+      setRequests((current) => ({
+        ...current,
+        [req.id]: req,
+      }));
+    });
 
     return unsubscribe;
   }, [selectedTicket]);
@@ -190,9 +191,7 @@ export default function AdminSupportSidebar() {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(
-          result.error || "Unable to send support reply."
-        );
+        throw new Error(result.error || "Unable to send support reply.");
       }
 
       setMessage("");
@@ -240,19 +239,19 @@ export default function AdminSupportSidebar() {
           className: "bg-emerald-500/10 text-emerald-300",
         }
       : refundStatus === "processing"
-      ? {
-          label: "Refund Processing",
-          className: "bg-blue-500/10 text-blue-300",
-        }
-      : refundStatus === "requested"
-      ? {
-          label: "Refund Requested",
-          className: "bg-amber-500/10 text-amber-300",
-        }
-      : {
-          label: "Refund Offered",
-          className: "bg-purple-500/10 text-purple-300",
-        };
+        ? {
+            label: "Refund Processing",
+            className: "bg-blue-500/10 text-blue-300",
+          }
+        : refundStatus === "requested"
+          ? {
+              label: "Refund Requested",
+              className: "bg-amber-500/10 text-amber-300",
+            }
+          : {
+              label: "Refund Offered",
+              className: "bg-purple-500/10 text-purple-300",
+            };
 
   /*
    * ========================================
@@ -261,71 +260,51 @@ export default function AdminSupportSidebar() {
    */
 
   async function handlePartialRefund() {
-    if (
-      partialRefundProcessing ||
-      !selectedRequest
-    ) {
+    if (partialRefundProcessing || !selectedRequest) {
       return;
     }
 
-    const amount =
-      Number(partialRefundAmount);
+    const amount = Number(partialRefundAmount);
 
-    const reason =
-      partialRefundReason.trim();
+    const reason = partialRefundReason.trim();
 
-    if (
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
-      toast.error(
-        "Enter a valid refund amount."
-      );
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter a valid refund amount.");
       return;
     }
 
     if (!reason) {
-      toast.error(
-        "A refund reason is required."
-      );
+      toast.error("A refund reason is required.");
       return;
     }
 
     try {
       setPartialRefundProcessing(true);
 
-      const response =
-        await fetch(
-          `/api/admin/requests/${selectedRequest.id}/partial-refund`,
-          {
-            method: "POST",
+      const response = await fetch(
+        `/api/admin/requests/${selectedRequest.id}/partial-refund`,
+        {
+          method: "POST",
 
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
+          headers: {
+            "Content-Type": "application/json",
+          },
 
-            body: JSON.stringify({
-              amount,
-              reason,
-            }),
-          }
-        );
+          body: JSON.stringify({
+            amount,
+            reason,
+          }),
+        }
+      );
 
-      const data =
-        await response.json();
+      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.error ||
-            "Unable to offer partial refund."
-        );
+        throw new Error(data.error || "Unable to offer partial refund.");
       }
 
       toast.success(
-        `$${amount.toFixed(
-          2
-        )} partial refund offered to the customer.`
+        `$${amount.toFixed(2)} partial refund offered to the customer.`
       );
 
       setPartialRefundAmount("");
@@ -338,10 +317,7 @@ export default function AdminSupportSidebar() {
        * the sidebar.
        */
     } catch (error) {
-      console.error(
-        "Admin support partial refund offer error:",
-        error
-      );
+      console.error("Admin support partial refund offer error:", error);
 
       toast.error(
         error instanceof Error
@@ -453,10 +429,7 @@ export default function AdminSupportSidebar() {
           {!selectedTicket ? (
             <div className="flex flex-1 items-center justify-center p-8 text-center">
               <div>
-                <MessageCircle
-                  size={40}
-                  className="mx-auto text-slate-700"
-                />
+                <MessageCircle size={40} className="mx-auto text-slate-700" />
                 <p className="mt-4 font-semibold text-slate-300">
                   Select a conversation
                 </p>
@@ -550,9 +523,9 @@ export default function AdminSupportSidebar() {
                         {selectedRequest.refundRequest.preference === "wallet"
                           ? "Wallet Credit"
                           : selectedRequest.refundRequest.preference ===
-                            "original_payment"
-                          ? "Original Payment Method"
-                          : selectedRequest.refundRequest.preference}
+                              "original_payment"
+                            ? "Original Payment Method"
+                            : selectedRequest.refundRequest.preference}
                       </p>
 
                       <p className="mt-1 text-xs text-slate-500">
@@ -560,10 +533,10 @@ export default function AdminSupportSidebar() {
                         {refundStatus === "completed"
                           ? "Completed"
                           : refundStatus === "processing"
-                          ? "Processing"
-                          : refundStatus === "requested"
-                          ? "Requested"
-                          : "Offered"}
+                            ? "Processing"
+                            : refundStatus === "requested"
+                              ? "Requested"
+                              : "Offered"}
                       </p>
                     </div>
                   )}
@@ -676,9 +649,7 @@ export default function AdminSupportSidebar() {
 
                           <p
                             className={`mt-1 text-[11px] ${
-                              fromAdmin
-                                ? "text-violet-100"
-                                : "text-slate-500"
+                              fromAdmin ? "text-violet-100" : "text-slate-500"
                             }`}
                           >
                             {fromAdmin ? "You" : "Customer"}
@@ -704,10 +675,7 @@ export default function AdminSupportSidebar() {
                       value={message}
                       onChange={(event) => setMessage(event.target.value)}
                       onKeyDown={(event) => {
-                        if (
-                          event.key === "Enter" &&
-                          !event.shiftKey
-                        ) {
+                        if (event.key === "Enter" && !event.shiftKey) {
                           event.preventDefault();
                           handleSendMessage();
                         }

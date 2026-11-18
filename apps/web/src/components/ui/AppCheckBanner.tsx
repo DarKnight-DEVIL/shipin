@@ -64,8 +64,8 @@ export default function AppCheckBanner({
       className="fixed inset-x-0 top-0 z-[60] flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-amber-400/40 bg-[#3a2a05] px-4 py-2.5 text-sm text-amber-50"
     >
       <span>
-        <strong className="font-semibold">Security check failed.</strong>{" "}
-        This device could not be verified, so the request was blocked.
+        <strong className="font-semibold">Security check failed.</strong> This
+        device could not be verified, so the request was blocked.
       </span>
       <Link
         href={supportHref}

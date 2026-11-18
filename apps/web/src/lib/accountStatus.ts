@@ -11,7 +11,8 @@
  * reason string, and all three mean the account is no longer allowed in.
  */
 
-export type BlockedAccountStatus = 'disabled' | 'suspended' | 'banned' | 'deleted';
+export type BlockedAccountStatus =
+  "disabled" | "suspended" | "banned" | "deleted";
 
 export type AccountBlock = {
   status: BlockedAccountStatus;
@@ -19,28 +20,29 @@ export type AccountBlock = {
   message: string;
 };
 
-const BLOCKED: Record<BlockedAccountStatus, Omit<AccountBlock, 'status'>> = {
+const BLOCKED: Record<BlockedAccountStatus, Omit<AccountBlock, "status">> = {
   deleted: {
-    code: 'ACCOUNT_DELETED',
-    message: 'This account has been deleted.',
+    code: "ACCOUNT_DELETED",
+    message: "This account has been deleted.",
   },
   banned: {
-    code: 'ACCOUNT_BANNED',
-    message: 'This account has been banned.',
+    code: "ACCOUNT_BANNED",
+    message: "This account has been banned.",
   },
   suspended: {
-    code: 'ACCOUNT_SUSPENDED',
-    message: 'This account is suspended.',
+    code: "ACCOUNT_SUSPENDED",
+    message: "This account is suspended.",
   },
   disabled: {
-    code: 'ACCOUNT_DISABLED',
-    message: 'This account is disabled.',
+    code: "ACCOUNT_DISABLED",
+    message: "This account is disabled.",
   },
 };
 
 function isSet(value: unknown): boolean {
   if (value === undefined || value === null || value === false) return false;
-  if (typeof value === 'string') return value.trim() !== '' && value.trim() !== 'false';
+  if (typeof value === "string")
+    return value.trim() !== "" && value.trim() !== "false";
   return true;
 }
 
@@ -56,15 +58,20 @@ export function getAccountBlock(
 ): AccountBlock | null {
   if (!profile) return null;
 
-  if (isSet(profile.deletedAt)) return { status: 'deleted', ...BLOCKED.deleted };
+  if (isSet(profile.deletedAt))
+    return { status: "deleted", ...BLOCKED.deleted };
   // Requested deletion and anonymisation are the two states the retention sweep
   // treats as closed. Blocking them here means a profile awaiting cleanup — or
   // one whose Auth deletion failed — cannot be used in the meantime.
-  if (isSet(profile.deletionRequestedAt)) return { status: 'deleted', ...BLOCKED.deleted };
-  if (isSet(profile.anonymizedAt)) return { status: 'deleted', ...BLOCKED.deleted };
-  if (isSet(profile.banned)) return { status: 'banned', ...BLOCKED.banned };
-  if (isSet(profile.suspended)) return { status: 'suspended', ...BLOCKED.suspended };
-  if (isSet(profile.disabled)) return { status: 'disabled', ...BLOCKED.disabled };
+  if (isSet(profile.deletionRequestedAt))
+    return { status: "deleted", ...BLOCKED.deleted };
+  if (isSet(profile.anonymizedAt))
+    return { status: "deleted", ...BLOCKED.deleted };
+  if (isSet(profile.banned)) return { status: "banned", ...BLOCKED.banned };
+  if (isSet(profile.suspended))
+    return { status: "suspended", ...BLOCKED.suspended };
+  if (isSet(profile.disabled))
+    return { status: "disabled", ...BLOCKED.disabled };
 
   return null;
 }

@@ -6,14 +6,21 @@ interface AnalyticsApiResponse {
   stats: DashboardStats;
   monthlyRevenue: MonthlyRevenuePoint[];
   statusDistribution: StatusDistributionPoint[];
-  recentActivity: Array<{ id: string; title: string; description: string; createdAt?: string }>;
+  recentActivity: Array<{
+    id: string;
+    title: string;
+    description: string;
+    createdAt?: string;
+  }>;
   topCustomers: CustomerSummary[];
   operations: OperationsOverview;
   financials: FinancialOverview;
 }
 
 async function fetchAnalytics(): Promise<AnalyticsApiResponse> {
-  return customerApi<AnalyticsApiResponse>("/api/admin/analytics", { method: "GET" });
+  return customerApi<AnalyticsApiResponse>("/api/admin/analytics", {
+    method: "GET",
+  });
 }
 export interface DashboardStats {
   totalRequests: number;
@@ -58,7 +65,9 @@ export interface StatusDistributionPoint {
   value: number;
 }
 
-export async function getStatusDistribution(): Promise<StatusDistributionPoint[]> {
+export async function getStatusDistribution(): Promise<
+  StatusDistributionPoint[]
+> {
   try {
     const data = await fetchAnalytics();
     return data.statusDistribution;

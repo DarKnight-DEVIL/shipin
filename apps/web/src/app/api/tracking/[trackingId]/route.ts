@@ -59,7 +59,8 @@ export const GET = withErrorHandler(
         return NextResponse.json(
           {
             success: false,
-            error: "Live tracking is temporarily unavailable. Please try again shortly.",
+            error:
+              "Live tracking is temporarily unavailable. Please try again shortly.",
             code: "TRACKING_UPSTREAM_ERROR",
           },
           { status: 502, headers: NO_STORE }
@@ -72,8 +73,5 @@ export const GET = withErrorHandler(
 );
 
 export const POST = withErrorHandler(async (_req: NextRequest) => {
-  return NextResponse.json(
-    { error: "not implemented" },
-    { status: 501 }
-  );
+  return NextResponse.json({ error: "not implemented" }, { status: 501 });
 });

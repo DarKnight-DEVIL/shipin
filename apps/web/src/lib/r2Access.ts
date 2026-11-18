@@ -57,7 +57,9 @@ export async function authorizeInspectionAccess(
     return null;
   }
 
-  const role = profileSnapshot.exists ? profileSnapshot.data()?.role : undefined;
+  const role = profileSnapshot.exists
+    ? profileSnapshot.data()?.role
+    : undefined;
 
   if (role === "admin") {
     return null;

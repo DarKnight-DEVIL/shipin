@@ -15,7 +15,7 @@
  * Run locally: npm run audit:gate
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawnSync } from "node:child_process";
 
 /**
  * Accepted advisories. Keep this list short and specific.
@@ -27,11 +27,11 @@ import { spawnSync } from 'node:child_process';
  */
 const ALLOWLIST = [
   {
-    id: 'GHSA-fc5q-39xc-vjpf',
-    package: 'picomatch',
-    expires: '2027-01-31',
+    id: "GHSA-fc5q-39xc-vjpf",
+    package: "picomatch",
+    expires: "2027-01-31",
     reason:
-      'Build/test tooling only (vite, vitest, @sentry/nextjs -> @rollup/plugin-commonjs); 4.0.7 is the latest published release, so no fixed version exists.',
+      "Build/test tooling only (vite, vitest, @sentry/nextjs -> @rollup/plugin-commonjs); 4.0.7 is the latest published release, so no fixed version exists.",
   },
 ];
 
@@ -39,32 +39,44 @@ const today = new Date().toISOString().slice(0, 10);
 
 const expired = ALLOWLIST.filter((entry) => entry.expires < today);
 if (expired.length > 0) {
-  console.error('::error::audit-gate: allowlist entries have expired:');
+  console.error("::error::audit-gate: allowlist entries have expired:");
   for (const entry of expired) {
-    console.error('  ' + entry.id + ' (' + entry.package + ') expired ' + entry.expires);
+    console.error(
+      "  " + entry.id + " (" + entry.package + ") expired " + entry.expires
+    );
   }
-  console.error('Re-check for a fixed release, upgrade if one exists, otherwise re-date the entry.');
+  console.error(
+    "Re-check for a fixed release, upgrade if one exists, otherwise re-date the entry."
+  );
   process.exit(1);
 }
 
-const audit = spawnSync('npm', ['audit', '--omit=dev', '--json'], {
-  encoding: 'utf8',
+const audit = spawnSync("npm", ["audit", "--omit=dev", "--json"], {
+  encoding: "utf8",
   maxBuffer: 32 * 1024 * 1024,
   // npm is a .cmd shim on Windows, which spawnSync cannot execute directly.
-  shell: process.platform === 'win32',
+  shell: process.platform === "win32",
 });
 
 let report;
 try {
   report = JSON.parse(audit.stdout);
 } catch {
-  console.error('::error::audit-gate: could not parse `npm audit --json` output.');
+  console.error(
+    "::error::audit-gate: could not parse `npm audit --json` output."
+  );
   console.error(audit.stderr || audit.stdout);
   process.exit(1);
 }
 
-if (!report || typeof report.vulnerabilities !== 'object' || report.vulnerabilities === null) {
-  console.error('::error::audit-gate: npm audit returned no vulnerability report.');
+if (
+  !report ||
+  typeof report.vulnerabilities !== "object" ||
+  report.vulnerabilities === null
+) {
+  console.error(
+    "::error::audit-gate: npm audit returned no vulnerability report."
+  );
   console.error(audit.stderr || audit.stdout);
   process.exit(1);
 }
@@ -89,26 +101,31 @@ function collect(name, seen = new Set()) {
   if (!vulnerability) return;
 
   for (const via of vulnerability.via ?? []) {
-    if (typeof via === 'string') {
+    if (typeof via === "string") {
       collect(via, seen);
       continue;
     }
 
-    if (via.severity !== 'high' && via.severity !== 'critical') continue;
+    if (via.severity !== "high" && via.severity !== "critical") continue;
 
-    const id = /GHSA-[a-z0-9-]+/i.exec(via.url ?? '')?.[0] ?? via.url ?? 'unresolved';
+    const id =
+      /GHSA-[a-z0-9-]+/i.exec(via.url ?? "")?.[0] ?? via.url ?? "unresolved";
 
     advisories.set(id, {
       package: name,
       id,
-      title: via.title ?? 'unknown advisory',
+      title: via.title ?? "unknown advisory",
       severity: via.severity,
     });
   }
 }
 
 for (const [name, vulnerability] of Object.entries(report.vulnerabilities)) {
-  if (vulnerability.severity !== 'high' && vulnerability.severity !== 'critical') continue;
+  if (
+    vulnerability.severity !== "high" &&
+    vulnerability.severity !== "critical"
+  )
+    continue;
   collect(name);
 }
 
@@ -117,26 +134,37 @@ const blocked = [...advisories.values()].filter(
 );
 
 console.log(
-  'audit-gate: ' +
+  "audit-gate: " +
     advisories.size +
-    ' distinct high/critical advisories in the production view, ' +
+    " distinct high/critical advisories in the production view, " +
     (advisories.size - blocked.length) +
-    ' allowlisted.'
+    " allowlisted."
 );
 
 for (const entry of ALLOWLIST) {
-  console.log('  allowed ' + entry.id + ' (' + entry.package + ') until ' + entry.expires);
+  console.log(
+    "  allowed " + entry.id + " (" + entry.package + ") until " + entry.expires
+  );
 }
 
 if (blocked.length > 0) {
-  console.error('::error::audit-gate: unallowlisted production advisories:');
+  console.error("::error::audit-gate: unallowlisted production advisories:");
   for (const advisory of blocked) {
     console.error(
-      '  ' + advisory.severity + ' ' + advisory.id + ' in ' + advisory.package + ': ' + advisory.title
+      "  " +
+        advisory.severity +
+        " " +
+        advisory.id +
+        " in " +
+        advisory.package +
+        ": " +
+        advisory.title
     );
   }
-  console.error('Fix, upgrade, or add a dated allowlist entry in scripts/audit-gate.mjs with a reason.');
+  console.error(
+    "Fix, upgrade, or add a dated allowlist entry in scripts/audit-gate.mjs with a reason."
+  );
   process.exit(1);
 }
 
-console.log('audit-gate: no unallowlisted high/critical advisories.');
+console.log("audit-gate: no unallowlisted high/critical advisories.");

@@ -10,10 +10,7 @@ import {
 } from "@/features/support/services";
 import { subscribeToRequests } from "@/features/requests/services/requests";
 
-import {
-  SupportMessage,
-  SupportTicket,
-} from "@/types/support";
+import { SupportMessage, SupportTicket } from "@/types/support";
 import type { Request } from "@/types/request";
 
 interface RefundOffer {
@@ -36,36 +33,28 @@ interface CustomerRequest extends Request {
   refundRequest?: RefundRequest;
 }
 
-export default function useCustomerSupport(
-  customerId: string
-) {
-  const [tickets, setTickets] =
-    useState<SupportTicket[]>([]);
+export default function useCustomerSupport(customerId: string) {
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
 
-  const [requests, setRequests] =
-    useState<CustomerRequest[]>([]);
+  const [requests, setRequests] = useState<CustomerRequest[]>([]);
 
-  const [selectedTicket, setSelectedTicket] =
-    useState<SupportTicket | null>(null);
+  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(
+    null
+  );
 
   const [selectedRequest, setSelectedRequest] =
     useState<CustomerRequest | null>(null);
 
-  const [messages, setMessages] =
-    useState<SupportMessage[]>([]);
+  const [messages, setMessages] = useState<SupportMessage[]>([]);
 
-  const [refundOffer, setRefundOffer] =
-    useState<RefundOffer | null>(null);
+  const [refundOffer, setRefundOffer] = useState<RefundOffer | null>(null);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const [pendingTicketId, setPendingTicketId] =
-    useState<string | null>(null);
+  const [pendingTicketId, setPendingTicketId] = useState<string | null>(null);
 
   // Tracks the previous customer so the effect below only clears data on a real change.
-  const prevCustomerIdRef =
-    useRef<string | null>(null);
+  const prevCustomerIdRef = useRef<string | null>(null);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -82,7 +71,7 @@ export default function useCustomerSupport(
       }
     }
   }, [customerId]);
-/* eslint-enable react-hooks/set-state-in-effect */
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Second useEffect - subscribe to tickets
   useEffect(() => {
@@ -101,9 +90,7 @@ export default function useCustomerSupport(
 
   // Consume pending ticket id once the ticket appears in the stream.
   if (pendingTicketId) {
-    const newTicket = tickets.find(
-      (ticket) => ticket.id === pendingTicketId
-    );
+    const newTicket = tickets.find((ticket) => ticket.id === pendingTicketId);
 
     if (newTicket) {
       setSelectedRequest(null);
@@ -115,21 +102,15 @@ export default function useCustomerSupport(
   useEffect(() => {
     if (!customerId) return;
 
-    const unsubscribe = subscribeToRequests(
-      customerId,
-      (data) => {
-        setRequests(data as CustomerRequest[]);
-      }
-    );
+    const unsubscribe = subscribeToRequests(customerId, (data) => {
+      setRequests(data as CustomerRequest[]);
+    });
 
     return unsubscribe;
   }, [customerId]);
 
   useEffect(() => {
-    if (
-      selectedTicket ||
-      selectedRequest
-    ) {
+    if (selectedTicket || selectedRequest) {
       return;
     }
 
@@ -139,13 +120,12 @@ export default function useCustomerSupport(
       return;
     }
 
-    const refundRequest =
-      requests.find(
-        (request) =>
-          request.status === "refund_offered" &&
-          request.refundOffer?.offered === true &&
-          !tickets.some((ticket) => ticket.requestId === request.id)
-      );
+    const refundRequest = requests.find(
+      (request) =>
+        request.status === "refund_offered" &&
+        request.refundOffer?.offered === true &&
+        !tickets.some((ticket) => ticket.requestId === request.id)
+    );
 
     if (refundRequest) {
       setSelectedRequest(refundRequest);
@@ -159,11 +139,10 @@ export default function useCustomerSupport(
 
     markSupportTicketRead(selectedTicket.id, "customer");
 
-    const unsubscribe =
-      subscribeToSupportMessages(
-        selectedTicket.id,
-        (messages: SupportMessage[]) => setMessages(messages)
-      );
+    const unsubscribe = subscribeToSupportMessages(
+      selectedTicket.id,
+      (messages: SupportMessage[]) => setMessages(messages)
+    );
 
     return unsubscribe;
   }, [selectedTicket]);
@@ -173,80 +152,53 @@ export default function useCustomerSupport(
       return;
     }
 
-    const request =
-      requests.find(
-        (item) =>
-          item.id ===
-          selectedTicket.requestId
-      );
+    const request = requests.find(
+      (item) => item.id === selectedTicket.requestId
+    );
 
     // Syncing selected request when ticket changes is intentional for immediate feedback.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelectedRequest(
-      request || null
-    );
+    setSelectedRequest(request || null);
 
-    const refundCompleted =
-      request?.refundRequest?.status === "completed";
+    const refundCompleted = request?.refundRequest?.status === "completed";
 
     setRefundOffer(
-      !refundCompleted &&
-        request?.refundOffer?.offered === true
+      !refundCompleted && request?.refundOffer?.offered === true
         ? request.refundOffer!
         : null
     );
-  }, [
-    selectedTicket,
-    requests,
-  ]);
+  }, [selectedTicket, requests]);
 
-  async function sendMessage(
-    ticketId: string,
-    message: string
-  ) {
-    const trimmedMessage =
-      message.trim();
+  async function sendMessage(ticketId: string, message: string) {
+    const trimmedMessage = message.trim();
 
     if (!trimmedMessage) {
       return;
     }
 
-    const response = await fetch(
-      `/api/support/${ticketId}/message`,
-      {
-        method: "POST",
+    const response = await fetch(`/api/support/${ticketId}/message`, {
+      method: "POST",
 
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
+      headers: {
+        "Content-Type": "application/json",
+      },
 
-        body: JSON.stringify({
-          sender: "customer",
-          message: trimmedMessage,
-        }),
-      }
-    );
+      body: JSON.stringify({
+        sender: "customer",
+        message: trimmedMessage,
+      }),
+    });
 
-    const result =
-      await response.json();
+    const result = await response.json();
 
-    if (
-      !response.ok ||
-      !result.success
-    ) {
-      throw new Error(
-        result.error ||
-          "Unable to send support message."
-      );
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || "Unable to send support message.");
     }
 
     return result;
   }
 
-  function selectTicket(
-    ticket: SupportTicket
-  ) {
+  function selectTicket(ticket: SupportTicket) {
     setSelectedRequest(null);
     setSelectedTicket(ticket);
   }
@@ -257,14 +209,10 @@ export default function useCustomerSupport(
 
     setMessages([]);
 
-    setRefundOffer(
-      request.refundOffer ?? null
-    );
+    setRefundOffer(request.refundOffer ?? null);
   }
 
-  function openCreatedTicket(
-    ticketId: string
-  ) {
+  function openCreatedTicket(ticketId: string) {
     setPendingTicketId(ticketId);
   }
 

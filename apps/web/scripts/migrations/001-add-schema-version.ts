@@ -12,11 +12,22 @@
  *   node --env-file=.env.local scripts/migrations/migration-runner.ts 001-add-schema-version [--dry-run]
  */
 
-import { getFirestore, type Firestore, FieldValue, Timestamp, WriteBatch } from "firebase-admin/firestore";
+import {
+  getFirestore,
+  type Firestore,
+  FieldValue,
+  Timestamp,
+  WriteBatch,
+} from "firebase-admin/firestore";
 
 export const name = "001-add-schema-version";
 
-const COLLECTIONS = ["users", "requests", "wallets", "walletTransactions"] as const;
+const COLLECTIONS = [
+  "users",
+  "requests",
+  "wallets",
+  "walletTransactions",
+] as const;
 const BATCH_LIMIT = 500;
 
 export async function up(
@@ -53,7 +64,10 @@ async function addSchemaVersionToCollection(
   let lastDoc: any = null;
 
   while (true) {
-    let query = db.collection(collectionName).orderBy("__name__").limit(batchSize);
+    let query = db
+      .collection(collectionName)
+      .orderBy("__name__")
+      .limit(batchSize);
     if (lastDoc) query = query.startAfter(lastDoc);
 
     const snapshot = await query.get();
@@ -74,11 +88,15 @@ async function addSchemaVersionToCollection(
     }
 
     if (batchCount > 0 && dryRun) {
-      console.log(`   🔍 Would update ${batchCount} documents (total: ${processed})`);
+      console.log(
+        `   🔍 Would update ${batchCount} documents (total: ${processed})`
+      );
     } else if (batchCount > 0) {
       try {
         await batch.commit();
-        console.log(`   ✅ Committed batch of ${batchCount} documents (total: ${processed})`);
+        console.log(
+          `   ✅ Committed batch of ${batchCount} documents (total: ${processed})`
+        );
       } catch (error) {
         console.error(`   ❌ Batch commit failed:`, error);
         failed += batchCount;
@@ -96,7 +114,8 @@ export async function down(db: Firestore): Promise<void> {
   let totalProcessed = 0;
 
   for (const collectionName of COLLECTIONS) {
-    const snapshot = await db.collection(collectionName)
+    const snapshot = await db
+      .collection(collectionName)
       .where("schemaVersion", "==", 1)
       .limit(1000)
       .get();
@@ -108,7 +127,9 @@ export async function down(db: Firestore): Promise<void> {
         totalProcessed++;
       }
       await batch.commit();
-      console.log(`   Removed schemaVersion from ${snapshot.size} documents in ${collectionName}`);
+      console.log(
+        `   Removed schemaVersion from ${snapshot.size} documents in ${collectionName}`
+      );
     }
   }
 

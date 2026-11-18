@@ -32,7 +32,8 @@ export function getFirebaseDb(): Firestore {
     // gets `undefined` rather than the `''` default in `clientEnv`. A bare
     // `.trim()` there threw during hydration on every page that opens
     // Firestore (`/requests`, `/settings`, `/support`).
-    const emulatorHost = clientEnv.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST?.trim() ?? "";
+    const emulatorHost =
+      clientEnv.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST?.trim() ?? "";
     if (emulatorHost && typeof window !== "undefined") {
       const [host, port] = emulatorHost.split(":");
       connectFirestoreEmulator(db, host, Number(port ?? 8080));

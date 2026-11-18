@@ -4,7 +4,11 @@ import { withErrorHandler } from "@/utils/errors";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { serverEnv } from "@/config/env";
-import { apiRateLimiter, addRateLimitHeaders, isRateLimited } from "@/lib/rateLimiter";
+import {
+  apiRateLimiter,
+  addRateLimitHeaders,
+  isRateLimited,
+} from "@/lib/rateLimiter";
 import { verifyPayPalWebhook } from "@/lib/paypal";
 import { sendNotification } from "@/features/notifications/services/notificationService";
 import { WHATSAPP_TEMPLATES } from "@/features/notifications/templates";
@@ -64,7 +68,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   if (!PAYPAL_WEBHOOK_ID) {
     console.error("PAYPAL_WEBHOOK_ID is not configured");
     return NextResponse.json(
-      { success: false, error: "Webhook not configured.", code: "CONFIGURATION_ERROR" },
+      {
+        success: false,
+        error: "Webhook not configured.",
+        code: "CONFIGURATION_ERROR",
+      },
       { status: 500 }
     );
   }
@@ -76,9 +84,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   );
 
   if (missingSignatureHeader) {
-    console.warn("PayPal webhook missing signature header:", missingSignatureHeader);
+    console.warn(
+      "PayPal webhook missing signature header:",
+      missingSignatureHeader
+    );
     return NextResponse.json(
-      { success: false, error: "Invalid webhook signature.", code: "INVALID_SIGNATURE" },
+      {
+        success: false,
+        error: "Invalid webhook signature.",
+        code: "INVALID_SIGNATURE",
+      },
       { status: 400 }
     );
   }
@@ -87,12 +102,20 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const rawBody = await request.text();
 
   // Verify the webhook signature (using request.headers directly as Headers object)
-  const valid = await verifyPayPalWebhook(request.headers, rawBody, PAYPAL_WEBHOOK_ID);
+  const valid = await verifyPayPalWebhook(
+    request.headers,
+    rawBody,
+    PAYPAL_WEBHOOK_ID
+  );
 
   if (!valid) {
     console.warn("PayPal webhook signature verification failed");
     return NextResponse.json(
-      { success: false, error: "Invalid webhook signature.", code: "INVALID_SIGNATURE" },
+      {
+        success: false,
+        error: "Invalid webhook signature.",
+        code: "INVALID_SIGNATURE",
+      },
       { status: 400 }
     );
   }
@@ -118,7 +141,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   if (eventRef) {
     const seen = await eventRef.get();
     if (seen.exists) {
-      return NextResponse.json({ received: true, success: true, duplicate: true });
+      return NextResponse.json({
+        received: true,
+        success: true,
+        duplicate: true,
+      });
     }
   }
 
@@ -141,7 +168,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         break;
 
       default:
-        // Unhandled event types are acknowledged but not processed
+      // Unhandled event types are acknowledged but not processed
     }
   } catch (error) {
     console.error("Webhook processing error:", error);
@@ -149,7 +176,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     // handleCaptureCompleted is idempotent (checks captureId + request status),
     // so retries are safe.
     return NextResponse.json(
-      { success: false, error: "Webhook processing failed.", code: "WEBHOOK_PROCESSING_ERROR" },
+      {
+        success: false,
+        error: "Webhook processing failed.",
+        code: "WEBHOOK_PROCESSING_ERROR",
+      },
       { status: 500 }
     );
   }
@@ -178,9 +209,13 @@ interface PayPalCapture {
  */
 async function handleCaptureCompleted(capture: PayPalCapture) {
   const captureId = capture.id;
-  const orderId = capture.supplementary_data?.related_ids?.order_id
-    || capture.links?.find((l) => l.rel === "order")?.href?.split("/").pop()
-    || "";
+  const orderId =
+    capture.supplementary_data?.related_ids?.order_id ||
+    capture.links
+      ?.find((l) => l.rel === "order")
+      ?.href?.split("/")
+      .pop() ||
+    "";
 
   if (!orderId) {
     console.error("Capture completed but no order ID found:", captureId);
@@ -204,7 +239,6 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
 
   // Check if already processed (idempotency)
   if (paymentOrder.status === "completed") {
-    
     return;
   }
 
@@ -278,7 +312,9 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
           balance: newBalance,
           updatedAt: FieldValue.serverTimestamp(),
         });
-        const walletTransactionRef = adminDb.collection("walletTransactions").doc();
+        const walletTransactionRef = adminDb
+          .collection("walletTransactions")
+          .doc();
         transaction.set(walletTransactionRef, {
           userId: requestData.userId,
           type: "payment",
@@ -307,10 +343,15 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
       whatsapp: {
         templateName: WHATSAPP_TEMPLATES.paymentReceived,
         languageCode: "en",
-        components: [{ type: "body", parameters: [
-          { type: "text", text: customerName },
-          { type: "text", text: requestId },
-        ]}],
+        components: [
+          {
+            type: "body",
+            parameters: [
+              { type: "text", text: customerName },
+              { type: "text", text: requestId },
+            ],
+          },
+        ],
       },
     });
   } catch (error) {

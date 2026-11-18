@@ -34,7 +34,11 @@ function formatEntry(entry: LogEntry): string {
   return base;
 }
 
-function emit(level: LogLevel, message: string, context?: Record<string, unknown>): void {
+function emit(
+  level: LogLevel,
+  message: string,
+  context?: Record<string, unknown>
+): void {
   const entry: LogEntry = {
     level,
     message,

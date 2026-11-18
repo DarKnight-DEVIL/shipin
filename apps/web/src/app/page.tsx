@@ -1,6 +1,6 @@
-import type { Metadata } from 'next';
-import { siteConfig } from '@/config/site';
-import { INDEX_ROBOTS } from '@/config/seo';
+import type { Metadata } from "next";
+import { siteConfig } from "@/config/site";
+import { INDEX_ROBOTS } from "@/config/seo";
 
 /**
  * Landing page metadata.
@@ -10,25 +10,25 @@ import { INDEX_ROBOTS } from '@/config/seo';
 
 export const metadata: Metadata = {
   title: {
-    default: 'ShipIN — International Shopping Forwarding Platform',
-    template: '%s | ShipIN',
+    default: "ShipIN — International Shopping Forwarding Platform",
+    template: "%s | ShipIN",
   },
   description:
-    'ShipIN lets global shoppers forward parcels from India and overseas to their doorstep. Inspect, pack, and forward purchases from marketplaces, stores, and warehouses worldwide.',
+    "ShipIN lets global shoppers forward parcels from India and overseas to their doorstep. Inspect, pack, and forward purchases from marketplaces, stores, and warehouses worldwide.",
   keywords: [
-    'international shipping forwarding',
-    'parcel forwarding India',
-    'shopping forwarding service',
-    'ShipIN',
-    'global parcel delivery',
+    "international shipping forwarding",
+    "parcel forwarding India",
+    "shopping forwarding service",
+    "ShipIN",
+    "global parcel delivery",
   ],
-  authors: [{ name: 'ShipIN', url: siteConfig.url }],
+  authors: [{ name: "ShipIN", url: siteConfig.url }],
   openGraph: {
-    title: 'ShipIN — International Shopping Forwarding Platform',
+    title: "ShipIN — International Shopping Forwarding Platform",
     description:
-      'Forward international purchases from India and overseas to your address worldwide. Inspect, repack, and ship with ShipIN.',
-    type: 'website',
-    locale: 'en_IN',
+      "Forward international purchases from India and overseas to your address worldwide. Inspect, repack, and ship with ShipIN.",
+    type: "website",
+    locale: "en_IN",
     url: siteConfig.url,
     siteName: siteConfig.name,
     images: [
@@ -36,22 +36,22 @@ export const metadata: Metadata = {
         url: siteConfig.ogImage,
         width: 1200,
         height: 630,
-        alt: 'ShipIN — International Shipping Forwarding',
+        alt: "ShipIN — International Shipping Forwarding",
       },
     ],
   },
   twitter: {
-    card: 'summary_large_image',
-    title: 'ShipIN — International Shopping Forwarding Platform',
+    card: "summary_large_image",
+    title: "ShipIN — International Shopping Forwarding Platform",
     description:
-      'Forward international purchases from India and overseas to your address worldwide.',
+      "Forward international purchases from India and overseas to your address worldwide.",
     images: [siteConfig.ogImage],
     creator: siteConfig.twitterHandle,
   },
   robots: INDEX_ROBOTS,
 };
 
-import LandingShell from './_landing/LandingShell';
+import LandingShell from "./_landing/LandingShell";
 
 export default function HomePage() {
   return <LandingShell />;

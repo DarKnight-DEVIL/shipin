@@ -1,6 +1,16 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { Bell, LayoutGrid, MapPin, Menu, MessageCircle, Package, Settings, Wallet, X } from "lucide-react";
+import {
+  Bell,
+  LayoutGrid,
+  MapPin,
+  Menu,
+  MessageCircle,
+  Package,
+  Settings,
+  Wallet,
+  X,
+} from "lucide-react";
 
 import Brand from "./Brand";
 import NavItem from "./NavItem";

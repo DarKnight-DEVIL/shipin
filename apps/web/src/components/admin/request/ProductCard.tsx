@@ -14,42 +14,26 @@ interface Props {
   onEdit?: () => void;
 }
 
-export default function ProductCard({
-  item,
-  editable = false,
-  onEdit,
-}: Props) {
-  const quoted =
-    item.unitPrice != null &&
-    item.subtotal != null;
+export default function ProductCard({ item, editable = false, onEdit }: Props) {
+  const quoted = item.unitPrice != null && item.subtotal != null;
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-
       {/* Product Name */}
-      <h3 className="text-xl font-semibold text-white">
-        📦 {item.name}
-      </h3>
+      <h3 className="text-xl font-semibold text-white">📦 {item.name}</h3>
 
       <div className="mt-5 space-y-4">
-
         {/* Quantity */}
         <div className="flex justify-between">
-          <span className="text-slate-400">
-            Quantity
-          </span>
+          <span className="text-slate-400">Quantity</span>
 
-          <span className="text-white font-medium">
-            {item.quantity}
-          </span>
+          <span className="text-white font-medium">{item.quantity}</span>
         </div>
 
         {/* Product Link */}
         {item.url && (
           <div>
-            <p className="text-slate-400 mb-1">
-              Product Link
-            </p>
+            <p className="text-slate-400 mb-1">Product Link</p>
 
             <a
               href={item.url}
@@ -66,11 +50,8 @@ export default function ProductCard({
         {quoted ? (
           <>
             <div className="border-t border-slate-800 pt-4 space-y-3">
-
               <div className="flex justify-between">
-                <span className="text-slate-400">
-                  Unit Price
-                </span>
+                <span className="text-slate-400">Unit Price</span>
 
                 <span className="text-green-400 font-semibold">
                   ${item.unitPrice!.toFixed(2)}
@@ -78,15 +59,12 @@ export default function ProductCard({
               </div>
 
               <div className="flex justify-between">
-                <span className="text-slate-400">
-                  Subtotal
-                </span>
+                <span className="text-slate-400">Subtotal</span>
 
                 <span className="text-white font-semibold">
                   ${item.subtotal!.toFixed(2)}
                 </span>
               </div>
-
             </div>
           </>
         ) : (
@@ -102,20 +80,15 @@ export default function ProductCard({
             </div>
           </div>
         )}
-
       </div>
 
       {editable && (
         <div className="mt-6">
-          <ActionButton
-            className="w-full"
-            onClick={onEdit}
-          >
+          <ActionButton className="w-full" onClick={onEdit}>
             Edit Product
           </ActionButton>
         </div>
       )}
-
     </div>
   );
 }

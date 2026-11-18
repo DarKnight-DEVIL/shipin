@@ -180,10 +180,7 @@ export default function TotpEnrollmentCard({
           {phase.backupCodes.length === 0 ? (
             <>
               <div className="flex flex-wrap items-start gap-6">
-                <div
-                  className="rounded-xl bg-white p-3"
-                  data-testid="qr"
-                >
+                <div className="rounded-xl bg-white p-3" data-testid="qr">
                   {phase.qrDataUrl ? (
                     // Rendered server-side so no QR library ships to the client.
                     // eslint-disable-next-line @next/next/no-img-element

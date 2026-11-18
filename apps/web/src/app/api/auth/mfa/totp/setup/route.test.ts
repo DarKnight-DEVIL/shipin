@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NextRequest, NextResponse } from 'next/server';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   requireAuthWithProfile: vi.fn(),
@@ -10,8 +10,10 @@ const mocks = vi.hoisted(() => ({
   renderTotpQrDataUrl: vi.fn(),
 }));
 
-vi.mock('@/lib/auth', () => ({ requireAuthWithProfile: mocks.requireAuthWithProfile }));
-vi.mock('@/lib/firebaseAdmin', () => ({
+vi.mock("@/lib/auth", () => ({
+  requireAuthWithProfile: mocks.requireAuthWithProfile,
+}));
+vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
     collection: vi.fn(() => ({
       doc: vi.fn(() => ({
@@ -21,41 +23,44 @@ vi.mock('@/lib/firebaseAdmin', () => ({
     })),
   },
 }));
-vi.mock('firebase-admin/firestore', () => ({
-  FieldValue: { serverTimestamp: () => '__SERVER_TS__' },
+vi.mock("firebase-admin/firestore", () => ({
+  FieldValue: { serverTimestamp: () => "__SERVER_TS__" },
 }));
-vi.mock('@/lib/mfa', () => ({
+vi.mock("@/lib/mfa", () => ({
   generateTotpSecret: mocks.generateTotpSecret,
   getTotpQrUrl: mocks.getTotpQrUrl,
   renderTotpQrDataUrl: mocks.renderTotpQrDataUrl,
 }));
 
-import { POST } from './route';
+import { POST } from "./route";
 
-const request = () => new NextRequest('http://localhost/api/auth/mfa/totp/setup', { method: 'POST' });
+const request = () =>
+  new NextRequest("http://localhost/api/auth/mfa/totp/setup", {
+    method: "POST",
+  });
 
 beforeEach(() => {
   mocks.requireAuthWithProfile.mockReset().mockResolvedValue({
-    profile: { uid: 'admin-1', role: 'admin' },
-    token: { email: 'token@example.com' },
+    profile: { uid: "admin-1", role: "admin" },
+    token: { email: "token@example.com" },
   });
   mocks.refUpdate.mockReset().mockResolvedValue(undefined);
-  mocks.get
+  mocks.get.mockReset().mockResolvedValue({
+    exists: true,
+    data: () => ({ email: "admin@example.com" }),
+    ref: { update: mocks.refUpdate },
+  });
+  mocks.generateTotpSecret.mockReset().mockReturnValue("NEWSECRET");
+  mocks.getTotpQrUrl.mockReset().mockReturnValue("otpauth://totp/x");
+  mocks.renderTotpQrDataUrl
     .mockReset()
-    .mockResolvedValue({
-      exists: true,
-      data: () => ({ email: 'admin@example.com' }),
-      ref: { update: mocks.refUpdate },
-    });
-  mocks.generateTotpSecret.mockReset().mockReturnValue('NEWSECRET');
-  mocks.getTotpQrUrl.mockReset().mockReturnValue('otpauth://totp/x');
-  mocks.renderTotpQrDataUrl.mockReset().mockResolvedValue('data:image/png;base64,AAAA');
+    .mockResolvedValue("data:image/png;base64,AAAA");
 });
 
-describe('POST /api/auth/mfa/totp/setup', () => {
-  it('rejects unauthenticated callers', async () => {
+describe("POST /api/auth/mfa/totp/setup", () => {
+  it("rejects unauthenticated callers", async () => {
     mocks.requireAuthWithProfile.mockResolvedValue(
-      NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     );
 
     const response = await POST(request());
@@ -64,11 +69,11 @@ describe('POST /api/auth/mfa/totp/setup', () => {
     expect(mocks.generateTotpSecret).not.toHaveBeenCalled();
   });
 
-  it('lets a customer start an authenticator enrolment', async () => {
+  it("lets a customer start an authenticator enrolment", async () => {
     // Self-service: a customer manages their own second factor, so the old
     // admin-only gate must not apply. The route still authenticates the caller.
     mocks.requireAuthWithProfile.mockResolvedValue({
-      profile: { uid: 'user-1', role: 'customer' },
+      profile: { uid: "user-1", role: "customer" },
       token: {},
     });
 
@@ -78,40 +83,42 @@ describe('POST /api/auth/mfa/totp/setup', () => {
     expect(mocks.generateTotpSecret).toHaveBeenCalled();
   });
 
-  it('404s when the profile is missing', async () => {
+  it("404s when the profile is missing", async () => {
     mocks.get.mockResolvedValue({ exists: false });
 
     const response = await POST(request());
 
     expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toMatchObject({ code: 'USER_PROFILE_NOT_FOUND' });
+    await expect(response.json()).resolves.toMatchObject({
+      code: "USER_PROFILE_NOT_FOUND",
+    });
   });
 
-  it('stores a new unconfirmed secret and returns the QR payload', async () => {
+  it("stores a new unconfirmed secret and returns the QR payload", async () => {
     const response = await POST(request());
 
     expect(mocks.refUpdate).toHaveBeenCalledWith({
-      'mfa.totp': { secret: 'NEWSECRET', enabled: false, backupCodes: [] },
-      'mfa.required': true,
-      updatedAt: '__SERVER_TS__',
+      "mfa.totp": { secret: "NEWSECRET", enabled: false, backupCodes: [] },
+      "mfa.required": true,
+      updatedAt: "__SERVER_TS__",
     });
     expect(mocks.getTotpQrUrl).toHaveBeenCalledWith(
-      'NEWSECRET',
-      'ShipIN',
-      'admin@example.com'
+      "NEWSECRET",
+      "ShipIN",
+      "admin@example.com"
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       success: true,
-      secret: 'NEWSECRET',
-      qrUrl: 'otpauth://totp/x',
-      qrDataUrl: 'data:image/png;base64,AAAA',
+      secret: "NEWSECRET",
+      qrUrl: "otpauth://totp/x",
+      qrDataUrl: "data:image/png;base64,AAAA",
     });
   });
 
-  it('falls back to the token email, then the uid', async () => {
+  it("falls back to the token email, then the uid", async () => {
     await POST(request());
-    expect(mocks.getTotpQrUrl.mock.calls[0][2]).toBe('admin@example.com');
+    expect(mocks.getTotpQrUrl.mock.calls[0][2]).toBe("admin@example.com");
 
     mocks.get.mockResolvedValue({
       exists: true,
@@ -119,13 +126,13 @@ describe('POST /api/auth/mfa/totp/setup', () => {
       ref: { update: mocks.refUpdate },
     });
     await POST(request());
-    expect(mocks.getTotpQrUrl.mock.calls[1][2]).toBe('token@example.com');
+    expect(mocks.getTotpQrUrl.mock.calls[1][2]).toBe("token@example.com");
 
     mocks.requireAuthWithProfile.mockResolvedValue({
-      profile: { uid: 'admin-9', role: 'admin' },
+      profile: { uid: "admin-9", role: "admin" },
       token: {},
     });
     await POST(request());
-    expect(mocks.getTotpQrUrl.mock.calls[2][2]).toBe('admin-9');
+    expect(mocks.getTotpQrUrl.mock.calls[2][2]).toBe("admin-9");
   });
 });

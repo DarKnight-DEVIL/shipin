@@ -12,23 +12,45 @@ import type { CSSProperties } from "react";
 import dynamic from "next/dynamic";
 
 const AttentionRow = dynamic(
-  () => import("@/components/dashboard/AttentionRow").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-24 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  () =>
+    import("@/components/dashboard/AttentionRow").then((mod) => mod.default),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-24 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 const MetricCard = dynamic(
   () => import("@/components/dashboard/MetricCard").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-32 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-32 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 const RequestRow = dynamic(
   () => import("@/components/dashboard/RequestRow").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-20 animate-pulse rounded-xl border border-slate-800 bg-slate-900" /> }
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-20 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 const ShipmentCard = dynamic(
-  () => import("@/components/dashboard/ShipmentCard").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-48 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  () =>
+    import("@/components/dashboard/ShipmentCard").then((mod) => mod.default),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-48 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 import { SHORTCUTS } from "@/components/dashboard/helpers";
@@ -113,13 +135,15 @@ export default function DashboardPage() {
         <div className="min-w-0">
           <p className="app-kicker">{today}</p>
           <h1 className="dash-title mt-1.5">
-            {greeting},{" "}
-            <span className="text-[var(--accent)]">{userName}</span>
+            {greeting}, <span className="text-[var(--accent)]">{userName}</span>
           </h1>
           <p className="mt-1.5 text-[13px] text-[var(--muted)]">{statusLine}</p>
         </div>
 
-        <Link href="/requests/new" className="app-btn app-btn-primary app-btn-lg">
+        <Link
+          href="/requests/new"
+          className="app-btn app-btn-primary app-btn-lg"
+        >
           <Plus size={15} strokeWidth={2.5} aria-hidden="true" />
           <span className="roll">
             <span>New request</span>
@@ -201,7 +225,10 @@ export default function DashboardPage() {
                   Create a request with a product link and track it from quote
                   to doorstep.
                 </p>
-                <Link href="/requests/new" className="app-btn app-btn-primary mt-5">
+                <Link
+                  href="/requests/new"
+                  className="app-btn app-btn-primary mt-5"
+                >
                   <Plus size={14} strokeWidth={2.5} />
                   New request
                 </Link>

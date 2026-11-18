@@ -19,7 +19,7 @@
  *
  * @type {string}
  */
-export const STANDALONE_SERVER_ENTRY = '.next/standalone/apps/web/server.js';
+export const STANDALONE_SERVER_ENTRY = ".next/standalone/apps/web/server.js";
 
 /**
  * Local test and coverage artefacts that reach the standalone tree and, from
@@ -42,11 +42,11 @@ export const STANDALONE_SERVER_ENTRY = '.next/standalone/apps/web/server.js';
  * @type {readonly string[]}
  */
 export const STANDALONE_ARTEFACTS = [
-  'coverage',
-  'playwright-report',
-  'playwright-test',
-  'test-results',
-  'firestore-debug.log',
+  "coverage",
+  "playwright-report",
+  "playwright-test",
+  "test-results",
+  "firestore-debug.log",
 ];
 
 /**
@@ -61,13 +61,13 @@ export const STANDALONE_ARTEFACTS = [
  *
  * @type {readonly string[]}
  */
-export const STANDALONE_ENV_FILES = ['.env', '.env.local', '.env.production'];
+export const STANDALONE_ENV_FILES = [".env", ".env.local", ".env.production"];
 
 /** @type {readonly string[]} */
 export const STANDALONE_OUTPUT_EXCLUDES = [
   ...STANDALONE_ARTEFACTS.map((artefact) =>
-    artefact.endsWith('.log') ? `./${artefact}` : `./${artefact}/**/*`
+    artefact.endsWith(".log") ? `./${artefact}` : `./${artefact}/**/*`
   ),
   // One glob covers `.env` and every `.env.*` variant.
-  './.env*',
+  "./.env*",
 ];

@@ -1,10 +1,4 @@
-import {
-  Document,
-  Page,
-  Text,
-  View,
-  StyleSheet,
-} from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 
 const styles = StyleSheet.create({
   page: {
@@ -208,8 +202,28 @@ export default function InvoicePDF({
     requestId?: string;
     customerName?: string;
     email?: string;
-    originalItems?: Array<{ id?: string; name: string; quantity: number; unitPrice: number; subtotal: number; serviceFee?: number; repackingFee?: number; storageFee?: number; totalPaid?: number }>;
-    additionalPurchases?: Array<{ id?: string; name: string; quantity: number; unitPrice: number; subtotal: number; serviceFee?: number; repackingFee?: number; storageFee?: number; totalPaid?: number }>;
+    originalItems?: Array<{
+      id?: string;
+      name: string;
+      quantity: number;
+      unitPrice: number;
+      subtotal: number;
+      serviceFee?: number;
+      repackingFee?: number;
+      storageFee?: number;
+      totalPaid?: number;
+    }>;
+    additionalPurchases?: Array<{
+      id?: string;
+      name: string;
+      quantity: number;
+      unitPrice: number;
+      subtotal: number;
+      serviceFee?: number;
+      repackingFee?: number;
+      storageFee?: number;
+      totalPaid?: number;
+    }>;
     productsTotal?: number;
     domesticShipping?: number;
     internationalShipping?: number;
@@ -219,446 +233,231 @@ export default function InvoicePDF({
     totalPaid?: number;
   };
 }) {
-  const originalItems =
-    invoice.originalItems || [];
+  const originalItems = invoice.originalItems || [];
 
-  const additionalPurchases =
-    invoice.additionalPurchases || [];
+  const additionalPurchases = invoice.additionalPurchases || [];
 
   return (
     <Document>
-
-      <Page
-        size="A4"
-        style={styles.page}
-      >
-
+      <Page size="A4" style={styles.page}>
         {/* HEADER */}
 
         <View style={styles.header}>
-
           <View>
-
-            <Text style={styles.brand}>
-              ShipIN
-            </Text>
+            <Text style={styles.brand}>ShipIN</Text>
 
             <Text style={styles.subtitle}>
               Global Shopping & Package Forwarding
             </Text>
 
-            <Text style={styles.subtitle}>
-              contact.shipin@gmail.com
-            </Text>
-
+            <Text style={styles.subtitle}>contact.shipin@gmail.com</Text>
           </View>
 
-
           <View>
+            <Text style={styles.invoiceTitle}>PURCHASE INVOICE</Text>
 
-            <Text style={styles.invoiceTitle}>
-              PURCHASE INVOICE
-            </Text>
-
-            <Text style={styles.invoiceInfo}>
-              INV-{invoice.id || "Draft"}
-            </Text>
+            <Text style={styles.invoiceInfo}>INV-{invoice.id || "Draft"}</Text>
 
             <Text style={styles.invoiceInfo}>
               {new Date().toLocaleDateString()}
             </Text>
-
           </View>
-
         </View>
-
 
         {/* CUSTOMER */}
 
         <View style={styles.customerSection}>
-
           <View>
-
-            <Text style={styles.label}>
-              BILL TO
-            </Text>
+            <Text style={styles.label}>BILL TO</Text>
 
             <Text style={styles.value}>
-              {invoice.customerName ||
-                "Customer"}
+              {invoice.customerName || "Customer"}
             </Text>
 
             <Text style={styles.secondaryValue}>
-              {invoice.email ||
-                "No email provided"}
+              {invoice.email || "No email provided"}
             </Text>
-
           </View>
-
 
           <View>
+            <Text style={styles.label}>ORDER</Text>
 
-            <Text style={styles.label}>
-              ORDER
-            </Text>
-
-            <Text style={styles.value}>
-              #
-              {invoice.requestId ||
-                invoice.id}
-            </Text>
-
+            <Text style={styles.value}>#{invoice.requestId || invoice.id}</Text>
           </View>
-
         </View>
-
 
         {/* ORIGINAL ORDER */}
 
         <View style={styles.section}>
-
-          <Text style={styles.sectionTitle}>
-            Original Order
-          </Text>
+          <Text style={styles.sectionTitle}>Original Order</Text>
 
           <Text style={styles.sectionDescription}>
             Products included in the original purchase request.
           </Text>
 
-
           <View style={styles.tableHeader}>
+            <Text style={styles.productColumn}>Product</Text>
 
-            <Text style={styles.productColumn}>
-              Product
-            </Text>
+            <Text style={styles.qtyColumn}>Qty</Text>
 
-            <Text style={styles.qtyColumn}>
-              Qty
-            </Text>
+            <Text style={styles.priceColumn}>Unit</Text>
 
-            <Text style={styles.priceColumn}>
-              Unit
-            </Text>
-
-            <Text style={styles.totalColumn}>
-              Total
-            </Text>
-
+            <Text style={styles.totalColumn}>Total</Text>
           </View>
 
+          {originalItems.map((item, index: number) => (
+            <View key={item.id || index} style={styles.tableRow}>
+              <Text style={styles.productColumn}>{item.name}</Text>
 
-          {originalItems.map(
-            (
-              item,
-              index: number
-            ) => (
-
-            <View
-              key={
-                item.id ||
-                index
-              }
-              style={styles.tableRow}
-            >
-
-              <Text style={styles.productColumn}>
-                {item.name}
-              </Text>
-
-              <Text style={styles.qtyColumn}>
-                {item.quantity}
-              </Text>
+              <Text style={styles.qtyColumn}>{item.quantity}</Text>
 
               <Text style={styles.priceColumn}>
-                $
-                {(item.unitPrice || 0).toFixed(
-                  2
-                )}
+                ${(item.unitPrice || 0).toFixed(2)}
               </Text>
 
               <Text style={styles.totalColumn}>
-                $
-                {(item.subtotal || 0).toFixed(
-                  2
-                )}
+                ${(item.subtotal || 0).toFixed(2)}
               </Text>
-
             </View>
-
           ))}
-
 
           {/* ORIGINAL TOTALS */}
 
           <View style={styles.summaryBox}>
-
-            <SummaryRow
-              label="Products"
-              value={
-                invoice.productsTotal
-              }
-            />
+            <SummaryRow label="Products" value={invoice.productsTotal} />
 
             <SummaryRow
               label="Domestic Shipping"
-              value={
-                invoice.domesticShipping
-              }
+              value={invoice.domesticShipping}
             />
 
             <SummaryRow
               label="Estimated Shipping"
-              value={
-                invoice.internationalShipping
-              }
+              value={invoice.internationalShipping}
             />
 
-            <SummaryRow
-              label="Service Fee"
-              value={
-                invoice.serviceFee
-              }
-            />
-
+            <SummaryRow label="Service Fee" value={invoice.serviceFee} />
 
             <View style={styles.totalRow}>
-
-              <Text style={styles.totalLabel}>
-                Original Total
-              </Text>
+              <Text style={styles.totalLabel}>Original Total</Text>
 
               <Text style={styles.totalValue}>
-                $
-                {(
-                  invoice.originalTotal ||
-                  0
-                ).toFixed(2)}
+                ${(invoice.originalTotal || 0).toFixed(2)}
               </Text>
-
             </View>
-
           </View>
-
         </View>
-
 
         {/* ADDITIONAL PURCHASES */}
 
-        {additionalPurchases.length >
-          0 && (
-
+        {additionalPurchases.length > 0 && (
           <View style={styles.section}>
-
-            <Text style={styles.sectionTitle}>
-              Additional Purchases
-            </Text>
+            <Text style={styles.sectionTitle}>Additional Purchases</Text>
 
             <Text style={styles.sectionDescription}>
               Items added and paid for after the original order.
             </Text>
 
-
-            {additionalPurchases.map(
-              (
-              purchase,
-                index: number
-              ) => (
-
+            {additionalPurchases.map((purchase, index: number) => (
               <View
-                key={
-                  purchase.id ||
-                  index
-                }
-                style={
-                  styles.additionalCard
-                }
+                key={purchase.id || index}
+                style={styles.additionalCard}
                 wrap={false}
               >
-
-                <Text style={styles.additionalTitle}>
-                  {purchase.name}
-                </Text>
+                <Text style={styles.additionalTitle}>{purchase.name}</Text>
 
                 <Text style={styles.additionalInfo}>
-                  Quantity:{" "}
-                  {purchase.quantity} | Unit Price: $
-                  {(
-                    purchase.unitPrice ||
-                    0
-                  ).toFixed(2)}
+                  Quantity: {purchase.quantity} | Unit Price: $
+                  {(purchase.unitPrice || 0).toFixed(2)}
                 </Text>
-
 
                 <SummaryRow
                   label="Product Subtotal"
-                  value={
-                    purchase.subtotal
-                  }
+                  value={purchase.subtotal}
                 />
 
-
                 {(purchase.serviceFee ?? 0) > 0 && (
-
-                  <SummaryRow
-                    label="Service Fee"
-                    value={
-                      purchase.serviceFee
-                    }
-                  />
-
+                  <SummaryRow label="Service Fee" value={purchase.serviceFee} />
                 )}
-
 
                 {(purchase.repackingFee ?? 0) > 0 && (
-
                   <SummaryRow
                     label="Repacking Fee"
-                    value={
-                      purchase.repackingFee
-                    }
+                    value={purchase.repackingFee}
                   />
-
                 )}
-
 
                 {(purchase.storageFee ?? 0) > 0 && (
-
-                  <SummaryRow
-                    label="Storage Fee"
-                    value={
-                      purchase.storageFee
-                    }
-                  />
-
+                  <SummaryRow label="Storage Fee" value={purchase.storageFee} />
                 )}
 
-
                 <View style={styles.totalRow}>
-
-                  <Text style={styles.totalLabel}>
-                    Amount Paid
-                  </Text>
+                  <Text style={styles.totalLabel}>Amount Paid</Text>
 
                   <Text style={styles.totalValue}>
-                    $
-                    {(
-                      purchase.totalPaid ||
-                      0
-                    ).toFixed(2)}
+                    ${(purchase.totalPaid || 0).toFixed(2)}
                   </Text>
-
                 </View>
-
               </View>
-
             ))}
-
           </View>
-
         )}
-
 
         {/* PAYMENT SUMMARY */}
 
         <View style={styles.section}>
-
-          <Text style={styles.sectionTitle}>
-            Payment Summary
-          </Text>
-
+          <Text style={styles.sectionTitle}>Payment Summary</Text>
 
           <View style={styles.summaryBox}>
-
             <SummaryRow
               label="Original Payment"
-              value={
-                invoice.originalTotal
-              }
+              value={invoice.originalTotal}
             />
 
-
             {(invoice.additionalTotal ?? 0) > 0 && (
-
               <SummaryRow
                 label="Additional Payments"
-                value={
-                  invoice.additionalTotal
-                }
+                value={invoice.additionalTotal}
               />
-
             )}
 
-
             <View style={styles.totalRow}>
-
-              <Text style={styles.totalLabel}>
-                Total Paid
-              </Text>
+              <Text style={styles.totalLabel}>Total Paid</Text>
 
               <Text style={styles.totalValue}>
-                $
-                {(
-                  invoice.totalPaid ||
-                  0
-                ).toFixed(2)}
+                ${(invoice.totalPaid || 0).toFixed(2)}
               </Text>
-
             </View>
-
           </View>
-
         </View>
-
 
         {/* NOTICE */}
 
         <View style={styles.notice}>
-
-          <Text style={styles.noticeTitle}>
-            Important Notice
-          </Text>
+          <Text style={styles.noticeTitle}>Important Notice</Text>
 
           <Text style={styles.noticeText}>
-            The international shipping charge shown above is an estimate.
-            The final shipping cost will be confirmed after your package
-            reaches the ShipIN warehouse. If the actual shipping cost differs,
-            only the difference will be charged or refunded before dispatch.
+            The international shipping charge shown above is an estimate. The
+            final shipping cost will be confirmed after your package reaches the
+            ShipIN warehouse. If the actual shipping cost differs, only the
+            difference will be charged or refunded before dispatch.
           </Text>
-
         </View>
-
       </Page>
-
     </Document>
   );
 }
-
 
 /* =========================================
    SUMMARY ROW
 ========================================= */
 
-function SummaryRow({
-  label,
-  value,
-}: {
-  label: string;
-  value?: number;
-}) {
+function SummaryRow({ label, value }: { label: string; value?: number }) {
   return (
     <View style={styles.summaryRow}>
+      <Text style={styles.summaryLabel}>{label}</Text>
 
-      <Text style={styles.summaryLabel}>
-        {label}
-      </Text>
-
-      <Text style={styles.summaryValue}>
-        $
-        {(value || 0).toFixed(
-          2
-        )}
-      </Text>
-
+      <Text style={styles.summaryValue}>${(value || 0).toFixed(2)}</Text>
     </View>
   );
 }

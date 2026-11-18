@@ -47,8 +47,7 @@ export function useProfileSettings() {
 
         if (!savedProfile || !savedProfile.email || !savedProfile.photoURL) {
           await createUserProfile(user.uid, {
-            displayName:
-              savedProfile?.displayName || user.displayName || "",
+            displayName: savedProfile?.displayName || user.displayName || "",
             email: user.email || savedProfile?.email || "",
             phone: savedProfile?.phone || user.phoneNumber || "",
             photoURL: savedProfile?.photoURL || user.photoURL || "",
@@ -62,8 +61,7 @@ export function useProfileSettings() {
         }
 
         setProfile({
-          displayName:
-            savedProfile?.displayName || user.displayName || "",
+          displayName: savedProfile?.displayName || user.displayName || "",
           email: user.email ?? "",
           phone: savedProfile?.phone ?? "",
         });

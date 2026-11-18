@@ -9,30 +9,33 @@ import {
   serverTimestamp,
   orderBy,
   onSnapshot,
-} from 'firebase/firestore';
+} from "firebase/firestore";
 import { db } from "@/lib/firebaseDb";
-import type { SupportTicket, SupportMessage } from '@/types/support';
-import { toShipINError } from '@/utils/errors';
+import type { SupportTicket, SupportMessage } from "@/types/support";
+import { toShipINError } from "@/utils/errors";
 
 export async function createSupportTicket(
-  data: Omit<SupportTicket, 'id' | 'createdAt' | 'updatedAt' | 'messages' | 'status'> & {
+  data: Omit<
+    SupportTicket,
+    "id" | "createdAt" | "updatedAt" | "messages" | "status"
+  > & {
     firstMessage?: string;
   }
 ): Promise<string> {
   try {
     const ticketData: Record<string, unknown> = {
       ...data,
-      status: 'open',
+      status: "open",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
 
-    const docRef = await addDoc(collection(db, 'supportTickets'), ticketData);
+    const docRef = await addDoc(collection(db, "supportTickets"), ticketData);
 
     if (data.firstMessage) {
-      await addDoc(collection(db, 'supportMessages'), {
+      await addDoc(collection(db, "supportMessages"), {
         ticketId: docRef.id,
-        sender: data.customerId ? 'customer' : 'admin',
+        sender: data.customerId ? "customer" : "admin",
         message: data.firstMessage,
         createdAt: serverTimestamp(),
       });
@@ -46,10 +49,10 @@ export async function createSupportTicket(
 
 export async function addSupportMessage(
   ticketId: string,
-  message: Omit<SupportMessage, 'id' | 'createdAt'>
+  message: Omit<SupportMessage, "id" | "createdAt">
 ): Promise<string> {
   try {
-    const docRef = await addDoc(collection(db, 'supportMessages'), {
+    const docRef = await addDoc(collection(db, "supportMessages"), {
       ...message,
       ticketId,
       createdAt: serverTimestamp(),
@@ -62,8 +65,8 @@ export async function addSupportMessage(
 
 export async function resolveSupportTicket(ticketId: string): Promise<void> {
   try {
-    await updateDoc(doc(db, 'supportTickets', ticketId), {
-      status: 'resolved',
+    await updateDoc(doc(db, "supportTickets", ticketId), {
+      status: "resolved",
       resolvedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -74,11 +77,11 @@ export async function resolveSupportTicket(ticketId: string): Promise<void> {
 
 export async function markSupportTicketRead(
   ticketId: string,
-  role: 'customer' | 'admin'
+  role: "customer" | "admin"
 ): Promise<void> {
   try {
-    const field = role === 'customer' ? 'customerUnread' : 'adminUnread';
-    await updateDoc(doc(db, 'supportTickets', ticketId), {
+    const field = role === "customer" ? "customerUnread" : "adminUnread";
+    await updateDoc(doc(db, "supportTickets", ticketId), {
       [field]: false,
       updatedAt: serverTimestamp(),
     });
@@ -92,13 +95,13 @@ export async function getSupportTicketsByRequest(
 ): Promise<SupportTicket[]> {
   try {
     const q = query(
-      collection(db, 'supportTickets'),
-      where('requestId', '==', requestId)
+      collection(db, "supportTickets"),
+      where("requestId", "==", requestId)
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map((doc) => ({
       id: doc.id,
-      ...(doc.data() as Omit<SupportTicket, 'id'>),
+      ...(doc.data() as Omit<SupportTicket, "id">),
     }));
   } catch (error) {
     throw toShipINError(error);
@@ -110,13 +113,13 @@ export async function getSupportTicketsByCustomer(
 ): Promise<SupportTicket[]> {
   try {
     const q = query(
-      collection(db, 'supportTickets'),
-      where('customerId', '==', customerId)
+      collection(db, "supportTickets"),
+      where("customerId", "==", customerId)
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map((doc) => ({
       id: doc.id,
-      ...(doc.data() as Omit<SupportTicket, 'id'>),
+      ...(doc.data() as Omit<SupportTicket, "id">),
     }));
   } catch (error) {
     throw toShipINError(error);
@@ -128,14 +131,14 @@ export async function getSupportMessages(
 ): Promise<SupportMessage[]> {
   try {
     const q = query(
-      collection(db, 'supportMessages'),
-      where('ticketId', '==', ticketId),
-      orderBy('createdAt', 'asc')
+      collection(db, "supportMessages"),
+      where("ticketId", "==", ticketId),
+      orderBy("createdAt", "asc")
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map((doc) => ({
       id: doc.id,
-      ...(doc.data() as Omit<SupportMessage, 'id'>),
+      ...(doc.data() as Omit<SupportMessage, "id">),
     }));
   } catch (error) {
     throw toShipINError(error);
@@ -147,15 +150,15 @@ export function subscribeToSupportMessages(
   callback: (messages: SupportMessage[]) => void
 ): () => void {
   const q = query(
-    collection(db, 'supportMessages'),
-    where('ticketId', '==', ticketId),
-    orderBy('createdAt', 'asc')
+    collection(db, "supportMessages"),
+    where("ticketId", "==", ticketId),
+    orderBy("createdAt", "asc")
   );
   return onSnapshot(q, (snapshot) => {
     callback(
       snapshot.docs.map((doc) => ({
         id: doc.id,
-        ...(doc.data() as Omit<SupportMessage, 'id'>),
+        ...(doc.data() as Omit<SupportMessage, "id">),
       }))
     );
   });
@@ -166,14 +169,14 @@ export function subscribeToSupportTickets(
   callback: (tickets: SupportTicket[]) => void
 ): () => void {
   const q = query(
-    collection(db, 'supportTickets'),
-    where('requestId', '==', requestId)
+    collection(db, "supportTickets"),
+    where("requestId", "==", requestId)
   );
   return onSnapshot(q, (snapshot) => {
     callback(
       snapshot.docs.map((doc) => ({
         id: doc.id,
-        ...(doc.data() as Omit<SupportTicket, 'id'>),
+        ...(doc.data() as Omit<SupportTicket, "id">),
       }))
     );
   });
@@ -181,16 +184,16 @@ export function subscribeToSupportTickets(
 
 export function subscribeToCustomerSupportTickets(
   customerId: string,
-  callback: (tickets: import('@/types/support').SupportTicket[]) => void
+  callback: (tickets: import("@/types/support").SupportTicket[]) => void
 ): () => void {
   const q = query(
-    collection(db, 'supportTickets'),
-    where('customerId', '==', customerId)
+    collection(db, "supportTickets"),
+    where("customerId", "==", customerId)
   );
   return onSnapshot(q, (snapshot) => {
     const tickets = snapshot.docs.map((doc) => ({
       id: doc.id,
-      ...(doc.data() as Omit<import('@/types/support').SupportTicket, 'id'>),
+      ...(doc.data() as Omit<import("@/types/support").SupportTicket, "id">),
     }));
     callback(tickets);
   });
@@ -200,14 +203,14 @@ export function subscribeToAllSupportTickets(
   callback: (tickets: SupportTicket[]) => void
 ): () => void {
   const q = query(
-    collection(db, 'supportTickets'),
-    orderBy('createdAt', 'desc')
+    collection(db, "supportTickets"),
+    orderBy("createdAt", "desc")
   );
   return onSnapshot(q, (snapshot) => {
     callback(
       snapshot.docs.map((doc) => ({
         id: doc.id,
-        ...(doc.data() as Omit<SupportTicket, 'id'>),
+        ...(doc.data() as Omit<SupportTicket, "id">),
       }))
     );
   });
@@ -219,4 +222,4 @@ export function subscribeToAllSupportTickets(
 export {
   subscribeToRequest,
   subscribeToRequests,
-} from '@/features/requests/services/requests';
+} from "@/features/requests/services/requests";

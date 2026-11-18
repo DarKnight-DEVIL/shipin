@@ -45,33 +45,43 @@ let exitCode = 0;
 
 for (const s of seeds) {
   console.error(`::group::vitest run --sequence.seed=${s}`);
-  const result = spawnSync("npx", ["vitest", "run", "--sequence.shuffle", `--sequence.seed=${s}`], {
-    cwd: WEB_PKG,
-    env: {
-      ...process.env,
-      PAYPAL_CLIENT_ID: process.env.PAYPAL_CLIENT_ID || "test",
-      PAYPAL_CLIENT_SECRET: process.env.PAYPAL_CLIENT_SECRET || "test",
-      NEXT_PUBLIC_PAYPAL_CLIENT_ID: process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || "test",
-      PAYPAL_API_URL: process.env.PAYPAL_API_URL || "https://api-m.sandbox.paypal.com",
-      PAYPAL_ENV: process.env.PAYPAL_ENV || "sandbox",
-      SMTP_EMAIL: process.env.SMTP_EMAIL || "test@test.com",
-      SMTP_PASSWORD: process.env.SMTP_PASSWORD || "test",
-      FIREBASE_ADMIN_PROJECT_ID: process.env.FIREBASE_ADMIN_PROJECT_ID || "test",
-      FIREBASE_ADMIN_CLIENT_EMAIL: process.env.FIREBASE_ADMIN_CLIENT_EMAIL || "test@test.com",
-      FIREBASE_ADMIN_PRIVATE_KEY: process.env.FIREBASE_ADMIN_PRIVATE_KEY || "test",
-      R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID || "test",
-      R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || "test",
-      R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || "test",
-      R2_BUCKET_NAME: process.env.R2_BUCKET_NAME || "test",
-      WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN || "test",
-      WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID || "test",
-      UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL || "",
-      UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN || "",
-      NODE_ENV: process.env.NODE_ENV || "test",
-    },
-    stdio: "inherit",
-    windowsHide: false,
-  });
+  const result = spawnSync(
+    "npx",
+    ["vitest", "run", "--sequence.shuffle", `--sequence.seed=${s}`],
+    {
+      cwd: WEB_PKG,
+      env: {
+        ...process.env,
+        PAYPAL_CLIENT_ID: process.env.PAYPAL_CLIENT_ID || "test",
+        PAYPAL_CLIENT_SECRET: process.env.PAYPAL_CLIENT_SECRET || "test",
+        NEXT_PUBLIC_PAYPAL_CLIENT_ID:
+          process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || "test",
+        PAYPAL_API_URL:
+          process.env.PAYPAL_API_URL || "https://api-m.sandbox.paypal.com",
+        PAYPAL_ENV: process.env.PAYPAL_ENV || "sandbox",
+        SMTP_EMAIL: process.env.SMTP_EMAIL || "test@test.com",
+        SMTP_PASSWORD: process.env.SMTP_PASSWORD || "test",
+        FIREBASE_ADMIN_PROJECT_ID:
+          process.env.FIREBASE_ADMIN_PROJECT_ID || "test",
+        FIREBASE_ADMIN_CLIENT_EMAIL:
+          process.env.FIREBASE_ADMIN_CLIENT_EMAIL || "test@test.com",
+        FIREBASE_ADMIN_PRIVATE_KEY:
+          process.env.FIREBASE_ADMIN_PRIVATE_KEY || "test",
+        R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID || "test",
+        R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || "test",
+        R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || "test",
+        R2_BUCKET_NAME: process.env.R2_BUCKET_NAME || "test",
+        WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN || "test",
+        WHATSAPP_PHONE_NUMBER_ID:
+          process.env.WHATSAPP_PHONE_NUMBER_ID || "test",
+        UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL || "",
+        UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN || "",
+        NODE_ENV: process.env.NODE_ENV || "test",
+      },
+      stdio: "inherit",
+      windowsHide: false,
+    }
+  );
 
   console.error(`::endgroup::`);
   if (result.status !== 0) exitCode = result.status;

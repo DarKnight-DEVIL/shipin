@@ -16,9 +16,7 @@ export interface ServiceFeeResult {
  * - Products total > $30–$500  → 10%, minimum $10
  * - Products total > $500      → Manual quote required
  */
-export function calculateServiceFee(
-  productsTotal: number
-): ServiceFeeResult {
+export function calculateServiceFee(productsTotal: number): ServiceFeeResult {
   if (productsTotal <= PRICING.FREE_SERVICE_LIMIT) {
     return {
       fee: 0,
@@ -64,23 +62,23 @@ export function requiresManualQuote(productsTotal: number): boolean {
 /**
  * Calculates the detailed inspection fee.
  */
-export function calculateInspectionFee(
-  services?: ServiceSelections
-): number {
+export function calculateInspectionFee(services?: ServiceSelections): number {
   if (!services) {
     return 0;
   }
-  return services.inspection === "detailed" ? PRICING.inspection.detailed.price : 0;
+  return services.inspection === "detailed"
+    ? PRICING.inspection.detailed.price
+    : 0;
 }
 
 /**
  * Calculates the hold-package fee.
  */
-export function calculateHoldFee(
-  services?: ServiceSelections
-): number {
+export function calculateHoldFee(services?: ServiceSelections): number {
   if (!services) {
     return 0;
   }
-  return services.shippingPreference === "hold" ? PRICING.shipping.hold.price : 0;
+  return services.shippingPreference === "hold"
+    ? PRICING.shipping.hold.price
+    : 0;
 }

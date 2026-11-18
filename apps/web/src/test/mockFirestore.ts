@@ -67,11 +67,11 @@ export interface MockFirestoreDb {
 // FieldValue — matches the firebase-admin public API surface used in code.
 // ---------------------------------------------------------------------------
 
-const ServerTimestampSentinel = Symbol('serverTimestamp');
-const IncrementPrefix = Symbol('incrementPrefix');
-const DeleteSentinel = Symbol('delete');
-const UnionPrefix = Symbol('arrayUnion');
-const RemovePrefix = Symbol('arrayRemove');
+const ServerTimestampSentinel = Symbol("serverTimestamp");
+const IncrementPrefix = Symbol("incrementPrefix");
+const DeleteSentinel = Symbol("delete");
+const UnionPrefix = Symbol("arrayUnion");
+const RemovePrefix = Symbol("arrayRemove");
 
 export const FieldValue = {
   serverTimestamp(): unknown {
@@ -104,7 +104,7 @@ type RemoveValue = { [RemovePrefix]: unknown[] };
 function hasSymbolKey(value: unknown, key: symbol): boolean {
   return (
     value !== null &&
-    typeof value === 'object' &&
+    typeof value === "object" &&
     Object.prototype.hasOwnProperty.call(value, key)
   );
 }
@@ -124,7 +124,7 @@ function isRemoveValue(value: unknown): value is RemoveValue {
 /** Array elements compare structurally, like Firestore's array values. */
 function sameValue(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  if (typeof a !== 'object' || typeof b !== 'object') return false;
+  if (typeof a !== "object" || typeof b !== "object") return false;
   if (a === null || b === null) return false;
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -245,24 +245,28 @@ export function createMockFirestore(): MockFirestoreDb {
 
   const makeTransaction = (): MockTransaction => ({
     async get(ref: MockDocRef) {
-      const [colName, docId] = ref.path.split('/');
+      const [colName, docId] = ref.path.split("/");
       const doc = store.get(colName)?.get(docId);
       return {
         exists: doc !== undefined,
         data: () => (doc ? { ...doc } : undefined),
       };
     },
-    set(ref: MockDocRef, data: Record<string, unknown>, options?: MockSetOptions) {
-      const [colName, docId] = ref.path.split('/');
+    set(
+      ref: MockDocRef,
+      data: Record<string, unknown>,
+      options?: MockSetOptions
+    ) {
+      const [colName, docId] = ref.path.split("/");
       applySet(store, colName, docId, data, options);
     },
     update(ref: MockDocRef, data: Record<string, unknown>) {
-      const [colName, docId] = ref.path.split('/');
+      const [colName, docId] = ref.path.split("/");
       requireDoc(store, colName, docId);
       applyUpdate(store, colName, docId, data);
     },
     delete(ref: MockDocRef) {
-      const [colName, docId] = ref.path.split('/');
+      const [colName, docId] = ref.path.split("/");
       store.get(colName)?.delete(docId);
     },
   });
@@ -270,11 +274,13 @@ export function createMockFirestore(): MockFirestoreDb {
   return {
     collection: makeCollectionRef,
     doc(path: string) {
-      const parts = path.split('/');
+      const parts = path.split("/");
       if (parts.length !== 2) throw new Error(`Invalid doc path: ${path}`);
       return makeDocRef(parts[0], parts[1]);
     },
-    async runTransaction<T>(fn: (t: MockTransaction) => Promise<T>): Promise<T> {
+    async runTransaction<T>(
+      fn: (t: MockTransaction) => Promise<T>
+    ): Promise<T> {
       return fn(makeTransaction());
     },
     reset() {

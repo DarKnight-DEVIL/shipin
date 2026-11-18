@@ -1,9 +1,6 @@
-import 'server-only';
+import "server-only";
 
-import {
-  adminAuth,
-  adminDb,
-} from "@/lib/firebaseAdmin";
+import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { verifyTotp, verifyBackupCode } from "@/lib/mfa";
 import { getMfaSession } from "@/lib/mfaSession";
 import { getAccountBlock } from "@/lib/accountStatus";
@@ -44,9 +41,7 @@ export interface AdminUser {
  * honored by this gate: the header alone proves nothing. The verified
  * session cookie above is the supported path for security keys.
  */
-export async function requireAdmin(
-  request: Request
-): Promise<AdminUser> {
+export async function requireAdmin(request: Request): Promise<AdminUser> {
   /*
    * ========================================
    * APP CHECK
@@ -70,26 +65,16 @@ export async function requireAdmin(
    * ========================================
    */
 
-  const authorization =
-    request.headers.get("authorization");
+  const authorization = request.headers.get("authorization");
 
-  if (
-    !authorization?.startsWith(
-      "Bearer "
-    )
-  ) {
-    throw new Error(
-      "AUTHENTICATION_REQUIRED"
-    );
+  if (!authorization?.startsWith("Bearer ")) {
+    throw new Error("AUTHENTICATION_REQUIRED");
   }
 
-  const idToken =
-    authorization.substring(7);
+  const idToken = authorization.substring(7);
 
   if (!idToken) {
-    throw new Error(
-      "AUTHENTICATION_REQUIRED"
-    );
+    throw new Error("AUTHENTICATION_REQUIRED");
   }
 
   /*
@@ -108,20 +93,11 @@ export async function requireAdmin(
      * Customer routes skip this — their account state is read from Firestore
      * instead, which costs nothing extra.
      */
-    decodedToken =
-      await adminAuth.verifyIdToken(
-        idToken,
-        true
-      );
+    decodedToken = await adminAuth.verifyIdToken(idToken, true);
   } catch (error) {
-    console.error(
-      "Admin authentication failed:",
-      error
-    );
+    console.error("Admin authentication failed:", error);
 
-    throw new Error(
-      "INVALID_AUTHENTICATION"
-    );
+    throw new Error("INVALID_AUTHENTICATION");
   }
 
   /*
@@ -136,8 +112,7 @@ export async function requireAdmin(
     throw new Error("EMAIL_VERIFICATION_REQUIRED");
   }
 
-  const uid =
-    decodedToken.uid;
+  const uid = decodedToken.uid;
 
   /*
    * ========================================
@@ -145,20 +120,13 @@ export async function requireAdmin(
    * ========================================
    */
 
-  const userSnapshot =
-    await adminDb
-      .collection("users")
-      .doc(uid)
-      .get();
+  const userSnapshot = await adminDb.collection("users").doc(uid).get();
 
   if (!userSnapshot.exists) {
-    throw new Error(
-      "USER_PROFILE_NOT_FOUND"
-    );
+    throw new Error("USER_PROFILE_NOT_FOUND");
   }
 
-  const userData =
-    userSnapshot.data();
+  const userData = userSnapshot.data();
 
   /*
    * ========================================
@@ -169,13 +137,10 @@ export async function requireAdmin(
    * profile (only an admin can write them — firestore.rules blocks self-writes).
    */
 
-  const accountBlock =
-    getAccountBlock(userData);
+  const accountBlock = getAccountBlock(userData);
 
   if (accountBlock) {
-    throw new Error(
-      accountBlock.code
-    );
+    throw new Error(accountBlock.code);
   }
 
   /*
@@ -184,12 +149,8 @@ export async function requireAdmin(
    * ========================================
    */
 
-  if (
-    userData?.role !== "admin"
-  ) {
-    throw new Error(
-      "ADMIN_ACCESS_REQUIRED"
-    );
+  if (userData?.role !== "admin") {
+    throw new Error("ADMIN_ACCESS_REQUIRED");
   }
 
   /*
@@ -204,7 +165,8 @@ export async function requireAdmin(
 
   const mfa = userData?.mfa || {};
   const hasTotp = mfa.totp?.enabled && mfa.totp?.secret;
-  const hasWebAuthn = mfa.webauthn?.enabled && (mfa.webauthn.credentialIds?.length ?? 0) > 0;
+  const hasWebAuthn =
+    mfa.webauthn?.enabled && (mfa.webauthn.credentialIds?.length ?? 0) > 0;
   // Firebase (Identity Platform) second factors — SMS today — live on the
   // Auth user, not in Firestore. A token that completed the challenge carries
   // `firebase.sign_in_second_factor`, so it is proof in itself.
@@ -283,12 +245,8 @@ export async function requireAdmin(
 
   return {
     uid,
-    email:
-      decodedToken.email ||
-      userData?.email,
-    displayName:
-      decodedToken.name ||
-      userData?.displayName,
+    email: decodedToken.email || userData?.email,
+    displayName: decodedToken.name || userData?.displayName,
     mfaVerified: true,
   };
 }
@@ -297,62 +255,38 @@ export async function requireAdmin(
  * Converts admin authorization errors
  * into the appropriate HTTP response.
  */
-export function getAdminAuthError(
-  error: unknown
-) {
-  const message =
-    error instanceof Error
-      ? error.message
-      : "";
+export function getAdminAuthError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
 
-  if (
-    message ===
-    "AUTHENTICATION_REQUIRED"
-  ) {
+  if (message === "AUTHENTICATION_REQUIRED") {
     return {
       status: 401,
-      error:
-        "Authentication required.",
+      error: "Authentication required.",
     };
   }
 
-  if (
-    message ===
-    "INVALID_AUTHENTICATION"
-  ) {
+  if (message === "INVALID_AUTHENTICATION") {
     return {
       status: 401,
-      error:
-        "Invalid authentication.",
+      error: "Invalid authentication.",
     };
   }
 
-  if (
-    message ===
-    "USER_PROFILE_NOT_FOUND"
-  ) {
+  if (message === "USER_PROFILE_NOT_FOUND") {
     return {
       status: 403,
-      error:
-        "User profile not found.",
+      error: "User profile not found.",
     };
   }
 
-  if (
-    message ===
-    "ADMIN_ACCESS_REQUIRED"
-  ) {
+  if (message === "ADMIN_ACCESS_REQUIRED") {
     return {
       status: 403,
-      error:
-        "Administrator access required.",
+      error: "Administrator access required.",
     };
   }
 
-  if (
-    message ===
-    "MFA_REQUIRED"
-  ) {
+  if (message === "MFA_REQUIRED") {
     return {
       status: 401,
       error:
@@ -361,14 +295,10 @@ export function getAdminAuthError(
   }
 
   if (
-    message ===
-    "ACCOUNT_DELETED" ||
-    message ===
-    "ACCOUNT_BANNED" ||
-    message ===
-    "ACCOUNT_SUSPENDED" ||
-    message ===
-    "ACCOUNT_DISABLED"
+    message === "ACCOUNT_DELETED" ||
+    message === "ACCOUNT_BANNED" ||
+    message === "ACCOUNT_SUSPENDED" ||
+    message === "ACCOUNT_DISABLED"
   ) {
     return {
       status: 403,
@@ -391,10 +321,7 @@ export function getAdminAuthError(
     };
   }
 
-  if (
-    message ===
-    "MFA_SETUP_REQUIRED"
-  ) {
+  if (message === "MFA_SETUP_REQUIRED") {
     return {
       status: 403,
       error:
@@ -404,7 +331,6 @@ export function getAdminAuthError(
 
   return {
     status: 500,
-    error:
-      "Unable to verify administrator access.",
+    error: "Unable to verify administrator access.",
   };
 }

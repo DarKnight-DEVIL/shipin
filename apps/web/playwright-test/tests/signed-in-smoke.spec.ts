@@ -33,52 +33,53 @@
  *
  * Use a dedicated staging admin. Never run this with production credentials.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
 const env = process.env;
-const baseUrl = env.BASE_URL ?? '';
-const isRemoteTarget = !!baseUrl && !baseUrl.startsWith('http://localhost');
-const email = env.E2E_ADMIN_EMAIL ?? '';
-const password = env.E2E_ADMIN_PASSWORD ?? '';
-const authEmulator = env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ?? '';
-const firestoreEmulator = env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST ?? '';
+const baseUrl = env.BASE_URL ?? "";
+const isRemoteTarget = !!baseUrl && !baseUrl.startsWith("http://localhost");
+const email = env.E2E_ADMIN_EMAIL ?? "";
+const password = env.E2E_ADMIN_PASSWORD ?? "";
+const authEmulator = env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ?? "";
+const firestoreEmulator = env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST ?? "";
 
 const missing = [
   !isRemoteTarget &&
     !authEmulator &&
-    'BASE_URL (staging) or NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST (local)',
-  !email && 'E2E_ADMIN_EMAIL',
-  !password && 'E2E_ADMIN_PASSWORD',
+    "BASE_URL (staging) or NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST (local)",
+  !email && "E2E_ADMIN_EMAIL",
+  !password && "E2E_ADMIN_PASSWORD",
 ].filter(Boolean) as string[];
 
-test.describe('Signed-in smoke', () => {
-  test.skip(missing.length > 0, `signed-in smoke needs: ${missing.join(', ')}`);
+test.describe("Signed-in smoke", () => {
+  test.skip(missing.length > 0, `signed-in smoke needs: ${missing.join(", ")}`);
 
   test.setTimeout(120_000);
 
-  test('an admin signs in, the dashboard reads Firestore, and the admin area renders', async ({
+  test("an admin signs in, the dashboard reads Firestore, and the admin area renders", async ({
     page,
   }) => {
     // Firestore traffic goes to the real host in staging and to the emulator
     // locally; either one proves a signed-in data path ran.
-    const dataHosts = ['firestore.googleapis.com'];
+    const dataHosts = ["firestore.googleapis.com"];
     if (firestoreEmulator) dataHosts.push(firestoreEmulator);
 
     // The login page reports a generic "Unable to sign in"; the real cause is
     // only in the console, so carry it into the failure message.
     const consoleErrors: string[] = [];
-    page.on('console', (message) => {
-      if (message.type() === 'error') consoleErrors.push(message.text().split('\n')[0]);
+    page.on("console", (message) => {
+      if (message.type() === "error")
+        consoleErrors.push(message.text().split("\n")[0]);
     });
 
     const firestoreRequests: string[] = [];
-    page.on('request', (request) => {
+    page.on("request", (request) => {
       if (dataHosts.some((host) => request.url().includes(host))) {
         firestoreRequests.push(request.url());
       }
     });
 
-    await page.goto('/login');
+    await page.goto("/login");
 
     // /login opens on the Google button; the password form sits behind
     // "Sign in with email". Its neighbour "Create one" only flips the register
@@ -86,7 +87,7 @@ test.describe('Signed-in smoke', () => {
     // waiting for fields that never render.
     const emailInput = page.locator('input[type="email"]');
     if ((await emailInput.count()) === 0) {
-      await page.getByRole('button', { name: 'Sign in with email' }).click();
+      await page.getByRole("button", { name: "Sign in with email" }).click();
     }
     await expect(emailInput).toBeVisible();
 
@@ -104,39 +105,44 @@ test.describe('Signed-in smoke', () => {
       throw new Error(
         `sign-in never reached the admin area (url: ${page.url()}). ` +
           `If this is /verify-email, verify the account's address. ` +
-          `Console: ${consoleErrors.join(' | ') || '(none)'}. ` +
-          `Page text: ${text.replace(/\s+/g, ' ').slice(0, 400)}`
+          `Console: ${consoleErrors.join(" | ") || "(none)"}. ` +
+          `Page text: ${text.replace(/\s+/g, " ").slice(0, 400)}`
       );
     }
 
     // AdminGuard resolves the profile before rendering, so the sidebar means the
     // role lookup succeeded rather than defaulting to a redirect.
-    await expect(page.getByRole('link', { name: 'Dashboard' }).first()).toBeVisible({
+    await expect(
+      page.getByRole("link", { name: "Dashboard" }).first()
+    ).toBeVisible({
       timeout: 30_000,
     });
 
     expect(
       await page.evaluate(() => document.body.innerText),
-      'the admin area tripped its error boundary'
-    ).not.toContain('Something went wrong');
+      "the admin area tripped its error boundary"
+    ).not.toContain("Something went wrong");
 
     // The customer dashboard as a signed-in user: the only way a Firestore
     // request happens is with a live session, so this is the assertion that the
     // real data path ran.
-    await page.goto('/dashboard');
+    await page.goto("/dashboard");
 
     await expect
       .poll(() => firestoreRequests.length, {
         timeout: 45_000,
-        message: '/dashboard made no Firestore request, so no signed-in data path ran',
+        message:
+          "/dashboard made no Firestore request, so no signed-in data path ran",
       })
       .toBeGreaterThan(0);
 
-    expect(page.url(), 'the signed-in dashboard redirected away').toContain('/dashboard');
+    expect(page.url(), "the signed-in dashboard redirected away").toContain(
+      "/dashboard"
+    );
 
     expect(
       await page.evaluate(() => document.body.innerText),
-      'the dashboard tripped its error boundary'
-    ).not.toContain('Something went wrong');
+      "the dashboard tripped its error boundary"
+    ).not.toContain("Something went wrong");
   });
 });

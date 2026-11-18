@@ -31,14 +31,14 @@
  *   node scripts/e2e/seed-refund-fixture.mjs            # write the fixture
  *   node scripts/e2e/seed-refund-fixture.mjs --dry-run  # print, write nothing
  */
-import { normalizePrivateKey } from '../lib/private-key.mjs';
-import { randomUUID } from 'node:crypto';
-import { createRequire } from 'node:module';
+import { normalizePrivateKey } from "../lib/private-key.mjs";
+import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 
-const DRY_RUN = process.argv.includes('--dry-run');
-const CURRENCY = 'USD';
+const DRY_RUN = process.argv.includes("--dry-run");
+const CURRENCY = "USD";
 
 function fail(message) {
   console.error(`seed-refund-fixture: ${message}`);
@@ -47,7 +47,7 @@ function fail(message) {
 
 function amountFromEnv(name, fallback) {
   const raw = process.env[name];
-  if (raw === undefined || raw === '') return fallback;
+  if (raw === undefined || raw === "") return fallback;
 
   const value = Number(raw);
   if (!Number.isFinite(value) || value <= 0) {
@@ -56,26 +56,26 @@ function amountFromEnv(name, fallback) {
   return Number(value.toFixed(2));
 }
 
-const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID ?? '';
-const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL ?? '';
+const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID ?? "";
+const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL ?? "";
 const privateKey = normalizePrivateKey(process.env.FIREBASE_ADMIN_PRIVATE_KEY);
-const confirm = process.env.E2E_SEED_CONFIRM ?? '';
+const confirm = process.env.E2E_SEED_CONFIRM ?? "";
 
 if (!projectId || !clientEmail || !privateKey) {
   fail(
-    'missing FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL or FIREBASE_ADMIN_PRIVATE_KEY.'
+    "missing FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL or FIREBASE_ADMIN_PRIVATE_KEY."
   );
 }
 
 if (confirm !== projectId) {
   fail(
     `E2E_SEED_CONFIRM must equal the target project id ("${projectId}") — ` +
-      'it is the second key on the ignition so staging cannot be confused for production.'
+      "it is the second key on the ignition so staging cannot be confused for production."
   );
 }
 
-const walletAmount = amountFromEnv('E2E_SEED_WALLET_AMOUNT', 40);
-const paypalAmount = amountFromEnv('E2E_SEED_PAYPAL_AMOUNT', 60);
+const walletAmount = amountFromEnv("E2E_SEED_WALLET_AMOUNT", 40);
+const paypalAmount = amountFromEnv("E2E_SEED_PAYPAL_AMOUNT", 60);
 const amount = Number((walletAmount + paypalAmount).toFixed(2));
 
 const requestId = `e2e-refund-${randomUUID()}`;
@@ -92,9 +92,9 @@ function buildDocuments(now) {
     // The marker is what lets scripts/e2e/cleanup-refund-fixtures.mjs delete
     // these again without ever touching a real account.
     user: {
-      role: 'customer',
+      role: "customer",
       email: `${customerId}@shipin.invalid`,
-      displayName: 'E2E Refund Fixture',
+      displayName: "E2E Refund Fixture",
       e2eFixture: true,
       createdAt: now,
     },
@@ -107,12 +107,12 @@ function buildDocuments(now) {
     request: {
       userId: customerId,
       userEmail: `${customerId}@shipin.invalid`,
-      status: 'purchased',
+      status: "purchased",
       e2eFixture: true,
       currency: CURRENCY,
       items: [
         {
-          name: 'E2E refund fixture item',
+          name: "E2E refund fixture item",
           quantity: 1,
           unitPrice: amount,
           subtotal: amount,
@@ -124,8 +124,9 @@ function buildDocuments(now) {
         walletAmount,
         paypalAmount,
         currency: CURRENCY,
-        method: paypalAmount > 0 ? (walletAmount > 0 ? 'mixed' : 'paypal') : 'wallet',
-        status: 'paid',
+        method:
+          paypalAmount > 0 ? (walletAmount > 0 ? "mixed" : "paypal") : "wallet",
+        status: "paid",
       },
       totalRefundedAmount: 0,
       statusHistory: {
@@ -140,8 +141,8 @@ function buildDocuments(now) {
 }
 
 async function main() {
-  const { cert, initializeApp, getApps } = require('firebase-admin/app');
-  const { getFirestore, Timestamp } = require('firebase-admin/firestore');
+  const { cert, initializeApp, getApps } = require("firebase-admin/app");
+  const { getFirestore, Timestamp } = require("firebase-admin/firestore");
 
   const now = Timestamp.now();
   const docs = buildDocuments(now);
@@ -159,9 +160,13 @@ async function main() {
           projectId,
           paths,
           documents: {
-            user: { ...docs.user, createdAt: '<serverTimestamp>' },
-            wallet: { ...docs.wallet, updatedAt: '<serverTimestamp>' },
-            request: { ...docs.request, createdAt: '<serverTimestamp>', updatedAt: '<serverTimestamp>' },
+            user: { ...docs.user, createdAt: "<serverTimestamp>" },
+            wallet: { ...docs.wallet, updatedAt: "<serverTimestamp>" },
+            request: {
+              ...docs.request,
+              createdAt: "<serverTimestamp>",
+              updatedAt: "<serverTimestamp>",
+            },
           },
         },
         null,
@@ -182,16 +187,20 @@ async function main() {
   const db = getFirestore();
 
   const batch = db.batch();
-  batch.set(db.collection('users').doc(customerId), docs.user);
-  batch.set(db.collection('wallets').doc(customerId), docs.wallet);
-  batch.set(db.collection('requests').doc(requestId), docs.request);
+  batch.set(db.collection("users").doc(customerId), docs.user);
+  batch.set(db.collection("wallets").doc(customerId), docs.wallet);
+  batch.set(db.collection("requests").doc(requestId), docs.request);
   await batch.commit();
 
   // Read it back: a seeded fixture that the deployment cannot see would only
   // fail later, inside the smoke test, with a confusing 404.
-  const check = await db.collection('requests').doc(requestId).get();
+  const check = await db.collection("requests").doc(requestId).get();
   const seeded = check.data();
-  if (!check.exists || seeded?.status !== 'purchased' || seeded?.userId !== customerId) {
+  if (
+    !check.exists ||
+    seeded?.status !== "purchased" ||
+    seeded?.userId !== customerId
+  ) {
     fail(`the fixture at ${paths.request} did not persist as seeded.`);
   }
 

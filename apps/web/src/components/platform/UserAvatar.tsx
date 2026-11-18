@@ -6,7 +6,11 @@ interface UserAvatarProps {
   onLogout: () => void;
 }
 
-export default function UserAvatar({ userName, userEmail, onLogout }: UserAvatarProps) {
+export default function UserAvatar({
+  userName,
+  userEmail,
+  onLogout,
+}: UserAvatarProps) {
   const initials = getInitials(userName);
 
   return (
@@ -19,9 +23,7 @@ export default function UserAvatar({ userName, userEmail, onLogout }: UserAvatar
         <p className="truncate text-[12px] font-medium text-[var(--foreground)]">
           {userName || "ShipIN customer"}
         </p>
-        <p className="truncate text-[11px] text-[var(--muted)]">
-          {userEmail}
-        </p>
+        <p className="truncate text-[11px] text-[var(--muted)]">{userEmail}</p>
       </div>
 
       <button

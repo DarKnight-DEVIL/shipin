@@ -215,18 +215,19 @@ export async function buildRegistrationOptions(params: {
       residentKey: "preferred",
       userVerification: "preferred",
     },
-    attestationType: "none",    excludeCredentials: params.excludeCredentials.map((credential) => ({
+    attestationType: "none",
+    excludeCredentials: params.excludeCredentials.map((credential) => ({
       id: credential.credentialID,
       transports: credential.transports as never,
     })),
   });
 }
-export async function verifyRegistration(params: {
+
+export async function verifyRegistration(params: {
   response: RegistrationResponseJSON;
   expectedChallenge: string;
 }): Promise<
-  | { verified: false }
-  | { verified: true; credential: StoredWebAuthnCredential }
+  { verified: false } | { verified: true; credential: StoredWebAuthnCredential }
 > {
   const { rpID } = getWebAuthnConfig();
 
@@ -275,14 +276,18 @@ export async function buildAuthenticationOptions(params: {
   return generateAuthenticationOptions({
     rpID,
     allowCredentials: params.allowCredentials.map((credential) => ({
-      id: (credential as { credentialID?: string; id?: string }).credentialID ?? (credential as { credentialID?: string; id?: string }).id ?? "",
+      id:
+        (credential as { credentialID?: string; id?: string }).credentialID ??
+        (credential as { credentialID?: string; id?: string }).id ??
+        "",
       transports: credential.transports as never,
     })),
     // The account proved its password/ID token; this proves possession.
     userVerification: "preferred",
   });
 }
-export async function verifyAssertion(params: {
+
+export async function verifyAssertion(params: {
   response: AuthenticationResponseJSON;
   expectedChallenge: string;
   credential: StoredWebAuthnCredential;
@@ -296,7 +301,8 @@ export async function buildAuthenticationOptions(params: {
       expectedOrigin: expectedOrigins(),
       expectedRPID: rpID,
       credential: {
-        id: (params.credential as { credentialID?: string; id?: string }).credentialID as Base64URLString,
+        id: (params.credential as { credentialID?: string; id?: string })
+          .credentialID as Base64URLString,
         publicKey: new Uint8Array(
           Buffer.from(params.credential.publicKey, "base64url")
         ),
@@ -308,7 +314,8 @@ export async function buildAuthenticationOptions(params: {
 
     return {
       verified: result.verified,
-      newCounter: result.authenticationInfo?.newCounter ?? params.credential.counter,
+      newCounter:
+        result.authenticationInfo?.newCounter ?? params.credential.counter,
     };
   } catch {
     // Library throws on malformed or mismatched assertions; treat as a failure.

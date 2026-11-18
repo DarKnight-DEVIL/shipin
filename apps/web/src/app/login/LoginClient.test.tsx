@@ -44,7 +44,8 @@ vi.mock("firebase/auth", () => ({
     h.signInWithEmailAndPassword(...args),
   createUserWithEmailAndPassword: (...args: unknown[]) =>
     h.createUserWithEmailAndPassword(...args),
-  sendEmailVerification: (...args: unknown[]) => h.sendEmailVerification(...args),
+  sendEmailVerification: (...args: unknown[]) =>
+    h.sendEmailVerification(...args),
   signInWithRedirect: (...args: unknown[]) => h.signInWithRedirect(...args),
 }));
 
@@ -55,7 +56,11 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("next/link", () => ({
   default: ({ href, children }: { href: unknown; children: unknown }) =>
-    React.createElement("a", { href: String(href) }, children as React.ReactNode),
+    React.createElement(
+      "a",
+      { href: String(href) },
+      children as React.ReactNode
+    ),
 }));
 
 // The real helper reaches Google Fonts at build time; the variable name is all
@@ -135,7 +140,9 @@ beforeEach(() => {
   h.success.mockReset();
   h.error.mockReset();
   h.info.mockReset();
-  h.ensureUserProfile.mockReset().mockResolvedValue({ uid: "user-1", role: "customer" });
+  h.ensureUserProfile
+    .mockReset()
+    .mockResolvedValue({ uid: "user-1", role: "customer" });
   h.createUserProfile.mockReset().mockResolvedValue(undefined);
   h.searchParams = new URLSearchParams();
   h.fetch.mockReset().mockResolvedValue({
@@ -157,7 +164,9 @@ afterEach(() => {
 /** Open the email form and fill in credentials. */
 function fillEmailForm(email = "ada@example.com", password = "secret-pass") {
   fireEvent.click(screen.getByRole("button", { name: /sign in with email/i }));
-  fireEvent.change(screen.getByLabelText("Email"), { target: { value: email } });
+  fireEvent.change(screen.getByLabelText("Email"), {
+    target: { value: email },
+  });
   fireEvent.change(screen.getByLabelText("Password"), {
     target: { value: password },
   });
@@ -171,7 +180,9 @@ function submitEmailForm() {
 function fillRegisterForm(password: string, email = "new@example.com") {
   fireEvent.click(screen.getByRole("button", { name: /sign in with email/i }));
   fireEvent.click(screen.getByRole("button", { name: /create an account/i }));
-  fireEvent.change(screen.getByLabelText("Email"), { target: { value: email } });
+  fireEvent.change(screen.getByLabelText("Email"), {
+    target: { value: email },
+  });
   fireEvent.change(screen.getByLabelText("Password"), {
     target: { value: password },
   });
@@ -233,7 +244,9 @@ describe("LoginClient: unverified email", () => {
     fillEmailForm();
     submitEmailForm();
 
-    await waitFor(() => expect(h.replace).toHaveBeenCalledWith("/verify-email"));
+    await waitFor(() =>
+      expect(h.replace).toHaveBeenCalledWith("/verify-email")
+    );
 
     expect(h.sendEmailVerification).toHaveBeenCalledTimes(1);
     expect(h.success).toHaveBeenCalledWith(
@@ -253,7 +266,9 @@ describe("LoginClient: unverified email", () => {
 
     // Firebase only rate-limits; the account still cannot enter the dashboard,
     // so a failed send must not become a failed sign-in.
-    await waitFor(() => expect(h.replace).toHaveBeenCalledWith("/verify-email"));
+    await waitFor(() =>
+      expect(h.replace).toHaveBeenCalledWith("/verify-email")
+    );
     expect(consoleSpy).toHaveBeenCalledWith(
       "Failed to send verification email:",
       expect.anything()
@@ -300,7 +315,9 @@ describe("LoginClient: registration checks", () => {
     fillRegisterForm("iloveyou");
     submitRegisterForm();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Password must include");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Password must include"
+    );
     expect(h.createUserWithEmailAndPassword).not.toHaveBeenCalled();
     expect(h.fetch).not.toHaveBeenCalled();
   });
@@ -309,7 +326,11 @@ describe("LoginClient: registration checks", () => {
     stubSubtleDigest();
     // The server returns suffixes after the 5-character prefix; a hit means the
     // full hash is in the dump.
-    mockRegistrationFetch({ ok: true, status: 200, suffixes: [DIGEST_HEX.slice(5)] });
+    mockRegistrationFetch({
+      ok: true,
+      status: 200,
+      suffixes: [DIGEST_HEX.slice(5)],
+    });
     render(<LoginClient />);
     fillRegisterForm("Str0ng!pass");
     submitRegisterForm();
@@ -320,16 +341,22 @@ describe("LoginClient: registration checks", () => {
 
     // Only the prefix leaves the browser: the full password never does.
     const body = JSON.parse(
-      (h.fetch.mock.calls.find(([url]) =>
-        String(url).includes("password-leak-check")
-      )?.[1] as { body: string }).body
+      (
+        h.fetch.mock.calls.find(([url]) =>
+          String(url).includes("password-leak-check")
+        )?.[1] as { body: string }
+      ).body
     );
     expect(body).toEqual({ prefix: DIGEST_HEX.slice(0, 5) });
   });
 
   it("registers when the password is not in any breach", async () => {
     stubSubtleDigest();
-    mockRegistrationFetch({ ok: true, status: 200, suffixes: ["FFFFFFFFFFFF"] });
+    mockRegistrationFetch({
+      ok: true,
+      status: 200,
+      suffixes: ["FFFFFFFFFFFF"],
+    });
     h.createUserWithEmailAndPassword.mockResolvedValue({ user: profile() });
     render(<LoginClient />);
     fillRegisterForm("Str0ng!pass");
@@ -347,7 +374,9 @@ describe("LoginClient: registration checks", () => {
       expect.objectContaining({ email: "new@example.com" })
     );
     // New accounts are unverified, so they land on the verify screen.
-    await waitFor(() => expect(h.replace).toHaveBeenCalledWith("/verify-email"));
+    await waitFor(() =>
+      expect(h.replace).toHaveBeenCalledWith("/verify-email")
+    );
   });
 
   it("still registers when the leak check is unavailable", async () => {
@@ -360,7 +389,9 @@ describe("LoginClient: registration checks", () => {
 
     // Fail open: an outage in the breach service must not stop sign-ups, and
     // the strength rules above still applied.
-    await waitFor(() => expect(h.createUserWithEmailAndPassword).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(h.createUserWithEmailAndPassword).toHaveBeenCalled()
+    );
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("Password leak check unavailable")
     );
@@ -374,7 +405,9 @@ describe("LoginClient: registration checks", () => {
     fillRegisterForm("Str0ng!pass");
     submitRegisterForm();
 
-    await waitFor(() => expect(h.createUserWithEmailAndPassword).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(h.createUserWithEmailAndPassword).toHaveBeenCalled()
+    );
     expect(consoleSpy).toHaveBeenCalledWith(
       "Password leak check failed:",
       expect.anything()
@@ -390,7 +423,9 @@ describe("LoginClient: rate-limit gate", () => {
     submitEmailForm();
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Too many sign-in attempts. Try again in 120s.");
+    expect(alert).toHaveTextContent(
+      "Too many sign-in attempts. Try again in 120s."
+    );
     expect(h.error).toHaveBeenCalledWith(
       "Too many sign-in attempts. Try again in 120s."
     );
@@ -434,7 +469,9 @@ describe("LoginClient: rate-limit gate", () => {
 
     // Only a real 429 blocks. Otherwise sign-in would depend on the rate-limit
     // infrastructure being up, which took the whole login page down once.
-    await waitFor(() => expect(h.replace).toHaveBeenCalledWith("/verify-email"));
+    await waitFor(() =>
+      expect(h.replace).toHaveBeenCalledWith("/verify-email")
+    );
     expect(h.signInWithEmailAndPassword).toHaveBeenCalledTimes(1);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("continuing"));
   });
@@ -446,7 +483,9 @@ describe("LoginClient: rate-limit gate", () => {
     fillEmailForm();
     submitEmailForm();
 
-    await waitFor(() => expect(h.replace).toHaveBeenCalledWith("/verify-email"));
+    await waitFor(() =>
+      expect(h.replace).toHaveBeenCalledWith("/verify-email")
+    );
     expect(h.signInWithEmailAndPassword).toHaveBeenCalledTimes(1);
   });
 });
@@ -458,13 +497,17 @@ describe("LoginClient: App Check errors", () => {
     });
     render(<LoginClient />);
 
-    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i })
+    );
 
     await waitFor(() =>
       expect(h.error).toHaveBeenCalledWith(expect.stringContaining("App Check"))
     );
     expect(h.error).toHaveBeenCalledWith(
-      expect.stringContaining("administrator must disable App Check enforcement")
+      expect.stringContaining(
+        "administrator must disable App Check enforcement"
+      )
     );
     // App Check is not a popup problem: the redirect fallback cannot fix it,
     // and firing it anyway would look like the sign-in was retried.
@@ -485,14 +528,18 @@ describe("LoginClient: App Check errors", () => {
     expect(h.error).toHaveBeenCalledWith(expect.stringContaining("App Check"));
     expect(h.replace).not.toHaveBeenCalled();
     // The form stays usable so an admin can be asked to fix the project.
-    expect(screen.getByRole("button", { name: /^sign in$/i })).not.toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /^sign in$/i })
+    ).not.toBeDisabled();
   });
 
   it("points the unauthorized-domain error at the documentation", async () => {
     h.signInWithPopup.mockRejectedValue({ code: "auth/unauthorized-domain" });
     render(<LoginClient />);
 
-    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i })
+    );
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/isn't authorized/i);
@@ -510,25 +557,31 @@ describe("LoginClient: App Check errors", () => {
     expect(link).toHaveAttribute("target", "_blank");
     // Opened in a new tab, so the opener reference has to go.
     expect(link.getAttribute("rel")).toContain("noopener");
-    expect(h.error).toHaveBeenCalledWith(expect.stringContaining("Authorized domains"));
+    expect(h.error).toHaveBeenCalledWith(
+      expect.stringContaining("Authorized domains")
+    );
   });
 
   it("drops the documentation link on the next failure", async () => {
     h.signInWithPopup.mockRejectedValue({ code: "auth/unauthorized-domain" });
     render(<LoginClient />);
 
-    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }));
-    await screen.findByRole("link", { name: /authorized domains documentation/i });
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i })
+    );
+    await screen.findByRole("link", {
+      name: /authorized domains documentation/i,
+    });
 
     h.signInWithPopup.mockRejectedValue({ code: "auth/popup-closed-by-user" });
-    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i })
+    );
 
     // A cancelled sign-in clears the inline error rather than leaving the
     // previous one on screen, and a stale link next to an unrelated failure
     // would send the user down the wrong path.
-    await waitFor(() =>
-      expect(screen.queryByRole("alert")).toBeNull()
-    );
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect(
       screen.queryByRole("link", { name: /authorized domains documentation/i })
     ).toBeNull();
@@ -538,8 +591,12 @@ describe("LoginClient: App Check errors", () => {
     h.signInWithPopup.mockRejectedValue({ code: "auth/unauthorized-domain" });
     render(<LoginClient />);
 
-    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }));
-    await screen.findByRole("link", { name: /authorized domains documentation/i });
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i })
+    );
+    await screen.findByRole("link", {
+      name: /authorized domains documentation/i,
+    });
 
     // Fall back to email sign-in and fail: the inline error now says something
     // else, so the domains link has to go with the old message. (Submitting the

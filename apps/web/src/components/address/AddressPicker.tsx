@@ -18,16 +18,13 @@ export default function AddressPicker({
   return (
     <div className="space-y-4">
       {addresses.map((address) => {
-        const isSelected =
-          selected?.id === address.id;
+        const isSelected = selected?.id === address.id;
 
         return (
           <button
             key={address.id}
             type="button"
-            onClick={() =>
-              onSelect(address)
-            }
+            onClick={() => onSelect(address)}
             className={`w-full rounded-xl border p-4 text-left transition ${
               isSelected
                 ? "border-purple-500 bg-purple-50 ring-1 ring-purple-500/20 dark:bg-purple-500/10"
@@ -36,7 +33,6 @@ export default function AddressPicker({
           >
             <div className="flex justify-between gap-4">
               <div className="min-w-0">
-
                 <h3 className="font-semibold text-slate-950 dark:text-white">
                   {address.label}
 
@@ -58,7 +54,6 @@ export default function AddressPicker({
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   {address.city}, {address.state}
                 </p>
-
               </div>
 
               {isSelected && (

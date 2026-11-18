@@ -29,7 +29,8 @@ type PaymentRecord = {
   orderId?: string;
   captureId?: string;
   status?: string;
-  paidAt?: Date | string | number | { seconds: number; nanoseconds: number } | null;
+  paidAt?:
+    Date | string | number | { seconds: number; nanoseconds: number } | null;
 };
 
 interface Props {
@@ -50,10 +51,7 @@ export default function OverviewPanel({ request, onGoToQuote }: Props) {
       return;
     }
 
-    if (
-      request.status !== "submitted" &&
-      request.status !== "review"
-    ) {
+    if (request.status !== "submitted" && request.status !== "review") {
       toast.error("This request can no longer be rejected.");
       return;
     }
@@ -61,13 +59,10 @@ export default function OverviewPanel({ request, onGoToQuote }: Props) {
     try {
       setRejecting(true);
 
-      await adminApi<void>(
-        `/api/requests/${request.id}/status`,
-        {
-          method: "PATCH",
-          body: { status: "rejected", rejectionReason: reason },
-        }
-      );
+      await adminApi<void>(`/api/requests/${request.id}/status`, {
+        method: "PATCH",
+        body: { status: "rejected", rejectionReason: reason },
+      });
 
       toast.success("Request rejected successfully.");
       setRejectOpen(false);
@@ -208,8 +203,8 @@ export default function OverviewPanel({ request, onGoToQuote }: Props) {
               request.serviceSelections?.inspection === "none"
                 ? "No Inspection"
                 : request.serviceSelections?.inspection === "standard"
-                ? "Standard Inspection"
-                : "Detailed Inspection"
+                  ? "Standard Inspection"
+                  : "Detailed Inspection"
             }
           />
           <InfoCard
@@ -218,8 +213,8 @@ export default function OverviewPanel({ request, onGoToQuote }: Props) {
               request.serviceSelections?.shippingPreference === "auto"
                 ? "Auto Ship"
                 : request.serviceSelections?.shippingPreference === "approval"
-                ? "Wait For Approval"
-                : "Hold Package"
+                  ? "Wait For Approval"
+                  : "Hold Package"
             }
           />
         </div>
@@ -278,10 +273,7 @@ export default function OverviewPanel({ request, onGoToQuote }: Props) {
           {/* NORMAL WORKFLOW ACTION */}
 
           {request.status !== "rejected" && (
-            <NextActionCard
-              requestId={request.id}
-              status={request.status}
-            />
+            <NextActionCard requestId={request.id} status={request.status} />
           )}
 
           {(request.status === "submitted" || request.status === "review") && (
@@ -435,9 +427,7 @@ function PaymentDetails({
             <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
               Payment Status
             </p>
-            <p className="mt-1 text-lg font-semibold text-amber-400">
-              Pending
-            </p>
+            <p className="mt-1 text-lg font-semibold text-amber-400">Pending</p>
           </div>
         </div>
         <p className="mt-3 text-sm text-slate-400">
@@ -466,18 +456,12 @@ function PaymentDetails({
 
       {/* PAYMENT METHOD */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <PaymentDetail
-          label="Payment Method"
-          value={paymentMethodLabel}
-        />
+        <PaymentDetail label="Payment Method" value={paymentMethodLabel} />
         <PaymentDetail
           label="Total Paid"
           value={totalPaid > 0 ? `$${totalPaid.toFixed(2)}` : "—"}
         />
-        <PaymentDetail
-          label="Currency"
-          value={payment?.currency || "USD"}
-        />
+        <PaymentDetail label="Currency" value={payment?.currency || "USD"} />
       </div>
 
       {/* PAYMENT BREAKDOWN */}
@@ -514,9 +498,7 @@ function PaymentDetails({
           <div className="space-y-3">
             {payment.orderId && (
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-sm text-slate-500">
-                  PayPal Order ID
-                </span>
+                <span className="text-sm text-slate-500">PayPal Order ID</span>
                 <span className="break-all font-mono text-xs text-slate-700 dark:text-slate-300 sm:text-right">
                   {payment.orderId}
                 </span>
@@ -524,9 +506,7 @@ function PaymentDetails({
             )}
             {payment.captureId && (
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-sm text-slate-500">
-                  Capture ID
-                </span>
+                <span className="text-sm text-slate-500">Capture ID</span>
                 <span className="break-all font-mono text-xs text-slate-700 dark:text-slate-300 sm:text-right">
                   {payment.captureId}
                 </span>

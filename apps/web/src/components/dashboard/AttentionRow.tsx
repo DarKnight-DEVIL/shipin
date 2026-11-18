@@ -7,8 +7,7 @@ interface AttentionRowProps {
 }
 
 export default function AttentionRow({ request }: AttentionRowProps) {
-  const mainPayment =
-    request.status === "awaiting_payment" && !request.payment;
+  const mainPayment = request.status === "awaiting_payment" && !request.payment;
   const additionalPayment =
     request.additionalItemRequests?.some(
       (i) => i.status === "awaiting_payment"

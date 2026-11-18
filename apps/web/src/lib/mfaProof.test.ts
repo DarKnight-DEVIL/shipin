@@ -53,7 +53,15 @@ function totpAt(secret: string, timeMs: number): string {
 }
 
 function totpProfile(secret: string, withBackup = false): MfaProfile {
-  return { mfa: { totp: { enabled: true, secret, backupCodes: withBackup ? [hashBackupCode("AAAA-BBBB")] : [] } } };
+  return {
+    mfa: {
+      totp: {
+        enabled: true,
+        secret,
+        backupCodes: withBackup ? [hashBackupCode("AAAA-BBBB")] : [],
+      },
+    },
+  };
 }
 
 describe("availableMfaMethods / hasAnyMfaMethod", () => {
@@ -78,7 +86,18 @@ describe("availableMfaMethods / hasAnyMfaMethod", () => {
       mfa: {
         webauthn: {
           enabled: true,
-          credentials: [{ credentialID: "cred-1", publicKey: "pk-1", counter: 0, transports: [], name: "key", createdAt: Date.now(), deviceType: "singleDevice", backedUp: false }],
+          credentials: [
+            {
+              credentialID: "cred-1",
+              publicKey: "pk-1",
+              counter: 0,
+              transports: [],
+              name: "key",
+              createdAt: Date.now(),
+              deviceType: "singleDevice",
+              backedUp: false,
+            },
+          ],
         },
       },
     };
@@ -89,7 +108,9 @@ describe("availableMfaMethods / hasAnyMfaMethod", () => {
 
   it("does not offer unverifiable legacy WebAuthn ids but still counts them", () => {
     const profile: MfaProfile = {
-      mfa: { webauthn: { enabled: true, credentials: [], credentialIds: ["cred-1"] } },
+      mfa: {
+        webauthn: { enabled: true, credentials: [], credentialIds: ["cred-1"] },
+      },
     };
 
     expect(availableMfaMethods(profile)).toEqual([]);
@@ -98,7 +119,9 @@ describe("availableMfaMethods / hasAnyMfaMethod", () => {
 
   it("will not accept a webauthn proof as a code", () => {
     const profile: MfaProfile = {
-      mfa: { webauthn: { enabled: true, credentials: [], credentialIds: ["cred-1"] } },
+      mfa: {
+        webauthn: { enabled: true, credentials: [], credentialIds: ["cred-1"] },
+      },
     };
 
     // A code cannot stand in for an assertion; the session route verifies the
@@ -123,7 +146,9 @@ describe("verifyMfaProof — TOTP", () => {
     const secret = generateTotpSecret();
     const code = totpAt(secret, Date.now() - 30_000);
 
-    expect(verifyMfaProof(totpProfile(secret, true), { totp: code }).ok).toBe(true);
+    expect(verifyMfaProof(totpProfile(secret, true), { totp: code }).ok).toBe(
+      true
+    );
   });
 
   it("rejects a wrong code", () => {
@@ -147,7 +172,13 @@ describe("verifyMfaProof — backup codes", () => {
   it("accepts a stored backup code", () => {
     const [plain] = generateBackupCodes(3);
     const profile: MfaProfile = {
-      mfa: { totp: { enabled: true, secret: "", backupCodes: [hashBackupCode(plain)] } },
+      mfa: {
+        totp: {
+          enabled: true,
+          secret: "",
+          backupCodes: [hashBackupCode(plain)],
+        },
+      },
     };
 
     expect(verifyMfaProof(profile, { backup: plain })).toEqual({
@@ -158,7 +189,13 @@ describe("verifyMfaProof — backup codes", () => {
 
   it("rejects an unknown backup code", () => {
     const profile: MfaProfile = {
-      mfa: { totp: { enabled: true, secret: "", backupCodes: [hashBackupCode("AAAA-BBBB")] } },
+      mfa: {
+        totp: {
+          enabled: true,
+          secret: "",
+          backupCodes: [hashBackupCode("AAAA-BBBB")],
+        },
+      },
     };
 
     expect(verifyMfaProof(profile, { backup: "CCCC-DDDD" }).ok).toBe(false);

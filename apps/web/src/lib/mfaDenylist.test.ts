@@ -32,7 +32,7 @@ vi.mock("@/config/env", () => ({
     return h.isProduction;
   },
   get isMfaDenylistOptional() {
-    return h.env.url !== '' && h.env.token !== '';
+    return h.env.url !== "" && h.env.token !== "";
   },
 }));
 
@@ -60,7 +60,9 @@ describe("denyMfaSession", () => {
 
     await denyMfaSession("jti-1", Math.floor(now / 1000) + 900, now);
 
-    expect(h.set).toHaveBeenCalledWith(mfaDenylistKey("jti-1"), "1", { ex: 900 });
+    expect(h.set).toHaveBeenCalledWith(mfaDenylistKey("jti-1"), "1", {
+      ex: 900,
+    });
   });
 
   it("skips a session that has already expired", async () => {
@@ -78,7 +80,9 @@ describe("denyMfaSession", () => {
     const { denyMfaSession } = await load();
 
     // Sign-out is in progress; a failed revocation must not block it.
-    await expect(denyMfaSession("jti-1", Date.now() / 1000 + 600)).resolves.toBeUndefined();
+    await expect(
+      denyMfaSession("jti-1", Date.now() / 1000 + 600)
+    ).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalled();
   });
 });

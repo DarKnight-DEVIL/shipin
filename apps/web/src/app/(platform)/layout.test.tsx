@@ -47,7 +47,9 @@ vi.mock("@/lib/firebase", () => ({
       get currentUser() {
         return state.currentUser;
       },
-      onAuthStateChanged: (callback: (user: unknown) => Promise<void> | void) => {
+      onAuthStateChanged: (
+        callback: (user: unknown) => Promise<void> | void
+      ) => {
         state.authCallback = callback;
         return state.unsubscribe;
       },
@@ -73,7 +75,9 @@ vi.mock("@/components/platform/PlatformShell", () => ({
 }));
 
 vi.mock("@/components/ui", () => ({
-  ErrorBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  ErrorBoundary: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
   AppCheckBanner: () => null,
   RetryNotice: () => null,
 }));

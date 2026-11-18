@@ -59,17 +59,10 @@ export function calculatePayment({
    * ========================================
    */
 
-  const quoteGrandTotal = Number(
-    breakdown.grandTotal
-  );
+  const quoteGrandTotal = Number(breakdown.grandTotal);
 
-  if (
-    !Number.isFinite(quoteGrandTotal) ||
-    quoteGrandTotal < 0
-  ) {
-    throw new Error(
-      "Invalid quotation grand total."
-    );
+  if (!Number.isFinite(quoteGrandTotal) || quoteGrandTotal < 0) {
+    throw new Error("Invalid quotation grand total.");
   }
 
   /*
@@ -95,23 +88,16 @@ export function calculatePayment({
    * ~$104.92
    */
 
-  const processing =
-    calculateProcessingFee({
-      amount: quoteGrandTotal,
-      percentage: 0.044,
-      fixedFee: 0.30,
-      absorbFee: false,
-    });
+  const processing = calculateProcessingFee({
+    amount: quoteGrandTotal,
+    percentage: 0.044,
+    fixedFee: 0.3,
+    absorbFee: false,
+  });
 
-  const totalPaymentRequired =
-    Number(
-      processing.totalToCharge.toFixed(2)
-    );
+  const totalPaymentRequired = Number(processing.totalToCharge.toFixed(2));
 
-  const processingFee =
-    Number(
-      processing.fee.toFixed(2)
-    );
+  const processingFee = Number(processing.fee.toFixed(2));
 
   /*
    * ========================================
@@ -132,29 +118,17 @@ export function calculatePayment({
    * PayPal remaining:    $4.92
    */
 
-  const wallet =
-    calculateWalletUsage({
-      balance: Math.max(
-        0,
-        Number(walletBalance) || 0
-      ),
+  const wallet = calculateWalletUsage({
+    balance: Math.max(0, Number(walletBalance) || 0),
 
-      orderTotal:
-        totalPaymentRequired,
+    orderTotal: totalPaymentRequired,
 
-      enabled:
-        useWallet,
-    });
+    enabled: useWallet,
+  });
 
-  const walletApplied =
-    Number(
-      wallet.applied.toFixed(2)
-    );
+  const walletApplied = Number(wallet.applied.toFixed(2));
 
-  const paypalAmount =
-    Number(
-      wallet.remaining.toFixed(2)
-    );
+  const paypalAmount = Number(wallet.remaining.toFixed(2));
 
   /*
    * ========================================
@@ -165,13 +139,7 @@ export function calculatePayment({
    * amount the customer is required to pay.
    */
 
-  const totalPaid =
-    Number(
-      (
-        walletApplied +
-        paypalAmount
-      ).toFixed(2)
-    );
+  const totalPaid = Number((walletApplied + paypalAmount).toFixed(2));
 
   /*
    * ========================================
@@ -183,20 +151,11 @@ export function calculatePayment({
     /*
      * Original quotation breakdown
      */
-    subtotal:
-      Number(
-        breakdown.productsTotal || 0
-      ),
+    subtotal: Number(breakdown.productsTotal || 0),
 
-    domesticShipping:
-      Number(
-        breakdown.domesticShipping || 0
-      ),
+    domesticShipping: Number(breakdown.domesticShipping || 0),
 
-    internationalShipping:
-      Number(
-        breakdown.internationalShipping || 0
-      ),
+    internationalShipping: Number(breakdown.internationalShipping || 0),
 
     /*
      * ShipIN fees
@@ -204,20 +163,11 @@ export function calculatePayment({
      * These come from the quote.
      * They are NOT PayPal processing fees.
      */
-    serviceFee:
-      Number(
-        breakdown.serviceFee || 0
-      ),
+    serviceFee: Number(breakdown.serviceFee || 0),
 
-    inspectionFee:
-      Number(
-        breakdown.inspectionFee || 0
-      ),
+    inspectionFee: Number(breakdown.inspectionFee || 0),
 
-    holdFee:
-      Number(
-        breakdown.holdFee || 0
-      ),
+    holdFee: Number(breakdown.holdFee || 0),
 
     /*
      * Wallet
@@ -249,8 +199,7 @@ export function calculatePayment({
      * The original ShipIN quotation grand total
      * remains available through `breakdown.grandTotal`.
      */
-    grandTotal:
-      totalPaymentRequired,
+    grandTotal: totalPaymentRequired,
 
     breakdown,
   };

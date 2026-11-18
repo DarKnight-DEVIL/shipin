@@ -30,8 +30,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   if (auth instanceof NextResponse) return auth;
 
-
-  const snapshot = await adminDb.collection("users").doc(auth.profile.uid).get();
+  const snapshot = await adminDb
+    .collection("users")
+    .doc(auth.profile.uid)
+    .get();
 
   if (!snapshot.exists) {
     return NextResponse.json(

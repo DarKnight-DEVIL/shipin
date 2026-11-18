@@ -60,7 +60,8 @@ export default function AdminUsersPage() {
   useEffect(() => onAuthStateChanged(auth, () => void load()), [load]);
 
   async function changeRole(user: AdminUserRow) {
-    const nextRole: AssignableRole = user.role === "admin" ? "customer" : "admin";
+    const nextRole: AssignableRole =
+      user.role === "admin" ? "customer" : "admin";
 
     setBusyUid(user.uid);
     setError(null);
@@ -73,7 +74,9 @@ export default function AdminUsersPage() {
       });
 
       setUsers((rows) =>
-        rows.map((row) => (row.uid === user.uid ? { ...row, role: nextRole } : row))
+        rows.map((row) =>
+          row.uid === user.uid ? { ...row, role: nextRole } : row
+        )
       );
       setMessage(
         `${user.email || user.uid} is now ${nextRole === "admin" ? "an administrator" : "a customer"}.`
@@ -114,8 +117,8 @@ export default function AdminUsersPage() {
           </div>
           <p className="mt-1 text-sm text-slate-400">
             {adminCount} administrator{adminCount === 1 ? "" : "s"} of{" "}
-            {users.length} account{users.length === 1 ? "" : "s"}. Revoking access
-            takes effect on the account&apos;s next request.
+            {users.length} account{users.length === 1 ? "" : "s"}. Revoking
+            access takes effect on the account&apos;s next request.
           </p>
         </div>
 
@@ -128,7 +131,10 @@ export default function AdminUsersPage() {
       </header>
 
       {error ? (
-        <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+        <p
+          role="alert"
+          className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-300"
+        >
           {error}
         </p>
       ) : null}
@@ -201,7 +207,10 @@ export default function AdminUsersPage() {
 
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+                  <td
+                    colSpan={4}
+                    className="px-4 py-6 text-center text-sm text-slate-500"
+                  >
                     No accounts match that search.
                   </td>
                 </tr>

@@ -3,10 +3,20 @@
 import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { onAuthStateChanged, sendEmailVerification, reload } from "firebase/auth";
+import {
+  onAuthStateChanged,
+  sendEmailVerification,
+  reload,
+} from "firebase/auth";
 import { useEffect } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, CheckCircle2, Loader2, Mail, RefreshCw } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Loader2,
+  Mail,
+  RefreshCw,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { auth } from "@/lib/firebase";
@@ -24,7 +34,11 @@ const fadeUp = {
   show: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: 0.08 + i * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] as const },
+    transition: {
+      delay: 0.08 + i * 0.08,
+      duration: 0.5,
+      ease: [0.22, 1, 0.36, 1] as const,
+    },
   }),
 };
 
@@ -194,7 +208,13 @@ export default function VerifyEmailClient() {
           Back to home
         </Link>
 
-        <motion.div custom={0} variants={fadeUp} initial="hidden" animate="show" className="verify__card">
+        <motion.div
+          custom={0}
+          variants={fadeUp}
+          initial="hidden"
+          animate="show"
+          className="verify__card"
+        >
           {verified ? (
             <>
               <div className="verify__icon verify__icon--ok">
@@ -202,9 +222,14 @@ export default function VerifyEmailClient() {
               </div>
               <h1 className="verify__title">Email verified!</h1>
               <p className="verify__sub">
-                Your email address has been confirmed. You can now access your account.
+                Your email address has been confirmed. You can now access your
+                account.
               </p>
-              <button type="button" onClick={handleContinue} className="verify__btn">
+              <button
+                type="button"
+                onClick={handleContinue}
+                className="verify__btn"
+              >
                 Continue to dashboard
               </button>
             </>
@@ -216,7 +241,10 @@ export default function VerifyEmailClient() {
               <h1 className="verify__title">Check your email</h1>
               <p className="verify__sub">
                 We sent a verification link to{" "}
-                <strong className="verify__email">{email ?? "your email"}</strong>. Click the link in the email to verify your account.
+                <strong className="verify__email">
+                  {email ?? "your email"}
+                </strong>
+                . Click the link in the email to verify your account.
               </p>
 
               {polling && (
@@ -268,7 +296,11 @@ export default function VerifyEmailClient() {
 
               <p className="verify__footer">
                 Already verified?{" "}
-                <button type="button" className="verify__link" onClick={handleContinue}>
+                <button
+                  type="button"
+                  className="verify__link"
+                  onClick={handleContinue}
+                >
                   Continue
                 </button>
               </p>

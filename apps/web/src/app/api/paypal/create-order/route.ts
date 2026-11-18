@@ -12,16 +12,13 @@ import type { AdditionalItemRequest } from "@/types/request";
 
 type PaymentType = "main" | "additional_item";
 
-
 /**
  * Safely converts a Firestore value into a number.
  */
 function toNumber(value: unknown): number {
   const number = Number(value);
 
-  return Number.isFinite(number)
-    ? number
-    : 0;
+  return Number.isFinite(number) ? number : 0;
 }
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
@@ -60,25 +57,17 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       );
     }
 
-    if (
-      typeof amount !== "number" ||
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
+    if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "A valid PayPal payment amount is required.",
+          error: "A valid PayPal payment amount is required.",
         },
         { status: 400 }
       );
     }
 
-    if (
-      paymentType !== "main" &&
-      paymentType !== "additional_item"
-    ) {
+    if (paymentType !== "main" && paymentType !== "additional_item") {
       return NextResponse.json(
         {
           success: false,
@@ -88,15 +77,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       );
     }
 
-    if (
-      paymentType === "additional_item" &&
-      !additionalItemRequestId
-    ) {
+    if (paymentType === "additional_item" && !additionalItemRequestId) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Additional item request ID is required.",
+          error: "Additional item request ID is required.",
         },
         { status: 400 }
       );
@@ -108,12 +93,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      * ========================================
      */
 
-    const requestRef = adminDb
-      .collection("requests")
-      .doc(requestId);
+    const requestRef = adminDb.collection("requests").doc(requestId);
 
-    const requestSnapshot =
-      await requestRef.get();
+    const requestSnapshot = await requestRef.get();
 
     if (!requestSnapshot.exists) {
       return NextResponse.json(
@@ -125,8 +107,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       );
     }
 
-    const requestData =
-      requestSnapshot.data();
+    const requestData = requestSnapshot.data();
 
     if (!requestData) {
       return NextResponse.json(
@@ -150,8 +131,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "You do not have permission to pay for this request.",
+          error: "You do not have permission to pay for this request.",
         },
         { status: 403 }
       );
@@ -171,34 +151,23 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
        * Block expired quotations.
        */
 
-      if (
-        isQuoteExpired(
-          requestData.quote?.expiresAt
-        )
-      ) {
+      if (isQuoteExpired(requestData.quote?.expiresAt)) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              "This quotation has expired. Please request a new quote.",
+            error: "This quotation has expired. Please request a new quote.",
           },
           { status: 400 }
         );
       }
 
-      const grandTotal = toNumber(
-        requestData.quote?.breakdown
-          ?.grandTotal
-      );
+      const grandTotal = toNumber(requestData.quote?.breakdown?.grandTotal);
 
-      if (
-        grandTotal <= 0
-      ) {
+      if (grandTotal <= 0) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              "A valid quotation amount could not be found.",
+            error: "A valid quotation amount could not be found.",
           },
           { status: 400 }
         );
@@ -215,15 +184,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
        * + hold
        * + shipping
        */
-      baseAmount = Number(
-        grandTotal.toFixed(2)
-      );
+      baseAmount = Number(grandTotal.toFixed(2));
 
-      description =
-        `ShipIN Request ${
-          requestData.requestNumber ||
-          requestId
-        }`;
+      description = `ShipIN Request ${requestData.requestNumber || requestId}`;
     }
 
     /*
@@ -231,57 +194,41 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      * ADDITIONAL ITEM PAYMENT
      * ========================================
      */
-
     else {
-      const additionalItems =
-        (requestData.additionalItemRequests ||
-          []) as AdditionalItemRequest[];
+      const additionalItems = (requestData.additionalItemRequests ||
+        []) as AdditionalItemRequest[];
 
-      const additionalItem =
-        additionalItems.find(
-          (item: AdditionalItemRequest) =>
-            item.id ===
-            additionalItemRequestId
-        );
+      const additionalItem = additionalItems.find(
+        (item: AdditionalItemRequest) => item.id === additionalItemRequestId
+      );
 
       if (!additionalItem) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              "Additional item request could not be found.",
+            error: "Additional item request could not be found.",
           },
           { status: 404 }
         );
       }
 
-      if (
-        additionalItem.status !==
-        "awaiting_payment"
-      ) {
+      if (additionalItem.status !== "awaiting_payment") {
         return NextResponse.json(
           {
             success: false,
-            error:
-              "This additional item is not awaiting payment.",
+            error: "This additional item is not awaiting payment.",
           },
           { status: 400 }
         );
       }
 
-      const additionalItemAmount =
-        toNumber(
-          additionalItem.totalDue
-        );
+      const additionalItemAmount = toNumber(additionalItem.totalDue);
 
-      if (
-        additionalItemAmount <= 0
-      ) {
+      if (additionalItemAmount <= 0) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              "A valid additional item payment amount could not be found.",
+            error: "A valid additional item payment amount could not be found.",
           },
           { status: 400 }
         );
@@ -292,39 +239,35 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
        * checkout creation.
        */
 
-      const existingCompletedPayment =
-        (Array.isArray(requestData.additionalPayments)
+      const existingCompletedPayment = (
+        Array.isArray(requestData.additionalPayments)
           ? requestData.additionalPayments
-          : []).filter(
-          (payment) =>
-            typeof payment === "object" &&
-            payment !== null &&
-            "additionalItemRequestId" in payment &&
-            payment.additionalItemRequestId === additionalItemRequestId &&
-            "status" in payment &&
-            payment.status === "completed"
-        )[0];
+          : []
+      ).filter(
+        (payment) =>
+          typeof payment === "object" &&
+          payment !== null &&
+          "additionalItemRequestId" in payment &&
+          payment.additionalItemRequestId === additionalItemRequestId &&
+          "status" in payment &&
+          payment.status === "completed"
+      )[0];
 
       if (existingCompletedPayment) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              "This additional item has already been paid.",
+            error: "This additional item has already been paid.",
           },
           { status: 409 }
         );
       }
 
-      baseAmount = Number(
-        additionalItemAmount.toFixed(2)
-      );
+      baseAmount = Number(additionalItemAmount.toFixed(2));
 
-      description =
-        `ShipIN Additional Item - ${
-          requestData.requestNumber ||
-          requestId
-        }`;
+      description = `ShipIN Additional Item - ${
+        requestData.requestNumber || requestId
+      }`;
     }
 
     /*
@@ -345,20 +288,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      * $104.92
      */
 
-    const processing =
-      calculateProcessingFee({
-        amount: baseAmount,
-        percentage:
-          PAYPAL_PERCENTAGE,
-        fixedFee:
-          PAYPAL_FIXED_FEE,
-        absorbFee: false,
-      });
+    const processing = calculateProcessingFee({
+      amount: baseAmount,
+      percentage: PAYPAL_PERCENTAGE,
+      fixedFee: PAYPAL_FIXED_FEE,
+      absorbFee: false,
+    });
 
-    const totalRequired =
-      Number(
-        processing.totalToCharge.toFixed(2)
-      );
+    const totalRequired = Number(processing.totalToCharge.toFixed(2));
 
     /*
      * ========================================
@@ -377,18 +314,13 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      * wallet amount requested
      */
 
-    const requestedPayPalAmount =
-      Number(amount.toFixed(2));
+    const requestedPayPalAmount = Number(amount.toFixed(2));
 
-    if (
-      requestedPayPalAmount >
-      totalRequired + 0.01
-    ) {
+    if (requestedPayPalAmount > totalRequired + 0.01) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "PayPal payment amount exceeds the amount due.",
+          error: "PayPal payment amount exceeds the amount due.",
         },
         { status: 400 }
       );
@@ -403,37 +335,25 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      * wallet lookup.
      */
 
-    const userId =
-      requestData.userId;
+    const userId = requestData.userId;
 
     if (!userId) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Request owner could not be determined.",
+          error: "Request owner could not be determined.",
         },
         { status: 400 }
       );
     }
 
-    const walletRef = adminDb
-      .collection("wallets")
-      .doc(userId);
+    const walletRef = adminDb.collection("wallets").doc(userId);
 
-    const walletSnapshot =
-      await walletRef.get();
+    const walletSnapshot = await walletRef.get();
 
-    const walletBalance =
-      walletSnapshot.exists
-        ? Math.max(
-            0,
-            toNumber(
-              walletSnapshot.data()
-                ?.balance
-            )
-          )
-        : 0;
+    const walletBalance = walletSnapshot.exists
+      ? Math.max(0, toNumber(walletSnapshot.data()?.balance))
+      : 0;
 
     /*
      * ========================================
@@ -441,27 +361,20 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      * ========================================
      */
 
-    const requestedWalletAmount =
-      Number(
-        (
-          totalRequired -
-          requestedPayPalAmount
-        ).toFixed(2)
-      );
+    const requestedWalletAmount = Number(
+      (totalRequired - requestedPayPalAmount).toFixed(2)
+    );
 
     /*
      * If no wallet is being used,
      * requestedWalletAmount should be 0.
      */
 
-    if (
-      requestedWalletAmount < -0.01
-    ) {
+    if (requestedWalletAmount < -0.01) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Invalid payment amount.",
+          error: "Invalid payment amount.",
         },
         { status: 400 }
       );
@@ -472,10 +385,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      * balance than they actually have.
      */
 
-    if (
-      requestedWalletAmount >
-      walletBalance + 0.01
-    ) {
+    if (requestedWalletAmount > walletBalance + 0.01) {
       return NextResponse.json(
         {
           success: false,
@@ -486,22 +396,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       );
     }
 
-    const walletApplied =
-      Math.max(
-        0,
-        Math.min(
-          requestedWalletAmount,
-          walletBalance
-        )
-      );
+    const walletApplied = Math.max(
+      0,
+      Math.min(requestedWalletAmount, walletBalance)
+    );
 
-    const expectedPayPalAmount =
-      Number(
-        (
-          totalRequired -
-          walletApplied
-        ).toFixed(2)
-      );
+    const expectedPayPalAmount = Number(
+      (totalRequired - walletApplied).toFixed(2)
+    );
 
     /*
      * Make absolutely sure the amount
@@ -514,31 +416,23 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      * 100.01 for a 100.00 quote must not be charged the extra cent.
      */
     if (
-      Math.round(
-        requestedPayPalAmount * 100
-      ) !==
-      Math.round(
-        expectedPayPalAmount * 100
-      )
+      Math.round(requestedPayPalAmount * 100) !==
+      Math.round(expectedPayPalAmount * 100)
     ) {
-      console.error(
-        "PayPal amount mismatch:",
-        {
-          baseAmount,
-          totalRequired,
-          walletBalance,
-          walletApplied,
-          requestedPayPalAmount,
-          expectedPayPalAmount,
-          requestId,
-        }
-      );
+      console.error("PayPal amount mismatch:", {
+        baseAmount,
+        totalRequired,
+        walletBalance,
+        walletApplied,
+        requestedPayPalAmount,
+        expectedPayPalAmount,
+        requestId,
+      });
 
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Payment amount could not be verified.",
+          error: "Payment amount could not be verified.",
         },
         { status: 400 }
       );
@@ -550,12 +444,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      * ========================================
      */
 
-    const accessToken =
-      await getPayPalAccessToken();
+    const accessToken = await getPayPalAccessToken();
 
     const baseUrl =
-      serverEnv.PAYPAL_API_URL ??
-      "https://api-m.sandbox.paypal.com";
+      serverEnv.PAYPAL_API_URL ?? "https://api-m.sandbox.paypal.com";
 
     const paypalResponse = await fetchWithTimeout(
       `${baseUrl}/v2/checkout/orders`,
@@ -607,8 +499,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "PayPal did not return an order ID.",
+          error: "PayPal did not return an order ID.",
         },
         { status: 502 }
       );
@@ -637,16 +528,12 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      * money or marking the request as paid.
      */
 
-    const paymentOrderRef =
-      adminDb
-        .collection(
-          "paypalPaymentOrders"
-        )
-        .doc(paypalData.id);
+    const paymentOrderRef = adminDb
+      .collection("paypalPaymentOrders")
+      .doc(paypalData.id);
 
     await paymentOrderRef.set({
-      orderId:
-        paypalData.id,
+      orderId: paypalData.id,
 
       requestId,
 
@@ -654,28 +541,23 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
       paymentType,
 
-      additionalItemRequestId:
-        additionalItemRequestId ||
-        null,
+      additionalItemRequestId: additionalItemRequestId || null,
 
       baseAmount,
 
-      processingFee:
-        processing.fee,
+      processingFee: processing.fee,
 
       totalRequired,
 
       walletApplied,
 
-      paypalAmount:
-        expectedPayPalAmount,
+      paypalAmount: expectedPayPalAmount,
 
       currency: "USD",
 
       status: "created",
 
-      createdAt:
-        new Date(),
+      createdAt: new Date(),
     });
 
     /*
@@ -687,29 +569,22 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     return NextResponse.json({
       success: true,
 
-      orderId:
-        paypalData.id,
+      orderId: paypalData.id,
 
-      amount:
-        expectedPayPalAmount,
+      amount: expectedPayPalAmount,
 
       baseAmount,
 
-      processingFee:
-        processing.fee,
+      processingFee: processing.fee,
 
       totalRequired,
 
       walletApplied,
 
-      paypalAmount:
-        expectedPayPalAmount,
+      paypalAmount: expectedPayPalAmount,
     });
   } catch (error) {
-    console.error(
-      "PayPal create order route error:",
-      error
-    );
+    console.error("PayPal create order route error:", error);
 
     return NextResponse.json(
       {

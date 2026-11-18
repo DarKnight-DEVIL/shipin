@@ -1,6 +1,8 @@
 const SUPPORT_WINDOW_HOURS = 72;
 
-export function canCreateSupportTicket(request: import("@/types/request").Request) {
+export function canCreateSupportTicket(
+  request: import("@/types/request").Request
+) {
   // Refunded requests can never create new tickets
   if (request.status === "refunded") {
     return false;
@@ -17,12 +19,9 @@ export function canCreateSupportTicket(request: import("@/types/request").Reques
     return true;
   }
 
-  const delivered =
-    deliveredTimestamp.toDate();
+  const delivered = deliveredTimestamp.toDate();
 
-  const expires =
-    delivered.getTime() +
-    SUPPORT_WINDOW_HOURS * 60 * 60 * 1000;
+  const expires = delivered.getTime() + SUPPORT_WINDOW_HOURS * 60 * 60 * 1000;
 
   return Date.now() < expires;
 }

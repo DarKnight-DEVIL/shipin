@@ -49,11 +49,7 @@ export function generateShippingLabel(request: Request) {
   y += 7;
 
   pdf.setFontSize(13);
-  pdf.text(
-    address.recipientName || "Customer",
-    10,
-    y
-  );
+  pdf.text(address.recipientName || "Customer", 10, y);
 
   y += 6;
 
@@ -70,32 +66,20 @@ export function generateShippingLabel(request: Request) {
   y += 5;
 
   pdf.text(
-    `${address.city || ""}${
-      address.state
-        ? `, ${address.state}`
-        : ""
-    }`,
+    `${address.city || ""}${address.state ? `, ${address.state}` : ""}`,
     10,
     y
   );
 
   y += 5;
 
-  pdf.text(
-    `${address.postalCode || ""}`,
-    10,
-    y
-  );
+  pdf.text(`${address.postalCode || ""}`, 10, y);
 
   y += 5;
 
   pdf.setFont("helvetica", "bold");
 
-  pdf.text(
-    address.country || "",
-    10,
-    y
-  );
+  pdf.text(address.country || "", 10, y);
 
   // Phone
   if (address.phone) {
@@ -104,11 +88,7 @@ export function generateShippingLabel(request: Request) {
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
 
-    pdf.text(
-      `Phone: ${address.phone}`,
-      10,
-      y
-    );
+    pdf.text(`Phone: ${address.phone}`, 10, y);
   }
 
   // Divider
@@ -122,22 +102,13 @@ export function generateShippingLabel(request: Request) {
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(9);
 
-  pdf.text(
-    "SHIPIN TRACKING ID",
-    10,
-    y
-  );
+  pdf.text("SHIPIN TRACKING ID", 10, y);
 
   y += 7;
 
   pdf.setFontSize(14);
 
-  pdf.text(
-    tracking?.internalTrackingId ||
-      "NOT ASSIGNED",
-    10,
-    y
-  );
+  pdf.text(tracking?.internalTrackingId || "NOT ASSIGNED", 10, y);
 
   // Request reference
   y += 10;
@@ -145,21 +116,13 @@ export function generateShippingLabel(request: Request) {
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(9);
 
-  pdf.text(
-    `Request: #${request.id.slice(0, 8).toUpperCase()}`,
-    10,
-    y
-  );
+  pdf.text(`Request: #${request.id.slice(0, 8).toUpperCase()}`, 10, y);
 
   // Carrier — operational information
   if (tracking?.carrier) {
     y += 6;
 
-    pdf.text(
-      `Carrier: ${tracking.carrier}`,
-      10,
-      y
-    );
+    pdf.text(`Carrier: ${tracking.carrier}`, 10, y);
   }
 
   /*
@@ -180,17 +143,12 @@ export function generateShippingLabel(request: Request) {
 
   pdf.setFontSize(7);
 
-  pdf.text(
-    "ShipIN Package Forwarding",
-    10,
-    y
-  );
+  pdf.text("ShipIN Package Forwarding", 10, y);
 
   // Download PDF
-  const filename =
-    tracking?.internalTrackingId
-      ? `shipping-label-${tracking.internalTrackingId}.pdf`
-      : `shipping-label-${request.id}.pdf`;
+  const filename = tracking?.internalTrackingId
+    ? `shipping-label-${tracking.internalTrackingId}.pdf`
+    : `shipping-label-${request.id}.pdf`;
 
   pdf.save(filename);
   return true;

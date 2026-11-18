@@ -1,4 +1,4 @@
-import 'server-only';
+import "server-only";
 
 import { FieldValue } from "firebase-admin/firestore";
 

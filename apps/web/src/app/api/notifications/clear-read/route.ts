@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
 
-import { requireAuthWithProfile } from '@/lib/auth';
-import { adminDb } from '@/lib/firebaseAdmin';
-import { withErrorHandler } from '@/utils/errors';
+import { requireAuthWithProfile } from "@/lib/auth";
+import { adminDb } from "@/lib/firebaseAdmin";
+import { withErrorHandler } from "@/utils/errors";
 
 /**
  * POST /api/notifications/clear-read
@@ -14,9 +14,9 @@ export const POST = withErrorHandler(async (request: Request) => {
   if (auth instanceof NextResponse) return auth;
 
   const snapshot = await adminDb
-    .collection('notifications')
-    .where('userId', '==', auth.profile.uid)
-    .where('read', '==', true)
+    .collection("notifications")
+    .where("userId", "==", auth.profile.uid)
+    .where("read", "==", true)
     .get();
 
   if (!snapshot.empty) {
@@ -31,6 +31,6 @@ export const POST = withErrorHandler(async (request: Request) => {
 
   return NextResponse.json(
     { success: true, count: snapshot.size },
-    { status: 200, headers: { 'Cache-Control': 'no-store' } }
+    { status: 200, headers: { "Cache-Control": "no-store" } }
   );
 });

@@ -11,9 +11,7 @@ interface Props {
   };
 }
 
-export default function OperationsOverview({
-  stats,
-}: Props) {
+export default function OperationsOverview({ stats }: Props) {
   const cards = [
     {
       label: "Awaiting Quote",
@@ -49,36 +47,24 @@ export default function OperationsOverview({
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-
       <h2 className="text-2xl font-bold text-white mb-6">
         Today&apos;s Operations
       </h2>
 
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
-
         {cards.map((card) => (
-
           <div
             key={card.label}
             className="rounded-xl border border-slate-800 bg-slate-950 p-5"
           >
+            <p className="text-slate-400">{card.label}</p>
 
-            <p className="text-slate-400">
-              {card.label}
-            </p>
-
-            <h3
-              className={`text-4xl font-bold mt-3 ${card.color}`}
-            >
+            <h3 className={`text-4xl font-bold mt-3 ${card.color}`}>
               {card.value}
             </h3>
-
           </div>
-
         ))}
-
       </div>
-
     </div>
   );
 }

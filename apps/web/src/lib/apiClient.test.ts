@@ -2,7 +2,7 @@
  * Tests for the shared authenticated fetch client (`apiFetch`).
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const state = vi.hoisted(() => ({
   appCheckToken: null as string | null,
@@ -15,7 +15,7 @@ const state = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@/lib/firebase', () => ({
+vi.mock("@/lib/firebase", () => ({
   get auth() {
     return { currentUser: state.currentUser };
   },
@@ -37,14 +37,14 @@ const retrySignal = vi.hoisted(() => ({
 
 // Stubbed so the assertions can see that a backoff was published, without
 // depending on module-level state shared across files.
-vi.mock('@/lib/requestRetry', () => ({
+vi.mock("@/lib/requestRetry", () => ({
   beginRetryNotice: retrySignal.beginRetryNotice,
   endRetryNotice: retrySignal.endRetryNotice,
 }));
 
 // Stubbed so the assertions below can see the banner transitions without
 // depending on React state.
-vi.mock('@/lib/appCheckFailure', () => ({
+vi.mock("@/lib/appCheckFailure", () => ({
   notifyAppCheckFailure: appCheckSignal.notifyAppCheckFailure,
   clearAppCheckFailure: appCheckSignal.clearAppCheckFailure,
 }));
@@ -52,23 +52,23 @@ vi.mock('@/lib/appCheckFailure', () => ({
 // Imported per file instead of statically: with a shared module registry the
 // first file to import apiClient decides which `@/lib/firebase` mock it binds
 // to, so a static import can silently inherit another file's auth stub.
-let apiFetch: typeof import('./apiClient').apiFetch;
-let ApiError: typeof import('./apiClient').ApiError;
-let resetApiCircuit: typeof import('./apiClient').resetApiCircuit;
+let apiFetch: typeof import("./apiClient").apiFetch;
+let ApiError: typeof import("./apiClient").ApiError;
+let resetApiCircuit: typeof import("./apiClient").resetApiCircuit;
 
 const signIn = () => {
   state.currentUser = {
-    getIdToken: vi.fn(async () => 'id-token'),
-    displayName: 'Ada Lovelace',
-    email: 'ada@example.com',
-    photoURL: 'https://img/ada.png',
+    getIdToken: vi.fn(async () => "id-token"),
+    displayName: "Ada Lovelace",
+    email: "ada@example.com",
+    photoURL: "https://img/ada.png",
   };
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { "Content-Type": "application/json" },
   });
 }
 
@@ -76,7 +76,7 @@ const fetchMock = vi.fn();
 
 beforeEach(async () => {
   vi.resetModules();
-  ({ apiFetch, ApiError, resetApiCircuit } = await import('./apiClient'));
+  ({ apiFetch, ApiError, resetApiCircuit } = await import("./apiClient"));
   // Breaker state is module-level; a case that opens it would silence the next.
   resetApiCircuit();
   state.currentUser = null;
@@ -90,201 +90,245 @@ beforeEach(async () => {
   appCheckSignal.clearAppCheckFailure.mockClear();
   retrySignal.beginRetryNotice.mockClear();
   retrySignal.endRetryNotice.mockClear();
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal("fetch", fetchMock);
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('authentication', () => {
-  it('rejects when signed out', async () => {
-    await expect(apiFetch('/api/thing')).rejects.toMatchObject({
-      name: 'ApiError',
-      code: 'AUTHENTICATION_REQUIRED',
+describe("authentication", () => {
+  it("rejects when signed out", async () => {
+    await expect(apiFetch("/api/thing")).rejects.toMatchObject({
+      name: "ApiError",
+      code: "AUTHENTICATION_REQUIRED",
       status: 401,
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('attaches the bearer token and same-origin credentials', async () => {
+  it("attaches the bearer token and same-origin credentials", async () => {
     signIn();
     fetchMock.mockResolvedValue(jsonResponse({ success: true, data: 1 }));
 
-    await apiFetch('/api/thing');
+    await apiFetch("/api/thing");
 
     const [, init] = fetchMock.mock.calls[0];
-    expect(init.headers.Authorization).toBe('Bearer id-token');
-    expect(init.credentials).toBe('same-origin');
-    expect(init.cache).toBe('no-store');
+    expect(init.headers.Authorization).toBe("Bearer id-token");
+    expect(init.credentials).toBe("same-origin");
+    expect(init.cache).toBe("no-store");
   });
 
-  it('forwards the App Check token when one is available', async () => {
+  it("forwards the App Check token when one is available", async () => {
     signIn();
-    state.appCheckToken = 'app-check-token';
+    state.appCheckToken = "app-check-token";
     fetchMock.mockResolvedValue(jsonResponse({ success: true }));
 
-    await apiFetch('/api/thing');
+    await apiFetch("/api/thing");
 
     // The Admin SDK bypasses Firebase's own enforcement, so this header is the
     // only thing our routes can verify.
-    expect(fetchMock.mock.calls[0][1].headers['X-Firebase-AppCheck']).toBe(
-      'app-check-token'
+    expect(fetchMock.mock.calls[0][1].headers["X-Firebase-AppCheck"]).toBe(
+      "app-check-token"
     );
   });
 
-  it('sends no App Check header when App Check is not configured', async () => {
+  it("sends no App Check header when App Check is not configured", async () => {
     signIn();
     fetchMock.mockResolvedValue(jsonResponse({ success: true }));
 
-    await apiFetch('/api/thing');
+    await apiFetch("/api/thing");
 
-    expect(fetchMock.mock.calls[0][1].headers['X-Firebase-AppCheck']).toBeUndefined();
+    expect(
+      fetchMock.mock.calls[0][1].headers["X-Firebase-AppCheck"]
+    ).toBeUndefined();
   });
 });
 
-describe('idempotency keys', () => {
-  it('sends the key as a header', async () => {
+describe("idempotency keys", () => {
+  it("sends the key as a header", async () => {
     signIn();
     fetchMock.mockResolvedValue(jsonResponse({ success: true }));
 
-    await apiFetch('/api/wallet', { method: 'POST', body: { amount: 5 }, idempotencyKey: 'key-abc-123' });
+    await apiFetch("/api/wallet", {
+      method: "POST",
+      body: { amount: 5 },
+      idempotencyKey: "key-abc-123",
+    });
 
-    expect(fetchMock.mock.calls[0][1].headers['Idempotency-Key']).toBe('key-abc-123');
+    expect(fetchMock.mock.calls[0][1].headers["Idempotency-Key"]).toBe(
+      "key-abc-123"
+    );
   });
 
-  it('replays a keyed write once after a dropped connection', async () => {
+  it("replays a keyed write once after a dropped connection", async () => {
     signIn();
-    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
-    fetchMock.mockResolvedValue(jsonResponse({ success: true, transactionId: 'txn-1' }));
+    fetchMock.mockRejectedValueOnce(new TypeError("fetch failed"));
+    fetchMock.mockResolvedValue(
+      jsonResponse({ success: true, transactionId: "txn-1" })
+    );
 
     await expect(
-      apiFetch('/api/wallet', { method: 'POST', body: { amount: 5 }, idempotencyKey: 'key-abc-123' })
+      apiFetch("/api/wallet", {
+        method: "POST",
+        body: { amount: 5 },
+        idempotencyKey: "key-abc-123",
+      })
     ).resolves.toMatchObject({ success: true });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     // Same key on both attempts: that is what lets the server replay instead
     // of charging again.
-    expect(fetchMock.mock.calls[0][1].headers['Idempotency-Key']).toBe('key-abc-123');
-    expect(fetchMock.mock.calls[1][1].headers['Idempotency-Key']).toBe('key-abc-123');
+    expect(fetchMock.mock.calls[0][1].headers["Idempotency-Key"]).toBe(
+      "key-abc-123"
+    );
+    expect(fetchMock.mock.calls[1][1].headers["Idempotency-Key"]).toBe(
+      "key-abc-123"
+    );
   });
 
-  it('replays a keyed write after a 503', async () => {
+  it("replays a keyed write after a 503", async () => {
     signIn();
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ success: false, error: 'unavailable' }, 503))
+      .mockResolvedValueOnce(
+        jsonResponse({ success: false, error: "unavailable" }, 503)
+      )
       .mockResolvedValueOnce(jsonResponse({ success: true }));
 
     await expect(
-      apiFetch('/api/wallet', { method: 'POST', body: {}, idempotencyKey: 'key-abc-123' })
+      apiFetch("/api/wallet", {
+        method: "POST",
+        body: {},
+        idempotencyKey: "key-abc-123",
+      })
     ).resolves.toMatchObject({ success: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('publishes a retry notice while backing off', async () => {
+  it("publishes a retry notice while backing off", async () => {
     signIn();
-    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+    fetchMock.mockRejectedValueOnce(new TypeError("fetch failed"));
     fetchMock.mockResolvedValue(jsonResponse({ success: true }));
 
-    await apiFetch('/api/wallet', { method: 'POST', body: {}, idempotencyKey: 'key-abc-123' });
+    await apiFetch("/api/wallet", {
+      method: "POST",
+      body: {},
+      idempotencyKey: "key-abc-123",
+    });
 
     // Without this the page looks frozen for the length of the backoff.
     expect(retrySignal.beginRetryNotice).toHaveBeenCalledTimes(1);
     expect(retrySignal.endRetryNotice).toHaveBeenCalledTimes(1);
   });
 
-  it('clears the notice even when the retry fails', async () => {
+  it("clears the notice even when the retry fails", async () => {
     signIn();
-    fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+    fetchMock.mockRejectedValue(new TypeError("fetch failed"));
 
     await expect(
-      apiFetch('/api/wallet', { method: 'POST', body: {}, idempotencyKey: 'key-abc-123' })
-    ).rejects.toMatchObject({ code: 'NETWORK_ERROR' });
+      apiFetch("/api/wallet", {
+        method: "POST",
+        body: {},
+        idempotencyKey: "key-abc-123",
+      })
+    ).rejects.toMatchObject({ code: "NETWORK_ERROR" });
 
     expect(retrySignal.beginRetryNotice).toHaveBeenCalledTimes(1);
     expect(retrySignal.endRetryNotice).toHaveBeenCalledTimes(1);
   });
 
-  it('publishes nothing when the first attempt succeeds', async () => {
+  it("publishes nothing when the first attempt succeeds", async () => {
     signIn();
     fetchMock.mockResolvedValue(jsonResponse({ success: true }));
 
-    await apiFetch('/api/thing');
+    await apiFetch("/api/thing");
 
     expect(retrySignal.beginRetryNotice).not.toHaveBeenCalled();
   });
 
-  it('does not replay a write without a key', async () => {
+  it("does not replay a write without a key", async () => {
     signIn();
-    fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+    fetchMock.mockRejectedValue(new TypeError("fetch failed"));
 
     await expect(
-      apiFetch('/api/wallet', { method: 'POST', body: { amount: 5 } })
-    ).rejects.toMatchObject({ code: 'NETWORK_ERROR' });
+      apiFetch("/api/wallet", { method: "POST", body: { amount: 5 } })
+    ).rejects.toMatchObject({ code: "NETWORK_ERROR" });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('app check failures', () => {
-  it('publishes a rejection to the retry banner', async () => {
+describe("app check failures", () => {
+  it("publishes a rejection to the retry banner", async () => {
     signIn();
     fetchMock.mockResolvedValue(
       jsonResponse(
-        { success: false, code: 'APP_CHECK_FAILED', error: 'App Check verification failed.' },
+        {
+          success: false,
+          code: "APP_CHECK_FAILED",
+          error: "App Check verification failed.",
+        },
         401
       )
     );
 
-    await expect(apiFetch('/api/thing')).rejects.toMatchObject({
-      code: 'APP_CHECK_FAILED',
+    await expect(apiFetch("/api/thing")).rejects.toMatchObject({
+      code: "APP_CHECK_FAILED",
       status: 401,
     });
 
     expect(appCheckSignal.notifyAppCheckFailure).toHaveBeenCalledTimes(1);
   });
 
-  it('retries once with a force-refreshed token before surfacing the rejection', async () => {
+  it("retries once with a force-refreshed token before surfacing the rejection", async () => {
     signIn();
-    state.appCheckToken = 'stale-token';
-    state.forcedAppCheckToken = 'fresh-token';
+    state.appCheckToken = "stale-token";
+    state.forcedAppCheckToken = "fresh-token";
     fetchMock
       .mockResolvedValueOnce(
         jsonResponse(
-          { success: false, code: 'APP_CHECK_FAILED', error: 'App Check verification failed.' },
+          {
+            success: false,
+            code: "APP_CHECK_FAILED",
+            error: "App Check verification failed.",
+          },
           401
         )
       )
-      .mockResolvedValueOnce(jsonResponse({ success: true, data: 'ok' }));
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: "ok" }));
 
-    await expect(apiFetch('/api/thing')).resolves.toMatchObject({ success: true });
+    await expect(apiFetch("/api/thing")).resolves.toMatchObject({
+      success: true,
+    });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    const retryHeaders = (fetchMock.mock.calls[1][1] as RequestInit).headers as Record<
-      string,
-      string
-    >;
-    expect(retryHeaders['X-Firebase-AppCheck']).toBe('fresh-token');
+    const retryHeaders = (fetchMock.mock.calls[1][1] as RequestInit)
+      .headers as Record<string, string>;
+    expect(retryHeaders["X-Firebase-AppCheck"]).toBe("fresh-token");
     // The recovery worked, so the user never sees the banner.
     expect(appCheckSignal.notifyAppCheckFailure).not.toHaveBeenCalled();
     expect(appCheckSignal.clearAppCheckFailure).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the banner only when the forced-token retry is rejected too', async () => {
+  it("shows the banner only when the forced-token retry is rejected too", async () => {
     signIn();
-    state.appCheckToken = 'stale-token';
-    state.forcedAppCheckToken = 'fresh-token';
+    state.appCheckToken = "stale-token";
+    state.forcedAppCheckToken = "fresh-token";
     // A fresh Response per call: a body can only be read once, so reusing one
     // object would make the retry look like an unknown error instead.
     fetchMock.mockImplementation(async () =>
       jsonResponse(
-        { success: false, code: 'APP_CHECK_FAILED', error: 'App Check verification failed.' },
+        {
+          success: false,
+          code: "APP_CHECK_FAILED",
+          error: "App Check verification failed.",
+        },
         401
       )
     );
 
-    await expect(apiFetch('/api/thing')).rejects.toMatchObject({
-      code: 'APP_CHECK_FAILED',
+    await expect(apiFetch("/api/thing")).rejects.toMatchObject({
+      code: "APP_CHECK_FAILED",
     });
 
     // Exactly one retry: a second rejection means the device cannot attest, and
@@ -293,19 +337,23 @@ describe('app check failures', () => {
     expect(appCheckSignal.notifyAppCheckFailure).toHaveBeenCalledTimes(1);
   });
 
-  it('does not retry when no new token can be minted', async () => {
+  it("does not retry when no new token can be minted", async () => {
     signIn();
-    state.appCheckToken = 'stale-token';
+    state.appCheckToken = "stale-token";
     state.forcedAppCheckToken = null;
     fetchMock.mockResolvedValue(
       jsonResponse(
-        { success: false, code: 'APP_CHECK_FAILED', error: 'App Check verification failed.' },
+        {
+          success: false,
+          code: "APP_CHECK_FAILED",
+          error: "App Check verification failed.",
+        },
         401
       )
     );
 
-    await expect(apiFetch('/api/thing')).rejects.toMatchObject({
-      code: 'APP_CHECK_FAILED',
+    await expect(apiFetch("/api/thing")).rejects.toMatchObject({
+      code: "APP_CHECK_FAILED",
     });
 
     // Replaying with the same stale token would just be a second rejection.
@@ -313,263 +361,292 @@ describe('app check failures', () => {
     expect(appCheckSignal.notifyAppCheckFailure).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves other failures to page-level error handling', async () => {
+  it("leaves other failures to page-level error handling", async () => {
     signIn();
     fetchMock.mockResolvedValue(
-      jsonResponse({ success: false, code: 'FORBIDDEN', error: 'nope' }, 403)
+      jsonResponse({ success: false, code: "FORBIDDEN", error: "nope" }, 403)
     );
 
-    await expect(apiFetch('/api/thing')).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(apiFetch("/api/thing")).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
 
     expect(appCheckSignal.notifyAppCheckFailure).not.toHaveBeenCalled();
   });
 
-  it('clears the banner once a request succeeds', async () => {
+  it("clears the banner once a request succeeds", async () => {
     signIn();
     fetchMock.mockResolvedValue(jsonResponse({ success: true }));
 
-    await apiFetch('/api/thing');
+    await apiFetch("/api/thing");
 
     expect(appCheckSignal.clearAppCheckFailure).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('request shaping', () => {
-  it('omits a body and content-type for GET', async () => {
+describe("request shaping", () => {
+  it("omits a body and content-type for GET", async () => {
     signIn();
     fetchMock.mockResolvedValue(jsonResponse({ success: true }));
 
-    await apiFetch('/api/thing');
+    await apiFetch("/api/thing");
 
     const [path, init] = fetchMock.mock.calls[0];
-    expect(path).toBe('/api/thing');
-    expect(init.method).toBe('GET');
+    expect(path).toBe("/api/thing");
+    expect(init.method).toBe("GET");
     expect(init.body).toBeUndefined();
-    expect(init.headers['Content-Type']).toBeUndefined();
+    expect(init.headers["Content-Type"]).toBeUndefined();
   });
 
-  it('serialises JSON bodies and merges extra headers', async () => {
+  it("serialises JSON bodies and merges extra headers", async () => {
     signIn();
     fetchMock.mockResolvedValue(jsonResponse({ success: true }));
 
-    await apiFetch('/api/thing', {
-      method: 'POST',
+    await apiFetch("/api/thing", {
+      method: "POST",
       body: { amount: 10 },
-      extraHeaders: { 'X-Trace-Id': 'abc' },
+      extraHeaders: { "X-Trace-Id": "abc" },
     });
 
     const [, init] = fetchMock.mock.calls[0];
-    expect(init.method).toBe('POST');
+    expect(init.method).toBe("POST");
     expect(init.body).toBe('{"amount":10}');
-    expect(init.headers['Content-Type']).toBe('application/json');
-    expect(init.headers['X-Trace-Id']).toBe('abc');
+    expect(init.headers["Content-Type"]).toBe("application/json");
+    expect(init.headers["X-Trace-Id"]).toBe("abc");
   });
 
-  it('returns the parsed payload', async () => {
+  it("returns the parsed payload", async () => {
     signIn();
-    fetchMock.mockResolvedValue(jsonResponse({ success: true, value: 'ok' }));
+    fetchMock.mockResolvedValue(jsonResponse({ success: true, value: "ok" }));
 
-    await expect(apiFetch('/api/thing')).resolves.toEqual({ success: true, value: 'ok' });
+    await expect(apiFetch("/api/thing")).resolves.toEqual({
+      success: true,
+      value: "ok",
+    });
   });
 });
 
-describe('error handling', () => {
-  it('normalises an error payload', async () => {
+describe("error handling", () => {
+  it("normalises an error payload", async () => {
     signIn();
     fetchMock.mockResolvedValue(
-      jsonResponse({ success: false, error: 'Not enough balance', code: 'INSUFFICIENT_BALANCE' }, 400)
+      jsonResponse(
+        {
+          success: false,
+          error: "Not enough balance",
+          code: "INSUFFICIENT_BALANCE",
+        },
+        400
+      )
     );
 
-    await expect(apiFetch('/api/thing')).rejects.toMatchObject({
-      message: 'Not enough balance',
-      code: 'INSUFFICIENT_BALANCE',
+    await expect(apiFetch("/api/thing")).rejects.toMatchObject({
+      message: "Not enough balance",
+      code: "INSUFFICIENT_BALANCE",
       status: 400,
     });
   });
 
-  it('falls back to a generic message when the body is not JSON', async () => {
+  it("falls back to a generic message when the body is not JSON", async () => {
     signIn();
-    fetchMock.mockResolvedValue(new Response('<html>oops</html>', { status: 500 }));
+    fetchMock.mockResolvedValue(
+      new Response("<html>oops</html>", { status: 500 })
+    );
 
-    await expect(apiFetch('/api/thing')).rejects.toMatchObject({
-      message: 'Request failed (500).',
-      code: 'UNKNOWN_ERROR',
+    await expect(apiFetch("/api/thing")).rejects.toMatchObject({
+      message: "Request failed (500).",
+      code: "UNKNOWN_ERROR",
       status: 500,
     });
   });
 
-  it('treats success:false as an error even with a 200 status', async () => {
+  it("treats success:false as an error even with a 200 status", async () => {
     signIn();
-    fetchMock.mockResolvedValue(jsonResponse({ success: false, error: 'Nope' }, 200));
+    fetchMock.mockResolvedValue(
+      jsonResponse({ success: false, error: "Nope" }, 200)
+    );
 
-    await expect(apiFetch('/api/thing')).rejects.toBeInstanceOf(ApiError);
+    await expect(apiFetch("/api/thing")).rejects.toBeInstanceOf(ApiError);
   });
 
-  it('maps a thrown fetch to NETWORK_ERROR', async () => {
+  it("maps a thrown fetch to NETWORK_ERROR", async () => {
     signIn();
-    fetchMock.mockRejectedValue(new TypeError('offline'));
+    fetchMock.mockRejectedValue(new TypeError("offline"));
 
-    await expect(apiFetch('/api/thing')).rejects.toMatchObject({
-      message: 'Could not reach the server.',
-      code: 'NETWORK_ERROR',
+    await expect(apiFetch("/api/thing")).rejects.toMatchObject({
+      message: "Could not reach the server.",
+      code: "NETWORK_ERROR",
       status: 0,
     });
   });
 
-  it('uses a custom error class when provided', async () => {
+  it("uses a custom error class when provided", async () => {
     signIn();
     class AdminApiError extends ApiError {}
-    fetchMock.mockResolvedValue(jsonResponse({ success: false, error: 'x' }, 403));
+    fetchMock.mockResolvedValue(
+      jsonResponse({ success: false, error: "x" }, 403)
+    );
 
     await expect(
-      apiFetch('/api/admin/thing', { errorClass: AdminApiError })
+      apiFetch("/api/admin/thing", { errorClass: AdminApiError })
     ).rejects.toBeInstanceOf(AdminApiError);
   });
 });
 
-describe('missing profile recovery', () => {
+describe("missing profile recovery", () => {
   const profileMissing = () =>
     jsonResponse(
-      { success: false, error: 'User profile not found.', code: 'USER_PROFILE_NOT_FOUND' },
+      {
+        success: false,
+        error: "User profile not found.",
+        code: "USER_PROFILE_NOT_FOUND",
+      },
       403
     );
 
-  it('creates the profile and retries the original request once', async () => {
+  it("creates the profile and retries the original request once", async () => {
     signIn();
     fetchMock
       .mockResolvedValueOnce(profileMissing())
       .mockResolvedValueOnce(jsonResponse({ success: true }))
-      .mockResolvedValueOnce(jsonResponse({ success: true, data: 'wallet' }));
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: "wallet" }));
 
-    await expect(apiFetch('/api/wallet')).resolves.toEqual({
+    await expect(apiFetch("/api/wallet")).resolves.toEqual({
       success: true,
-      data: 'wallet',
+      data: "wallet",
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
     const [repairPath, repairInit] = fetchMock.mock.calls[1];
-    expect(repairPath).toBe('/api/profile');
-    expect(repairInit.method).toBe('POST');
-    expect(repairInit.headers.Authorization).toBe('Bearer id-token');
+    expect(repairPath).toBe("/api/profile");
+    expect(repairInit.method).toBe("POST");
+    expect(repairInit.headers.Authorization).toBe("Bearer id-token");
     expect(JSON.parse(repairInit.body)).toEqual({
-      displayName: 'Ada Lovelace',
-      email: 'ada@example.com',
-      phone: '',
-      photoURL: 'https://img/ada.png',
+      displayName: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "",
+      photoURL: "https://img/ada.png",
     });
 
     // The retry goes back to the route that failed, not to the repair path.
-    expect(fetchMock.mock.calls[2][0]).toBe('/api/wallet');
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/wallet");
   });
 
-  it('derives a display name when the provider has none', async () => {
+  it("derives a display name when the provider has none", async () => {
     state.currentUser = {
-      getIdToken: vi.fn(async () => 'id-token'),
+      getIdToken: vi.fn(async () => "id-token"),
       displayName: null,
-      email: 'ada@example.com',
+      email: "ada@example.com",
     };
     fetchMock
       .mockResolvedValueOnce(profileMissing())
       .mockResolvedValueOnce(jsonResponse({ success: true }))
       .mockResolvedValueOnce(jsonResponse({ success: true }));
 
-    await apiFetch('/api/wallet');
+    await apiFetch("/api/wallet");
 
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body).displayName).toBe('ada');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).displayName).toBe("ada");
   });
 
-  it('surfaces the original error when the repair fails', async () => {
+  it("surfaces the original error when the repair fails", async () => {
     signIn();
     fetchMock
       .mockResolvedValueOnce(profileMissing())
-      .mockResolvedValueOnce(jsonResponse({ success: false, error: 'nope' }, 500));
+      .mockResolvedValueOnce(
+        jsonResponse({ success: false, error: "nope" }, 500)
+      );
 
-    await expect(apiFetch('/api/wallet')).rejects.toMatchObject({
-      code: 'USER_PROFILE_NOT_FOUND',
+    await expect(apiFetch("/api/wallet")).rejects.toMatchObject({
+      code: "USER_PROFILE_NOT_FOUND",
       status: 403,
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('does not retry twice when the profile is still missing', async () => {
+  it("does not retry twice when the profile is still missing", async () => {
     signIn();
     fetchMock
       .mockResolvedValueOnce(profileMissing())
       .mockResolvedValueOnce(jsonResponse({ success: true }))
       .mockResolvedValueOnce(profileMissing());
 
-    await expect(apiFetch('/api/wallet')).rejects.toMatchObject({
-      code: 'USER_PROFILE_NOT_FOUND',
+    await expect(apiFetch("/api/wallet")).rejects.toMatchObject({
+      code: "USER_PROFILE_NOT_FOUND",
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it('does not repair on other 403s', async () => {
+  it("does not repair on other 403s", async () => {
     signIn();
     fetchMock.mockResolvedValue(
       jsonResponse(
-        { success: false, error: 'Insufficient permissions.', code: 'AUTHORIZATION_ERROR' },
+        {
+          success: false,
+          error: "Insufficient permissions.",
+          code: "AUTHORIZATION_ERROR",
+        },
         403
       )
     );
 
-    await expect(apiFetch('/api/wallet')).rejects.toMatchObject({
-      code: 'AUTHORIZATION_ERROR',
+    await expect(apiFetch("/api/wallet")).rejects.toMatchObject({
+      code: "AUTHORIZATION_ERROR",
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('stale verification token recovery', () => {
+describe("stale verification token recovery", () => {
   const verificationRequired = () =>
     jsonResponse(
       {
         success: false,
-        error: 'Please verify your email address before accessing this resource.',
-        code: 'EMAIL_VERIFICATION_REQUIRED',
+        error:
+          "Please verify your email address before accessing this resource.",
+        code: "EMAIL_VERIFICATION_REQUIRED",
       },
       403
     );
 
-  it('forces a token refresh and retries with the new token', async () => {
+  it("forces a token refresh and retries with the new token", async () => {
     signIn();
     const getIdToken = vi
       .fn<() => Promise<string>>()
-      .mockResolvedValueOnce('stale-token')
-      .mockResolvedValueOnce('fresh-token');
+      .mockResolvedValueOnce("stale-token")
+      .mockResolvedValueOnce("fresh-token");
     state.currentUser = { ...state.currentUser!, getIdToken };
 
     fetchMock
       .mockResolvedValueOnce(verificationRequired())
-      .mockResolvedValueOnce(jsonResponse({ success: true, data: 'ok' }));
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: "ok" }));
 
-    await expect(apiFetch('/api/requests')).resolves.toEqual({
+    await expect(apiFetch("/api/requests")).resolves.toEqual({
       success: true,
-      data: 'ok',
+      data: "ok",
     });
 
     expect(getIdToken).toHaveBeenLastCalledWith(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe(
-      'Bearer fresh-token'
+      "Bearer fresh-token"
     );
   });
 
-  it('surfaces the error when the refresh fails', async () => {
+  it("surfaces the error when the refresh fails", async () => {
     signIn();
     const getIdToken = vi
       .fn<() => Promise<string>>()
-      .mockResolvedValueOnce('stale-token')
-      .mockRejectedValueOnce(new Error('refresh failed'));
+      .mockResolvedValueOnce("stale-token")
+      .mockRejectedValueOnce(new Error("refresh failed"));
     state.currentUser = { ...state.currentUser!, getIdToken };
     fetchMock.mockResolvedValue(verificationRequired());
 
-    await expect(apiFetch('/api/requests')).rejects.toMatchObject({
-      code: 'EMAIL_VERIFICATION_REQUIRED',
+    await expect(apiFetch("/api/requests")).rejects.toMatchObject({
+      code: "EMAIL_VERIFICATION_REQUIRED",
       status: 403,
     });
 
@@ -577,41 +654,41 @@ describe('stale verification token recovery', () => {
   });
 });
 
-describe('transient GET retry', () => {
-  it('replays a GET once after a 503 and returns the second response', async () => {
+describe("transient GET retry", () => {
+  it("replays a GET once after a 503 and returns the second response", async () => {
     signIn();
     fetchMock
-      .mockResolvedValueOnce(new Response('', { status: 503 }))
-      .mockResolvedValueOnce(jsonResponse({ success: true, data: 'ok' }));
+      .mockResolvedValueOnce(new Response("", { status: 503 }))
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: "ok" }));
 
-    await expect(apiFetch('/api/requests')).resolves.toEqual({
+    await expect(apiFetch("/api/requests")).resolves.toEqual({
       success: true,
-      data: 'ok',
+      data: "ok",
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('replays a GET once after a network failure', async () => {
+  it("replays a GET once after a network failure", async () => {
     signIn();
     fetchMock
-      .mockRejectedValueOnce(new TypeError('offline'))
+      .mockRejectedValueOnce(new TypeError("offline"))
       .mockResolvedValueOnce(jsonResponse({ success: true }));
 
-    await expect(apiFetch('/api/requests')).resolves.toEqual({
+    await expect(apiFetch("/api/requests")).resolves.toEqual({
       success: true,
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('waits the base delay plus jitter before the retry', async () => {
+  it("waits the base delay plus jitter before the retry", async () => {
     vi.useFakeTimers();
     try {
       signIn();
       fetchMock
-        .mockResolvedValueOnce(new Response('', { status: 503 }))
+        .mockResolvedValueOnce(new Response("", { status: 503 }))
         .mockResolvedValueOnce(jsonResponse({ success: true }));
 
-      const pending = apiFetch('/api/requests');
+      const pending = apiFetch("/api/requests");
       await vi.advanceTimersByTimeAsync(0);
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -627,17 +704,17 @@ describe('transient GET retry', () => {
     }
   });
 
-  it('honours Retry-After instead of the base delay', async () => {
+  it("honours Retry-After instead of the base delay", async () => {
     vi.useFakeTimers();
     try {
       signIn();
       fetchMock
         .mockResolvedValueOnce(
-          new Response('', { status: 503, headers: { 'Retry-After': '1' } })
+          new Response("", { status: 503, headers: { "Retry-After": "1" } })
         )
         .mockResolvedValueOnce(jsonResponse({ success: true }));
 
-      const pending = apiFetch('/api/requests');
+      const pending = apiFetch("/api/requests");
       await vi.advanceTimersByTimeAsync(0);
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -652,30 +729,30 @@ describe('transient GET retry', () => {
     }
   });
 
-  it('reports a network error when the retry itself cannot connect', async () => {
+  it("reports a network error when the retry itself cannot connect", async () => {
     signIn();
     fetchMock
-      .mockResolvedValueOnce(new Response('', { status: 503 }))
-      .mockRejectedValueOnce(new TypeError('offline'));
+      .mockResolvedValueOnce(new Response("", { status: 503 }))
+      .mockRejectedValueOnce(new TypeError("offline"));
 
-    await expect(apiFetch('/api/requests')).rejects.toMatchObject({
-      code: 'NETWORK_ERROR',
+    await expect(apiFetch("/api/requests")).rejects.toMatchObject({
+      code: "NETWORK_ERROR",
       status: 0,
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('falls back to the base delay for an unparseable Retry-After', async () => {
+  it("falls back to the base delay for an unparseable Retry-After", async () => {
     vi.useFakeTimers();
     try {
       signIn();
       fetchMock
         .mockResolvedValueOnce(
-          new Response('', { status: 503, headers: { 'Retry-After': 'soon' } })
+          new Response("", { status: 503, headers: { "Retry-After": "soon" } })
         )
         .mockResolvedValueOnce(jsonResponse({ success: true }));
 
-      const pending = apiFetch('/api/requests');
+      const pending = apiFetch("/api/requests");
       await vi.advanceTimersByTimeAsync(0);
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -687,24 +764,24 @@ describe('transient GET retry', () => {
     }
   });
 
-  it('stops after one retry', async () => {
+  it("stops after one retry", async () => {
     signIn();
-    fetchMock.mockResolvedValue(new Response('', { status: 503 }));
+    fetchMock.mockResolvedValue(new Response("", { status: 503 }));
 
-    await expect(apiFetch('/api/requests')).rejects.toMatchObject({
+    await expect(apiFetch("/api/requests")).rejects.toMatchObject({
       status: 503,
-      message: 'Request failed (503).',
+      message: "Request failed (503).",
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('stops retrying once the circuit opens', async () => {
+  it("stops retrying once the circuit opens", async () => {
     signIn();
-    fetchMock.mockResolvedValue(new Response('', { status: 503 }));
+    fetchMock.mockResolvedValue(new Response("", { status: 503 }));
 
     // Three consecutive transient failures open the breaker.
     for (let attempt = 0; attempt < 3; attempt++) {
-      await expect(apiFetch('/api/requests')).rejects.toMatchObject({
+      await expect(apiFetch("/api/requests")).rejects.toMatchObject({
         status: 503,
       });
     }
@@ -712,55 +789,55 @@ describe('transient GET retry', () => {
     fetchMock.mockClear();
 
     // The request still goes out; only the doomed retry is skipped.
-    await expect(apiFetch('/api/requests')).rejects.toMatchObject({
+    await expect(apiFetch("/api/requests")).rejects.toMatchObject({
       status: 503,
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('closes the circuit again after a healthy response', async () => {
+  it("closes the circuit again after a healthy response", async () => {
     signIn();
-    fetchMock.mockResolvedValue(new Response('', { status: 503 }));
+    fetchMock.mockResolvedValue(new Response("", { status: 503 }));
 
     for (let attempt = 0; attempt < 3; attempt++) {
-      await expect(apiFetch('/api/requests')).rejects.toMatchObject({
+      await expect(apiFetch("/api/requests")).rejects.toMatchObject({
         status: 503,
       });
     }
 
     fetchMock.mockResolvedValue(jsonResponse({ success: true }));
-    await expect(apiFetch('/api/requests')).resolves.toEqual({
+    await expect(apiFetch("/api/requests")).resolves.toEqual({
       success: true,
     });
 
     fetchMock.mockClear();
     fetchMock
-      .mockResolvedValueOnce(new Response('', { status: 503 }))
+      .mockResolvedValueOnce(new Response("", { status: 503 }))
       .mockResolvedValueOnce(jsonResponse({ success: true }));
 
-    await expect(apiFetch('/api/requests')).resolves.toEqual({
+    await expect(apiFetch("/api/requests")).resolves.toEqual({
       success: true,
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('does not retry a POST, which is not idempotent', async () => {
+  it("does not retry a POST, which is not idempotent", async () => {
     signIn();
-    fetchMock.mockResolvedValue(new Response('', { status: 503 }));
+    fetchMock.mockResolvedValue(new Response("", { status: 503 }));
 
     await expect(
-      apiFetch('/api/refunds', { method: 'POST', body: { amount: 10 } })
+      apiFetch("/api/refunds", { method: "POST", body: { amount: 10 } })
     ).rejects.toMatchObject({ status: 503 });
 
     // Replaying this could refund twice.
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('does not retry a non-transient 500', async () => {
+  it("does not retry a non-transient 500", async () => {
     signIn();
-    fetchMock.mockResolvedValue(new Response('', { status: 500 }));
+    fetchMock.mockResolvedValue(new Response("", { status: 500 }));
 
-    await expect(apiFetch('/api/requests')).rejects.toMatchObject({
+    await expect(apiFetch("/api/requests")).rejects.toMatchObject({
       status: 500,
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);

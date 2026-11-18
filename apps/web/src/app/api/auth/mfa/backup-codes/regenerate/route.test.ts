@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NextRequest, NextResponse } from 'next/server';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   requireAuthWithProfile: vi.fn(),
@@ -10,46 +10,50 @@ const mocks = vi.hoisted(() => ({
   verifyTotp: vi.fn(),
 }));
 
-vi.mock('@/lib/auth', () => ({ requireAuthWithProfile: mocks.requireAuthWithProfile }));
-vi.mock('@/lib/firebaseAdmin', () => ({
+vi.mock("@/lib/auth", () => ({
+  requireAuthWithProfile: mocks.requireAuthWithProfile,
+}));
+vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
-    collection: vi.fn(() => ({ doc: vi.fn(() => ({ get: mocks.get, update: mocks.update })) })),
+    collection: vi.fn(() => ({
+      doc: vi.fn(() => ({ get: mocks.get, update: mocks.update })),
+    })),
   },
 }));
-vi.mock('@/lib/mfa', () => ({
+vi.mock("@/lib/mfa", () => ({
   generateBackupCodes: mocks.generateBackupCodes,
   hashBackupCode: mocks.hashBackupCode,
   verifyTotp: mocks.verifyTotp,
 }));
-vi.mock('firebase-admin/firestore', () => ({
-  FieldValue: { serverTimestamp: () => '__SERVER_TS__' },
+vi.mock("firebase-admin/firestore", () => ({
+  FieldValue: { serverTimestamp: () => "__SERVER_TS__" },
 }));
 
-import { POST } from './route';
+import { POST } from "./route";
 
-const request = (body: unknown = { totpCode: '123456' }) =>
-  new NextRequest('http://localhost/api/auth/mfa/backup-codes/regenerate', {
-    method: 'POST',
+const request = (body: unknown = { totpCode: "123456" }) =>
+  new NextRequest("http://localhost/api/auth/mfa/backup-codes/regenerate", {
+    method: "POST",
     body: JSON.stringify(body),
   });
 
 beforeEach(() => {
   mocks.requireAuthWithProfile
     .mockReset()
-    .mockResolvedValue({ profile: { uid: 'admin-1', role: 'admin' } });
+    .mockResolvedValue({ profile: { uid: "admin-1", role: "admin" } });
   mocks.get.mockReset().mockResolvedValue({
     exists: true,
-    data: () => ({ mfa: { totp: { enabled: true, secret: 'SECRET' } } }),
+    data: () => ({ mfa: { totp: { enabled: true, secret: "SECRET" } } }),
   });
   mocks.update.mockReset().mockResolvedValue(undefined);
-  mocks.generateBackupCodes.mockReset().mockReturnValue(['CODE-1', 'CODE-2']);
+  mocks.generateBackupCodes.mockReset().mockReturnValue(["CODE-1", "CODE-2"]);
   mocks.verifyTotp.mockReset().mockReturnValue(true);
 });
 
-describe('POST /api/auth/mfa/backup-codes/regenerate', () => {
-  it('rejects unauthenticated callers', async () => {
+describe("POST /api/auth/mfa/backup-codes/regenerate", () => {
+  it("rejects unauthenticated callers", async () => {
     mocks.requireAuthWithProfile.mockResolvedValue(
-      NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     );
 
     const response = await POST(request());
@@ -58,11 +62,11 @@ describe('POST /api/auth/mfa/backup-codes/regenerate', () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  it('lets a customer regenerate their own backup codes', async () => {
+  it("lets a customer regenerate their own backup codes", async () => {
     // Self-service: a customer manages their own second factor, so the old
     // admin-only gate must not apply. The route still authenticates the caller.
     mocks.requireAuthWithProfile.mockResolvedValue({
-      profile: { uid: 'user-1', role: 'customer' },
+      profile: { uid: "user-1", role: "customer" },
       token: {},
     });
 
@@ -72,14 +76,14 @@ describe('POST /api/auth/mfa/backup-codes/regenerate', () => {
     expect(mocks.get).toHaveBeenCalled();
   });
 
-  it('requires a six digit code', async () => {
-    const response = await POST(request({ totpCode: '123' }));
+  it("requires a six digit code", async () => {
+    const response = await POST(request({ totpCode: "123" }));
 
     expect(response.status).toBe(400);
     expect(mocks.get).not.toHaveBeenCalled();
   });
 
-  it('404s when the admin profile is missing', async () => {
+  it("404s when the admin profile is missing", async () => {
     mocks.get.mockResolvedValue({ exists: false });
 
     const response = await POST(request());
@@ -87,39 +91,46 @@ describe('POST /api/auth/mfa/backup-codes/regenerate', () => {
     expect(response.status).toBe(404);
   });
 
-  it('refuses when TOTP is not enabled', async () => {
-    mocks.get.mockResolvedValue({ exists: true, data: () => ({ mfa: { totp: {} } }) });
+  it("refuses when TOTP is not enabled", async () => {
+    mocks.get.mockResolvedValue({
+      exists: true,
+      data: () => ({ mfa: { totp: {} } }),
+    });
 
     const response = await POST(request());
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({ code: 'TOTP_NOT_SETUP' });
+    await expect(response.json()).resolves.toMatchObject({
+      code: "TOTP_NOT_SETUP",
+    });
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  it('rejects a wrong TOTP code', async () => {
+  it("rejects a wrong TOTP code", async () => {
     mocks.verifyTotp.mockReturnValue(false);
 
     const response = await POST(request());
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({ code: 'INVALID_TOTP_CODE' });
+    await expect(response.json()).resolves.toMatchObject({
+      code: "INVALID_TOTP_CODE",
+    });
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  it('generates ten fresh hashed codes', async () => {
+  it("generates ten fresh hashed codes", async () => {
     const response = await POST(request());
 
     expect(mocks.generateBackupCodes).toHaveBeenCalledWith(10);
-    expect(mocks.verifyTotp).toHaveBeenCalledWith('SECRET', '123456', 1);
+    expect(mocks.verifyTotp).toHaveBeenCalledWith("SECRET", "123456", 1);
     expect(mocks.update).toHaveBeenCalledWith({
-      'mfa.totp.backupCodes': ['hash:CODE-1', 'hash:CODE-2'],
-      updatedAt: '__SERVER_TS__',
+      "mfa.totp.backupCodes": ["hash:CODE-1", "hash:CODE-2"],
+      updatedAt: "__SERVER_TS__",
     });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       success: true,
-      backupCodes: ['CODE-1', 'CODE-2'],
+      backupCodes: ["CODE-1", "CODE-2"],
     });
   });
 });

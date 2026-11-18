@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NextRequest } from 'next/server';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
@@ -10,43 +10,47 @@ const mocks = vi.hoisted(() => ({
   recordAdminAudit: vi.fn(),
 }));
 
-vi.mock('@/lib/adminAuth', () => ({
+vi.mock("@/lib/adminAuth", () => ({
   requireAdmin: mocks.requireAdmin,
   getAdminAuthError: mocks.getAdminAuthError,
 }));
 
-vi.mock('@/lib/adminAudit', () => ({
+vi.mock("@/lib/adminAudit", () => ({
   recordAdminAudit: mocks.recordAdminAudit,
 }));
 
-vi.mock('@/lib/firebaseAdmin', () => ({
+vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
-    collection: () => ({ doc: () => ({ get: mocks.get, update: mocks.txUpdate }) }),
+    collection: () => ({
+      doc: () => ({ get: mocks.get, update: mocks.txUpdate }),
+    }),
     runTransaction: mocks.runTransaction,
   },
 }));
 
-vi.mock('firebase-admin/firestore', () => ({
-  FieldValue: { serverTimestamp: () => '__SERVER_TS__' },
+vi.mock("firebase-admin/firestore", () => ({
+  FieldValue: { serverTimestamp: () => "__SERVER_TS__" },
 }));
 
-import { POST } from './route';
+import { POST } from "./route";
 
-const context = (requestId = 'req-1') => ({ params: Promise.resolve({ requestId }) });
+const context = (requestId = "req-1") => ({
+  params: Promise.resolve({ requestId }),
+});
 
-const request = (token: string | null = 'token-1') =>
-  new NextRequest('http://localhost/api/admin/requests/req-1/refund/complete', {
-    method: 'POST',
+const request = (token: string | null = "token-1") =>
+  new NextRequest("http://localhost/api/admin/requests/req-1/refund/complete", {
+    method: "POST",
     headers: token ? { authorization: `Bearer ${token}` } : {},
   });
 
 const refundRequest = (overrides: Record<string, unknown> = {}) => ({
-  status: 'requested',
+  status: "requested",
   amount: 120,
   walletAmount: 20,
   paypalAmount: 100,
-  walletStatus: 'completed',
-  paypalRefundStatus: 'completed',
+  walletStatus: "completed",
+  paypalRefundStatus: "completed",
   ...overrides,
 });
 
@@ -57,11 +61,13 @@ const respondWith = (data?: Record<string, unknown>) =>
   });
 
 beforeEach(() => {
-  vi.spyOn(console, 'error').mockImplementation(() => {});
-  mocks.requireAdmin.mockReset().mockResolvedValue({ uid: 'admin-1', email: 'admin@shipin.test' });
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  mocks.requireAdmin
+    .mockReset()
+    .mockResolvedValue({ uid: "admin-1", email: "admin@shipin.test" });
   mocks.getAdminAuthError
     .mockReset()
-    .mockReturnValue({ status: 401, error: 'Authentication required.' });
+    .mockReturnValue({ status: 401, error: "Authentication required." });
   mocks.get.mockReset();
   mocks.txUpdate.mockReset();
   mocks.recordAdminAudit.mockReset().mockResolvedValue(undefined);
@@ -70,40 +76,43 @@ beforeEach(() => {
     .mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
       fn({ get: mocks.get, update: mocks.txUpdate })
     );
-  respondWith({ status: 'refund_requested', refundRequest: refundRequest() });
+  respondWith({ status: "refund_requested", refundRequest: refundRequest() });
 });
 
-describe('POST /api/admin/requests/[requestId]/refund/complete', () => {
-  it('marks the request refunded once both portions are done', async () => {
+describe("POST /api/admin/requests/[requestId]/refund/complete", () => {
+  it("marks the request refunded once both portions are done", async () => {
     const response = await POST(request(), context());
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       success: true,
-      requestId: 'req-1',
-      status: 'refunded',
+      requestId: "req-1",
+      status: "refunded",
       alreadyCompleted: false,
     });
 
     expect(mocks.txUpdate).toHaveBeenCalledWith(expect.any(Object), {
-      'refundRequest.status': 'completed',
-      'refundRequest.processedAt': '__SERVER_TS__',
-      status: 'refunded',
-      'statusHistory.refunded': '__SERVER_TS__',
-      updatedAt: '__SERVER_TS__',
+      "refundRequest.status": "completed",
+      "refundRequest.processedAt": "__SERVER_TS__",
+      status: "refunded",
+      "statusHistory.refunded": "__SERVER_TS__",
+      updatedAt: "__SERVER_TS__",
     });
 
     expect(mocks.recordAdminAudit).toHaveBeenCalledWith(
       expect.objectContaining({
-        action: 'refund.completed',
-        targetId: 'req-1',
+        action: "refund.completed",
+        targetId: "req-1",
         detail: { amount: 120, alreadyCompleted: false },
       })
     );
   });
 
-  it('is a no-op for a refund that is already completed', async () => {
-    respondWith({ status: 'refunded', refundRequest: refundRequest({ status: 'completed' }) });
+  it("is a no-op for a refund that is already completed", async () => {
+    respondWith({
+      status: "refunded",
+      refundRequest: refundRequest({ status: "completed" }),
+    });
 
     const response = await POST(request(), context());
 
@@ -114,31 +123,33 @@ describe('POST /api/admin/requests/[requestId]/refund/complete', () => {
     expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 
-  it('refuses to complete while the wallet portion is outstanding', async () => {
+  it("refuses to complete while the wallet portion is outstanding", async () => {
     respondWith({ refundRequest: refundRequest({ walletStatus: undefined }) });
 
     const response = await POST(request(), context());
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      error: 'Credit the wallet portion of this refund before completing it.',
+      error: "Credit the wallet portion of this refund before completing it.",
     });
     expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 
-  it('refuses to complete while the PayPal portion is outstanding', async () => {
-    respondWith({ refundRequest: refundRequest({ paypalRefundStatus: undefined }) });
+  it("refuses to complete while the PayPal portion is outstanding", async () => {
+    respondWith({
+      refundRequest: refundRequest({ paypalRefundStatus: undefined }),
+    });
 
     const response = await POST(request(), context());
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      error: 'Record the PayPal refund before completing it.',
+      error: "Record the PayPal refund before completing it.",
     });
     expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 
-  it('treats a zero portion as already handled', async () => {
+  it("treats a zero portion as already handled", async () => {
     respondWith({
       refundRequest: refundRequest({
         walletAmount: 0,
@@ -154,25 +165,25 @@ describe('POST /api/admin/requests/[requestId]/refund/complete', () => {
     expect(mocks.txUpdate).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects an invalid request id', async () => {
-    const response = await POST(request(), context(''));
+  it("rejects an invalid request id", async () => {
+    const response = await POST(request(), context(""));
 
     expect(response.status).toBe(400);
     expect(mocks.runTransaction).not.toHaveBeenCalled();
   });
 
-  it('treats a document with no data as having no refund workflow', async () => {
+  it("treats a document with no data as having no refund workflow", async () => {
     mocks.get.mockResolvedValue({ exists: true, data: () => undefined });
 
     const response = await POST(request(), context());
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      error: 'No refund workflow exists for this request.',
+      error: "No refund workflow exists for this request.",
     });
   });
 
-  it('derives the amount from the portions when no total is stored', async () => {
+  it("derives the amount from the portions when no total is stored", async () => {
     respondWith({
       refundRequest: refundRequest({
         amount: undefined,
@@ -185,11 +196,13 @@ describe('POST /api/admin/requests/[requestId]/refund/complete', () => {
 
     expect(response.status).toBe(200);
     expect(mocks.recordAdminAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ detail: { amount: 120, alreadyCompleted: false } })
+      expect.objectContaining({
+        detail: { amount: 120, alreadyCompleted: false },
+      })
     );
   });
 
-  it('treats a refund workflow with no recorded portions as zero', async () => {
+  it("treats a refund workflow with no recorded portions as zero", async () => {
     respondWith({
       refundRequest: refundRequest({
         amount: undefined,
@@ -202,22 +215,24 @@ describe('POST /api/admin/requests/[requestId]/refund/complete', () => {
 
     expect(response.status).toBe(200);
     expect(mocks.recordAdminAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ detail: { amount: 0, alreadyCompleted: false } })
+      expect.objectContaining({
+        detail: { amount: 0, alreadyCompleted: false },
+      })
     );
   });
 
-  it('rejects a request with no refund workflow', async () => {
-    respondWith({ status: 'purchased' });
+  it("rejects a request with no refund workflow", async () => {
+    respondWith({ status: "purchased" });
 
     const response = await POST(request(), context());
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      error: 'No refund workflow exists for this request.',
+      error: "No refund workflow exists for this request.",
     });
   });
 
-  it('404s for an unknown request', async () => {
+  it("404s for an unknown request", async () => {
     respondWith(undefined);
 
     const response = await POST(request(), context());
@@ -225,8 +240,8 @@ describe('POST /api/admin/requests/[requestId]/refund/complete', () => {
     expect(response.status).toBe(404);
   });
 
-  it('passes an authentication failure through as 401', async () => {
-    mocks.requireAdmin.mockRejectedValue(new Error('AUTHENTICATION_REQUIRED'));
+  it("passes an authentication failure through as 401", async () => {
+    mocks.requireAdmin.mockRejectedValue(new Error("AUTHENTICATION_REQUIRED"));
 
     const response = await POST(request(null), context());
 
@@ -234,11 +249,11 @@ describe('POST /api/admin/requests/[requestId]/refund/complete', () => {
     expect(mocks.runTransaction).not.toHaveBeenCalled();
   });
 
-  it('requires the admin role', async () => {
-    mocks.requireAdmin.mockRejectedValue(new Error('ADMIN_ACCESS_REQUIRED'));
+  it("requires the admin role", async () => {
+    mocks.requireAdmin.mockRejectedValue(new Error("ADMIN_ACCESS_REQUIRED"));
     mocks.getAdminAuthError.mockReturnValue({
       status: 403,
-      error: 'Administrator access required.',
+      error: "Administrator access required.",
     });
 
     const response = await POST(request(), context());

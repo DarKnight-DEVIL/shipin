@@ -8,16 +8,16 @@ import {
   orderBy,
   onSnapshot,
   getDoc,
-} from 'firebase/firestore';
+} from "firebase/firestore";
 
 export { WHATSAPP_COUNTRIES } from "./whatsappCountries";
 
 import { db } from "@/lib/firebaseDb";
-import { customerApi } from '@/lib/customerApiClient';
-import type { Notification } from '@/types/notification';
-import type { NotificationPreferences } from '@/types/notificationPreferences';
-import { DEFAULT_NOTIFICATION_PREFERENCES } from '@/types/notificationPreferences';
-import { toShipINError } from '@/utils/errors';
+import { customerApi } from "@/lib/customerApiClient";
+import type { Notification } from "@/types/notification";
+import type { NotificationPreferences } from "@/types/notificationPreferences";
+import { DEFAULT_NOTIFICATION_PREFERENCES } from "@/types/notificationPreferences";
+import { toShipINError } from "@/utils/errors";
 
 /**
  * Browser-safe notification client.
@@ -32,13 +32,16 @@ export async function createNotification(
   requestId: string | null,
   title: string,
   message: string,
-  type: Notification['type']
+  type: Notification["type"]
 ): Promise<string> {
   try {
-    const result = await customerApi<{ notificationId: string }>('/api/notifications', {
-      method: 'POST',
-      body: { userId, requestId, title, message, type },
-    });
+    const result = await customerApi<{ notificationId: string }>(
+      "/api/notifications",
+      {
+        method: "POST",
+        body: { userId, requestId, title, message, type },
+      }
+    );
 
     return result.notificationId;
   } catch (error) {
@@ -52,12 +55,15 @@ export async function getNotifications(
 ): Promise<Notification[]> {
   try {
     const q = query(
-      collection(db, 'notifications'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
+      collection(db, "notifications"),
+      where("userId", "==", userId),
+      orderBy("createdAt", "desc")
     );
     const snapshot = await getDocs(q);
-    let results = snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Omit<Notification, 'id'>) }));
+    let results = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as Omit<Notification, "id">),
+    }));
     if (limit) results = results.slice(0, limit);
     return results;
   } catch (error) {
@@ -65,34 +71,49 @@ export async function getNotifications(
   }
 }
 
-export async function markNotificationRead(notificationId: string): Promise<void> {
+export async function markNotificationRead(
+  notificationId: string
+): Promise<void> {
   try {
-    await customerApi<{ success: boolean }>(`/api/notifications/${notificationId}`, {
-      method: 'PATCH',
-      body: { read: true },
-    });
+    await customerApi<{ success: boolean }>(
+      `/api/notifications/${notificationId}`,
+      {
+        method: "PATCH",
+        body: { read: true },
+      }
+    );
   } catch (error) {
     throw toShipINError(error);
   }
 }
 
-export async function deleteNotification(notificationId: string): Promise<void> {
+export async function deleteNotification(
+  notificationId: string
+): Promise<void> {
   try {
-    await customerApi<{ success: boolean }>(`/api/notifications/${notificationId}`, {
-      method: 'DELETE',
-    });
+    await customerApi<{ success: boolean }>(
+      `/api/notifications/${notificationId}`,
+      {
+        method: "DELETE",
+      }
+    );
   } catch (error) {
     throw toShipINError(error);
   }
 }
 
-export async function markAllNotificationsRead(userId: string): Promise<number> {
+export async function markAllNotificationsRead(
+  userId: string
+): Promise<number> {
   try {
     void userId;
 
-    const result = await customerApi<{ count: number }>('/api/notifications/read-all', {
-      method: 'POST',
-    });
+    const result = await customerApi<{ count: number }>(
+      "/api/notifications/read-all",
+      {
+        method: "POST",
+      }
+    );
 
     return result.count;
   } catch (error) {
@@ -104,9 +125,12 @@ export async function clearReadNotifications(userId: string): Promise<number> {
   try {
     void userId;
 
-    const result = await customerApi<{ count: number }>('/api/notifications/clear-read', {
-      method: 'POST',
-    });
+    const result = await customerApi<{ count: number }>(
+      "/api/notifications/clear-read",
+      {
+        method: "POST",
+      }
+    );
 
     return result.count;
   } catch (error) {
@@ -129,14 +153,17 @@ export function subscribeToNotifications(
   callback: (notifications: Notification[]) => void
 ): () => void {
   const q = query(
-    collection(db, 'notifications'),
-    where('userId', '==', userId),
-    orderBy('createdAt', 'desc'),
+    collection(db, "notifications"),
+    where("userId", "==", userId),
+    orderBy("createdAt", "desc"),
     limit(NOTIFICATION_FEED_LIMIT)
   );
   return onSnapshot(q, (snapshot) => {
     callback(
-      snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Omit<Notification, 'id'>) }))
+      snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() as Omit<Notification, "id">),
+      }))
     );
   });
 }
@@ -145,7 +172,7 @@ export async function getNotificationPreferences(
   userId: string
 ): Promise<NotificationPreferences> {
   try {
-    const snapshot = await getDoc(doc(db, 'users', userId));
+    const snapshot = await getDoc(doc(db, "users", userId));
     if (!snapshot.exists()) {
       return DEFAULT_NOTIFICATION_PREFERENCES;
     }
@@ -168,7 +195,7 @@ export async function getNotificationPreferences(
       },
     };
   } catch (error) {
-    console.error('Failed to load notification preferences:', error);
+    console.error("Failed to load notification preferences:", error);
     return DEFAULT_NOTIFICATION_PREFERENCES;
   }
 }
@@ -180,8 +207,8 @@ export async function saveNotificationPreferences(
   try {
     void userId;
 
-    await customerApi<{ success: boolean }>('/api/notifications/preferences', {
-      method: 'PATCH',
+    await customerApi<{ success: boolean }>("/api/notifications/preferences", {
+      method: "PATCH",
       body: preferences,
     });
   } catch (error) {

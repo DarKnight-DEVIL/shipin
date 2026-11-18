@@ -18,8 +18,7 @@ interface NotificationChannels {
   whatsapp?: boolean;
 }
 
-type NotificationCategory =
-  keyof NotificationCategoryPreferences;
+type NotificationCategory = keyof NotificationCategoryPreferences;
 
 export type { NotificationCategory };
 
@@ -72,21 +71,14 @@ interface UserData {
  */
 async function getUserData(userId: string): Promise<UserData | null> {
   try {
-    const snapshot =
-      await adminDb
-        .collection("users")
-        .doc(userId)
-        .get();
+    const snapshot = await adminDb.collection("users").doc(userId).get();
 
     if (!snapshot.exists) {
       return null;
     }
     return snapshot.data() as UserData;
   } catch (error) {
-    console.error(
-      "Failed to load user data:",
-      error
-    );
+    console.error("Failed to load user data:", error);
     return null;
   }
 }
@@ -94,8 +86,7 @@ async function getUserData(userId: string): Promise<UserData | null> {
 async function resolvePreferences(
   userData: UserData | null
 ): Promise<NotificationPreferences> {
-  const saved =
-    userData?.preferences?.notifications;
+  const saved = userData?.preferences?.notifications;
 
   if (!saved) {
     return DEFAULT_NOTIFICATION_PREFERENCES;
@@ -149,11 +140,7 @@ export async function sendNotification({
    * First check whether the customer
    * wants this TYPE of notification.
    */
-  if (
-    !preferences.categories[
-      category
-    ]
-  ) {
+  if (!preferences.categories[category]) {
     return;
   }
 
@@ -179,32 +166,23 @@ export async function sendNotification({
    * 1. Event supports in-app
    * 2. Customer enabled in-app
    */
-  if (
-    channels.inApp !== false &&
-    preferences.channels.inApp
-  ) {
+  if (channels.inApp !== false && preferences.channels.inApp) {
     try {
-      await adminDb
-        .collection("notifications")
-        .add({
-          userId,
-          requestId,
+      await adminDb.collection("notifications").add({
+        userId,
+        requestId,
 
-          title,
-          message,
-          type,
-          category,
+        title,
+        message,
+        type,
+        category,
 
-          read: false,
+        read: false,
 
-          createdAt:
-            new Date(),
-        });
+        createdAt: new Date(),
+      });
     } catch (error) {
-      console.error(
-        "In-app notification failed:",
-        error
-      );
+      console.error("In-app notification failed:", error);
     }
   }
 
@@ -245,12 +223,9 @@ export async function sendNotification({
 
           templateName,
 
-          languageCode:
-            whatsapp.languageCode ??
-            "en_US",
+          languageCode: whatsapp.languageCode ?? "en_US",
 
-          components:
-            whatsapp.components ?? [],
+          components: whatsapp.components ?? [],
         });
       } catch (error) {
         /*
@@ -273,11 +248,7 @@ export async function sendNotification({
    * 2. Customer enabled email
    * 3. Customer has an email address
    */
-  if (
-    channels.email === true &&
-    preferences.channels.email &&
-    userEmail
-  ) {
+  if (channels.email === true && preferences.channels.email && userEmail) {
     try {
       await sendMail({
         to: userEmail,
@@ -325,10 +296,7 @@ export async function sendNotification({
        * Email failure must not fail the
        * underlying ShipIN operation.
        */
-      console.error(
-        "Email notification failed:",
-        error
-      );
+      console.error("Email notification failed:", error);
     }
   }
 }

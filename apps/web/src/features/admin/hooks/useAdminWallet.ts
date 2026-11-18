@@ -12,7 +12,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { customerApi } from "@/lib/customerApiClient";
-import { getCustomersWithWallets, getRefundRequestDetails, type AdminCustomer } from "@/features/admin/services/customersClient";
+import {
+  getCustomersWithWallets,
+  getRefundRequestDetails,
+  type AdminCustomer,
+} from "@/features/admin/services/customersClient";
 
 export interface AdminWalletState {
   customers: AdminCustomer[];
@@ -48,7 +52,8 @@ export function useAdminWallet(): AdminWalletState & AdminWalletActions {
   const [customers, setCustomers] = useState<AdminCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [selectedCustomer, setSelectedCustomer] = useState<AdminCustomer | null>(null);
+  const [selectedCustomer, setSelectedCustomer] =
+    useState<AdminCustomer | null>(null);
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [adding, setAdding] = useState(false);
@@ -73,7 +78,9 @@ export function useAdminWallet(): AdminWalletState & AdminWalletActions {
   }, []);
 
   // Auto-load refund request when ?refundRequest= is present
-  const [prevRefundRequestId, setPrevRefundRequestId] = useState<string | null>(null);
+  const [prevRefundRequestId, setPrevRefundRequestId] = useState<string | null>(
+    null
+  );
   if (refundRequestId !== prevRefundRequestId) {
     setPrevRefundRequestId(refundRequestId);
     if (!refundRequestId) {
@@ -103,7 +110,6 @@ export function useAdminWallet(): AdminWalletState & AdminWalletActions {
       }
     }
     loadRefundRequest();
-     
   }, [refundRequestId, customers]);
 
   const handleAddCredits = useCallback(async () => {
@@ -130,7 +136,8 @@ export function useAdminWallet(): AdminWalletState & AdminWalletActions {
           body: {
             userId: selectedCustomer.id,
             amount: numericAmount,
-            description: description.trim() || (refundMode ? "Refund" : "Admin credit"),
+            description:
+              description.trim() || (refundMode ? "Refund" : "Admin credit"),
           },
         }
       );
@@ -158,7 +165,14 @@ export function useAdminWallet(): AdminWalletState & AdminWalletActions {
     } finally {
       setAdding(false);
     }
-  }, [selectedCustomer, amount, description, refundMode, refundRequestId, router]);
+  }, [
+    selectedCustomer,
+    amount,
+    description,
+    refundMode,
+    refundRequestId,
+    router,
+  ]);
 
   const clearMessages = useCallback(() => {
     setSuccessMessage("");

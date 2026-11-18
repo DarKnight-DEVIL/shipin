@@ -1,19 +1,19 @@
-import type { Metadata } from 'next';
-import { siteConfig } from '@/config/site';
+import type { Metadata } from "next";
+import { siteConfig } from "@/config/site";
 
 /**
  * Tracking result page metadata.
  */
 
 export const metadata: Metadata = {
-  title: 'Track Shipment',
+  title: "Track Shipment",
   description:
-    'View the latest status of your ShipIN shipment, including dispatch, transit, customs, and delivery updates.',
+    "View the latest status of your ShipIN shipment, including dispatch, transit, customs, and delivery updates.",
   openGraph: {
-    title: 'Track Shipment | ShipIN',
+    title: "Track Shipment | ShipIN",
     description:
-      'View the latest status of your ShipIN shipment, including dispatch, transit, customs, and delivery updates.',
-    type: 'website',
+      "View the latest status of your ShipIN shipment, including dispatch, transit, customs, and delivery updates.",
+    type: "website",
     url: `${siteConfig.url}/track`,
     siteName: siteConfig.name,
     images: [
@@ -21,21 +21,21 @@ export const metadata: Metadata = {
         url: siteConfig.ogImage,
         width: 1200,
         height: 630,
-        alt: 'ShipIN shipment tracking',
+        alt: "ShipIN shipment tracking",
       },
     ],
   },
   twitter: {
-    card: 'summary_large_image',
-    title: 'Track Shipment | ShipIN',
+    card: "summary_large_image",
+    title: "Track Shipment | ShipIN",
     description:
-      'View the latest status of your ShipIN shipment, including dispatch, transit, customs, and delivery updates.',
+      "View the latest status of your ShipIN shipment, including dispatch, transit, customs, and delivery updates.",
     images: [siteConfig.ogImage],
     creator: siteConfig.twitterHandle,
   },
 };
 
-import TrackingShell from './TrackingShell';
+import TrackingShell from "./TrackingShell";
 
 /**
  * Tracking result page.

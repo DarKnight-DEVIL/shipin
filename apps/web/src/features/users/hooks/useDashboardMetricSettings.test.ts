@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { renderHook, act, waitFor } from "@testing-library/react";
 
 const mocks = vi.hoisted(() => ({
   getUserPreferences: vi.fn(),
@@ -12,18 +12,18 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@/lib/firebase', () => ({ auth: mocks.auth }));
-vi.mock('@/features/users/services/userPreferences', () => ({
+vi.mock("@/lib/firebase", () => ({ auth: mocks.auth }));
+vi.mock("@/features/users/services/userPreferences", () => ({
   getUserPreferences: mocks.getUserPreferences,
   saveDashboardMetrics: mocks.saveDashboardMetrics,
 }));
-vi.mock('sonner', () => ({ toast: mocks.toast }));
+vi.mock("sonner", () => ({ toast: mocks.toast }));
 
-import { useDashboardMetricSettings } from './useDashboardMetricSettings';
+import { useDashboardMetricSettings } from "./useDashboardMetricSettings";
 import {
   DEFAULT_DASHBOARD_METRICS,
   MIN_DASHBOARD_METRICS,
-} from '@/features/users/services/dashboardMetrics';
+} from "@/features/users/services/dashboardMetrics";
 
 beforeEach(() => {
   mocks.getUserPreferences
@@ -31,12 +31,14 @@ beforeEach(() => {
     .mockResolvedValue({ dashboardMetrics: DEFAULT_DASHBOARD_METRICS });
   mocks.saveDashboardMetrics.mockReset().mockResolvedValue(undefined);
   Object.values(mocks.toast).forEach((fn) => fn.mockReset());
-  mocks.auth.currentUser = { uid: 'user-1' };
-  mocks.auth.onAuthStateChanged.mockImplementation((callback: (user: unknown) => unknown) => {
-    void callback({ uid: 'user-1' });
-    return vi.fn();
-  });
-  vi.spyOn(console, 'error').mockImplementation(() => {});
+  mocks.auth.currentUser = { uid: "user-1" };
+  mocks.auth.onAuthStateChanged.mockImplementation(
+    (callback: (user: unknown) => unknown) => {
+      void callback({ uid: "user-1" });
+      return vi.fn();
+    }
+  );
+  vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -49,26 +51,28 @@ async function mount() {
   return view;
 }
 
-describe('useDashboardMetricSettings — loading', () => {
-  it('loads the saved selection', async () => {
+describe("useDashboardMetricSettings — loading", () => {
+  it("loads the saved selection", async () => {
     const { result } = await mount();
 
     expect(result.current.selectedMetrics).toEqual(DEFAULT_DASHBOARD_METRICS);
   });
 
-  it('stops loading when signed out', async () => {
-    mocks.auth.onAuthStateChanged.mockImplementation((callback: (user: unknown) => unknown) => {
-      void callback(null);
-      return vi.fn();
-    });
+  it("stops loading when signed out", async () => {
+    mocks.auth.onAuthStateChanged.mockImplementation(
+      (callback: (user: unknown) => unknown) => {
+        void callback(null);
+        return vi.fn();
+      }
+    );
     const { result } = await mount();
 
     expect(result.current.loading).toBe(false);
     expect(mocks.getUserPreferences).not.toHaveBeenCalled();
   });
 
-  it('falls back to defaults when loading fails', async () => {
-    mocks.getUserPreferences.mockRejectedValue(new Error('offline'));
+  it("falls back to defaults when loading fails", async () => {
+    mocks.getUserPreferences.mockRejectedValue(new Error("offline"));
     const { result } = await mount();
 
     expect(result.current.selectedMetrics).toEqual(DEFAULT_DASHBOARD_METRICS);
@@ -76,48 +80,50 @@ describe('useDashboardMetricSettings — loading', () => {
   });
 });
 
-describe('useDashboardMetricSettings — selection', () => {
-  it('adds a metric', async () => {
+describe("useDashboardMetricSettings — selection", () => {
+  it("adds a metric", async () => {
     const { result } = await mount();
 
     await act(async () => {
-      result.current.toggle('paid');
+      result.current.toggle("paid");
     });
 
-    expect(result.current.selectedMetrics).toContain('paid');
-    expect(result.current.selectedMetrics).toHaveLength(DEFAULT_DASHBOARD_METRICS.length + 1);
+    expect(result.current.selectedMetrics).toContain("paid");
+    expect(result.current.selectedMetrics).toHaveLength(
+      DEFAULT_DASHBOARD_METRICS.length + 1
+    );
   });
 
-  it('refuses to drop below the minimum', async () => {
+  it("refuses to drop below the minimum", async () => {
     const { result } = await mount();
 
     await act(async () => {
-      result.current.toggle('active');
+      result.current.toggle("active");
     });
 
     expect(result.current.selectedMetrics).toHaveLength(MIN_DASHBOARD_METRICS);
-    expect(result.current.selectedMetrics).toContain('active');
+    expect(result.current.selectedMetrics).toContain("active");
   });
 
-  it('removes a metric once above the minimum', async () => {
+  it("removes a metric once above the minimum", async () => {
     const { result } = await mount();
 
     await act(async () => {
-      result.current.toggle('paid');
+      result.current.toggle("paid");
     });
     await act(async () => {
-      result.current.toggle('active');
+      result.current.toggle("active");
     });
 
-    expect(result.current.selectedMetrics).not.toContain('active');
+    expect(result.current.selectedMetrics).not.toContain("active");
     expect(result.current.selectedMetrics).toHaveLength(MIN_DASHBOARD_METRICS);
   });
 
-  it('restores the defaults and clears the saved flag', async () => {
+  it("restores the defaults and clears the saved flag", async () => {
     const { result } = await mount();
 
     await act(async () => {
-      result.current.toggle('paid');
+      result.current.toggle("paid");
     });
     await act(async () => {
       result.current.reset();
@@ -128,8 +134,8 @@ describe('useDashboardMetricSettings — selection', () => {
   });
 });
 
-describe('useDashboardMetricSettings — saving', () => {
-  it('requires a signed-in user', async () => {
+describe("useDashboardMetricSettings — saving", () => {
+  it("requires a signed-in user", async () => {
     const { result } = await mount();
     mocks.auth.currentUser = null;
 
@@ -137,25 +143,28 @@ describe('useDashboardMetricSettings — saving', () => {
       await result.current.save();
     });
 
-    expect(mocks.toast.warning).toHaveBeenCalledWith('Please sign in first.');
+    expect(mocks.toast.warning).toHaveBeenCalledWith("Please sign in first.");
     expect(mocks.saveDashboardMetrics).not.toHaveBeenCalled();
   });
 
-  it('saves the selection', async () => {
+  it("saves the selection", async () => {
     const { result } = await mount();
 
     await act(async () => {
       await result.current.save();
     });
 
-    expect(mocks.saveDashboardMetrics).toHaveBeenCalledWith('user-1', DEFAULT_DASHBOARD_METRICS);
+    expect(mocks.saveDashboardMetrics).toHaveBeenCalledWith(
+      "user-1",
+      DEFAULT_DASHBOARD_METRICS
+    );
     expect(result.current.saved).toBe(true);
-    expect(mocks.toast.success).toHaveBeenCalledWith('Dashboard updated');
+    expect(mocks.toast.success).toHaveBeenCalledWith("Dashboard updated");
     expect(result.current.saving).toBe(false);
   });
 
-  it('reports a save failure', async () => {
-    mocks.saveDashboardMetrics.mockRejectedValue(new Error('offline'));
+  it("reports a save failure", async () => {
+    mocks.saveDashboardMetrics.mockRejectedValue(new Error("offline"));
     const { result } = await mount();
 
     await act(async () => {
@@ -164,6 +173,8 @@ describe('useDashboardMetricSettings — saving', () => {
 
     expect(result.current.saved).toBe(false);
     expect(result.current.saving).toBe(false);
-    expect(mocks.toast.error).toHaveBeenCalledWith("Couldn't save dashboard settings");
+    expect(mocks.toast.error).toHaveBeenCalledWith(
+      "Couldn't save dashboard settings"
+    );
   });
 });

@@ -15,18 +15,12 @@
 
 import { useEffect, useState } from "react";
 
-import {
-  isRetryPending,
-  subscribeRetryNotice,
-} from "@/lib/requestRetry";
+import { isRetryPending, subscribeRetryNotice } from "@/lib/requestRetry";
 
 export default function RetryNotice() {
   const [pending, setPending] = useState(isRetryPending);
 
-  useEffect(
-    () => subscribeRetryNotice(() => setPending(isRetryPending())),
-    []
-  );
+  useEffect(() => subscribeRetryNotice(() => setPending(isRetryPending())), []);
 
   if (!pending) return null;
 

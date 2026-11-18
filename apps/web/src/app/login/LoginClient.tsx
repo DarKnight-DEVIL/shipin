@@ -55,7 +55,10 @@ function Logo({ small = false }: { small?: boolean }) {
   return (
     <div className={`login__logo${small ? " login__logo--sm" : ""}`}>
       <span className="login__mark" aria-hidden="true">
-        <ArrowUpRight className={small ? "h-5 w-5" : "h-8 w-8"} strokeWidth={2.6} />
+        <ArrowUpRight
+          className={small ? "h-5 w-5" : "h-8 w-8"}
+          strokeWidth={2.6}
+        />
       </span>
       <span className="login__word">ShipIN</span>
     </div>
@@ -90,7 +93,8 @@ export default function LoginClient() {
 
   // Second-factor challenge, present only while a sign-in is waiting for an
   // SMS code from Firebase Identity Platform.
-  const [mfaChallenge, setMfaChallenge] = useState<SecondFactorChallenge | null>(null);
+  const [mfaChallenge, setMfaChallenge] =
+    useState<SecondFactorChallenge | null>(null);
   const [mfaCode, setMfaCode] = useState("");
   const [mfaBusy, setMfaBusy] = useState(false);
   const [mfaError, setMfaError] = useState("");
@@ -119,9 +123,8 @@ export default function LoginClient() {
     let destination = "/dashboard";
 
     try {
-      const { ensureUserProfile } = await import(
-        "@/features/users/services/userProfile"
-      );
+      const { ensureUserProfile } =
+        await import("@/features/users/services/userProfile");
       const profile = await ensureUserProfile({
         uid: user.uid,
         displayName: user.displayName,
@@ -186,7 +189,10 @@ export default function LoginClient() {
     setMfaError("");
 
     try {
-      const user = await confirmSecondFactorChallenge(mfaChallenge, mfaCode.trim());
+      const user = await confirmSecondFactorChallenge(
+        mfaChallenge,
+        mfaCode.trim()
+      );
       setMfaChallenge(null);
       setMfaCode("");
       await finishSignIn(user);
@@ -214,7 +220,6 @@ export default function LoginClient() {
       setLoading(true);
       await finishSignIn(user);
 
-
       // Rate-limit gate runs AFTER the popup so the user-gesture token
       // is preserved for signInWithPopup above. Best-effort: never block
       // the user on analytics.
@@ -237,8 +242,14 @@ export default function LoginClient() {
       // Log full error details for debugging â€” Firebase error codes are
       // often buried in nested properties, so stringify everything.
       console.error("FULL AUTH ERROR:", JSON.stringify(error, null, 2));
-      console.error("Error code:", error instanceof Error ? (error as { code?: string }).code : "N/A");
-      console.error("Error message:", error instanceof Error ? error.message : String(error));
+      console.error(
+        "Error code:",
+        error instanceof Error ? (error as { code?: string }).code : "N/A"
+      );
+      console.error(
+        "Error message:",
+        error instanceof Error ? error.message : String(error)
+      );
 
       const err = error as { code?: string; message?: string };
       const errorCode = err?.code;
@@ -282,10 +293,10 @@ export default function LoginClient() {
           "[auth] App Check is enforced on Identity Toolkit and the web client has no valid token. In Firebase Console → App Check → APIs, set Identity Toolkit / Identity Platform to Unenforced (or register the web app with a reCAPTCHA v3 key)."
         );
       } else if (errorCode === "auth/network-request-failed") {
-        userMessage = "Network error. Please check your connection and try again.";
-      } else if (errorCode === "auth/too-many-requests") {
         userMessage =
-          "Too many attempts. Please wait a moment and try again.";
+          "Network error. Please check your connection and try again.";
+      } else if (errorCode === "auth/too-many-requests") {
+        userMessage = "Too many attempts. Please wait a moment and try again.";
       } else if (errorCode === "auth/cancelled-popup-request") {
         userMessage = "Another sign-in attempt is in progress. Please wait.";
       }
@@ -293,7 +304,10 @@ export default function LoginClient() {
       // For auth/internal-error, try signInWithRedirect as a fallback.
       // The popup opens but Firebase OAuth fails internally â€” redirect
       // avoids popup timing issues entirely and works on all browsers.
-      if (errorCode === "auth/internal-error" || errorCode === "auth/popup-blocked") {
+      if (
+        errorCode === "auth/internal-error" ||
+        errorCode === "auth/popup-blocked"
+      ) {
         toast.info("Trying redirect sign-in instead...");
         const provider = new GoogleAuthProvider();
         void signInWithRedirect(auth, provider);
@@ -335,18 +349,34 @@ export default function LoginClient() {
         passwordErrors.push("one special character");
       }
       if (passwordErrors.length > 0) {
-        fail(
-          `Password must include ${passwordErrors.join(", ")}.`
-        );
+        fail(`Password must include ${passwordErrors.join(", ")}.`);
         return;
       }
 
       // Common password check (client-side blocklist)
       const COMMON_PASSWORDS = new Set([
-        "password", "123456", "12345678", "123456789", "qwerty",
-        "abc123", "password1", "111111", "123123", "admin", "letmein",
-        "welcome", "monkey", "dragon", "master", "login", "princess",
-        "football", "shadow", "sunshine", "trustno1", "iloveyou",
+        "password",
+        "123456",
+        "12345678",
+        "123456789",
+        "qwerty",
+        "abc123",
+        "password1",
+        "111111",
+        "123123",
+        "admin",
+        "letmein",
+        "welcome",
+        "monkey",
+        "dragon",
+        "master",
+        "login",
+        "princess",
+        "football",
+        "shadow",
+        "sunshine",
+        "trustno1",
+        "iloveyou",
       ]);
       if (COMMON_PASSWORDS.has(password.toLowerCase())) {
         fail("That password is too common. Please choose a stronger one.");
@@ -435,9 +465,8 @@ export default function LoginClient() {
         );
         user = result.user;
         // Create the ShipIN profile for the new user.
-        const { createUserProfile } = await import(
-          "@/features/users/services/userProfile"
-        );
+        const { createUserProfile } =
+          await import("@/features/users/services/userProfile");
         await createUserProfile(user.uid, {
           displayName: email.trim().split("@")[0],
           email: email.trim(),
@@ -462,7 +491,10 @@ export default function LoginClient() {
       const err = error as { code?: string };
       if (err.code === "auth/user-not-found") {
         fail("No account found with that email.");
-      } else if (err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+      } else if (
+        err.code === "auth/wrong-password" ||
+        err.code === "auth/invalid-credential"
+      ) {
         fail("Incorrect email or password.");
       } else if (err.code === "auth/email-already-in-use") {
         fail("That email is already registered.");
@@ -508,9 +540,18 @@ export default function LoginClient() {
         <div className="login__form">
           <Logo small />
 
-          <motion.div custom={0} variants={fadeUp} initial="hidden" animate="show">
+          <motion.div
+            custom={0}
+            variants={fadeUp}
+            initial="hidden"
+            animate="show"
+          >
             <h1 className="login__title">
-              {mode === "google" ? "Sign in" : isRegister ? "Create account" : "Sign in"}
+              {mode === "google"
+                ? "Sign in"
+                : isRegister
+                  ? "Create account"
+                  : "Sign in"}
             </h1>
             <p className="login__sub">
               {mode === "google"
@@ -541,7 +582,12 @@ export default function LoginClient() {
           )}
 
           {!mfaChallenge && mode === "email" && (
-            <motion.div custom={1} variants={fadeUp} initial="hidden" animate="show">
+            <motion.div
+              custom={1}
+              variants={fadeUp}
+              initial="hidden"
+              animate="show"
+            >
               <form
                 className="login__email-form"
                 onSubmit={(e) => {
@@ -573,7 +619,9 @@ export default function LoginClient() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
-                    autoComplete={isRegister ? "new-password" : "current-password"}
+                    autoComplete={
+                      isRegister ? "new-password" : "current-password"
+                    }
                     disabled={loading}
                     aria-invalid={formError ? true : undefined}
                     aria-describedby={formError ? "login-error" : undefined}
@@ -602,7 +650,8 @@ export default function LoginClient() {
                 <p className="login__terms">
                   {isRegister ? (
                     <>
-                      By creating an account you agree to ShipIN&apos;s terms of service.
+                      By creating an account you agree to ShipIN&apos;s terms of
+                      service.
                     </>
                   ) : (
                     <>
@@ -632,7 +681,8 @@ export default function LoginClient() {
                 Enter your SMS code
               </h2>
               <p className="login__sub">
-                We sent a 6-digit code to {mfaChallenge.phoneNumber ?? "your enrolled phone"}.
+                We sent a 6-digit code to{" "}
+                {mfaChallenge.phoneNumber ?? "your enrolled phone"}.
               </p>
 
               <form onSubmit={verifySecondFactor} className="login__form">
@@ -689,7 +739,12 @@ export default function LoginClient() {
             </motion.div>
           )}
           {!mfaChallenge && mode === "google" && (
-            <motion.div custom={1} variants={fadeUp} initial="hidden" animate="show">
+            <motion.div
+              custom={1}
+              variants={fadeUp}
+              initial="hidden"
+              animate="show"
+            >
               <button
                 type="button"
                 onClick={handleGoogleLogin}
@@ -703,11 +758,27 @@ export default function LoginClient() {
                   </>
                 ) : (
                   <>
-                    <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
-                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                    <svg
+                      className="h-5 w-5 shrink-0"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fill="#4285F4"
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                      />
                     </svg>
                     Continue with Google
                   </>
@@ -718,7 +789,7 @@ export default function LoginClient() {
                 By continuing, you agree to ShipIN&apos;s terms of service.
               </p>
 
-                            <p className="login__switch">
+              <p className="login__switch">
                 Don&apos;t have an account?{" "}
                 <button
                   type="button"
@@ -740,9 +811,19 @@ export default function LoginClient() {
           )}
 
           {!mfaChallenge && mode === "email" && (
-            <motion.p custom={2} variants={fadeUp} initial="hidden" animate="show" className="login__switch">
+            <motion.p
+              custom={2}
+              variants={fadeUp}
+              initial="hidden"
+              animate="show"
+              className="login__switch"
+            >
               Already have a Google account?{" "}
-              <button type="button" className="login__link" onClick={() => setMode("google")}>
+              <button
+                type="button"
+                className="login__link"
+                onClick={() => setMode("google")}
+              >
                 Sign in with Google instead
               </button>
             </motion.p>

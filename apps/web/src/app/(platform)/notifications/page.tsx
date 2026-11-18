@@ -18,13 +18,7 @@ import {
   clearReadNotifications,
 } from "@/features/notifications/services";
 
-type Filter =
-  | "all"
-  | "unread"
-  | "orders"
-  | "payments"
-  | "shipping"
-  | "support";
+type Filter = "all" | "unread" | "orders" | "payments" | "shipping" | "support";
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
@@ -36,11 +30,7 @@ const FILTERS: { id: Filter; label: string }[] = [
 ];
 
 type DateLike =
-  | { toDate?: () => Date; seconds?: number }
-  | number
-  | Date
-  | null
-  | undefined;
+  { toDate?: () => Date; seconds?: number } | number | Date | null | undefined;
 
 function formatDay(date: Date) {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -110,7 +100,10 @@ export default function NotificationsPage() {
 
       try {
         const data = await getNotifications(user.uid);
-        data.sort((a, b) => timestampSeconds(b.createdAt) - timestampSeconds(a.createdAt));
+        data.sort(
+          (a, b) =>
+            timestampSeconds(b.createdAt) - timestampSeconds(a.createdAt)
+        );
         setNotifications(data);
       } catch (error) {
         console.error("Failed to load notifications:", error);
@@ -144,9 +137,13 @@ export default function NotificationsPage() {
       if (filter === "payments") return n.type === "payment";
       if (filter === "support") return (n.type as string) === "support";
       if (filter === "shipping") {
-        return ["shipment", "shipped", "tracking", "warehouse", "delivered"].includes(
-          n.type
-        );
+        return [
+          "shipment",
+          "shipped",
+          "tracking",
+          "warehouse",
+          "delivered",
+        ].includes(n.type);
       }
       if (filter === "orders") {
         return ["order", "request", "quote", "purchase"].includes(n.type);
@@ -186,9 +183,7 @@ export default function NotificationsPage() {
     if (!user) return;
     try {
       await markAllNotificationsRead(user.uid);
-      setNotifications((current) =>
-        current.map((n) => ({ ...n, read: true }))
-      );
+      setNotifications((current) => current.map((n) => ({ ...n, read: true })));
     } catch (error) {
       console.error("Failed to mark all notifications read:", error);
     }
@@ -278,11 +273,7 @@ export default function NotificationsPage() {
             >
               {f.label}
               {count !== undefined && (
-                <span
-                  className="ml-1.5 tabular-nums opacity-70"
-                >
-                  {count}
-                </span>
+                <span className="ml-1.5 tabular-nums opacity-70">{count}</span>
               )}
             </button>
           );
@@ -293,7 +284,9 @@ export default function NotificationsPage() {
       {filteredNotifications.length === 0 ? (
         <EmptyState
           icon={<BellOff size={22} />}
-          title={filter === "unread" ? "No unread notifications" : "Nothing here"}
+          title={
+            filter === "unread" ? "No unread notifications" : "Nothing here"
+          }
           description={
             filter === "all"
               ? "Updates about requests, payments, and shipping will show up here."

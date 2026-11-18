@@ -1,14 +1,10 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-interface SettingsButtonProps
-  extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface SettingsButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
 }
 
-export function PrimaryButton({
-  children,
-  ...props
-}: SettingsButtonProps) {
+export function PrimaryButton({ children, ...props }: SettingsButtonProps) {
   return (
     <button
       {...props}
@@ -19,10 +15,7 @@ export function PrimaryButton({
   );
 }
 
-export function GhostButton({
-  children,
-  ...props
-}: SettingsButtonProps) {
+export function GhostButton({ children, ...props }: SettingsButtonProps) {
   return (
     <button
       {...props}

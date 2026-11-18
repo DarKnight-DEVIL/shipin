@@ -19,10 +19,7 @@ interface ActionConfig {
   nextStatus?: RequestStatus;
 }
 
-export default function NextActionCard({
-  requestId,
-  status,
-}: Props) {
+export default function NextActionCard({ requestId, status }: Props) {
   const [updating, setUpdating] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -33,16 +30,13 @@ export default function NextActionCard({
    * Payment-controlled statuses are NOT
    * manually advanced from this component.
    */
-  const actions: Partial<
-    Record<RequestStatus, ActionConfig>
-  > = {
+  const actions: Partial<Record<RequestStatus, ActionConfig>> = {
     submitted: {
       title: "Generate Quote",
     },
 
     review: {
-      title:
-        "Waiting for customer to accept the quote.",
+      title: "Waiting for customer to accept the quote.",
     },
 
     awaiting_payment: {
@@ -57,8 +51,7 @@ export default function NextActionCard({
     },
 
     purchased: {
-      title:
-        "Waiting for the purchased items to arrive at the warehouse.",
+      title: "Waiting for the purchased items to arrive at the warehouse.",
     },
 
     warehouse_received: {
@@ -68,30 +61,25 @@ export default function NextActionCard({
     },
 
     ready_for_international_shipping: {
-      title:
-        "Package is ready for international shipping.",
+      title: "Package is ready for international shipping.",
       button: "Mark Packed",
       nextStatus: "packed",
     },
 
     packed: {
-      title:
-        "Create the shipment and add tracking information.",
+      title: "Create the shipment and add tracking information.",
     },
 
     shipped: {
-      title:
-        "Shipment is in transit. Waiting for delivery.",
+      title: "Shipment is in transit. Waiting for delivery.",
     },
 
     out_for_delivery: {
-      title:
-        "Shipment is out for delivery.",
+      title: "Shipment is out for delivery.",
     },
 
     delivered: {
-      title:
-        "Shipment delivered. Support window is active.",
+      title: "Shipment delivered. Support window is active.",
     },
 
     refunded: {
@@ -102,10 +90,7 @@ export default function NextActionCard({
   const action = actions[status];
 
   async function changeStatus() {
-    if (
-      !action?.nextStatus ||
-      updating
-    ) {
+    if (!action?.nextStatus || updating) {
       return;
     }
 
@@ -118,22 +103,17 @@ export default function NextActionCard({
      * The PayPal capture API owns that
      * transition.
      */
-    if (
-      status === "awaiting_payment"
-    ) {
+    if (status === "awaiting_payment") {
       return;
     }
 
     try {
       setUpdating(true);
 
-      await adminApi<void>(
-        `/api/requests/${requestId}/status`,
-        {
-          method: "PATCH",
-          body: { status: action.nextStatus },
-        }
-      );
+      await adminApi<void>(`/api/requests/${requestId}/status`, {
+        method: "PATCH",
+        body: { status: action.nextStatus },
+      });
 
       /*
        * No reload needed.
@@ -143,10 +123,7 @@ export default function NextActionCard({
        * its live listener.
        */
     } catch (error) {
-      console.error(
-        "Failed to update request status:",
-        error
-      );
+      console.error("Failed to update request status:", error);
 
       toast.error("Unable to update the request status.");
     } finally {
@@ -156,28 +133,21 @@ export default function NextActionCard({
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-
-      <h2 className="text-xl font-bold text-white">
-        Next Action
-      </h2>
+      <h2 className="text-xl font-bold text-white">Next Action</h2>
 
       <p className="text-slate-400 mt-4">
-        {action?.title ??
-          "No action available for this status."}
+        {action?.title ?? "No action available for this status."}
       </p>
 
-      {action?.button &&
-        action.nextStatus && (
-          <ActionButton
-            className="mt-6 w-full"
-            onClick={() => setConfirmOpen(true)}
-            loading={
-              updating
-            }
-          >
-            {action.button}
-          </ActionButton>
-        )}
+      {action?.button && action.nextStatus && (
+        <ActionButton
+          className="mt-6 w-full"
+          onClick={() => setConfirmOpen(true)}
+          loading={updating}
+        >
+          {action.button}
+        </ActionButton>
+      )}
 
       {action && (
         <ConfirmDialog
@@ -192,7 +162,6 @@ export default function NextActionCard({
           }}
         />
       )}
-
     </div>
   );
 }

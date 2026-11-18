@@ -4,7 +4,7 @@
  * so every backslash in the value is escaping, however deeply it was escaped.
  */
 
-const PEM_BEGIN = '-----BEGIN';
+const PEM_BEGIN = "-----BEGIN";
 
 function stripWrappingQuotes(value) {
   let current = value;
@@ -26,24 +26,24 @@ function decodeIfBase64(value) {
   if (!/^[A-Za-z0-9+/=_-]+$/.test(value)) return value;
 
   const decoded = Buffer.from(
-    value.replace(/-/g, '+').replace(/_/g, '/'),
-    'base64'
-  ).toString('utf8');
+    value.replace(/-/g, "+").replace(/_/g, "/"),
+    "base64"
+  ).toString("utf8");
 
   return decoded.includes(PEM_BEGIN) ? decoded.trim() : value;
 }
 
 function unescapeNewlines(value) {
-  return value.replace(/\\+r\\+n/g, '\n').replace(/\\+[rn]/g, '\n');
+  return value.replace(/\\+r\\+n/g, "\n").replace(/\\+[rn]/g, "\n");
 }
 
 export function normalizePrivateKey(raw) {
-  if (!raw) return '';
+  if (!raw) return "";
 
   const trimmed = String(raw).trim();
-  if (!trimmed) return '';
+  if (!trimmed) return "";
 
   return unescapeNewlines(decodeIfBase64(stripWrappingQuotes(trimmed)))
-    .replace(/[ \t]+\n/g, '\n')
+    .replace(/[ \t]+\n/g, "\n")
     .trim();
 }

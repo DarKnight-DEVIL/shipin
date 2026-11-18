@@ -120,9 +120,8 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
       refundRequested: requests.filter(
         (r) => r.refundRequest?.status === "requested"
       ).length,
-      awaitingPayment: requests.filter(
-        (r) => r.status === "awaiting_payment"
-      ).length,
+      awaitingPayment: requests.filter((r) => r.status === "awaiting_payment")
+        .length,
       warehouse: requests.filter(
         (r) => r.status === "warehouse_received" || r.status === "packed"
       ).length,
@@ -136,9 +135,8 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
 
     const operations = {
       awaitingQuote: review,
-      awaitingPayment: requests.filter(
-        (r) => r.status === "awaiting_payment"
-      ).length,
+      awaitingPayment: requests.filter((r) => r.status === "awaiting_payment")
+        .length,
       warehouse: requests.filter(
         (r) => r.status === "warehouse_received" || r.status === "packed"
       ).length,

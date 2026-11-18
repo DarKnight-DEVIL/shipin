@@ -9,9 +9,17 @@
  * here keeps each file self-contained, and `vi.resetModules()` in the hoisted
  * block clears whatever a previous file left behind before these imports run.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import { logConsent, getUserConsentState, updateUserConsent, getConsentLog, getGrantedCategories, hasValidConsent, withdrawConsent } from './consent';
+import {
+  logConsent,
+  getUserConsentState,
+  updateUserConsent,
+  getConsentLog,
+  getGrantedCategories,
+  hasValidConsent,
+  withdrawConsent,
+} from "./consent";
 
 // Runs before this file's imports are evaluated, so the subjects below bind to
 // the stubs declared in this file.
@@ -24,7 +32,7 @@ vi.hoisted(() => {
 // ---------------------------------------------------------------------------
 
 function fakeDoc(data: Record<string, unknown>, exists = true) {
-  const safeData = { id: 'doc-id', ...data };
+  const safeData = { id: "doc-id", ...data };
   const snap = {
     exists,
     data: () => safeData,
@@ -41,8 +49,8 @@ function fakeDoc(data: Record<string, unknown>, exists = true) {
 
 function fakeCollection(docs: ReturnType<typeof fakeDoc>[]) {
   return {
-    doc: (id?: string) => docs.find(d => d.data().id === id) || docs[0],
-    add: vi.fn((_data?: Record<string, unknown>) => ({ id: 'added-id' })),
+    doc: (id?: string) => docs.find((d) => d.data().id === id) || docs[0],
+    add: vi.fn((_data?: Record<string, unknown>) => ({ id: "added-id" })),
     get: () => ({ docs, empty: docs.length === 0 }),
     where: () => fakeCollection(docs),
     orderBy: () => fakeCollection(docs),
@@ -69,11 +77,11 @@ const mocks = vi.hoisted(() => ({
   serverTimestamp: vi.fn(() => ({ toDate: () => new Date() })),
 }));
 
-vi.mock('@/lib/firebaseAdmin', () => ({
+vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: mocks.adminDb,
 }));
 
-vi.mock('firebase-admin/firestore', () => ({
+vi.mock("firebase-admin/firestore", () => ({
   FieldValue: {
     serverTimestamp: mocks.serverTimestamp,
   },
@@ -83,7 +91,9 @@ beforeEach(() => {
   mocks.adminDb.collection.mockReset();
   mocks.adminDb.collection.mockImplementation(() => fakeCollection([]));
   mocks.serverTimestamp.mockReset();
-  mocks.serverTimestamp.mockImplementation(() => ({ toDate: () => new Date() }));
+  mocks.serverTimestamp.mockImplementation(() => ({
+    toDate: () => new Date(),
+  }));
 });
 
 /**
@@ -103,193 +113,199 @@ function stubCollections(
   ).mockImplementation(factory);
 }
 
-
-describe('compliance consent ops', () => {
-  it('logConsent writes the expected audit entry', async () => {
+describe("compliance consent ops", () => {
+  it("logConsent writes the expected audit entry", async () => {
     const collection = fakeCollection([]);
     mocks.adminDb.collection.mockImplementation(() => collection);
-    collection.add.mockReturnValue({ id: 'log-1' });
+    collection.add.mockReturnValue({ id: "log-1" });
 
     await logConsent({
-      userId: 'u-1',
-      category: 'account',
+      userId: "u-1",
+      category: "account",
       granted: true,
-      version: '1',
-      method: 'explicit',
-      ip: '1.2.3.4',
-      userAgent: 'test',
+      version: "1",
+      method: "explicit",
+      ip: "1.2.3.4",
+      userAgent: "test",
     });
 
     expect(collection.add).toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: 'u-1',
-        category: 'account',
+        userId: "u-1",
+        category: "account",
         granted: true,
-        version: '1',
-        method: 'explicit',
+        version: "1",
+        method: "explicit",
       })
     );
   });
 
-  it('getUserConsentState returns the latest entry per category', async () => {
+  it("getUserConsentState returns the latest entry per category", async () => {
     const older: Record<string, unknown> = {
-      userId: 'u-1',
-      category: 'account',
+      userId: "u-1",
+      category: "account",
       granted: false,
-      version: '0',
-      method: 'implied',
-      timestamp: new Date('2025-01-01'),
+      version: "0",
+      method: "implied",
+      timestamp: new Date("2025-01-01"),
     };
     const newer: Record<string, unknown> = {
-      userId: 'u-1',
-      category: 'account',
+      userId: "u-1",
+      category: "account",
       granted: true,
-      version: '1',
-      method: 'explicit',
-      timestamp: new Date('2026-01-01'),
+      version: "1",
+      method: "explicit",
+      timestamp: new Date("2026-01-01"),
     };
     const collection = fakeCollection([fakeDoc(newer), fakeDoc(older)]);
     mocks.adminDb.collection.mockImplementation(() => collection);
 
-    const state = await getUserConsentState('u-1');
+    const state = await getUserConsentState("u-1");
     expect(state.account.granted).toBe(true);
-    expect(state.account.version).toBe('1');
-    expect(state.account.method).toBe('explicit');
+    expect(state.account.version).toBe("1");
+    expect(state.account.method).toBe("explicit");
   });
 
-  it('updateUserConsent writes both the log and the quick-lookup doc', async () => {
+  it("updateUserConsent writes both the log and the quick-lookup doc", async () => {
     const collection = fakeCollection([]);
     mocks.adminDb.collection.mockImplementation(() => collection);
     const userConsentDoc = { set: vi.fn().mockResolvedValue(undefined) };
-    collection.doc = vi.fn().mockReturnValue(userConsentDoc as unknown as ReturnType<typeof fakeCollection>['doc']);
+    collection.doc = vi
+      .fn()
+      .mockReturnValue(
+        userConsentDoc as unknown as ReturnType<typeof fakeCollection>["doc"]
+      );
 
     await updateUserConsent({
-      userId: 'u-1',
-      category: 'marketing',
+      userId: "u-1",
+      category: "marketing",
       granted: false,
-      version: '2',
-      method: 'withdrawn',
-      ip: '1.2.3.4',
+      version: "2",
+      method: "withdrawn",
+      ip: "1.2.3.4",
     });
 
     expect(collection.add).toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: 'u-1',
-        category: 'marketing',
+        userId: "u-1",
+        category: "marketing",
         granted: false,
-        version: '2',
-        method: 'withdrawn',
-        ip: '1.2.3.4',
+        version: "2",
+        method: "withdrawn",
+        ip: "1.2.3.4",
       })
     );
     expect(userConsentDoc.set).toHaveBeenCalledWith(
       expect.objectContaining({
         marketing: expect.objectContaining({
           granted: false,
-          version: '2',
-          method: 'withdrawn',
+          version: "2",
+          method: "withdrawn",
         }),
       }),
       expect.objectContaining({ merge: true })
     );
   });
 
-  it('getConsentLog returns the most recent entries in descending order', async () => {
+  it("getConsentLog returns the most recent entries in descending order", async () => {
     const log1: Record<string, unknown> = {
-      userId: 'u-1',
-      category: 'account',
+      userId: "u-1",
+      category: "account",
       granted: true,
-      version: '1',
-      method: 'explicit',
-      timestamp: new Date('2026-01-01'),
-      ip: '1.2.3.4',
-      userAgent: 'a',
+      version: "1",
+      method: "explicit",
+      timestamp: new Date("2026-01-01"),
+      ip: "1.2.3.4",
+      userAgent: "a",
     };
     const log2: Record<string, unknown> = {
-      userId: 'u-1',
-      category: 'marketing',
+      userId: "u-1",
+      category: "marketing",
       granted: false,
-      version: '2',
-      method: 'withdrawn',
-      timestamp: new Date('2026-02-01'),
-      ip: '1.2.3.4',
-      userAgent: 'b',
+      version: "2",
+      method: "withdrawn",
+      timestamp: new Date("2026-02-01"),
+      ip: "1.2.3.4",
+      userAgent: "b",
     };
     const collection = fakeCollection([fakeDoc(log2), fakeDoc(log1)]);
     mocks.adminDb.collection.mockImplementation(() => collection);
 
-    const logs = await getConsentLog('u-1', 10);
+    const logs = await getConsentLog("u-1", 10);
     expect(logs).toHaveLength(2);
-    expect(logs[0].category).toBe('marketing');
-    expect(logs[0].timestamp).toEqual(new Date('2026-02-01'));
+    expect(logs[0].category).toBe("marketing");
+    expect(logs[0].timestamp).toEqual(new Date("2026-02-01"));
   });
 
-  it('getGrantedCategories returns only granted categories', async () => {
+  it("getGrantedCategories returns only granted categories", async () => {
     const granted: Record<string, unknown> = {
-      userId: 'u-1',
-      category: 'account',
+      userId: "u-1",
+      category: "account",
       granted: true,
-      version: '1',
-      method: 'explicit',
+      version: "1",
+      method: "explicit",
       timestamp: new Date(),
     };
     const denied: Record<string, unknown> = {
-      userId: 'u-1',
-      category: 'marketing',
+      userId: "u-1",
+      category: "marketing",
       granted: false,
-      version: '1',
-      method: 'withdrawn',
+      version: "1",
+      method: "withdrawn",
       timestamp: new Date(),
     };
     const collection = fakeCollection([fakeDoc(denied), fakeDoc(granted)]);
     mocks.adminDb.collection.mockImplementation(() => collection);
 
-    const cats = await getGrantedCategories('u-1');
-    expect(cats).toEqual(['account']);
+    const cats = await getGrantedCategories("u-1");
+    expect(cats).toEqual(["account"]);
   });
 
-  it('hasValidConsent returns false for a withdrawn category', async () => {
+  it("hasValidConsent returns false for a withdrawn category", async () => {
     const accountEntry: Record<string, unknown> = {
-      userId: 'u-1',
-      category: 'account',
+      userId: "u-1",
+      category: "account",
       granted: true,
-      version: '1',
-      method: 'explicit',
+      version: "1",
+      method: "explicit",
       timestamp: mocks.serverTimestamp(),
     };
     const marketingEntry: Record<string, unknown> = {
-      userId: 'u-1',
-      category: 'marketing',
+      userId: "u-1",
+      category: "marketing",
       granted: false,
-      version: '1',
-      method: 'withdrawn',
+      version: "1",
+      method: "withdrawn",
       timestamp: mocks.serverTimestamp(),
     };
-    const collection = fakeCollection([fakeDoc(accountEntry), fakeDoc(marketingEntry)]);
+    const collection = fakeCollection([
+      fakeDoc(accountEntry),
+      fakeDoc(marketingEntry),
+    ]);
     mocks.adminDb.collection.mockImplementation(() => collection);
 
-    const hasAccount = await hasValidConsent('u-1', 'account');
-    const hasMarketing = await hasValidConsent('u-1', 'marketing');
+    const hasAccount = await hasValidConsent("u-1", "account");
+    const hasMarketing = await hasValidConsent("u-1", "marketing");
     expect(hasAccount).toBe(true);
     expect(hasMarketing).toBe(false);
   });
 
-  it('withdrawConsent logs the withdrawal', async () => {
+  it("withdrawConsent logs the withdrawal", async () => {
     const collection = fakeCollection([]);
     mocks.adminDb.collection.mockImplementation(() => collection);
-    collection.add.mockReturnValue({ id: 'wd-1' });
+    collection.add.mockReturnValue({ id: "wd-1" });
 
-    await withdrawConsent('u-1', 'analytics', '2', '1.2.3.4', 'test');
+    await withdrawConsent("u-1", "analytics", "2", "1.2.3.4", "test");
 
     expect(collection.add).toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: 'u-1',
-        category: 'analytics',
+        userId: "u-1",
+        category: "analytics",
         granted: false,
-        version: '2',
-        method: 'withdrawn',
-        ip: '1.2.3.4',
-        userAgent: 'test',
+        version: "2",
+        method: "withdrawn",
+        ip: "1.2.3.4",
+        userAgent: "test",
       })
     );
   });
@@ -299,96 +315,102 @@ describe('compliance consent ops', () => {
 // User-facing route logic (the actual 0%-coverage routes)
 // ---------------------------------------------------------------------------
 
-describe('compliance consent audit fallbacks', () => {
-  it('getConsentLog defaults fields missing from legacy entries', async () => {
+describe("compliance consent audit fallbacks", () => {
+  it("getConsentLog defaults fields missing from legacy entries", async () => {
     stubCollections(() =>
-      fakeCollection([fakeDoc({ id: 'log-legacy', userId: 'user-1', category: 'cookie' })])
+      fakeCollection([
+        fakeDoc({ id: "log-legacy", userId: "user-1", category: "cookie" }),
+      ])
     );
 
-    const log = await getConsentLog('user-1');
+    const log = await getConsentLog("user-1");
 
     expect(log[0]).toMatchObject({
-      id: 'log-legacy',
+      id: "log-legacy",
       granted: false,
-      method: 'explicit',
+      method: "explicit",
       timestamp: null,
       ip: undefined,
       userAgent: undefined,
     });
   });
 
-  it('getConsentLog keeps populated audit fields', async () => {
+  it("getConsentLog keeps populated audit fields", async () => {
     stubCollections(() =>
       fakeCollection([
         fakeDoc({
-          id: 'log-full',
-          userId: 'user-1',
-          category: 'support',
+          id: "log-full",
+          userId: "user-1",
+          category: "support",
           granted: true,
-          method: 'withdrawn',
-          ip: '203.0.113.10',
-          userAgent: 'curl/8',
-          timestamp: new Date('2026-01-01T00:00:00Z'),
+          method: "withdrawn",
+          ip: "203.0.113.10",
+          userAgent: "curl/8",
+          timestamp: new Date("2026-01-01T00:00:00Z"),
         }),
       ])
     );
 
-    const log = await getConsentLog('user-1', 5);
+    const log = await getConsentLog("user-1", 5);
 
     expect(log[0]).toMatchObject({
       granted: true,
-      method: 'withdrawn',
-      ip: '203.0.113.10',
-      userAgent: 'curl/8',
+      method: "withdrawn",
+      ip: "203.0.113.10",
+      userAgent: "curl/8",
     });
   });
 
-  it('hasValidConsent rejects consent recorded against an older version', async () => {
+  it("hasValidConsent rejects consent recorded against an older version", async () => {
     stubCollections(() =>
       fakeCollection([
         fakeDoc({
-          id: 'log-v1',
-          userId: 'user-1',
-          category: 'marketing',
+          id: "log-v1",
+          userId: "user-1",
+          category: "marketing",
           granted: true,
-          version: 'v1',
-          method: 'explicit',
+          version: "v1",
+          method: "explicit",
           timestamp: new Date(),
         }),
       ])
     );
 
-    await expect(hasValidConsent('user-1', 'marketing', 'v2')).resolves.toBe(false);
+    await expect(hasValidConsent("user-1", "marketing", "v2")).resolves.toBe(
+      false
+    );
   });
 
-  it('hasValidConsent accepts consent matching the required version', async () => {
+  it("hasValidConsent accepts consent matching the required version", async () => {
     stubCollections(() =>
       fakeCollection([
         fakeDoc({
-          id: 'log-v2',
-          userId: 'user-1',
-          category: 'marketing',
+          id: "log-v2",
+          userId: "user-1",
+          category: "marketing",
           granted: true,
-          version: 'v2',
-          method: 'explicit',
+          version: "v2",
+          method: "explicit",
           timestamp: new Date(),
         }),
       ])
     );
 
-    await expect(hasValidConsent('user-1', 'marketing', 'v2')).resolves.toBe(true);
+    await expect(hasValidConsent("user-1", "marketing", "v2")).resolves.toBe(
+      true
+    );
   });
 
-  it('logConsent stores null metadata when absent', async () => {
-    const logs = fakeCollection([fakeDoc({ id: 'unused' })]);
+  it("logConsent stores null metadata when absent", async () => {
+    const logs = fakeCollection([fakeDoc({ id: "unused" })]);
     stubCollections(() => logs);
 
     await logConsent({
-      userId: 'user-1',
-      category: 'analytics',
+      userId: "user-1",
+      category: "analytics",
       granted: true,
-      version: 'v1',
-      method: 'explicit',
+      version: "v1",
+      method: "explicit",
     });
 
     expect(logs.add).toHaveBeenCalledWith(
@@ -396,14 +418,14 @@ describe('compliance consent audit fallbacks', () => {
     );
   });
 
-  it('withdrawConsent records a withdrawn audit entry', async () => {
-    const logs = fakeCollection([fakeDoc({ id: 'unused' })]);
+  it("withdrawConsent records a withdrawn audit entry", async () => {
+    const logs = fakeCollection([fakeDoc({ id: "unused" })]);
     stubCollections(() => logs);
 
-    await withdrawConsent('user-1', 'marketing', 'v2');
+    await withdrawConsent("user-1", "marketing", "v2");
 
     expect(logs.add).toHaveBeenCalledWith(
-      expect.objectContaining({ granted: false, method: 'withdrawn' })
+      expect.objectContaining({ granted: false, method: "withdrawn" })
     );
   });
 });

@@ -67,83 +67,79 @@ export async function processWalletPayment(
   const walletRef = adminDb.collection("wallets").doc(userId);
 
   try {
-    const result = await adminDb.runTransaction(
-      async (transaction) => {
-        const requestSnapshot = await transaction.get(requestRef);
-        if (!requestSnapshot.exists) {
-          throw new WalletPaymentFailure("REQUEST_NOT_FOUND");
-        }
-
-        const request = requestSnapshot.data();
-
-        // Ownership check: the caller must own this request.
-        if (request?.userId !== userId) {
-          throw new WalletPaymentFailure("UNAUTHORIZED_REQUEST");
-        }
-
-        // Prevent duplicate payment.
-        if (request?.status === "paid") {
-          throw new WalletPaymentFailure("ALREADY_PAID");
-        }
-
-        // Get wallet.
-        const walletSnapshot = await transaction.get(walletRef);
-        if (!walletSnapshot.exists) {
-          throw new WalletPaymentFailure("WALLET_NOT_FOUND");
-        }
-
-        const wallet = walletSnapshot.data();
-        const currentBalance = wallet?.balance ?? 0;
-
-        if (currentBalance < amount) {
-          throw new WalletPaymentFailure("INSUFFICIENT_BALANCE");
-        }
-
-        const newBalance = currentBalance - amount;
-
-        // Deduct from wallet.
-        transaction.update(walletRef, {
-          balance: newBalance,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-
-        // Record wallet transaction.
-        const transactionRef = adminDb
-          .collection("walletTransactions")
-          .doc();
-        transaction.set(transactionRef, {
-          userId,
-          type: "payment",
-          amount: -amount,
-          balanceAfter: newBalance,
-          requestId,
-          description: "Request Payment",
-          createdAt: FieldValue.serverTimestamp(),
-        });
-
-        // Mark request as paid.
-        transaction.update(requestRef, {
-          status: "paid",
-          payment: {
-            provider: "wallet",
-            paymentMethod: "wallet",
-            orderId: "wallet",
-            captureId: null,
-            amountPaid: amount,
-            walletAmount: amount,
-            paypalAmount: 0,
-            status: "completed",
-            paidAt: FieldValue.serverTimestamp(),
-          },
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-
-        return {
-          success: true as const,
-          transactionId: transactionRef.id,
-        };
+    const result = await adminDb.runTransaction(async (transaction) => {
+      const requestSnapshot = await transaction.get(requestRef);
+      if (!requestSnapshot.exists) {
+        throw new WalletPaymentFailure("REQUEST_NOT_FOUND");
       }
-    );
+
+      const request = requestSnapshot.data();
+
+      // Ownership check: the caller must own this request.
+      if (request?.userId !== userId) {
+        throw new WalletPaymentFailure("UNAUTHORIZED_REQUEST");
+      }
+
+      // Prevent duplicate payment.
+      if (request?.status === "paid") {
+        throw new WalletPaymentFailure("ALREADY_PAID");
+      }
+
+      // Get wallet.
+      const walletSnapshot = await transaction.get(walletRef);
+      if (!walletSnapshot.exists) {
+        throw new WalletPaymentFailure("WALLET_NOT_FOUND");
+      }
+
+      const wallet = walletSnapshot.data();
+      const currentBalance = wallet?.balance ?? 0;
+
+      if (currentBalance < amount) {
+        throw new WalletPaymentFailure("INSUFFICIENT_BALANCE");
+      }
+
+      const newBalance = currentBalance - amount;
+
+      // Deduct from wallet.
+      transaction.update(walletRef, {
+        balance: newBalance,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      // Record wallet transaction.
+      const transactionRef = adminDb.collection("walletTransactions").doc();
+      transaction.set(transactionRef, {
+        userId,
+        type: "payment",
+        amount: -amount,
+        balanceAfter: newBalance,
+        requestId,
+        description: "Request Payment",
+        createdAt: FieldValue.serverTimestamp(),
+      });
+
+      // Mark request as paid.
+      transaction.update(requestRef, {
+        status: "paid",
+        payment: {
+          provider: "wallet",
+          paymentMethod: "wallet",
+          orderId: "wallet",
+          captureId: null,
+          amountPaid: amount,
+          walletAmount: amount,
+          paypalAmount: 0,
+          status: "completed",
+          paidAt: FieldValue.serverTimestamp(),
+        },
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      return {
+        success: true as const,
+        transactionId: transactionRef.id,
+      };
+    });
 
     return result;
   } catch (error) {
@@ -163,7 +159,11 @@ export function walletPaymentErrorResponse(
 
   switch (error.code) {
     case "REQUEST_NOT_FOUND":
-      return { code: "REQUEST_NOT_FOUND", message: "Request not found.", status: 404 };
+      return {
+        code: "REQUEST_NOT_FOUND",
+        message: "Request not found.",
+        status: 404,
+      };
     case "UNAUTHORIZED_REQUEST":
       return {
         code: "UNAUTHORIZED_REQUEST",

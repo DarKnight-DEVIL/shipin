@@ -21,22 +21,33 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
-
   // Fetch full user profile for email/displayName and existing credentials
-  const userSnapshot = await adminDb.collection("users").doc(auth.profile.uid).get();
+  const userSnapshot = await adminDb
+    .collection("users")
+    .doc(auth.profile.uid)
+    .get();
   if (!userSnapshot.exists) {
     return NextResponse.json(
-      { success: false, error: "User not found.", code: "USER_PROFILE_NOT_FOUND" },
+      {
+        success: false,
+        error: "User not found.",
+        code: "USER_PROFILE_NOT_FOUND",
+      },
       { status: 404, headers: NO_STORE }
     );
   }
 
   const userData = userSnapshot.data() as Record<string, unknown> | undefined;
-  const storedEmail = typeof userData?.email === "string" ? userData.email : null;
-  const email = storedEmail || auth.token.email || `${auth.profile.uid}@shipin.local`;
-  const storedName = typeof userData?.displayName === "string" ? userData.displayName : null;
+  const storedEmail =
+    typeof userData?.email === "string" ? userData.email : null;
+  const email =
+    storedEmail || auth.token.email || `${auth.profile.uid}@shipin.local`;
+  const storedName =
+    typeof userData?.displayName === "string" ? userData.displayName : null;
   const displayName = storedName || auth.token.name || email;
-  const record = (userData?.mfa as { webauthn?: WebAuthnRecord } | undefined)?.webauthn ?? {};
+  const record =
+    (userData?.mfa as { webauthn?: WebAuthnRecord } | undefined)?.webauthn ??
+    {};
   const existingCredentials = readStoredCredentials(record);
 
   const options = await buildRegistrationOptions({

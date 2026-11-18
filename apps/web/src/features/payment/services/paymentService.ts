@@ -5,7 +5,10 @@ export interface CreateOrderResponse {
 export interface CaptureOrderResponse {
   id: string;
   status: string;
-  purchase_units: Array<{ quantity?: string; amount?: { value: string; currency_code: string } }>;
+  purchase_units: Array<{
+    quantity?: string;
+    amount?: { value: string; currency_code: string };
+  }>;
 }
 
 class PaymentService {
@@ -16,13 +19,8 @@ class PaymentService {
     additionalItemRequestId?: string,
     authToken?: string
   ) {
-    if (
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
-      throw new Error(
-        "Invalid PayPal payment amount."
-      );
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error("Invalid PayPal payment amount.");
     }
 
     const headers: Record<string, string> = {
@@ -32,43 +30,31 @@ class PaymentService {
       headers["Authorization"] = `Bearer ${authToken}`;
     }
 
-    const response = await fetch(
-      "/api/paypal/create-order",
-      {
-        method: "POST",
+    const response = await fetch("/api/paypal/create-order", {
+      method: "POST",
 
-        headers,
+      headers,
 
-        body: JSON.stringify({
-          requestId,
-          amount,
-          paymentType,
-          additionalItemRequestId,
-        }),
-      }
-    );
+      body: JSON.stringify({
+        requestId,
+        amount,
+        paymentType,
+        additionalItemRequestId,
+      }),
+    });
 
     if (!response.ok) {
-      const errorText =
-        await response.text();
+      const errorText = await response.text();
 
-      console.error(
-        "PayPal create order error:",
-        errorText
-      );
+      console.error("PayPal create order error:", errorText);
 
-      throw new Error(
-        "Unable to create PayPal order."
-      );
+      throw new Error("Unable to create PayPal order.");
     }
 
-    const data =
-      await response.json();
+    const data = await response.json();
 
     if (!data?.orderId) {
-      throw new Error(
-        "PayPal order ID was not returned."
-      );
+      throw new Error("PayPal order ID was not returned.");
     }
 
     return {
@@ -80,19 +66,12 @@ class PaymentService {
     requestId: string,
     orderID: string,
     amount: number,
-    paymentType:
-      | "main"
-      | "additional_item" = "main",
+    paymentType: "main" | "additional_item" = "main",
     additionalItemRequestId?: string,
     authToken?: string
   ) {
-    if (
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
-      throw new Error(
-        "Invalid PayPal payment amount."
-      );
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error("Invalid PayPal payment amount.");
     }
 
     const headers: Record<string, string> = {
@@ -102,43 +81,33 @@ class PaymentService {
       headers["Authorization"] = `Bearer ${authToken}`;
     }
 
-    const response = await fetch(
-      "/api/paypal/capture-order",
-      {
-        method: "POST",
+    const response = await fetch("/api/paypal/capture-order", {
+      method: "POST",
 
-        headers,
+      headers,
 
-        body: JSON.stringify({
-          requestId,
-          orderID,
-          amount,
-          paymentType,
-          additionalItemRequestId,
-        }),
-      }
-    );
+      body: JSON.stringify({
+        requestId,
+        orderID,
+        amount,
+        paymentType,
+        additionalItemRequestId,
+      }),
+    });
 
     if (!response.ok) {
-      let errorMessage =
-        "Unable to capture PayPal payment.";
+      let errorMessage = "Unable to capture PayPal payment.";
 
       try {
-        const data =
-          await response.json();
+        const data = await response.json();
 
-        console.error(
-          "PayPal capture error:",
-          data
-        );
+        console.error("PayPal capture error:", data);
 
         if (data?.error) {
           errorMessage = data.error;
         }
       } catch {
-        console.error(
-          "Unable to parse PayPal capture error."
-        );
+        console.error("Unable to parse PayPal capture error.");
       }
 
       throw new Error(errorMessage);
@@ -148,5 +117,4 @@ class PaymentService {
   }
 }
 
-export const paymentService =
-  new PaymentService();
+export const paymentService = new PaymentService();

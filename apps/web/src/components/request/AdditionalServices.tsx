@@ -110,7 +110,9 @@ export default function AdditionalServices({
         <InfoNotice variant="info">
           <p className="font-medium">Shipping rules</p>
           <ul className="mt-2 space-y-1.5 text-[12px]">
-            <li>• Wait for approval requires Standard or Detailed inspection.</li>
+            <li>
+              • Wait for approval requires Standard or Detailed inspection.
+            </li>
             <li>• Auto ship is only available with No inspection.</li>
             <li>
               • Hold package stores your shipment until you give the go-ahead

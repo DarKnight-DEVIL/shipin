@@ -17,18 +17,18 @@ function restoreTs(ts?: TSSerialized): Timestamp | undefined {
 
 export async function getAllRequests(): Promise<Request[]> {
   try {
-    const result = await customerApi<{ success: boolean; requests: Array<{
-      id: string;
-      userId: string;
-      customerName: string;
-      email: string;
-      status: string;
-      createdAt?: TSSerialized;
-      updatedAt?: TSSerialized;
-    }> }>(
-      "/api/admin/requests",
-      { method: "GET" }
-    );
+    const result = await customerApi<{
+      success: boolean;
+      requests: Array<{
+        id: string;
+        userId: string;
+        customerName: string;
+        email: string;
+        status: string;
+        createdAt?: TSSerialized;
+        updatedAt?: TSSerialized;
+      }>;
+    }>("/api/admin/requests", { method: "GET" });
 
     return result.requests.map((doc) => ({
       id: doc.id,
@@ -114,7 +114,5 @@ export async function getAdminRequestQueue(
 
   return requests
     .filter((request) => matchesAdminRequestFilter(request, filter))
-    .sort(
-      (a, b) => getAdminRequestPriority(a) - getAdminRequestPriority(b)
-    );
+    .sort((a, b) => getAdminRequestPriority(a) - getAdminRequestPriority(b));
 }

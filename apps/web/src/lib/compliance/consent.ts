@@ -1,19 +1,19 @@
 /**
  * DPDP Act 2023 - Consent Management & Logging
- * 
+ *
  * Consent logging, granular consent management, and audit trail
  */
 
-import { adminDb } from '@/lib/firebaseAdmin';
-import { FieldValue } from 'firebase-admin/firestore';
-import { PERSONAL_DATA_CATEGORIES } from './dpdp';
+import { adminDb } from "@/lib/firebaseAdmin";
+import { FieldValue } from "firebase-admin/firestore";
+import { PERSONAL_DATA_CATEGORIES } from "./dpdp";
 
 export interface ConsentLogEntry {
   userId: string;
-  category: typeof PERSONAL_DATA_CATEGORIES[keyof typeof PERSONAL_DATA_CATEGORIES];
+  category: (typeof PERSONAL_DATA_CATEGORIES)[keyof typeof PERSONAL_DATA_CATEGORIES];
   granted: boolean;
   version: string;
-  method: 'explicit' | 'implied' | 'withdrawn';
+  method: "explicit" | "implied" | "withdrawn";
   ip?: string;
   userAgent?: string;
   timestamp: Date;
@@ -24,7 +24,7 @@ export interface ConsentState {
     granted: boolean;
     version: string;
     updatedAt: Date;
-    method: 'explicit' | 'implied' | 'withdrawn';
+    method: "explicit" | "implied" | "withdrawn";
   };
 }
 
@@ -38,9 +38,9 @@ export async function logConsent(params: {
   version: string;
   ip?: string;
   userAgent?: string;
-  method: 'explicit' | 'implied' | 'withdrawn';
+  method: "explicit" | "implied" | "withdrawn";
 }): Promise<void> {
-  await adminDb.collection('consentLogs').add({
+  await adminDb.collection("consentLogs").add({
     userId: params.userId,
     category: params.category,
     granted: params.granted,
@@ -55,19 +55,21 @@ export async function logConsent(params: {
 /**
  * Get current consent state for a user
  */
-export async function getUserConsentState(userId: string): Promise<ConsentState> {
+export async function getUserConsentState(
+  userId: string
+): Promise<ConsentState> {
   const snapshot = await adminDb
-    .collection('consentLogs')
-    .where('userId', '==', userId)
-    .orderBy('timestamp', 'desc')
+    .collection("consentLogs")
+    .where("userId", "==", userId)
+    .orderBy("timestamp", "desc")
     .get();
 
   const state: ConsentState = {} as ConsentState;
-  
+
   for (const doc of snapshot.docs) {
     const data = doc.data();
     const category = data.category;
-    
+
     // Only keep the latest entry for each category
     if (!state[category]) {
       state[category] = {
@@ -90,12 +92,12 @@ export async function updateUserConsent(params: {
   category: string;
   granted: boolean;
   version: string;
-  method: 'explicit' | 'withdrawn';
+  method: "explicit" | "withdrawn";
   ip?: string;
   userAgent?: string;
 }): Promise<void> {
   // Log the consent change
-  await adminDb.collection('consentLogs').add({
+  await adminDb.collection("consentLogs").add({
     userId: params.userId,
     category: params.category,
     granted: params.granted,
@@ -107,28 +109,37 @@ export async function updateUserConsent(params: {
   });
 
   // Update user's consent state document for quick lookup
-  await adminDb.collection('userConsents').doc(params.userId).set({
-    [`${params.category}`]: {
-      granted: params.granted,
-      version: params.version,
-      method: params.method,
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-  }, { merge: true });
+  await adminDb
+    .collection("userConsents")
+    .doc(params.userId)
+    .set(
+      {
+        [`${params.category}`]: {
+          granted: params.granted,
+          version: params.version,
+          method: params.method,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+      },
+      { merge: true }
+    );
 }
 
 /**
  * Get consent log for a user (for audit/export)
  */
-export async function getConsentLog(userId: string, limit = 100): Promise<ConsentLogEntry[]> {
+export async function getConsentLog(
+  userId: string,
+  limit = 100
+): Promise<ConsentLogEntry[]> {
   const snapshot = await adminDb
-    .collection('consentLogs')
-    .where('userId', '==', userId)
-    .orderBy('timestamp', 'desc')
+    .collection("consentLogs")
+    .where("userId", "==", userId)
+    .orderBy("timestamp", "desc")
     .limit(limit)
     .get();
 
-  return snapshot.docs.map(doc => {
+  return snapshot.docs.map((doc) => {
     const data = doc.data();
     return {
       id: doc.id,
@@ -136,7 +147,7 @@ export async function getConsentLog(userId: string, limit = 100): Promise<Consen
       category: data.category as string,
       granted: Boolean(data.granted),
       version: data.version as string,
-      method: (data.method as ConsentLogEntry['method']) || 'explicit',
+      method: (data.method as ConsentLogEntry["method"]) || "explicit",
       timestamp: (data.timestamp as Date) || null,
       ip: (data.ip as string) || undefined,
       userAgent: (data.userAgent as string) || undefined,
@@ -154,10 +165,10 @@ export async function hasValidConsent(
 ): Promise<boolean> {
   const state = await getUserConsentState(userId);
   const consent = state[category];
-  
+
   if (!consent || !consent.granted) return false;
   if (requiredVersion && consent.version !== requiredVersion) return false;
-  
+
   return true;
 }
 
@@ -186,7 +197,7 @@ export async function withdrawConsent(
     category,
     granted: false,
     version,
-    method: 'withdrawn',
+    method: "withdrawn",
     ip,
     userAgent,
   });

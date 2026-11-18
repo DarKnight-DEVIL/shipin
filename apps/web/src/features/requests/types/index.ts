@@ -26,12 +26,12 @@ export type {
   StorageInfo,
   Consolidation,
   InspectionPhoto,
-} from '@/types/request';
+} from "@/types/request";
 
-import type { RequestItem } from '@/types/request';
-import type { ServiceSelections } from '@/types/request';
-import type { RequestStatus } from '@/features/requests/services/requestStatus';
-import type { Address } from '@/types/address';
+import type { RequestItem } from "@/types/request";
+import type { ServiceSelections } from "@/types/request";
+import type { RequestStatus } from "@/features/requests/services/requestStatus";
+import type { Address } from "@/types/address";
 
 export interface CreateRequestInput {
   customerName: string;

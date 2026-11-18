@@ -1,15 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import {
-  useEffect,
-  useState,
-} from "react";
+import { useEffect, useState } from "react";
 import { ImageOff } from "lucide-react";
 
-import {
-  auth,
-} from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import EmptyState from "@/components/ui/EmptyState";
 
 interface Props {
@@ -21,14 +16,10 @@ interface Photo {
   url: string;
 }
 
-export default function InspectionPhotoGallery({
-  photos = [],
-}: Props) {
-  const [resolvedPhotos, setResolvedPhotos] =
-    useState<Photo[]>([]);
+export default function InspectionPhotoGallery({ photos = [] }: Props) {
+  const [resolvedPhotos, setResolvedPhotos] = useState<Photo[]>([]);
 
-  const [loading, setLoading] =
-    useState(false);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,82 +33,53 @@ export default function InspectionPhotoGallery({
       try {
         setLoading(true);
 
-        const currentUser =
-          auth.currentUser;
+        const currentUser = auth.currentUser;
 
         if (!currentUser) {
-          throw new Error(
-            "You must be signed in to view inspection photos."
-          );
+          throw new Error("You must be signed in to view inspection photos.");
         }
 
-        const idToken =
-          await currentUser.getIdToken();
+        const idToken = await currentUser.getIdToken();
 
-        const results =
-          await Promise.all(
-            photos.map(
-              async (key) => {
-                const response =
-                  await fetch(
-                    "/api/r2/view",
-                    {
-                      method:
-                        "POST",
+        const results = await Promise.all(
+          photos.map(async (key) => {
+            const response = await fetch("/api/r2/view", {
+              method: "POST",
 
-                      headers: {
-                        "Content-Type":
-                          "application/json",
+              headers: {
+                "Content-Type": "application/json",
 
-                        Authorization:
-                          `Bearer ${idToken}`,
-                      },
+                Authorization: `Bearer ${idToken}`,
+              },
 
-                      body:
-                        JSON.stringify({
-                          key,
-                        }),
-                    }
-                  );
+              body: JSON.stringify({
+                key,
+              }),
+            });
 
-                const result =
-                  await response.json();
+            const result = await response.json();
 
-                if (
-                  !response.ok ||
-                  !result.success ||
-                  !result.url
-                ) {
-                  throw new Error(
-                    result.error ||
-                      "Unable to load inspection photo."
-                  );
-                }
+            if (!response.ok || !result.success || !result.url) {
+              throw new Error(
+                result.error || "Unable to load inspection photo."
+              );
+            }
 
-                return {
-                  key,
-                  url:
-                    result.url as string,
-                };
-              }
-            )
-          );
-
-        if (!cancelled) {
-          setResolvedPhotos(
-            results
-          );
-        }
-      } catch (error) {
-        console.error(
-          "Inspection photos load failed:",
-          error
+            return {
+              key,
+              url: result.url as string,
+            };
+          })
         );
 
         if (!cancelled) {
-          setResolvedPhotos(
-            []
-          );
+          setResolvedPhotos(results);
+        }
+      } catch (error) {
+        console.error("Inspection photos load failed:", error);
+
+        if (!cancelled) {
+          setResolvedPhotos([]);
         }
       } finally {
         if (!cancelled) {
@@ -146,45 +108,39 @@ export default function InspectionPhotoGallery({
   if (loading) {
     return (
       <div className="rounded-xl border border-slate-800 bg-slate-950 p-5">
-        <p className="text-sm text-slate-400">
-          Loading inspection photos...
-        </p>
+        <p className="text-sm text-slate-400">Loading inspection photos...</p>
       </div>
     );
   }
 
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-
-      {resolvedPhotos.map(
-        (photo) => (
-          <a
-            key={photo.key}
-            href={photo.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group overflow-hidden rounded-xl border border-slate-800 bg-slate-950"
-          >
-            {/* Presigned R2 URL (15-minute signature, per-account host): the
+      {resolvedPhotos.map((photo) => (
+        <a
+          key={photo.key}
+          href={photo.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group overflow-hidden rounded-xl border border-slate-800 bg-slate-950"
+        >
+          {/* Presigned R2 URL (15-minute signature, per-account host): the
                 image optimizer cannot cache it, so it is bypassed. */}
-            <Image
-              src={photo.url}
-              unoptimized
-              width={400}
-              height={176}
-              alt="Warehouse inspection"
-              className="h-44 w-full object-cover transition-transform group-hover:scale-105"
-            />
+          <Image
+            src={photo.url}
+            unoptimized
+            width={400}
+            height={176}
+            alt="Warehouse inspection"
+            className="h-44 w-full object-cover transition-transform group-hover:scale-105"
+          />
 
-            <div className="border-t border-slate-800 p-3">
-              <p className="text-xs font-medium text-purple-400">
-                View Full Photo
-              </p>
-            </div>
-          </a>
-        )
-      )}
-
+          <div className="border-t border-slate-800 p-3">
+            <p className="text-xs font-medium text-purple-400">
+              View Full Photo
+            </p>
+          </div>
+        </a>
+      ))}
     </div>
   );
 }

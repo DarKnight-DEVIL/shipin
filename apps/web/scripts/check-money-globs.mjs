@@ -43,7 +43,8 @@ const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const INCLUDE_ROOTS = ["src/lib", "src/features", "src/app/api"];
 
 /** Path fragments that mark a file as money-path or compliance code. */
-const PROTECTED_NAME = /(paypal|payment|refund|wallet|payout|billing|invoice|compliance)/i;
+const PROTECTED_NAME =
+  /(paypal|payment|refund|wallet|payout|billing|invoice|compliance)/i;
 
 /** Explicit opt-in for money modules whose filename says nothing. */
 const MONEY_MARKER = "@money-path";
@@ -84,7 +85,9 @@ function collectFiles(dir) {
 }
 
 if (typeof path.matchesGlob !== "function") {
-  console.error("check-money-globs: this script needs Node 22.5+ (path.matchesGlob).");
+  console.error(
+    "check-money-globs: this script needs Node 22.5+ (path.matchesGlob)."
+  );
   process.exit(1);
 }
 
@@ -103,7 +106,9 @@ if (missingRoots.length > 0) {
 }
 
 const globs = Object.keys(COVERAGE_GLOB_THRESHOLDS);
-const files = INCLUDE_ROOTS.flatMap((root) => collectFiles(path.join(ROOT, root)));
+const files = INCLUDE_ROOTS.flatMap((root) =>
+  collectFiles(path.join(ROOT, root))
+);
 
 const marksItself = (file) => {
   try {
@@ -144,4 +149,6 @@ if (escapes.length > 0) {
   process.exit(1);
 }
 
-out(`All ${protectedCount} money-path files fall inside a stricter coverage glob.`);
+out(
+  `All ${protectedCount} money-path files fall inside a stricter coverage glob.`
+);

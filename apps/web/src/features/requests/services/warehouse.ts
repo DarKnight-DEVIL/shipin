@@ -9,12 +9,12 @@ import {
   query,
   where,
   arrayRemove,
-} from 'firebase/firestore';
+} from "firebase/firestore";
 import { db } from "@/lib/firebaseDb";
-import { toShipINError } from '@/utils/errors';
-import { createNotification } from '@/features/notifications/services';
-import type { Request } from '@/types/request';
-import { getStorageParams } from './warehousePolicy';
+import { toShipINError } from "@/utils/errors";
+import { createNotification } from "@/features/notifications/services";
+import type { Request } from "@/types/request";
+import { getStorageParams } from "./warehousePolicy";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -22,18 +22,18 @@ export async function getWarehouseInventory(): Promise<Request[]> {
   try {
     const snapshot = await getDocs(
       query(
-        collection(db, 'requests'),
-        where('status', 'in', [
-          'warehouse_received',
-          'ready_for_international_shipping',
-          'packed',
+        collection(db, "requests"),
+        where("status", "in", [
+          "warehouse_received",
+          "ready_for_international_shipping",
+          "packed",
         ])
       )
     );
 
     return snapshot.docs.map((document) => ({
       id: document.id,
-      ...(document.data() as Omit<Request, 'id'>),
+      ...(document.data() as Omit<Request, "id">),
     }));
   } catch (error) {
     throw toShipINError(error);
@@ -51,17 +51,17 @@ export async function saveWarehouseInspection(
   }
 ): Promise<void> {
   try {
-    const requestRef = doc(db, 'requests', requestId);
+    const requestRef = doc(db, "requests", requestId);
     const snapshot = await getDoc(requestRef);
     const userId = snapshot.exists() ? snapshot.data()?.userId : null;
 
     await updateDoc(requestRef, {
-      'warehouse.weight': data.weight,
-      'warehouse.length': data.length,
-      'warehouse.width': data.width,
-      'warehouse.height': data.height,
-      'warehouse.condition': data.condition,
-      'warehouse.inspectionCompletedAt': serverTimestamp(),
+      "warehouse.weight": data.weight,
+      "warehouse.length": data.length,
+      "warehouse.width": data.width,
+      "warehouse.height": data.height,
+      "warehouse.condition": data.condition,
+      "warehouse.inspectionCompletedAt": serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
 
@@ -69,9 +69,9 @@ export async function saveWarehouseInspection(
       await createNotification(
         userId,
         requestId,
-        'Inspection Complete',
-        'Your warehouse inspection is now available.',
-        'inspection'
+        "Inspection Complete",
+        "Your warehouse inspection is now available.",
+        "inspection"
       );
     }
   } catch (error) {
@@ -84,8 +84,8 @@ export async function saveInspectionPhoto(
   photo: { id: string; url: string; caption?: string }
 ): Promise<void> {
   try {
-    await updateDoc(doc(db, 'requests', requestId), {
-      'warehouse.inspectionPhotos': arrayUnion({
+    await updateDoc(doc(db, "requests", requestId), {
+      "warehouse.inspectionPhotos": arrayUnion({
         ...photo,
         uploadedAt: serverTimestamp(),
       }),
@@ -96,11 +96,13 @@ export async function saveInspectionPhoto(
   }
 }
 
-export async function approveInternationalShipment(requestId: string): Promise<void> {
+export async function approveInternationalShipment(
+  requestId: string
+): Promise<void> {
   try {
-    await updateDoc(doc(db, 'requests', requestId), {
-      status: 'ready_for_international_shipping',
-      'warehouse.approvedAt': serverTimestamp(),
+    await updateDoc(doc(db, "requests", requestId), {
+      status: "ready_for_international_shipping",
+      "warehouse.approvedAt": serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
@@ -115,11 +117,11 @@ export async function startStorageTimer(
   try {
     const startedAt = Date.now();
     const { dailyFine, freeStorageDays } = getStorageParams(
-      options.shippingPreference ?? 'approval',
+      options.shippingPreference ?? "approval",
       options.storageType ?? null
     );
 
-    await updateDoc(doc(db, 'requests', requestId), {
+    await updateDoc(doc(db, "requests", requestId), {
       storage: {
         startedAt,
         // The grace window has to be written here: this path writes the whole
@@ -148,11 +150,11 @@ export async function saveWarehouseMeasurements(
   }
 ): Promise<void> {
   try {
-    await updateDoc(doc(db, 'requests', requestId), {
-      'warehouse.weight': data.weight,
-      'warehouse.length': data.length,
-      'warehouse.width': data.width,
-      'warehouse.height': data.height,
+    await updateDoc(doc(db, "requests", requestId), {
+      "warehouse.weight": data.weight,
+      "warehouse.length": data.length,
+      "warehouse.width": data.width,
+      "warehouse.height": data.height,
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
@@ -164,7 +166,7 @@ export async function removeRequestFromWarehouse(
   requestId: string
 ): Promise<void> {
   try {
-    await updateDoc(doc(db, 'requests', requestId), {
+    await updateDoc(doc(db, "requests", requestId), {
       warehouse: arrayRemove({}),
       updatedAt: serverTimestamp(),
     });
@@ -183,7 +185,7 @@ export async function updateWarehouseChecklist(
   }>
 ): Promise<void> {
   try {
-    const requestRef = doc(db, 'requests', requestId);
+    const requestRef = doc(db, "requests", requestId);
     const snapshot = await getDoc(requestRef);
     const userId = snapshot.exists() ? snapshot.data()?.userId : null;
 
@@ -199,9 +201,9 @@ export async function updateWarehouseChecklist(
       await createNotification(
         userId,
         requestId,
-        'Package Arrived',
-        'Your package has been checked into our warehouse.',
-        'warehouse'
+        "Package Arrived",
+        "Your package has been checked into our warehouse.",
+        "warehouse"
       );
     }
   } catch (error) {

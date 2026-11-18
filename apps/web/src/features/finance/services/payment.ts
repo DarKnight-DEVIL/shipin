@@ -1,4 +1,4 @@
-import { PaymentError } from '@/utils/errors';
+import { PaymentError } from "@/utils/errors";
 
 /**
  * Validates that the received payment amount matches the expected amount

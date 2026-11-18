@@ -51,7 +51,11 @@ export function validatePassword(
   }
 
   const emailLocalPart = context.email?.split("@")[0]?.trim().toLowerCase();
-  if (emailLocalPart && emailLocalPart.length >= 3 && password.toLowerCase().includes(emailLocalPart)) {
+  if (
+    emailLocalPart &&
+    emailLocalPart.length >= 3 &&
+    password.toLowerCase().includes(emailLocalPart)
+  ) {
     errors.push("Do not reuse your email address in the password.");
   }
 

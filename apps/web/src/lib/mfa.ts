@@ -35,7 +35,11 @@ export function generateTotpSecret(): string {
  * @param window - Number of 30-second time steps to tolerate (default 1)
  * @returns true if the code is valid
  */
-export function verifyTotp(secret: string, code: string, window: number = 1): boolean {
+export function verifyTotp(
+  secret: string,
+  code: string,
+  window: number = 1
+): boolean {
   const token = code.trim();
 
   if (!/^\d{6}$/.test(token)) return false;
@@ -63,7 +67,9 @@ export function verifyTotp(secret: string, code: string, window: number = 1): bo
  * @param count - Number of backup codes to generate
  * @returns Array of backup codes (plain text, to be shown once)
  */
-export function generateBackupCodes(count: number = BACKUP_CODE_COUNT): string[] {
+export function generateBackupCodes(
+  count: number = BACKUP_CODE_COUNT
+): string[] {
   const codes: string[] = [];
   for (let i = 0; i < count; i++) {
     const code = crypto.randomBytes(8).toString("hex").toUpperCase();
@@ -78,7 +84,10 @@ export function generateBackupCodes(count: number = BACKUP_CODE_COUNT): string[]
  * Hash a backup code for storage.
  */
 export function hashBackupCode(code: string): string {
-  return crypto.createHash("sha256").update(code.trim().toUpperCase()).digest("hex");
+  return crypto
+    .createHash("sha256")
+    .update(code.trim().toUpperCase())
+    .digest("hex");
 }
 
 /**

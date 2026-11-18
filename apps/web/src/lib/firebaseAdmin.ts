@@ -1,17 +1,12 @@
-import 'server-only';
+import "server-only";
 
-import {
-  cert,
-  getApps,
-  initializeApp,
-  type App,
-} from 'firebase-admin/app';
+import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 
-import { getFirestore } from 'firebase-admin/firestore';
-import { getAuth } from 'firebase-admin/auth';
-import { serverEnv } from '@/config/env';
-import { normalizePrivateKey } from '@/lib/privateKey';
-import { ShipINError } from '@/utils/errors';
+import { getFirestore } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
+import { serverEnv } from "@/config/env";
+import { normalizePrivateKey } from "@/lib/privateKey";
+import { ShipINError } from "@/utils/errors";
 
 function getAdminApp(): App {
   if (getApps().length > 0) {
@@ -36,8 +31,8 @@ function getAdminApp(): App {
     // Must be a ShipINError: `toShipINError` only maps Error instances and
     // would turn this into a generic INTERNAL_ERROR, hiding the real cause.
     throw new ShipINError(
-      'Missing Firebase Admin environment variables. Set FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL, and FIREBASE_ADMIN_PRIVATE_KEY.',
-      'CONFIG_ERROR',
+      "Missing Firebase Admin environment variables. Set FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL, and FIREBASE_ADMIN_PRIVATE_KEY.",
+      "CONFIG_ERROR",
       500
     );
   }
@@ -64,7 +59,7 @@ export const adminDb = new Proxy({} as ReturnType<typeof getFirestore>, {
   get(_target, prop, receiver) {
     const db = createAdminDb();
     const value = Reflect.get(db, prop, receiver);
-    return typeof value === 'function' ? value.bind(db) : value;
+    return typeof value === "function" ? value.bind(db) : value;
   },
 });
 
@@ -72,7 +67,7 @@ export const adminAuth = new Proxy({} as ReturnType<typeof getAuth>, {
   get(_target, prop, receiver) {
     const auth = createAdminAuth();
     const value = Reflect.get(auth, prop, receiver);
-    return typeof value === 'function' ? value.bind(auth) : value;
+    return typeof value === "function" ? value.bind(auth) : value;
   },
 });
 

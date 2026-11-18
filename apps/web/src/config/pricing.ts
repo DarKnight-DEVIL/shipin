@@ -22,8 +22,7 @@ export const PRICING = {
     standard: {
       id: "standard",
       name: "Standard Inspection",
-      description:
-        "Verify correct item and check for visible damage.",
+      description: "Verify correct item and check for visible damage.",
       price: 0,
       /** Included in the service, not a zero-dollar add-on. */
       priceLabel: "Included",
@@ -51,8 +50,7 @@ export const PRICING = {
     approval: {
       id: "approval",
       name: "Wait For Approval",
-      description:
-        "Inspection photos will be uploaded before shipping.",
+      description: "Inspection photos will be uploaded before shipping.",
       price: 0,
     },
 

@@ -25,9 +25,7 @@ export default function ProductsCard({ request }: Props) {
   return (
     <section className="shipin-surface p-5 sm:p-6">
       <div className="mb-5 flex items-baseline justify-between gap-3">
-        <h2 className="app-section-title">
-          Products
-        </h2>
+        <h2 className="app-section-title">Products</h2>
         <span className="text-xs text-slate-500">
           {originalItems.length + additionalItems.length} item
           {originalItems.length + additionalItems.length === 1 ? "" : "s"}
@@ -131,10 +129,7 @@ function AdditionalProductRow({
         {hasPricing && (
           <div className="shrink-0 space-y-1.5 text-sm sm:w-44 sm:text-right">
             <MetaRow label="Unit" value={`$${(unitPrice ?? 0).toFixed(2)}`} />
-            <MetaRow
-              label="Qty"
-              value={String(additionalItem.item.quantity)}
-            />
+            <MetaRow label="Qty" value={String(additionalItem.item.quantity)} />
             <MetaRow
               label="Subtotal"
               value={`$${(subtotal ?? 0).toFixed(2)}`}
@@ -167,8 +162,7 @@ function AdditionalItemTracker({
   ];
 
   const statusOrder = steps.map((s) => s.key);
-  const normalizedStatus =
-    status === "approved" ? "awaiting_payment" : status;
+  const normalizedStatus = status === "approved" ? "awaiting_payment" : status;
   const currentIndex = statusOrder.indexOf(normalizedStatus);
 
   if (status === "cancelled" || status === "rejected") {

@@ -99,7 +99,11 @@ export default function PaymentCard({ request, walletBalance }: Props) {
             </div>
 
             {useWallet && payment.walletApplied > 0 && (
-              <Row title="Wallet applied" value={-payment.walletApplied} credit />
+              <Row
+                title="Wallet applied"
+                value={-payment.walletApplied}
+                credit
+              />
             )}
 
             {payment.paypalAmount > 0 && (
@@ -114,11 +118,7 @@ export default function PaymentCard({ request, walletBalance }: Props) {
 
             {payment.paypalAmount === 0 && payment.walletApplied > 0 && (
               <div className="border-t border-[var(--border)] pt-3">
-                <Row
-                  title="Remaining PayPal payment"
-                  value={0}
-                  bold
-                />
+                <Row title="Remaining PayPal payment" value={0} bold />
               </div>
             )}
           </div>
@@ -226,7 +226,11 @@ function Row({
 }) {
   return (
     <div className="flex items-center justify-between gap-4 text-[13px]">
-      <span className={bold ? "font-medium text-[var(--foreground)]" : "text-[var(--muted)]"}>
+      <span
+        className={
+          bold ? "font-medium text-[var(--foreground)]" : "text-[var(--muted)]"
+        }
+      >
         {title}
       </span>
 
@@ -234,7 +238,9 @@ function Row({
         className={`tabular-nums ${
           bold ? "font-semibold text-[var(--foreground)]" : "font-medium"
         } ${
-          credit ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--foreground)]"
+          credit
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-[var(--foreground)]"
         }`}
       >
         {value < 0 ? "-" : ""}${Math.abs(value).toFixed(2)}

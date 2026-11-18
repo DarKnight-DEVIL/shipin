@@ -28,11 +28,7 @@ export default function WarehouseInventoryPage() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="p-8 text-white">
-        Loading inventory...
-      </div>
-    );
+    return <div className="p-8 text-white">Loading inventory...</div>;
   }
 
   return (
@@ -62,15 +58,11 @@ export default function WarehouseInventoryPage() {
                       Request #{pkg.id.slice(0, 6)}
                     </h2>
 
-                    <p className="text-slate-400">
-                      {pkg.customerName}
-                    </p>
+                    <p className="text-slate-400">{pkg.customerName}</p>
                   </div>
 
                   <div className="text-right">
-                    <p className="text-green-400">
-                      {pkg.status}
-                    </p>
+                    <p className="text-green-400">{pkg.status}</p>
 
                     <p className="text-slate-500">
                       {pkg.items?.length ?? 0} Items

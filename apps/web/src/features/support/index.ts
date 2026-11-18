@@ -2,7 +2,7 @@
  * @fileoverview Support feature – barrel export.
  */
 
-export type { SupportTicket, SupportMessage } from './types';
+export type { SupportTicket, SupportMessage } from "./types";
 
 export {
   createSupportTicket,
@@ -16,8 +16,6 @@ export {
   subscribeToSupportTickets,
   subscribeToCustomerSupportTickets,
   subscribeToAllSupportTickets,
-} from './services/index';
+} from "./services/index";
 
-export { canCreateSupportTicket } from './services/supportRules';
-
-
+export { canCreateSupportTicket } from "./services/supportRules";

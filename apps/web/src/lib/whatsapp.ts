@@ -81,9 +81,7 @@ export async function sendWhatsAppTemplate({
             code: languageCode,
           },
 
-          ...(components.length > 0
-            ? { components }
-            : {}),
+          ...(components.length > 0 ? { components } : {}),
         },
       }),
     }
@@ -95,8 +93,7 @@ export async function sendWhatsAppTemplate({
     whatsappLog.error("WhatsApp API error", { status: response.status, data });
 
     throw createShipINError(
-      data?.error?.message ||
-        "Failed to send WhatsApp message.",
+      data?.error?.message || "Failed to send WhatsApp message.",
       "EXTERNAL_SERVICE_ERROR",
       502
     );

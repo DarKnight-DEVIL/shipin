@@ -112,7 +112,8 @@ export const POST = withErrorHandler(
         return NextResponse.json(
           {
             success: false,
-            error: "The carrier did not return tracking data. Try again shortly.",
+            error:
+              "The carrier did not return tracking data. Try again shortly.",
           },
           { status: 502, headers: NO_STORE }
         );

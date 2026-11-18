@@ -20,7 +20,11 @@ import {
   getMfaSession,
   revokeMfaSession,
 } from "@/lib/mfaSession";
-import { addRateLimitHeaders, isRateLimited, loginRateLimiter } from "@/lib/rateLimiter";
+import {
+  addRateLimitHeaders,
+  isRateLimited,
+  loginRateLimiter,
+} from "@/lib/rateLimiter";
 import { verifyAppCheckRequest } from "@/lib/appCheck";
 import { withErrorHandler } from "@/utils/errors";
 
@@ -126,7 +130,8 @@ async function resolveAdminCaller(
     return NextResponse.json(
       {
         success: false,
-        error: "Please verify your email address before accessing this resource.",
+        error:
+          "Please verify your email address before accessing this resource.",
         code: "EMAIL_VERIFICATION_REQUIRED",
       },
       { status: 403, headers: NO_STORE }
@@ -164,7 +169,12 @@ async function resolveAdminCaller(
       ?.sign_in_second_factor
   );
 
-  return { uid: decoded.uid, email: decoded.email, profile, secondFactorVerified };
+  return {
+    uid: decoded.uid,
+    email: decoded.email,
+    profile,
+    secondFactorVerified,
+  };
 }
 
 /**
@@ -188,7 +198,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     {
       success: true,
       elevated,
-      expiresAt: session && session.uid === caller.uid ? session.expiresAt : null,
+      expiresAt:
+        session && session.uid === caller.uid ? session.expiresAt : null,
       methods,
       sessionTtlMs: MFA_SESSION_TTL_MS,
     },
@@ -288,7 +299,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     }
 
     const presented = (assertion as { id: string }).id;
-    const stored = credentials.find((credential) => credential.credentialID === presented);
+    const stored = credentials.find(
+      (credential) => credential.credentialID === presented
+    );
 
     // The challenge is single-use no matter how verification goes.
     const clearChallenge = () =>

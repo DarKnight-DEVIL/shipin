@@ -62,7 +62,9 @@ describe("SmsEnrollmentCard", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Send code" }));
 
-    expect(await screen.findByText(/Google sent a code to/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Google sent a code to/)
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Enter the code we sent")).toBeInTheDocument();
     expect(mocks.start).toHaveBeenCalledWith(
       expect.anything(),

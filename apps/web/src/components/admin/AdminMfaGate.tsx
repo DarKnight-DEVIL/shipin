@@ -16,7 +16,11 @@ import { ShieldCheck } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
-import { getMfaSessionStatus, startMfaSession, startWebAuthnSession } from "@/lib/mfaSessionClient";
+import {
+  getMfaSessionStatus,
+  startMfaSession,
+  startWebAuthnSession,
+} from "@/lib/mfaSessionClient";
 import {
   assertSecurityKey,
   isWebAuthnSupported,
@@ -53,7 +57,11 @@ function isCodeMethod(method: MfaMethod): boolean {
   return method !== "webauthn";
 }
 
-export default function AdminMfaGate({ children }: { children: React.ReactNode }) {
+export default function AdminMfaGate({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [user, setUser] = useState<MfaUser | null>(null);
   const [status, setStatus] = useState<GateStatus>("checking");
   const [methods, setMethods] = useState<MfaMethod[]>([]);

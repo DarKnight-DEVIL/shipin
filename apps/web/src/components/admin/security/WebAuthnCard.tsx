@@ -115,11 +115,7 @@ export default function WebAuthnCard({
       badge={
         <StatusPill
           enabled={keys.length > 0}
-          label={
-            keys.length > 0
-              ? `${keys.length} registered`
-              : undefined
-          }
+          label={keys.length > 0 ? `${keys.length} registered` : undefined}
         />
       }
     >

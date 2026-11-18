@@ -63,7 +63,9 @@ beforeEach(() => {
 
 describe("isMultiFactorRequired", () => {
   it("only matches the second-factor code", () => {
-    expect(isMultiFactorRequired({ code: "auth/multi-factor-auth-required" })).toBe(true);
+    expect(
+      isMultiFactorRequired({ code: "auth/multi-factor-auth-required" })
+    ).toBe(true);
     expect(isMultiFactorRequired({ code: "auth/wrong-password" })).toBe(false);
     expect(isMultiFactorRequired(null)).toBe(false);
   });
@@ -84,11 +86,13 @@ describe("startSmsEnrollment", () => {
   });
 
   it("turns a Firebase failure into a displayable error", async () => {
-    mocks.verifyPhoneNumber.mockRejectedValue({ code: "auth/invalid-phone-number" });
+    mocks.verifyPhoneNumber.mockRejectedValue({
+      code: "auth/invalid-phone-number",
+    });
 
-    await expect(startSmsEnrollment(auth, user, "+1555")).rejects.toBeInstanceOf(
-      FirebaseMfaError
-    );
+    await expect(
+      startSmsEnrollment(auth, user, "+1555")
+    ).rejects.toBeInstanceOf(FirebaseMfaError);
   });
 });
 
@@ -119,10 +123,15 @@ describe("enrolledPhoneFactor", () => {
 
 describe("startSecondFactorChallenge", () => {
   it("refuses an account without a phone factor", async () => {
-    mocks.getResolver.mockReturnValue({ hints: [{ factorId: "totp" }], session: "s" });
+    mocks.getResolver.mockReturnValue({
+      hints: [{ factorId: "totp" }],
+      session: "s",
+    });
 
     await expect(
-      startSecondFactorChallenge(auth, { code: "auth/multi-factor-auth-required" } as never)
+      startSecondFactorChallenge(auth, {
+        code: "auth/multi-factor-auth-required",
+      } as never)
     ).rejects.toMatchObject({ code: "MFA_UNSUPPORTED_FACTOR" });
   });
 
@@ -133,7 +142,9 @@ describe("startSecondFactorChallenge", () => {
     mocks.getResolver.mockReturnValue(resolver);
 
     await expect(
-      startSecondFactorChallenge(auth, { code: "auth/multi-factor-auth-required" } as never)
+      startSecondFactorChallenge(auth, {
+        code: "auth/multi-factor-auth-required",
+      } as never)
     ).resolves.toEqual({
       resolver,
       verificationId: "verification-id",
@@ -150,13 +161,21 @@ describe("startSecondFactorChallenge", () => {
 describe("confirmSecondFactorChallenge", () => {
   it("resolves the sign-in and returns the authenticated user", async () => {
     const signedIn = { uid: "admin-1" };
-    const resolver = { resolveSignIn: mocks.resolveSignIn, hints: [], session: "s" };
+    const resolver = {
+      resolveSignIn: mocks.resolveSignIn,
+      hints: [],
+      session: "s",
+    };
 
     mocks.resolveSignIn.mockResolvedValue({ user: signedIn });
 
     await expect(
       confirmSecondFactorChallenge(
-        { resolver, verificationId: "verification-id", phoneNumber: null } as never,
+        {
+          resolver,
+          verificationId: "verification-id",
+          phoneNumber: null,
+        } as never,
         "123456"
       )
     ).resolves.toBe(signedIn);

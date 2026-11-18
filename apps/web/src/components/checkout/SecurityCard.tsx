@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  ShieldCheck,
-  Lock,
-  BadgeCheck,
-  FileCheck,
-} from "lucide-react";
+import { ShieldCheck, Lock, BadgeCheck, FileCheck } from "lucide-react";
 
 export default function SecurityCard() {
   return (
@@ -13,7 +8,10 @@ export default function SecurityCard() {
       {/* Header */}
       <div className="border-b border-[var(--border)] px-5 py-3.5">
         <div className="flex items-center gap-2.5">
-          <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-400" />
+          <ShieldCheck
+            size={16}
+            className="text-emerald-600 dark:text-emerald-400"
+          />
           <div>
             <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
               Secure checkout

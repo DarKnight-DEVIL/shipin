@@ -37,9 +37,7 @@ export default function AdminLayout({
       // Drop the elevation before the token is gone: DELETE needs the bearer
       // token, and an elevation left behind lets this account walk back into
       // /admin without a fresh MFA challenge for the rest of its window.
-      const idToken = await auth.currentUser
-        ?.getIdToken()
-        .catch(() => null);
+      const idToken = await auth.currentUser?.getIdToken().catch(() => null);
 
       if (idToken) {
         try {
@@ -56,10 +54,7 @@ export default function AdminLayout({
 
       window.location.replace("/login");
     } catch (error) {
-      console.error(
-        "Admin logout failed:",
-        error
-      );
+      console.error("Admin logout failed:", error);
 
       setLoggingOut(false);
     }
@@ -71,13 +66,12 @@ export default function AdminLayout({
         <AppCheckBanner supportHref="/admin/support" />
         <RetryNotice />
         <main className="h-screen overflow-hidden bg-slate-950 text-white">
-        <div className="flex h-full">
-
-          {/* =========================================
+          <div className="flex h-full">
+            {/* =========================================
               SIDEBAR
           ========================================= */}
-          <aside
-            className="
+            <aside
+              className="
               fixed
               left-0
               top-0
@@ -91,125 +85,111 @@ export default function AdminLayout({
               bg-slate-900
               p-6
             "
-          >
+            >
+              {/* LOGO */}
+              <div>
+                <h1 className="text-3xl font-bold text-red-400">
+                  ShipIN Admin
+                </h1>
+              </div>
 
-            {/* LOGO */}
-            <div>
-              <h1 className="text-3xl font-bold text-red-400">
-                ShipIN Admin
-              </h1>
-            </div>
-
-            {/* =========================================
+              {/* =========================================
                 NAVIGATION
             ========================================= */}
-            <nav className="mt-10 flex-1 space-y-2">
-
-              {/* DASHBOARD */}
-              <Link
-                href="/admin/dashboard"
-                className="
-                  flex
-                  items-center
-                  gap-3
-                  rounded-xl
-                  px-4
-                  py-3
-                  text-slate-300
-                  transition
-                  hover:bg-slate-800
-                  hover:text-white
-                "
-              >
-                <LayoutDashboard
-                  size={19}
-                />
-
-                <span>
-                  Dashboard
-                </span>
-              </Link>
-
-              {/* REQUESTS */}
-              <Link
-                href="/admin/requests"
-                className="
-                  flex
-                  items-center
-                  gap-3
-                  rounded-xl
-                  px-4
-                  py-3
-                  text-slate-300
-                  transition
-                  hover:bg-slate-800
-                  hover:text-white
-                "
-              >
-                <Inbox size={19} />
-
-                <span>
-                  Requests
-                </span>
-              </Link>
-
-              {/* PURCHASING */}
-              <Link
-                href="/admin/purchasing"
-                className="
-                  flex
-                  items-center
-                  gap-3
-                  rounded-xl
-                  px-4
-                  py-3
-                  text-slate-300
-                  transition
-                  hover:bg-slate-800
-                  hover:text-white
-                "
-              >
-                <ShoppingCart size={19} />
-
-                <span>
-                  Purchasing
-                </span>
-              </Link>
-
-              {/* WALLET CREDITS */}
-              <Link
-                href="/admin/wallet"
-                className="
-                  flex
-                  items-center
-                  gap-3
-                  rounded-xl
-                  px-4
-                  py-3
-                  text-slate-300
-                  transition
-                  hover:bg-slate-800
-                  hover:text-white
-                "
-              >
-                <Wallet
-                  size={19}
-                />
-
-                <span>
-                  Wallet Credits
-                </span>
-              </Link>
-
-              {/* AUDIT */}
-              <div className="pt-6">
-                <p className="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Audit
-                </p>
-
+              <nav className="mt-10 flex-1 space-y-2">
+                {/* DASHBOARD */}
                 <Link
-                  href="/admin/audit"
+                  href="/admin/dashboard"
                   className="
+                  flex
+                  items-center
+                  gap-3
+                  rounded-xl
+                  px-4
+                  py-3
+                  text-slate-300
+                  transition
+                  hover:bg-slate-800
+                  hover:text-white
+                "
+                >
+                  <LayoutDashboard size={19} />
+
+                  <span>Dashboard</span>
+                </Link>
+
+                {/* REQUESTS */}
+                <Link
+                  href="/admin/requests"
+                  className="
+                  flex
+                  items-center
+                  gap-3
+                  rounded-xl
+                  px-4
+                  py-3
+                  text-slate-300
+                  transition
+                  hover:bg-slate-800
+                  hover:text-white
+                "
+                >
+                  <Inbox size={19} />
+
+                  <span>Requests</span>
+                </Link>
+
+                {/* PURCHASING */}
+                <Link
+                  href="/admin/purchasing"
+                  className="
+                  flex
+                  items-center
+                  gap-3
+                  rounded-xl
+                  px-4
+                  py-3
+                  text-slate-300
+                  transition
+                  hover:bg-slate-800
+                  hover:text-white
+                "
+                >
+                  <ShoppingCart size={19} />
+
+                  <span>Purchasing</span>
+                </Link>
+
+                {/* WALLET CREDITS */}
+                <Link
+                  href="/admin/wallet"
+                  className="
+                  flex
+                  items-center
+                  gap-3
+                  rounded-xl
+                  px-4
+                  py-3
+                  text-slate-300
+                  transition
+                  hover:bg-slate-800
+                  hover:text-white
+                "
+                >
+                  <Wallet size={19} />
+
+                  <span>Wallet Credits</span>
+                </Link>
+
+                {/* AUDIT */}
+                <div className="pt-6">
+                  <p className="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Audit
+                  </p>
+
+                  <Link
+                    href="/admin/audit"
+                    className="
                     flex
                     items-center
                     gap-3
@@ -221,19 +201,38 @@ export default function AdminLayout({
                     hover:bg-slate-800
                     hover:text-white
                   "
+                  >
+                    <ShieldCheck size={19} />
+
+                    <span>Audit</span>
+                  </Link>
+                </div>
+
+                {/* SECURITY */}
+                <Link
+                  href="/admin/security"
+                  className="
+                  flex
+                  items-center
+                  gap-3
+                  rounded-xl
+                  px-4
+                  py-3
+                  text-slate-300
+                  transition
+                  hover:bg-slate-800
+                  hover:text-white
+                "
                 >
-                  <ShieldCheck size={19} />
+                  <KeyRound size={19} />
 
-                  <span>
-                    Audit
-                  </span>
+                  <span>Security</span>
                 </Link>
-              </div>
 
-              {/* SECURITY */}
-              <Link
-                href="/admin/security"
-                className="
+                {/* USERS */}
+                <Link
+                  href="/admin/users"
+                  className="
                   flex
                   items-center
                   gap-3
@@ -245,18 +244,16 @@ export default function AdminLayout({
                   hover:bg-slate-800
                   hover:text-white
                 "
-              >
-                <KeyRound size={19} />
+                >
+                  <UserCog size={19} />
 
-                <span>
-                  Security
-                </span>
-              </Link>
+                  <span>Users</span>
+                </Link>
 
-              {/* USERS */}
-              <Link
-                href="/admin/users"
-                className="
+                {/* SUPPORT */}
+                <Link
+                  href="/admin/support"
+                  className="
                   flex
                   items-center
                   gap-3
@@ -268,48 +265,22 @@ export default function AdminLayout({
                   hover:bg-slate-800
                   hover:text-white
                 "
-              >
-                <UserCog size={19} />
+                >
+                  <MessageCircle size={19} />
 
-                <span>
-                  Users
-                </span>
-              </Link>
+                  <span>Support</span>
+                </Link>
+              </nav>
 
-              {/* SUPPORT */}
-              <Link
-                href="/admin/support"
-                className="
-                  flex
-                  items-center
-                  gap-3
-                  rounded-xl
-                  px-4
-                  py-3
-                  text-slate-300
-                  transition
-                  hover:bg-slate-800
-                  hover:text-white
-                "
-              >
-                <MessageCircle size={19} />
-
-                <span>
-                  Support
-                </span>
-              </Link>
-
-            </nav>
-
-            {/* =========================================
+              {/* =========================================
                 LOGOUT
             ========================================= */}
-            <div className="border-t border-slate-800 pt-5">
-              <button
-                type="button"
-                onClick={handleLogout}
-                disabled={loggingOut}
-                className="
+              <div className="border-t border-slate-800 pt-5">
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                  className="
                   flex
                   w-full
                   items-center
@@ -326,42 +297,34 @@ export default function AdminLayout({
                   disabled:cursor-not-allowed
                   disabled:opacity-50
                 "
-              >
-                <LogOut size={19} />
+                >
+                  <LogOut size={19} />
 
-                <span>
-                  {loggingOut
-                    ? "Logging out..."
-                    : "Logout"}
-                </span>
-              </button>
-            </div>
+                  <span>{loggingOut ? "Logging out..." : "Logout"}</span>
+                </button>
+              </div>
+            </aside>
 
-          </aside>
-
-          {/* =========================================
+            {/* =========================================
               SCROLLABLE CONTENT
           ========================================= */}
-          <section
-            className="
+            <section
+              className="
               ml-72
               h-screen
               flex-1
               overflow-y-auto
             "
-          >
-            <div className="min-h-full p-8">
-              {/* Non-blocking MFA banner: admin pages stay usable while it
+            >
+              <div className="min-h-full p-8">
+                {/* Non-blocking MFA banner: admin pages stay usable while it
                   offers to elevate the session. */}
-              <AdminMfaGate>
-                {children}
-              </AdminMfaGate>
-            </div>
-          </section>
-
-        </div>
-      </main>
-    </AdminGuard>
+                <AdminMfaGate>{children}</AdminMfaGate>
+              </div>
+            </section>
+          </div>
+        </main>
+      </AdminGuard>
     </ErrorBoundary>
   );
 }

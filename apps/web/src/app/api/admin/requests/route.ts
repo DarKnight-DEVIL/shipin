@@ -21,7 +21,9 @@ async function handleGetRequests(request: NextRequest): Promise<NextResponse> {
   const snapshot = await adminDb.collection("requests").get();
 
   // Serialize Firestore Timestamps to plain objects for JSON transport
-  const serializeTimestamp = (val: unknown): { seconds: number; nanoseconds: number } | undefined => {
+  const serializeTimestamp = (
+    val: unknown
+  ): { seconds: number; nanoseconds: number } | undefined => {
     if (!val || typeof val !== "object") return undefined;
     const ts = val as { seconds?: number; nanoseconds?: number };
     if (typeof ts.seconds === "number") {
@@ -43,7 +45,10 @@ async function handleGetRequests(request: NextRequest): Promise<NextResponse> {
     };
   });
 
-  return NextResponse.json({ success: true, requests }, { status: 200, headers: NO_STORE });
+  return NextResponse.json(
+    { success: true, requests },
+    { status: 200, headers: NO_STORE }
+  );
 }
 
 export const GET = async (request: NextRequest): Promise<NextResponse> => {

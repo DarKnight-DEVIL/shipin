@@ -17,7 +17,9 @@ test.describe("Authenticated user journeys", () => {
     await expect(page.locator("body")).toBeVisible();
   });
 
-  test("login page loads and shows authentication options", async ({ page }) => {
+  test("login page loads and shows authentication options", async ({
+    page,
+  }) => {
     // One locator, one expectation. `toContainText([...])` needs one element per
     // string, so an array of acceptable labels can never match a single <h1> —
     // it failed against a page whose heading read exactly "Sign in".
@@ -28,7 +30,9 @@ test.describe("Authenticated user journeys", () => {
       .locator('input[type="email"], input[name="email"]')
       .count();
     const hasGoogleButton = await page
-      .locator('button:has-text("Google"), button:has-text("Continue with Google")')
+      .locator(
+        'button:has-text("Google"), button:has-text("Continue with Google")'
+      )
       .count();
 
     expect(hasEmailInput + hasGoogleButton).toBeGreaterThan(0);
@@ -43,7 +47,9 @@ test.describe("Authenticated user journeys", () => {
     // asserted a /login redirect the app never performed.
     await page.goto("/dashboard");
 
-    await expect(page.getByText("No requests yet")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("No requests yet")).toBeVisible({
+      timeout: 20_000,
+    });
     expect(new URL(page.url()).pathname).toBe("/dashboard");
   });
 
@@ -67,7 +73,9 @@ test.describe("Authenticated user journeys", () => {
 });
 
 test.describe("Support flow (requires auth)", () => {
-  test("support page asks a signed-out visitor to sign in", async ({ page }) => {
+  test("support page asks a signed-out visitor to sign in", async ({
+    page,
+  }) => {
     // Same rule as the dashboard: no redirect, an in-page sign-in prompt, and
     // no ticket data (the support APIs are token-protected).
     await page.goto("/support");

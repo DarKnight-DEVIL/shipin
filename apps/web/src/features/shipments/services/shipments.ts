@@ -48,35 +48,30 @@ function withDocumentId<T extends { id: string }>(): FirestoreDataConverter<T> {
 const shipmentConverter = withDocumentId<Shipment>();
 const requestConverter = withDocumentId<Request>();
 
-export async function createShipment(
-  userId: string
-) {
-  const ref = await addDoc(
-    collection(db, "shipments"),
-    {
-      userId,
+export async function createShipment(userId: string) {
+  const ref = await addDoc(collection(db, "shipments"), {
+    userId,
 
-      requestIds: [],
+    requestIds: [],
 
-      status: "building",
+    status: "building",
 
-      tracking: "",
+    tracking: "",
 
-      courier: "",
+    courier: "",
 
-      weight: 0,
+    weight: 0,
 
-      length: 0,
+    length: 0,
 
-      width: 0,
+    width: 0,
 
-      height: 0,
+    height: 0,
 
-      createdAt: serverTimestamp(),
+    createdAt: serverTimestamp(),
 
-      updatedAt: serverTimestamp(),
-    }
-  );
+    updatedAt: serverTimestamp(),
+  });
 
   return ref.id;
 }
@@ -85,17 +80,9 @@ export async function addRequestToShipment(
   shipmentId: string,
   requestId: string
 ) {
-  const shipmentRef = doc(
-    db,
-    "shipments",
-    shipmentId
-  );
+  const shipmentRef = doc(db, "shipments", shipmentId);
 
-  const requestRef = doc(
-    db,
-    "requests",
-    requestId
-  );
+  const requestRef = doc(db, "requests", requestId);
 
   // Both writes describe one fact, so they commit together: a shipment that
   // lists a request the request does not point back to is a corrupt pair.
@@ -118,8 +105,7 @@ export async function addRequestToShipment(
 
         shipmentId,
 
-        consolidatedAt:
-          serverTimestamp(),
+        consolidatedAt: serverTimestamp(),
       },
     });
   });
@@ -135,17 +121,12 @@ export async function getShipment(
   return snap.exists() ? snap.data() : null;
 }
 
-export async function getShipmentRequests(
-  shipmentId: string
-) {
+export async function getShipmentRequests(shipmentId: string) {
   const shipment = await getShipment(shipmentId);
 
   if (!shipment) return [];
 
-  if (
-    !shipment.requestIds ||
-    shipment.requestIds.length === 0
-  ) {
+  if (!shipment.requestIds || shipment.requestIds.length === 0) {
     return [];
   }
 
@@ -240,47 +221,29 @@ export async function getAllUserShipments(userId: string): Promise<Shipment[]> {
   return all;
 }
 
-export async function markShipmentShipped(
-  shipmentId: string
-) {
-  await updateDoc(
-    doc(db, "shipments", shipmentId),
-    {
-      status: "shipped",
-      shippedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    }
-  );
+export async function markShipmentShipped(shipmentId: string) {
+  await updateDoc(doc(db, "shipments", shipmentId), {
+    status: "shipped",
+    shippedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
 }
 
-export async function markShipmentDelivered(
-  shipmentId: string
-) {
-  await updateDoc(
-    doc(db, "shipments", shipmentId),
-    {
-      status: "delivered",
-      deliveredAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    }
-  );
+export async function markShipmentDelivered(shipmentId: string) {
+  await updateDoc(doc(db, "shipments", shipmentId), {
+    status: "delivered",
+    deliveredAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export async function removeRequestFromShipment(
   shipmentId: string,
   requestId: string
 ) {
-  const shipmentRef = doc(
-    db,
-    "shipments",
-    shipmentId
-  );
+  const shipmentRef = doc(db, "shipments", shipmentId);
 
-  const requestRef = doc(
-    db,
-    "requests",
-    requestId
-  );
+  const requestRef = doc(db, "requests", requestId);
 
   await runTransaction(db, async (transaction) => {
     transaction.update(shipmentRef, {
@@ -307,11 +270,7 @@ export async function saveConsolidatedPackage(
     height: number;
   }
 ) {
-  const shipmentRef = doc(
-    db,
-    "shipments",
-    shipmentId
-  );
+  const shipmentRef = doc(db, "shipments", shipmentId);
 
   await updateDoc(shipmentRef, {
     weight: packageData.weight,
@@ -323,34 +282,19 @@ export async function saveConsolidatedPackage(
   });
 }
 
-export async function finalizeShipment(
-  shipmentId: string
-) {
-  const shipmentRef = doc(
-    db,
-    "shipments",
-    shipmentId
-  );
+export async function finalizeShipment(shipmentId: string) {
+  const shipmentRef = doc(db, "shipments", shipmentId);
 
-  const shipmentSnap =
-    await getDoc(shipmentRef);
+  const shipmentSnap = await getDoc(shipmentRef);
 
   if (!shipmentSnap.exists()) {
-    throw new Error(
-      "Shipment not found."
-    );
+    throw new Error("Shipment not found.");
   }
 
-  const shipment =
-    shipmentSnap.data();
+  const shipment = shipmentSnap.data();
 
-  if (
-    !shipment.requestIds ||
-    shipment.requestIds.length === 0
-  ) {
-    throw new Error(
-      "Cannot finalize an empty shipment."
-    );
+  if (!shipment.requestIds || shipment.requestIds.length === 0) {
+    throw new Error("Cannot finalize an empty shipment.");
   }
 
   if (
@@ -366,9 +310,7 @@ export async function finalizeShipment(
 
   await updateDoc(shipmentRef, {
     status: "ready",
-    finalizedAt:
-      serverTimestamp(),
-    updatedAt:
-      serverTimestamp(),
+    finalizedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
 }

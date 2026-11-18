@@ -7,18 +7,11 @@ interface Props {
   icon?: ReactNode;
 }
 
-export default function InfoCard({
-  title,
-  value,
-  description,
-  icon,
-}: Props) {
+export default function InfoCard({ title, value, description, icon }: Props) {
   return (
     <div className="app-panel p-4">
       <div className="flex items-center gap-2">
-        {icon && (
-          <span className="text-[var(--muted)]">{icon}</span>
-        )}
+        {icon && <span className="text-[var(--muted)]">{icon}</span>}
         <p className="app-kicker">{title}</p>
       </div>
 

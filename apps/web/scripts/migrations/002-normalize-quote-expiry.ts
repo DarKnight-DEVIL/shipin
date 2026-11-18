@@ -112,7 +112,10 @@ export async function up(
 
       if (Object.keys(patch).length === 0) continue;
 
-      batch.update(doc.ref, { ...patch, updatedAt: FieldValue.serverTimestamp() });
+      batch.update(doc.ref, {
+        ...patch,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
       pending++;
     }
 

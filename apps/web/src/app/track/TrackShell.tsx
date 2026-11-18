@@ -6,38 +6,28 @@ import { useRouter } from "next/navigation";
 export default function TrackShell() {
   const router = useRouter();
 
-  const [trackingId, setTrackingId] =
-    useState("");
+  const [trackingId, setTrackingId] = useState("");
 
-  function handleTrack(
-    e: React.FormEvent
-  ) {
+  function handleTrack(e: React.FormEvent) {
     e.preventDefault();
 
-    const id =
-      trackingId.trim();
+    const id = trackingId.trim();
 
     if (!id) {
       return;
     }
 
-    router.push(
-      `/track/${encodeURIComponent(id)}`
-    );
+    router.push(`/track/${encodeURIComponent(id)}`);
   }
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-6 py-16">
       <div className="w-full max-w-xl">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white">
-            Track Your Shipment
-          </h1>
+          <h1 className="text-4xl font-bold text-white">Track Your Shipment</h1>
 
           <p className="mt-3 text-slate-400">
-            Enter your ShipIN Tracking ID
-            to view the latest shipment
-            status.
+            Enter your ShipIN Tracking ID to view the latest shipment status.
           </p>
         </div>
 
@@ -55,11 +45,7 @@ export default function TrackShell() {
             name="trackingId"
             autoComplete="off"
             value={trackingId}
-            onChange={(e) =>
-              setTrackingId(
-                e.target.value
-              )
-            }
+            onChange={(e) => setTrackingId(e.target.value)}
             placeholder="SHIPIN-XXXXXXXX"
             className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-4 font-mono text-white outline-none focus:border-purple-500"
           />

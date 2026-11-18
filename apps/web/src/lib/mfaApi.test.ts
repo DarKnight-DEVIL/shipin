@@ -4,7 +4,9 @@ import { MfaApiError, mfaApi } from "./mfaApi";
 
 const originalFetch = global.fetch;
 
-function mockFetch(implementation: (url: string, init: RequestInit) => unknown) {
+function mockFetch(
+  implementation: (url: string, init: RequestInit) => unknown
+) {
   global.fetch = vi.fn(implementation) as unknown as typeof fetch;
 }
 
@@ -63,7 +65,11 @@ describe("mfaApi", () => {
     mockFetch(() => ({
       ok: false,
       status: 400,
-      json: async () => ({ success: false, error: "Invalid TOTP code.", code: "INVALID_TOTP_CODE" }),
+      json: async () => ({
+        success: false,
+        error: "Invalid TOTP code.",
+        code: "INVALID_TOTP_CODE",
+      }),
     }));
 
     await expect(mfaApi("/api/x", { idToken: "t" })).rejects.toMatchObject({

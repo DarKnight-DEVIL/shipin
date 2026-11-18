@@ -10,20 +10,19 @@ export {
   getTopCustomers,
   getOperationsOverview,
   getFinancialOverview,
-} from './services/analytics';
+} from "./services/analytics";
 
 export {
   getCustomersWithWallets,
   getRefundRequestDetails,
   type AdminCustomer,
-} from './services/customersClient';
+} from "./services/customersClient";
 
 export {
   getAllRequests,
   matchesAdminRequestFilter,
   getAdminRequestPriority,
   getAdminRequestQueue,
-} from './services/requestQueueClient';
+} from "./services/requestQueueClient";
 
-export { useAdminWallet } from './hooks/useAdminWallet';
-
+export { useAdminWallet } from "./hooks/useAdminWallet";

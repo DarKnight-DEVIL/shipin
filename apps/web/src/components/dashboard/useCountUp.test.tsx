@@ -18,7 +18,11 @@ beforeEach(() => {
   vi.spyOn(performance, "now").mockImplementation(() => clock);
   vi.stubGlobal(
     "matchMedia",
-    vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }))
   );
 });
 

@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect, ReactNode } from 'react';
-import { clsx } from 'clsx';
-import { createPortal } from 'react-dom';
+import { useState, useRef, useEffect, ReactNode } from "react";
+import { clsx } from "clsx";
+import { createPortal } from "react-dom";
 
 export interface TooltipProps {
   content: ReactNode;
   children: ReactNode;
-  position?: 'top' | 'bottom' | 'left' | 'right';
+  position?: "top" | "bottom" | "left" | "right";
   delay?: number;
   offset?: number;
 }
@@ -15,7 +15,7 @@ export interface TooltipProps {
 export const Tooltip = ({
   content,
   children,
-  position = 'top',
+  position = "top",
   delay = 200,
   offset = 8,
 }: TooltipProps) => {
@@ -35,19 +35,19 @@ export const Tooltip = ({
     let left = 0;
 
     switch (position) {
-      case 'top':
+      case "top":
         top = triggerRect.top - tooltipRect.height - offset;
         left = triggerRect.left + (triggerRect.width - tooltipRect.width) / 2;
         break;
-      case 'bottom':
+      case "bottom":
         top = triggerRect.bottom + offset;
         left = triggerRect.left + (triggerRect.width - tooltipRect.width) / 2;
         break;
-      case 'left':
+      case "left":
         top = triggerRect.top + (triggerRect.height - tooltipRect.height) / 2;
         left = triggerRect.left - tooltipRect.width - offset;
         break;
-      case 'right':
+      case "right":
         top = triggerRect.top + (triggerRect.height - tooltipRect.height) / 2;
         left = triggerRect.right + offset;
         break;
@@ -72,14 +72,14 @@ export const Tooltip = ({
   useEffect(() => {
     if (isVisible) {
       updatePosition();
-      window.addEventListener('scroll', updatePosition);
-      window.addEventListener('resize', updatePosition);
+      window.addEventListener("scroll", updatePosition);
+      window.addEventListener("resize", updatePosition);
     }
     return () => {
-      window.removeEventListener('scroll', updatePosition);
-      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener("scroll", updatePosition);
+      window.removeEventListener("resize", updatePosition);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVisible, position, offset]);
 
   const triggerProps = {
@@ -94,9 +94,9 @@ export const Tooltip = ({
     <div
       ref={tooltipRef}
       className={clsx(
-        'absolute z-50 px-3 py-2 text-sm text-white bg-gray-900 rounded-lg shadow-lg',
-        'whitespace-nowrap opacity-100 transition-opacity duration-200',
-        'pointer-events-none'
+        "absolute z-50 px-3 py-2 text-sm text-white bg-gray-900 rounded-lg shadow-lg",
+        "whitespace-nowrap opacity-100 transition-opacity duration-200",
+        "pointer-events-none"
       )}
       style={{
         top: tooltipPosition.top,
@@ -111,7 +111,7 @@ export const Tooltip = ({
   return (
     <>
       <span {...triggerProps}>{children}</span>
-      {typeof window !== 'undefined' && createPortal(tooltip, document.body)}
+      {typeof window !== "undefined" && createPortal(tooltip, document.body)}
     </>
   );
 };

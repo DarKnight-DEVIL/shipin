@@ -37,7 +37,8 @@ import {
 
 const E164 = /^\+[1-9]\d{1,14}$/;
 
-const cardClass = "rounded-xl border border-[var(--border)] bg-[var(--surface-2)]/40 p-4";
+const cardClass =
+  "rounded-xl border border-[var(--border)] bg-[var(--surface-2)]/40 p-4";
 const titleClass = "text-[13px] font-semibold text-[var(--foreground)]";
 const hintClass = "mt-1 text-[12px] leading-5 text-[var(--muted)]";
 const inputClass =
@@ -106,7 +107,10 @@ export default function CustomerMfaSection() {
   // fires on sign-in, so the panel reloads for the right account.
   useEffect(() => onAuthStateChanged(auth, () => void load()), [load]);
 
-  async function withToken(action: string, run: (idToken: string) => Promise<void>) {
+  async function withToken(
+    action: string,
+    run: (idToken: string) => Promise<void>
+  ) {
     const user = auth.currentUser;
 
     if (!user) {
@@ -215,7 +219,9 @@ export default function CustomerMfaSection() {
         setSmsCode("");
         setPhone("");
         setSmsVerificationId("");
-        setMessage("SMS enabled. You will be asked for a code at every sign-in.");
+        setMessage(
+          "SMS enabled. You will be asked for a code at every sign-in."
+        );
         await load();
       } catch (caught) {
         setError(errorMessage(caught, "Could not verify that code."));
@@ -228,7 +234,9 @@ export default function CustomerMfaSection() {
     event.preventDefault();
 
     if (!isWebAuthnSupported()) {
-      setError("This browser does not support security keys. Use a current browser over HTTPS.");
+      setError(
+        "This browser does not support security keys. Use a current browser over HTTPS."
+      );
       return;
     }
 
@@ -316,12 +324,19 @@ export default function CustomerMfaSection() {
           </p>
           <ul className="mt-3 grid grid-cols-2 gap-2 font-mono text-[12px] text-[var(--foreground)] sm:grid-cols-3">
             {freshCodes.map((code) => (
-              <li key={code} className="rounded-lg bg-[var(--surface-1)] px-3 py-2 text-center tracking-wider">
+              <li
+                key={code}
+                className="rounded-lg bg-[var(--surface-1)] px-3 py-2 text-center tracking-wider"
+              >
                 {code}
               </li>
             ))}
           </ul>
-          <button type="button" className={`${secondaryBtn} mt-3`} onClick={() => setFreshCodes([])}>
+          <button
+            type="button"
+            className={`${secondaryBtn} mt-3`}
+            onClick={() => setFreshCodes([])}
+          >
             I saved them
           </button>
         </div>
@@ -342,7 +357,12 @@ export default function CustomerMfaSection() {
                 {totpQr ? (
                   // Server-rendered PNG data URL.
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={totpQr} alt="QR code for authenticator setup" width={150} height={150} />
+                  <img
+                    src={totpQr}
+                    alt="QR code for authenticator setup"
+                    width={150}
+                    height={150}
+                  />
                 ) : (
                   <p className="w-[150px] text-center text-[11px] text-slate-600">
                     QR unavailable — enter the key manually.
@@ -370,7 +390,11 @@ export default function CustomerMfaSection() {
             />
 
             <div className="flex flex-wrap gap-2">
-              <button type="submit" className={primaryBtn} disabled={busy !== null || totpCode.length !== 6}>
+              <button
+                type="submit"
+                className={primaryBtn}
+                disabled={busy !== null || totpCode.length !== 6}
+              >
                 {busy === "totp-verify" ? "Verifying…" : "Verify and enable"}
               </button>
               <button
@@ -422,7 +446,11 @@ export default function CustomerMfaSection() {
               maxLength={6}
               className={`${inputClass} max-w-[220px]`}
             />
-            <button type="submit" className={secondaryBtn} disabled={busy !== null || totpCode.length !== 6}>
+            <button
+              type="submit"
+              className={secondaryBtn}
+              disabled={busy !== null || totpCode.length !== 6}
+            >
               {busy === "backup" ? "Generating…" : "Generate new codes"}
             </button>
           </form>
@@ -440,8 +468,13 @@ export default function CustomerMfaSection() {
         {status?.webauthn.credentials.length ? (
           <ul className="mt-3 divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
             {status.webauthn.credentials.map((key) => (
-              <li key={key.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                <span className="text-[12px] text-[var(--foreground)]">{key.name}</span>
+              <li
+                key={key.id}
+                className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+              >
+                <span className="text-[12px] text-[var(--foreground)]">
+                  {key.name}
+                </span>
                 {pendingRemoval === key.id ? (
                   <span className="flex items-center gap-2">
                     <button
@@ -482,7 +515,11 @@ export default function CustomerMfaSection() {
             maxLength={60}
             className={`${inputClass} max-w-[240px]`}
           />
-          <button type="submit" className={secondaryBtn} disabled={busy !== null || !keyName.trim()}>
+          <button
+            type="submit"
+            className={secondaryBtn}
+            disabled={busy !== null || !keyName.trim()}
+          >
             {busy === "webauthn-add" ? "Waiting for key…" : "Add security key"}
           </button>
         </form>
@@ -512,10 +549,18 @@ export default function CustomerMfaSection() {
               maxLength={6}
               className={`${inputClass} max-w-[160px]`}
             />
-            <button type="submit" className={primaryBtn} disabled={busy !== null || smsCode.length !== 6}>
+            <button
+              type="submit"
+              className={primaryBtn}
+              disabled={busy !== null || smsCode.length !== 6}
+            >
               {busy === "sms-verify" ? "Verifying…" : "Verify and enable"}
             </button>
-            <button type="button" className={secondaryBtn} onClick={() => setSmsPending(false)}>
+            <button
+              type="button"
+              className={secondaryBtn}
+              onClick={() => setSmsPending(false)}
+            >
               Cancel
             </button>
           </form>
@@ -529,7 +574,11 @@ export default function CustomerMfaSection() {
               autoComplete="tel"
               className={`${inputClass} max-w-[240px]`}
             />
-            <button type="submit" className={secondaryBtn} disabled={busy !== null}>
+            <button
+              type="submit"
+              className={secondaryBtn}
+              disabled={busy !== null}
+            >
               {busy === "sms-send" ? "Sending…" : "Send code"}
             </button>
           </form>

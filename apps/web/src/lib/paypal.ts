@@ -8,10 +8,10 @@
  * All configuration is centralized in @/config/env (serverEnv).
  */
 
-import { serverEnv, isProduction } from '@/config/env';
-import { createShipINError } from '@/utils/errors';
-import { fetchWithTimeout } from '@/lib/http';
-import { childLogger } from '@/lib/logger';
+import { serverEnv, isProduction } from "@/config/env";
+import { createShipINError } from "@/utils/errors";
+import { fetchWithTimeout } from "@/lib/http";
+import { childLogger } from "@/lib/logger";
 
 const paypalLog = childLogger({ service: "paypal" });
 
@@ -19,9 +19,9 @@ export function getPayPalBaseUrl(): string {
   if (serverEnv.PAYPAL_API_URL) {
     return serverEnv.PAYPAL_API_URL;
   }
-  return serverEnv.PAYPAL_ENV === 'live'
-    ? 'https://api-m.paypal.com'
-    : 'https://api-m.sandbox.paypal.com';
+  return serverEnv.PAYPAL_ENV === "live"
+    ? "https://api-m.paypal.com"
+    : "https://api-m.sandbox.paypal.com";
 }
 
 export async function getPayPalAccessToken(): Promise<string> {
@@ -31,34 +31,31 @@ export async function getPayPalAccessToken(): Promise<string> {
 
   if (!clientId || !clientSecret) {
     throw createShipINError(
-      'PayPal credentials are not configured.',
-      'PAYPAL_CONFIG_ERROR',
+      "PayPal credentials are not configured.",
+      "PAYPAL_CONFIG_ERROR",
       500
     );
   }
 
-  const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+  const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
-  const response = await fetchWithTimeout(
-    `${baseUrl}/v1/oauth2/token`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${auth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: 'grant_type=client_credentials',
-      cache: 'no-store',
-    }
-  );
+  const response = await fetchWithTimeout(`${baseUrl}/v1/oauth2/token`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials",
+    cache: "no-store",
+  });
 
   const data = await response.json();
 
   if (!response.ok) {
-    paypalLog.error('Access token error', { status: response.status });
+    paypalLog.error("Access token error", { status: response.status });
     throw createShipINError(
-      'Failed to authenticate with PayPal.',
-      'PAYPAL_AUTH_ERROR',
+      "Failed to authenticate with PayPal.",
+      "PAYPAL_AUTH_ERROR",
       502
     );
   }
@@ -76,14 +73,14 @@ export async function verifyPayPalOrder(orderID: string): Promise<unknown> {
       headers: {
         Authorization: `Bearer ${token}`,
       },
-      cache: 'no-store',
+      cache: "no-store",
     }
   );
 
   if (!response.ok) {
     throw createShipINError(
-      'Unable to verify PayPal order.',
-      'PAYPAL_VERIFY_ERROR',
+      "Unable to verify PayPal order.",
+      "PAYPAL_VERIFY_ERROR",
       502
     );
   }
@@ -98,18 +95,18 @@ export async function capturePayPalOrder(orderID: string): Promise<unknown> {
   const response = await fetchWithTimeout(
     `${baseUrl}/v2/checkout/orders/${orderID}/capture`,
     {
-      method: 'POST',
+      method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
     }
   );
 
   if (!response.ok) {
     throw createShipINError(
-      'Unable to capture PayPal payment.',
-      'PAYPAL_CAPTURE_ERROR',
+      "Unable to capture PayPal payment.",
+      "PAYPAL_CAPTURE_ERROR",
       502
     );
   }
@@ -127,7 +124,7 @@ export async function refundPayPalOrder(
   const body: Record<string, unknown> = {};
   if (amount !== undefined) {
     body.amount = {
-      currency_code: 'USD',
+      currency_code: "USD",
       value: amount.toFixed(2),
     };
   }
@@ -135,10 +132,10 @@ export async function refundPayPalOrder(
   const response = await fetchWithTimeout(
     `${baseUrl}/v1/checkout/sales/${captureId}/refund`,
     {
-      method: 'POST',
+      method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
     }
@@ -146,8 +143,8 @@ export async function refundPayPalOrder(
 
   if (!response.ok) {
     throw createShipINError(
-      'Unable to process PayPal refund.',
-      'PAYPAL_REFUND_ERROR',
+      "Unable to process PayPal refund.",
+      "PAYPAL_REFUND_ERROR",
       502
     );
   }
@@ -169,31 +166,33 @@ export async function verifyPayPalWebhook(
     // accepted as legitimate. In dev/test we skip verification so local
     // testing without a PayPal webhook registration still works.
     if (isProduction) {
-      paypalLog.error('FATAL: PAYPAL_WEBHOOK_ID is not configured')
+      paypalLog.error("FATAL: PAYPAL_WEBHOOK_ID is not configured");
       throw createShipINError(
-        'PayPal webhook verification is unavailable.',
-        'PAYPAL_WEBHOOK_CONFIG_ERROR',
+        "PayPal webhook verification is unavailable.",
+        "PAYPAL_WEBHOOK_CONFIG_ERROR",
         500
       );
     }
-    paypalLog.warn('PAYPAL_WEBHOOK_ID missing, skipping verification (dev/test only)');
+    paypalLog.warn(
+      "PAYPAL_WEBHOOK_ID missing, skipping verification (dev/test only)"
+    );
     return true;
   }
 
   const response = await fetchWithTimeout(
     `${baseUrl}/v1/notifications/verify-webhook-signature`,
     {
-      method: 'POST',
+      method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        auth_algo: headers.get('paypal-auth-algo'),
-        cert_url: headers.get('paypal-cert-url'),
-        transmission_id: headers.get('paypal-transmission-id'),
-        transmission_sig: headers.get('paypal-transmission-sig'),
-        transmission_time: headers.get('paypal-transmission-time'),
+        auth_algo: headers.get("paypal-auth-algo"),
+        cert_url: headers.get("paypal-cert-url"),
+        transmission_id: headers.get("paypal-transmission-id"),
+        transmission_sig: headers.get("paypal-transmission-sig"),
+        transmission_time: headers.get("paypal-transmission-time"),
         webhook_id: id,
         webhook_event: JSON.parse(rawBody),
       }),
@@ -203,10 +202,12 @@ export async function verifyPayPalWebhook(
   // FAIL CLOSED: if PayPal's verification endpoint errors out (network
   // blip, non-JSON response), we must not treat the webhook as valid.
   if (!response.ok) {
-    paypalLog.error('Verification endpoint returned non-OK status', { status: response.status });
+    paypalLog.error("Verification endpoint returned non-OK status", {
+      status: response.status,
+    });
     return false;
   }
 
   const data = await response.json();
-  return data.verification_status === 'SUCCESS';
+  return data.verification_status === "SUCCESS";
 }

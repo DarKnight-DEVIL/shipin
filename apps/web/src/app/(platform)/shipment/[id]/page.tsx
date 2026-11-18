@@ -5,7 +5,10 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 
-import { getShipment, getShipmentRequests } from "@/features/shipments/services/shipments";
+import {
+  getShipment,
+  getShipmentRequests,
+} from "@/features/shipments/services/shipments";
 import PageHeader from "@/components/ui/PageHeader";
 
 import type { Shipment } from "@/types/shipment";
@@ -80,8 +83,15 @@ export default function ShipmentPage() {
   const details: { label: string; value: string; mono?: boolean }[] = [
     { label: "Shipment ID", value: String(shipment.id), mono: true },
     { label: "Status", value: String(shipment.status ?? "—") },
-    { label: "Courier", value: shipment.courier ? String(shipment.courier) : "—" },
-    { label: "Tracking", value: shipment.tracking ? String(shipment.tracking) : "—", mono: true },
+    {
+      label: "Courier",
+      value: shipment.courier ? String(shipment.courier) : "—",
+    },
+    {
+      label: "Tracking",
+      value: shipment.tracking ? String(shipment.tracking) : "—",
+      mono: true,
+    },
     {
       label: "Weight",
       value: shipment.weight ? `${shipment.weight} kg` : "—",

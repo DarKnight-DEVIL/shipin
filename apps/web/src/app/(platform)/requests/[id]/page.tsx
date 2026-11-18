@@ -130,10 +130,9 @@ export default function RequestDetailsPage() {
     setApproving(true);
 
     try {
-      await customerApi<void>(
-        `/api/requests/${requestId}/approve-quote`,
-        { method: "POST" }
-      );
+      await customerApi<void>(`/api/requests/${requestId}/approve-quote`, {
+        method: "POST",
+      });
       router.push(`/payment/${requestId}`);
     } catch (error) {
       console.error(error);
@@ -198,8 +197,7 @@ export default function RequestDetailsPage() {
               Reason
             </p>
             <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-6 text-[var(--foreground)]">
-              {request.rejectionReason ||
-                "No rejection reason was provided."}
+              {request.rejectionReason || "No rejection reason was provided."}
             </p>
           </div>
         </section>
@@ -278,12 +276,10 @@ export default function RequestDetailsPage() {
               <button
                 type="button"
                 onClick={() => {
-                  document
-                    .getElementById("refund-offer")
-                    ?.scrollIntoView({
-                      behavior: "smooth",
-                      block: "center",
-                    });
+                  document.getElementById("refund-offer")?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                  });
                 }}
                 className="app-btn app-btn-danger shrink-0 self-start sm:self-center"
               >
@@ -346,9 +342,7 @@ export default function RequestDetailsPage() {
 
           {inspectionUrls.length > 0 && (
             <section className="app-panel p-5 sm:p-6">
-              <h2 className="app-section-title mb-3.5">
-                Inspection photos
-              </h2>
+              <h2 className="app-section-title mb-3.5">Inspection photos</h2>
 
               <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3">
                 {inspectionUrls.map((photo, index) => (

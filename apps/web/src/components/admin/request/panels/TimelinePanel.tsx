@@ -11,7 +11,8 @@ export default function TimelinePanel({ request }: Props) {
   const events = [
     {
       title: "Request Submitted",
-      description: "The initial request was successfully created by the customer.",
+      description:
+        "The initial request was successfully created by the customer.",
       completed: true,
     },
     {
@@ -20,14 +21,14 @@ export default function TimelinePanel({ request }: Props) {
         request.serviceSelections?.inspection === "detailed"
           ? "Detailed Inspection"
           : request.serviceSelections?.inspection === "standard"
-          ? "Standard Inspection"
-          : "No Inspection"
+            ? "Standard Inspection"
+            : "No Inspection"
       } • ${
         request.serviceSelections?.shippingPreference === "auto"
           ? "Auto Ship"
           : request.serviceSelections?.shippingPreference === "approval"
-          ? "Wait For Approval"
-          : "Hold Package"
+            ? "Wait For Approval"
+            : "Hold Package"
       }`,
       completed: true,
     },
@@ -35,9 +36,7 @@ export default function TimelinePanel({ request }: Props) {
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-      <h2 className="text-xl font-semibold text-white">
-        Timeline
-      </h2>
+      <h2 className="text-xl font-semibold text-white">Timeline</h2>
 
       <p className="mt-2 text-slate-400">
         Timeline for request #{request.id.slice(0, 6)}
@@ -48,8 +47,12 @@ export default function TimelinePanel({ request }: Props) {
         {events.map((event, index) => (
           <div key={index} className="flex gap-4">
             <div className="flex flex-col items-center">
-              <div className={`h-4 w-4 rounded-full border-2 ${event.completed ? 'bg-blue-500 border-blue-500' : 'border-slate-700 bg-slate-900'}`} />
-              {index < events.length - 1 && <div className="w-0.5 grow bg-slate-800 my-1" />}
+              <div
+                className={`h-4 w-4 rounded-full border-2 ${event.completed ? "bg-blue-500 border-blue-500" : "border-slate-700 bg-slate-900"}`}
+              />
+              {index < events.length - 1 && (
+                <div className="w-0.5 grow bg-slate-800 my-1" />
+              )}
             </div>
             <div>
               <h3 className="text-sm font-medium text-white">{event.title}</h3>

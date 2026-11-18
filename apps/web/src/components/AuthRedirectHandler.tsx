@@ -25,7 +25,7 @@ export default function AuthRedirectHandler() {
         if (result) {
           // User signed in via redirect
           const user = result.user;
-          
+
           toast.success(
             `Welcome${user.displayName ? `, ${user.displayName}` : ""}!`
           );
@@ -37,9 +37,8 @@ export default function AuthRedirectHandler() {
             // layout, and the profile service pulls in the Firestore SDK. A static
             // import would ship ~160 KB (gzip) of Firestore to every public page
             // for a lookup that only matters when returning from a redirect sign-in.
-            const { ensureUserProfile } = await import(
-              "@/features/users/services/userProfile"
-            );
+            const { ensureUserProfile } =
+              await import("@/features/users/services/userProfile");
             // Redirect sign-in bypasses registration just like the popup flow,
             // so repair a missing profile before navigating.
             const profile = await ensureUserProfile({

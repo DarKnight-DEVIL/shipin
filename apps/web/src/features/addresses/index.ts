@@ -6,7 +6,7 @@
  * walking into subdirectories.
  */
 
-export type { Address } from '@/types/address';
+export type { Address } from "@/types/address";
 
 export {
   getAddresses,
@@ -15,4 +15,4 @@ export {
   deleteAddress,
   setDefaultAddress,
   getDefaultAddress,
-} from './services/addresses';
+} from "./services/addresses";

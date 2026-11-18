@@ -43,7 +43,9 @@ function isRetryableStatus(status: number): boolean {
 }
 
 function sleep(ms: number): Promise<void> {
-  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
+  return ms > 0
+    ? new Promise((resolve) => setTimeout(resolve, ms))
+    : Promise.resolve();
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -66,7 +68,9 @@ function asArray(value: unknown): unknown[] {
 function toIsoDate(value: unknown): string | undefined {
   if (typeof value === "number") {
     const fromNumber = new Date(value);
-    return Number.isNaN(fromNumber.getTime()) ? undefined : fromNumber.toISOString();
+    return Number.isNaN(fromNumber.getTime())
+      ? undefined
+      : fromNumber.toISOString();
   }
 
   const text = asString(value);
@@ -81,10 +85,12 @@ export function normalizeCarrierStatus(value: unknown): string {
   const text = asString(value);
   if (!text) return "unknown";
 
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "") || "unknown";
+  return (
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "unknown"
+  );
 }
 
 /**
@@ -140,7 +146,10 @@ export function mapIndiaPostResponse(payload: unknown): CarrierSnapshot {
 
   return {
     carrierStatus: normalizeCarrierStatus(
-      data.status ?? data.currentStatus ?? data.deliveryStatus ?? events.at(-1)?.code
+      data.status ??
+        data.currentStatus ??
+        data.deliveryStatus ??
+        events.at(-1)?.code
     ),
     events,
     ...(estimatedDelivery ? { estimatedDelivery } : {}),

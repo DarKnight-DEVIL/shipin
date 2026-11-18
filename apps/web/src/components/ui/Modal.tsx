@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default function Modal({ open, title, onClose, children }: Props) {
-  const [mounted] = useState(() => typeof document !== 'undefined');
+  const [mounted] = useState(() => typeof document !== "undefined");
 
   useEffect(() => {
     if (!open) return;

@@ -10,10 +10,10 @@
  * Nothing here touches PayPal: every spec that uses a token stops at input
  * validation or an unknown fixture id.
  */
-import type { APIRequestContext } from '@playwright/test';
+import type { APIRequestContext } from "@playwright/test";
 
-const EMULATOR_HOST = process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ?? '';
-const API_KEY = process.env.E2E_FIREBASE_API_KEY || 'fake-api-key';
+const EMULATOR_HOST = process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ?? "";
+const API_KEY = process.env.E2E_FIREBASE_API_KEY || "fake-api-key";
 
 /** True when the Auth emulator is reachable, i.e. the run is `--signed-in`. */
 export function hasEmulatorAuth(): boolean {
@@ -45,7 +45,7 @@ export async function signIn(
   email: string,
   password: string
 ): Promise<string | null> {
-  const result = await callIdentity(request, 'accounts:signInWithPassword', {
+  const result = await callIdentity(request, "accounts:signInWithPassword", {
     email,
     password,
     returnSecureToken: true,
@@ -60,7 +60,7 @@ export async function signUp(
   email: string,
   password: string
 ): Promise<string | null> {
-  const result = await callIdentity(request, 'accounts:signUp', {
+  const result = await callIdentity(request, "accounts:signUp", {
     email,
     password,
     returnSecureToken: true,

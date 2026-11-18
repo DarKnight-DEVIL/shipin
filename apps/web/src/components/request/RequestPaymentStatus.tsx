@@ -38,8 +38,7 @@ export default function RequestPaymentStatus({
     request.status === "review" || request.status === "awaiting_payment";
 
   const regenerationAlreadyRequested = Boolean(
-    request.quoteRegenerationRequested ||
-      request.quote?.regenerationRequested
+    request.quoteRegenerationRequested || request.quote?.regenerationRequested
   );
 
   async function handleRequestNewQuote() {
@@ -47,10 +46,9 @@ export default function RequestPaymentStatus({
 
     try {
       setRequestingQuote(true);
-      await customerApi<void>(
-        `/api/requests/${request.id}/request-new-quote`,
-        { method: "POST" }
-      );
+      await customerApi<void>(`/api/requests/${request.id}/request-new-quote`, {
+        method: "POST",
+      });
 
       toast.success("New quote requested", {
         description:
@@ -82,8 +80,7 @@ export default function RequestPaymentStatus({
       paypalAmount?: number;
     };
 
-    const paymentMethod =
-      payment.paymentMethod || payment.provider || "paypal";
+    const paymentMethod = payment.paymentMethod || payment.provider || "paypal";
     const walletAmount = Number(payment.walletAmount || 0);
     const paypalAmount = Number(payment.paypalAmount || 0);
     const totalPaid = Number(payment.amountPaid ?? payment.amount ?? 0);
@@ -172,8 +169,8 @@ export default function RequestPaymentStatus({
         </div>
 
         <p className="text-sm text-slate-500">
-          This quote can no longer be approved or paid. Request an updated
-          quote and our team will review your order again.
+          This quote can no longer be approved or paid. Request an updated quote
+          and our team will review your order again.
         </p>
 
         {regenerationAlreadyRequested ? (
@@ -243,4 +240,4 @@ export default function RequestPaymentStatus({
   }
 
   return null;
-}
+}

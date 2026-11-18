@@ -13,18 +13,18 @@
  * The end-to-end capture against PayPal sandbox is covered by
  * admin-refund.spec.ts on staging; these run locally against the emulators.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
-import { bearer, hasEmulatorAuth, signIn } from '../support/emulatorAuth';
+import { bearer, hasEmulatorAuth, signIn } from "../support/emulatorAuth";
 
-const adminEmail = process.env.E2E_ADMIN_EMAIL ?? '';
-const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? '';
+const adminEmail = process.env.E2E_ADMIN_EMAIL ?? "";
+const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? "";
 
-test.describe('checkout — anonymous callers are rejected', () => {
+test.describe("checkout — anonymous callers are rejected", () => {
   const steps = [
-    '/api/paypal/create-order',
-    '/api/paypal/capture-order',
-    '/api/payment/complete-wallet',
+    "/api/paypal/create-order",
+    "/api/paypal/capture-order",
+    "/api/payment/complete-wallet",
   ];
 
   for (const path of steps) {
@@ -33,22 +33,25 @@ test.describe('checkout — anonymous callers are rejected', () => {
 
       expect(response.status()).toBe(401);
       await expect(response.json()).resolves.toMatchObject({
-        code: 'AUTHENTICATION_REQUIRED',
+        code: "AUTHENTICATION_REQUIRED",
       });
     });
   }
 });
 
-test.describe('checkout — authenticated input validation', () => {
-  test('create-order rejects a request with no items before calling PayPal', async ({
+test.describe("checkout — authenticated input validation", () => {
+  test("create-order rejects a request with no items before calling PayPal", async ({
     request,
   }) => {
-    test.skip(!hasEmulatorAuth() || !adminEmail, 'needs the Auth emulator (--signed-in)');
+    test.skip(
+      !hasEmulatorAuth() || !adminEmail,
+      "needs the Auth emulator (--signed-in)"
+    );
 
     const token = await signIn(request, adminEmail, adminPassword);
-    test.skip(!token, 'the seeded admin could not sign in');
+    test.skip(!token, "the seeded admin could not sign in");
 
-    const response = await request.post('/api/paypal/create-order', {
+    const response = await request.post("/api/paypal/create-order", {
       headers: bearer(token),
       data: {},
     });
@@ -60,13 +63,15 @@ test.describe('checkout — authenticated input validation', () => {
   });
 });
 
-test.describe('checkout — the wallet page is behind auth', () => {
-  test('the top-up page sends a signed-out visitor to sign in', async ({ page }) => {
-    const response = await page.goto('/wallet/topup');
+test.describe("checkout — the wallet page is behind auth", () => {
+  test("the top-up page sends a signed-out visitor to sign in", async ({
+    page,
+  }) => {
+    const response = await page.goto("/wallet/topup");
 
     // Either the route renders the signed-out shell or the guard redirects;
     // what must not happen is a 500 or a stack trace.
     expect(response?.status() ?? 0).toBeLessThan(500);
-    await expect(page.locator('body')).not.toContainText('Application error');
+    await expect(page.locator("body")).not.toContainText("Application error");
   });
 });

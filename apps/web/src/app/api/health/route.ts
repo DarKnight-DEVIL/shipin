@@ -80,25 +80,29 @@ export async function GET() {
     { name: "login", limiter: loginRateLimiter },
   ];
 
-  const redisErrors = await Promise.all(limiters.map(async ({ name, limiter }) => {
-    const recent = await limiter.getErrorCounts(cutoff);
-    const all = await limiter.getErrorCounts(0);
-    return {
-      name,
-      // Number of failed Redis calls, not the number of affected clients:
-      // one client erroring repeatedly must not read as a single error.
-      recentErrors: recent.reduce((sum, entry) => sum + entry.errors, 0),
-      affectedClients: recent.length,
-      totalErrors: all.reduce((sum, entry) => sum + entry.errors, 0),
-      // When the most recent failure happened, or null if none did. This is as
-      // much per-client detail as a public probe may carry: the rows behind it
-      // are keyed by client address, and those addresses are customer data.
-      lastErrorAt:
-        recent.length > 0
-          ? new Date(Math.max(...recent.map((entry) => entry.lastErrorAt))).toISOString()
-          : null,
-    };
-  }));
+  const redisErrors = await Promise.all(
+    limiters.map(async ({ name, limiter }) => {
+      const recent = await limiter.getErrorCounts(cutoff);
+      const all = await limiter.getErrorCounts(0);
+      return {
+        name,
+        // Number of failed Redis calls, not the number of affected clients:
+        // one client erroring repeatedly must not read as a single error.
+        recentErrors: recent.reduce((sum, entry) => sum + entry.errors, 0),
+        affectedClients: recent.length,
+        totalErrors: all.reduce((sum, entry) => sum + entry.errors, 0),
+        // When the most recent failure happened, or null if none did. This is as
+        // much per-client detail as a public probe may carry: the rows behind it
+        // are keyed by client address, and those addresses are customer data.
+        lastErrorAt:
+          recent.length > 0
+            ? new Date(
+                Math.max(...recent.map((entry) => entry.lastErrorAt))
+              ).toISOString()
+            : null,
+      };
+    })
+  );
 
   const hasRecentErrors = redisErrors.some((e) => e.recentErrors > 0);
   const degraded = missingSharedStore || hasRecentErrors || appCheckBroken;
@@ -130,7 +134,10 @@ export async function GET() {
       rateLimits: {
         windowMs: "5m",
         errors: redisErrors,
-        totalRecentErrors: redisErrors.reduce((sum, e) => sum + e.recentErrors, 0),
+        totalRecentErrors: redisErrors.reduce(
+          (sum, e) => sum + e.recentErrors,
+          0
+        ),
         ...(isProduction && hasRecentErrors
           ? {
               warning:

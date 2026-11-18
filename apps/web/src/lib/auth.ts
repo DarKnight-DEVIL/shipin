@@ -5,13 +5,13 @@
  * error responses across all API endpoints.
  */
 
-import { NextResponse } from 'next/server';
-import type { DecodedIdToken } from 'firebase-admin/auth';
-import { adminAuth, adminDb } from '@/lib/firebaseAdmin';
-import { getAdminAuthError, type AdminUser } from './adminAuth';
-import { getAccountBlock } from './accountStatus';
-import { verifyAppCheckRequest } from './appCheck';
-import { toShipINError, serializeError } from '@/utils/errors';
+import { NextResponse } from "next/server";
+import type { DecodedIdToken } from "firebase-admin/auth";
+import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
+import { getAdminAuthError, type AdminUser } from "./adminAuth";
+import { getAccountBlock } from "./accountStatus";
+import { verifyAppCheckRequest } from "./appCheck";
+import { toShipINError, serializeError } from "@/utils/errors";
 
 export interface VerifyIdTokenOptions {
   /**
@@ -24,7 +24,7 @@ export interface VerifyIdTokenOptions {
 }
 
 export function extractAuth(request: Request): string | null {
-  const authorization = request.headers.get('authorization');
+  const authorization = request.headers.get("authorization");
   if (!authorization) return null;
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   return match?.[1]?.trim() || null;
@@ -37,9 +37,9 @@ export function extractAuth(request: Request): string | null {
  */
 export function redactPii(value: string): string {
   return value
-    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]')
-    .replace(/\+?\d[\d\s().-]{7,}\d/g, '[phone]')
-    .replace(/[\r\n]+/g, ' ');
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[email]")
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, "[phone]")
+    .replace(/[\r\n]+/g, " ");
 }
 
 /** Verify a Firebase ID token. Invalid tokens return null rather than throwing. */
@@ -53,10 +53,12 @@ export async function verifyIdToken(
     // Never log the raw error object — Firebase SDK errors can include
     // PII (user identifiers, phone numbers, etc.) in their messages.
     // Log only a safe, structured summary.
-    console.error('[Auth] Token verification failed:', {
-      errorCode: error instanceof Error ? error.name : 'UNKNOWN',
+    console.error("[Auth] Token verification failed:", {
+      errorCode: error instanceof Error ? error.name : "UNKNOWN",
       // Redact known PII shapes, then bound the length.
-      message: redactPii(error instanceof Error ? error.message : String(error)).slice(0, 200),
+      message: redactPii(
+        error instanceof Error ? error.message : String(error)
+      ).slice(0, 200),
     });
     return null;
   }
@@ -76,7 +78,9 @@ function blockedResponse(code: string, message: string): NextResponse {
  * Kept separate from the profile read so `requireAuthWithProfile` can apply the
  * account-state gate with a single Firestore read instead of two.
  */
-async function verifyRequest(request: Request): Promise<DecodedIdToken | NextResponse> {
+async function verifyRequest(
+  request: Request
+): Promise<DecodedIdToken | NextResponse> {
   // Checked before the ID token when enforcement is on: an unverified client is
   // rejected without spending a token verification on it.
   const appCheck = await verifyAppCheckRequest(request);
@@ -94,7 +98,11 @@ async function verifyRequest(request: Request): Promise<DecodedIdToken | NextRes
   const token = extractAuth(request);
   if (!token) {
     return NextResponse.json(
-      { success: false, error: "Authentication required.", code: "AUTHENTICATION_REQUIRED" },
+      {
+        success: false,
+        error: "Authentication required.",
+        code: "AUTHENTICATION_REQUIRED",
+      },
       { status: 401 }
     );
   }
@@ -102,7 +110,11 @@ async function verifyRequest(request: Request): Promise<DecodedIdToken | NextRes
   const decoded = await verifyIdToken(token);
   if (!decoded) {
     return NextResponse.json(
-      { success: false, error: "Invalid authentication token.", code: "INVALID_AUTHENTICATION" },
+      {
+        success: false,
+        error: "Invalid authentication token.",
+        code: "INVALID_AUTHENTICATION",
+      },
       { status: 401 }
     );
   }
@@ -110,7 +122,12 @@ async function verifyRequest(request: Request): Promise<DecodedIdToken | NextRes
   // Enforce email verification on all authenticated API access.
   if (decoded.email_verified !== true) {
     return NextResponse.json(
-      { success: false, error: "Please verify your email address before accessing this resource.", code: "EMAIL_VERIFICATION_REQUIRED" },
+      {
+        success: false,
+        error:
+          "Please verify your email address before accessing this resource.",
+        code: "EMAIL_VERIFICATION_REQUIRED",
+      },
       { status: 403 }
     );
   }
@@ -132,23 +149,32 @@ type AccountLookup =
  */
 async function loadAccount(uid: string): Promise<AccountLookup> {
   try {
-    const snapshot = await adminDb.collection('users').doc(uid).get();
-    const profile = snapshot.exists ? ((snapshot.data() ?? {}) as Record<string, unknown>) : null;
+    const snapshot = await adminDb.collection("users").doc(uid).get();
+    const profile = snapshot.exists
+      ? ((snapshot.data() ?? {}) as Record<string, unknown>)
+      : null;
     const block = getAccountBlock(profile);
 
     if (block) {
-      return { ok: false, response: blockedResponse(block.code, block.message) };
+      return {
+        ok: false,
+        response: blockedResponse(block.code, block.message),
+      };
     }
 
     return { ok: true, profile };
   } catch (error) {
-    console.error('[Auth] Account status check failed:', {
-      errorCode: error instanceof Error ? error.name : 'UNKNOWN',
+    console.error("[Auth] Account status check failed:", {
+      errorCode: error instanceof Error ? error.name : "UNKNOWN",
     });
     return {
       ok: false,
       response: NextResponse.json(
-        { success: false, error: 'Unable to verify account status.', code: 'INTERNAL_ERROR' },
+        {
+          success: false,
+          error: "Unable to verify account status.",
+          code: "INTERNAL_ERROR",
+        },
         { status: 500 }
       ),
     };
@@ -176,7 +202,7 @@ export async function requireAuth(
 
 export async function requireAuthWithProfile(
   request: Request,
-  allowedRoles?: Array<'admin' | 'customer'>
+  allowedRoles?: Array<"admin" | "customer">
 ): Promise<
   | { token: DecodedIdToken; profile: { uid: string; role?: string } }
   | NextResponse
@@ -189,19 +215,27 @@ export async function requireAuthWithProfile(
 
   if (!account.profile) {
     return NextResponse.json(
-      { success: false, error: "User profile not found.", code: "USER_PROFILE_NOT_FOUND" },
+      {
+        success: false,
+        error: "User profile not found.",
+        code: "USER_PROFILE_NOT_FOUND",
+      },
       { status: 403 }
     );
   }
 
   const role =
-    account.profile.role === 'admin' || account.profile.role === 'customer'
+    account.profile.role === "admin" || account.profile.role === "customer"
       ? account.profile.role
       : undefined;
 
-  if (allowedRoles && !allowedRoles.includes(role ?? 'customer')) {
+  if (allowedRoles && !allowedRoles.includes(role ?? "customer")) {
     return NextResponse.json(
-      { success: false, error: "Insufficient permissions.", code: "AUTHORIZATION_ERROR" },
+      {
+        success: false,
+        error: "Insufficient permissions.",
+        code: "AUTHORIZATION_ERROR",
+      },
       { status: 403 }
     );
   }
@@ -213,12 +247,19 @@ export async function requireAdmin(
   request: Request
 ): Promise<AdminUser | NextResponse> {
   try {
-    const adminAuthModule = await import('./adminAuth');
+    const adminAuthModule = await import("./adminAuth");
     return await adminAuthModule.requireAdmin(request);
   } catch (error) {
     const authError = getAdminAuthError(error);
     return NextResponse.json(
-      { success: false, error: authError.error, code: authError.status === 401 ? "AUTHENTICATION_REQUIRED" : "AUTHORIZATION_ERROR" },
+      {
+        success: false,
+        error: authError.error,
+        code:
+          authError.status === 401
+            ? "AUTHENTICATION_REQUIRED"
+            : "AUTHORIZATION_ERROR",
+      },
       { status: authError.status }
     );
   }
@@ -235,15 +276,15 @@ export function handleAuthError(error: unknown): {
 /**
  * Wrap an auth handler with centralized error handling.
  */
-export function withAuthHandler<T extends (...args: unknown[]) => Promise<NextResponse>>(
-  handler: T
-): (...args: Parameters<T>) => Promise<NextResponse> {
+export function withAuthHandler<
+  T extends (...args: unknown[]) => Promise<NextResponse>,
+>(handler: T): (...args: Parameters<T>) => Promise<NextResponse> {
   return async (...args: Parameters<T>): Promise<NextResponse> => {
     try {
       return await handler(...args);
     } catch (error) {
       const err = toShipINError(error);
-      console.error('[Auth API Error]', err.code, err.message);
+      console.error("[Auth API Error]", err.code, err.message);
       return NextResponse.json(serializeError(error), { status: err.status });
     }
   };

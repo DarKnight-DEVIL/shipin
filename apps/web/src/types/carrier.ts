@@ -9,4 +9,4 @@ export const CARRIERS = [
   "Aramex",
 ] as const;
 
-export type Carrier = typeof CARRIERS[number];
+export type Carrier = (typeof CARRIERS)[number];

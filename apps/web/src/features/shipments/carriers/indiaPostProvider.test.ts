@@ -1,108 +1,108 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import {
   createIndiaPostProvider,
   mapIndiaPostResponse,
   normalizeCarrierStatus,
-} from './indiaPostProvider';
-import { CarrierNotConfiguredError, CarrierRequestError } from './types';
+} from "./indiaPostProvider";
+import { CarrierNotConfiguredError, CarrierRequestError } from "./types";
 
 const config = {
-  endpoint: 'https://cept.example.test/track',
-  clientId: 'client',
-  clientSecret: 'secret',
+  endpoint: "https://cept.example.test/track",
+  clientId: "client",
+  clientSecret: "secret",
   retryDelayMs: 0,
 };
 
-describe('mapIndiaPostResponse', () => {
-  it('maps only the allowlisted fields', () => {
+describe("mapIndiaPostResponse", () => {
+  it("maps only the allowlisted fields", () => {
     const snapshot = mapIndiaPostResponse({
-      status: 'In Transit',
-      expectedDelivery: '2026-06-02',
+      status: "In Transit",
+      expectedDelivery: "2026-06-02",
       // Carrier charges must never reach the snapshot.
       tariff: 1200,
       postage: 450,
       charges: [{ amount: 999 }],
       events: [
         {
-          eventCode: 'IN_TRANSIT',
-          eventDescription: 'Bag dispatched from Mumbai',
-          officeName: 'Mumbai RMS',
-          eventDate: '2026-05-20T09:30:00Z',
+          eventCode: "IN_TRANSIT",
+          eventDescription: "Bag dispatched from Mumbai",
+          officeName: "Mumbai RMS",
+          eventDate: "2026-05-20T09:30:00Z",
         },
       ],
     });
 
     expect(snapshot).toEqual({
-      carrierStatus: 'in_transit',
-      estimatedDelivery: '2026-06-02',
+      carrierStatus: "in_transit",
+      estimatedDelivery: "2026-06-02",
       events: [
         {
-          code: 'IN_TRANSIT',
-          description: 'Bag dispatched from Mumbai',
-          location: 'Mumbai RMS',
-          occurredAt: '2026-05-20T09:30:00.000Z',
+          code: "IN_TRANSIT",
+          description: "Bag dispatched from Mumbai",
+          location: "Mumbai RMS",
+          occurredAt: "2026-05-20T09:30:00.000Z",
         },
       ],
     });
 
     const serialized = JSON.stringify(snapshot);
-    expect(serialized).not.toContain('tariff');
-    expect(serialized).not.toContain('1200');
-    expect(serialized).not.toContain('postage');
+    expect(serialized).not.toContain("tariff");
+    expect(serialized).not.toContain("1200");
+    expect(serialized).not.toContain("postage");
   });
 
-  it('unwraps a data envelope', () => {
+  it("unwraps a data envelope", () => {
     const snapshot = mapIndiaPostResponse({
       data: {
-        currentStatus: 'Item Delivered',
+        currentStatus: "Item Delivered",
         trackingEvents: [
           {
-            code: 'ITEM_DELIVERED',
-            description: 'Delivered to addressee',
-            timestamp: '2026-05-22T11:00:00Z',
+            code: "ITEM_DELIVERED",
+            description: "Delivered to addressee",
+            timestamp: "2026-05-22T11:00:00Z",
           },
         ],
       },
     });
 
-    expect(snapshot.carrierStatus).toBe('item_delivered');
+    expect(snapshot.carrierStatus).toBe("item_delivered");
     expect(snapshot.events).toHaveLength(1);
   });
 
-  it('drops events without a code, description or date', () => {
+  it("drops events without a code, description or date", () => {
     const snapshot = mapIndiaPostResponse({
-      status: 'Unknown',
+      status: "Unknown",
       events: [
-        { code: 'OK', description: 'Fine', eventDate: '2026-05-01T00:00:00Z' },
-        { description: 'Missing code', eventDate: '2026-05-01T00:00:00Z' },
-        { code: 'NO_DATE', description: 'Missing date' },
-        { code: 'BAD_DATE', description: 'Bad date', eventDate: 'not-a-date' },
-        'not-an-object',
+        { code: "OK", description: "Fine", eventDate: "2026-05-01T00:00:00Z" },
+        { description: "Missing code", eventDate: "2026-05-01T00:00:00Z" },
+        { code: "NO_DATE", description: "Missing date" },
+        { code: "BAD_DATE", description: "Bad date", eventDate: "not-a-date" },
+        "not-an-object",
       ],
     });
 
     expect(snapshot.events).toHaveLength(1);
-    expect(snapshot.events[0].code).toBe('OK');
+    expect(snapshot.events[0].code).toBe("OK");
   });
 
-  it('falls back to unknown when nothing usable is present', () => {
+  it("falls back to unknown when nothing usable is present", () => {
     expect(mapIndiaPostResponse(null)).toEqual({
-      carrierStatus: 'unknown',
+      carrierStatus: "unknown",
       events: [],
     });
   });
 });
 
-describe('normalizeCarrierStatus', () => {
-  it('normalises carrier wording', () => {
-    expect(normalizeCarrierStatus('Out for Delivery')).toBe('out_for_delivery');
-    expect(normalizeCarrierStatus('  DELIVERED  ')).toBe('delivered');
-    expect(normalizeCarrierStatus(undefined)).toBe('unknown');
+describe("normalizeCarrierStatus", () => {
+  it("normalises carrier wording", () => {
+    expect(normalizeCarrierStatus("Out for Delivery")).toBe("out_for_delivery");
+    expect(normalizeCarrierStatus("  DELIVERED  ")).toBe("delivered");
+    expect(normalizeCarrierStatus(undefined)).toBe("unknown");
   });
 });
 
-describe('createIndiaPostProvider', () => {
+describe("createIndiaPostProvider", () => {
   const originalFetch = global.fetch;
 
   beforeEach(() => {
@@ -114,125 +114,135 @@ describe('createIndiaPostProvider', () => {
     vi.restoreAllMocks();
   });
 
-  it('refuses to run without credentials', async () => {
+  it("refuses to run without credentials", async () => {
     const provider = createIndiaPostProvider({
-      endpoint: '',
-      clientId: '',
-      clientSecret: '',
+      endpoint: "",
+      clientId: "",
+      clientSecret: "",
     });
 
-    await expect(provider.fetchTracking('EE1IN')).rejects.toBeInstanceOf(
+    await expect(provider.fetchTracking("EE1IN")).rejects.toBeInstanceOf(
       CarrierNotConfiguredError
     );
   });
 
-  it('posts the number and maps the answer', async () => {
+  it("posts the number and maps the answer", async () => {
     vi.mocked(global.fetch).mockResolvedValue(
       new Response(
         JSON.stringify({
-          status: 'In Transit',
+          status: "In Transit",
           events: [
             {
-              eventCode: 'IN_TRANSIT',
-              eventDescription: 'In transit',
-              eventDate: '2026-05-20T09:30:00Z',
+              eventCode: "IN_TRANSIT",
+              eventDescription: "In transit",
+              eventDate: "2026-05-20T09:30:00Z",
             },
           ],
         }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
+        { status: 200, headers: { "Content-Type": "application/json" } }
       )
     );
 
     const provider = createIndiaPostProvider(config);
-    const snapshot = await provider.fetchTracking('EE123456789IN');
+    const snapshot = await provider.fetchTracking("EE123456789IN");
 
-    expect(snapshot.carrierStatus).toBe('in_transit');
+    expect(snapshot.carrierStatus).toBe("in_transit");
 
     const [url, init] = vi.mocked(global.fetch).mock.calls[0];
     expect(url).toBe(config.endpoint);
-    expect(init?.method).toBe('POST');
+    expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toEqual({
-      trackingNumber: 'EE123456789IN',
+      trackingNumber: "EE123456789IN",
     });
-    expect(String((init?.headers as Record<string, string>).Authorization)).toBe(
-      `Basic ${Buffer.from('client:secret').toString('base64')}`
-    );
+    expect(
+      String((init?.headers as Record<string, string>).Authorization)
+    ).toBe(`Basic ${Buffer.from("client:secret").toString("base64")}`);
   });
 
-  it('retries a transient 503 and returns the answer', async () => {
+  it("retries a transient 503 and returns the answer", async () => {
     vi.mocked(global.fetch)
-      .mockResolvedValueOnce(new Response('busy', { status: 503 }))
+      .mockResolvedValueOnce(new Response("busy", { status: 503 }))
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            status: 'In Transit',
+            status: "In Transit",
             events: [
               {
-                eventCode: 'IN_TRANSIT',
-                eventDescription: 'In transit',
-                eventDate: '2026-05-20T09:30:00Z',
+                eventCode: "IN_TRANSIT",
+                eventDescription: "In transit",
+                eventDate: "2026-05-20T09:30:00Z",
               },
             ],
           }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } }
+          { status: 200, headers: { "Content-Type": "application/json" } }
         )
       );
 
     const provider = createIndiaPostProvider(config);
-    const snapshot = await provider.fetchTracking('EE1IN');
+    const snapshot = await provider.fetchTracking("EE1IN");
 
-    expect(snapshot.carrierStatus).toBe('in_transit');
+    expect(snapshot.carrierStatus).toBe("in_transit");
     expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(2);
   });
 
-  it('retries a dropped connection', async () => {
+  it("retries a dropped connection", async () => {
     vi.mocked(global.fetch)
-      .mockRejectedValueOnce(new Error('ECONNRESET'))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'In Transit' }), { status: 200 }));
+      .mockRejectedValueOnce(new Error("ECONNRESET"))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: "In Transit" }), { status: 200 })
+      );
 
     const provider = createIndiaPostProvider(config);
-    await provider.fetchTracking('EE1IN');
+    await provider.fetchTracking("EE1IN");
 
     expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(2);
   });
 
-  it('does not retry a client error', async () => {
-    vi.mocked(global.fetch).mockResolvedValue(new Response('bad request', { status: 400 }));
+  it("does not retry a client error", async () => {
+    vi.mocked(global.fetch).mockResolvedValue(
+      new Response("bad request", { status: 400 })
+    );
 
     const provider = createIndiaPostProvider(config);
 
-    await expect(provider.fetchTracking('EE1IN')).rejects.toMatchObject({ status: 400 });
+    await expect(provider.fetchTracking("EE1IN")).rejects.toMatchObject({
+      status: 400,
+    });
     expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(1);
   });
 
-  it('gives up after the attempt budget and reports the last status', async () => {
-    vi.mocked(global.fetch).mockResolvedValue(new Response('nope', { status: 503 }));
+  it("gives up after the attempt budget and reports the last status", async () => {
+    vi.mocked(global.fetch).mockResolvedValue(
+      new Response("nope", { status: 503 })
+    );
 
     const provider = createIndiaPostProvider(config);
 
-    await expect(provider.fetchTracking('EE1IN')).rejects.toMatchObject({
-      name: 'CarrierRequestError',
+    await expect(provider.fetchTracking("EE1IN")).rejects.toMatchObject({
+      name: "CarrierRequestError",
       status: 503,
     });
     expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(3);
   });
 
-  it('reports a transport failure as a carrier error', async () => {
-    vi.mocked(global.fetch).mockRejectedValue(new Error('ECONNRESET'));
+  it("reports a transport failure as a carrier error", async () => {
+    vi.mocked(global.fetch).mockRejectedValue(new Error("ECONNRESET"));
 
     const provider = createIndiaPostProvider(config);
 
-    await expect(provider.fetchTracking('EE1IN')).rejects.toBeInstanceOf(
+    await expect(provider.fetchTracking("EE1IN")).rejects.toBeInstanceOf(
       CarrierRequestError
     );
   });
 
-  it('reports unreadable JSON as a carrier error', async () => {
-    vi.mocked(global.fetch).mockResolvedValue(new Response('not json', { status: 200 }));
+  it("reports unreadable JSON as a carrier error", async () => {
+    vi.mocked(global.fetch).mockResolvedValue(
+      new Response("not json", { status: 200 })
+    );
 
     const provider = createIndiaPostProvider(config);
 
-    await expect(provider.fetchTracking('EE1IN')).rejects.toBeInstanceOf(
+    await expect(provider.fetchTracking("EE1IN")).rejects.toBeInstanceOf(
       CarrierRequestError
     );
   });

@@ -50,15 +50,14 @@ function parseSerializedTimestamp(value: unknown): number | null {
   if (typeof seconds !== "number" || !Number.isFinite(seconds)) return null;
 
   const nanoseconds = record.nanoseconds ?? record._nanoseconds;
-  const millis = typeof nanoseconds === "number" ? Math.floor(nanoseconds / 1e6) : 0;
+  const millis =
+    typeof nanoseconds === "number" ? Math.floor(nanoseconds / 1e6) : 0;
 
   return seconds * 1000 + millis;
 }
 
 /** True only when an expiry is set and that time has passed. */
-export function isQuoteExpired(
-  expiresAt?: Timestamp | Date | string
-): boolean {
+export function isQuoteExpired(expiresAt?: Timestamp | Date | string): boolean {
   const ms = parseQuoteExpiry(expiresAt);
   return ms !== null && ms <= Date.now();
 }

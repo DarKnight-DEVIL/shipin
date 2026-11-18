@@ -68,20 +68,20 @@ export const COMPLIANCE_COVERAGE = {
  */
 export const COVERAGE_GLOB_THRESHOLDS = {
   // ---- Payment-critical: money movement, refunds, wallet balances ----
-  'src/app/api/paypal/**': PAYMENT_COVERAGE,
-  'src/app/api/payment/**': PAYMENT_COVERAGE,
-  'src/app/api/admin/wallet/**': PAYMENT_COVERAGE,
-  'src/app/api/admin/requests/*/*refund*/**': PAYMENT_COVERAGE,
-  'src/lib/paypal.ts': PAYMENT_COVERAGE,
-  'src/features/wallet/**': PAYMENT_COVERAGE,
-  'src/features/finance/**': PAYMENT_COVERAGE,
-  'src/features/payment/**': PAYMENT_COVERAGE,
+  "src/app/api/paypal/**": PAYMENT_COVERAGE,
+  "src/app/api/payment/**": PAYMENT_COVERAGE,
+  "src/app/api/admin/wallet/**": PAYMENT_COVERAGE,
+  "src/app/api/admin/requests/*/*refund*/**": PAYMENT_COVERAGE,
+  "src/lib/paypal.ts": PAYMENT_COVERAGE,
+  "src/features/wallet/**": PAYMENT_COVERAGE,
+  "src/features/finance/**": PAYMENT_COVERAGE,
+  "src/features/payment/**": PAYMENT_COVERAGE,
   // Admin wallet hook: credit top-ups and refund requests live here, but it
   // sits under features/admin, so no wallet glob reached it. Listed explicitly
   // rather than widening `features/admin/**`, which is mostly not money code.
-  'src/features/admin/hooks/useAdminWallet.ts': PAYMENT_COVERAGE,
+  "src/features/admin/hooks/useAdminWallet.ts": PAYMENT_COVERAGE,
 
   // ---- DPDP/GDPR compliance: consent, retention, data-subject rights ----
-  'src/lib/compliance/**': COMPLIANCE_COVERAGE,
-  'src/app/api/compliance/**': COMPLIANCE_COVERAGE,
+  "src/lib/compliance/**": COMPLIANCE_COVERAGE,
+  "src/app/api/compliance/**": COMPLIANCE_COVERAGE,
 };

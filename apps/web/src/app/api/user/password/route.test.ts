@@ -9,7 +9,9 @@ const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
 }));
 
-vi.mock("@/lib/auth", () => ({ requireAuthWithProfile: mocks.requireAuthWithProfile }));
+vi.mock("@/lib/auth", () => ({
+  requireAuthWithProfile: mocks.requireAuthWithProfile,
+}));
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminAuth: {
     getUser: mocks.getUser,
@@ -69,7 +71,9 @@ describe("POST /api/user/password", () => {
     );
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({ code: "WEAK_PASSWORD" });
+    await expect(response.json()).resolves.toMatchObject({
+      code: "WEAK_PASSWORD",
+    });
     expect(mocks.updateUser).not.toHaveBeenCalled();
   });
 
@@ -80,7 +84,9 @@ describe("POST /api/user/password", () => {
     );
 
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toMatchObject({ code: "INVALID_CREDENTIALS" });
+    await expect(response.json()).resolves.toMatchObject({
+      code: "INVALID_CREDENTIALS",
+    });
     expect(mocks.updateUser).not.toHaveBeenCalled();
   });
 
@@ -100,7 +106,9 @@ describe("POST /api/user/password", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.fetch.mock.calls[0][0]).toContain("signInWithPassword");
-    expect(mocks.updateUser).toHaveBeenCalledWith("user-1", { password: "newpass123" });
+    expect(mocks.updateUser).toHaveBeenCalledWith("user-1", {
+      password: "newpass123",
+    });
     expect(mocks.revokeRefreshTokens).toHaveBeenCalledWith("user-1");
   });
 
@@ -115,6 +123,8 @@ describe("POST /api/user/password", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.fetch).not.toHaveBeenCalled();
-    expect(mocks.updateUser).toHaveBeenCalledWith("user-1", { password: "newpass123" });
+    expect(mocks.updateUser).toHaveBeenCalledWith("user-1", {
+      password: "newpass123",
+    });
   });
 });

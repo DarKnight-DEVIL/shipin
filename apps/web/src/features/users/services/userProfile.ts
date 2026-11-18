@@ -1,7 +1,4 @@
-import {
-  doc,
-  getDoc,
-} from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 
 import { db } from "@/lib/firebaseDb";
 import { customerApi } from "@/lib/customerApiClient";
@@ -81,14 +78,9 @@ export interface UserProfile {
 export async function getUserProfile(
   userId: string
 ): Promise<UserProfile | null> {
-  const ref = doc(
-    db,
-    "users",
-    userId
-  );
+  const ref = doc(db, "users", userId);
 
-  const snapshot =
-    await getDoc(ref);
+  const snapshot = await getDoc(ref);
 
   if (!snapshot.exists()) {
     return null;
@@ -115,17 +107,13 @@ export async function createUserProfile(
     await customerApi<{ success: boolean }>("/api/profile", {
       method: "POST",
       body: {
-        displayName:
-          profile.displayName,
+        displayName: profile.displayName,
 
-        email:
-          profile.email,
+        email: profile.email,
 
-        phone:
-          profile.phone ?? "",
+        phone: profile.phone ?? "",
 
-        photoURL:
-          profile.photoURL ?? "",
+        photoURL: profile.photoURL ?? "",
       },
     });
   } catch (error) {
@@ -206,18 +194,18 @@ async function loadOrRepairProfile(user: {
   if (existing) return existing;
 
   const displayName =
-    user.displayName?.trim() || user.email?.split('@')[0] || 'ShipIN customer';
-  const email = user.email ?? '';
-  const photoURL = user.photoURL ?? '';
+    user.displayName?.trim() || user.email?.split("@")[0] || "ShipIN customer";
+  const email = user.email ?? "";
+  const photoURL = user.photoURL ?? "";
 
   try {
     await createUserProfile(user.uid, { displayName, email, photoURL });
   } catch (error) {
-    console.error('[profile] Could not create the profile document:', error);
+    console.error("[profile] Could not create the profile document:", error);
     return null;
   }
 
-  return { displayName, email, phone: '', photoURL };
+  return { displayName, email, phone: "", photoURL };
 }
 
 export async function updateUserProfile(

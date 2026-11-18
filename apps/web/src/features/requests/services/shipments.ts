@@ -1,9 +1,9 @@
 import "server-only";
 
-import { adminDb } from '@/lib/firebaseAdmin';
-import { FieldValue } from 'firebase-admin/firestore';
-import { NotFoundError } from '@/utils/errors';
-import { Timestamp } from 'firebase-admin/firestore';
+import { adminDb } from "@/lib/firebaseAdmin";
+import { FieldValue } from "firebase-admin/firestore";
+import { NotFoundError } from "@/utils/errors";
+import { Timestamp } from "firebase-admin/firestore";
 
 interface ShipmentDetails {
   internalTrackingId: string;
@@ -22,11 +22,11 @@ export async function saveShipmentDetails(
   requestId: string,
   details: ShipmentDetails
 ): Promise<void> {
-  const requestRef = adminDb.collection('requests').doc(requestId);
+  const requestRef = adminDb.collection("requests").doc(requestId);
   const snapshot = await requestRef.get();
 
   if (!snapshot.exists) {
-    throw new NotFoundError('Request');
+    throw new NotFoundError("Request");
   }
 
   await requestRef.update({
@@ -40,7 +40,7 @@ export async function saveShipmentDetails(
       estimatedDelivery: details.estimatedDelivery
         ? Timestamp.fromDate(details.estimatedDelivery)
         : null,
-      trackingUrl: details.trackingUrl ?? '',
+      trackingUrl: details.trackingUrl ?? "",
       createdAt: Timestamp.fromDate(details.createdAt),
     },
     updatedAt: FieldValue.serverTimestamp(),
@@ -55,11 +55,11 @@ export async function updateShipmentStatus(
   requestId: string,
   status: string
 ): Promise<void> {
-  const requestRef = adminDb.collection('requests').doc(requestId);
+  const requestRef = adminDb.collection("requests").doc(requestId);
   const snapshot = await requestRef.get();
 
   if (!snapshot.exists) {
-    throw new NotFoundError('Request');
+    throw new NotFoundError("Request");
   }
 
   await requestRef.update({

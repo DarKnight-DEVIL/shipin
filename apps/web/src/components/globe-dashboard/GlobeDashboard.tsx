@@ -49,7 +49,8 @@ const GLOBE_RADIUS = 1;
 const GLOBE_FOV = 45;
 const GLOBE_CAMERA_Z = 3.2;
 const GLOBE_PROJECTED_DIAMETER =
-  (GLOBE_RADIUS * 2) / (2 * Math.tan((GLOBE_FOV * Math.PI) / 360) * GLOBE_CAMERA_Z);
+  (GLOBE_RADIUS * 2) /
+  (2 * Math.tan((GLOBE_FOV * Math.PI) / 360) * GLOBE_CAMERA_Z);
 
 // Optional optical nudge for the toggle + panel column. 0 keeps the column
 // exactly centred on the globe, which is where the alignment comes from.
@@ -67,7 +68,11 @@ const LOCATION_LIST_PADDING_BOTTOM = 16;
 // Users with "reduce motion" enabled get a static globe by default.
 const ANIMATION_STARTS_ON = true;
 
-function latLngToVector3(lat: number, lng: number, radius: number = 1): THREE.Vector3 {
+function latLngToVector3(
+  lat: number,
+  lng: number,
+  radius: number = 1
+): THREE.Vector3 {
   const phi = (90 - lat) * (Math.PI / 180);
   const theta = (lng + 180) * (Math.PI / 180);
   const x = -(Math.sin(phi) * Math.cos(theta));
@@ -81,14 +86,18 @@ function getTheme(dark: boolean): GlobeTheme {
     panelBg: dark
       ? "linear-gradient(135deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.30) 100%)"
       : "linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.20) 100%)",
-    panelBorder: dark ? "rgba(255, 255, 255, 0.18)" : "rgba(255, 255, 255, 0.8)",
+    panelBorder: dark
+      ? "rgba(255, 255, 255, 0.18)"
+      : "rgba(255, 255, 255, 0.8)",
     panelSheen: dark
       ? "linear-gradient(120deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.02) 50%, rgba(255, 255, 255, 0) 100%)"
       : "linear-gradient(120deg, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0) 100%)",
     panelShadow: dark
       ? "0 10px 30px 0 rgba(0, 0, 0, 0.4), inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 0 rgba(0, 0, 0, 0.4)"
       : "0 10px 30px 0 rgba(31, 38, 135, 0.12), inset 0 1px 0 0 rgba(255, 255, 255, 0.9), inset 0 -1px 0 0 rgba(255, 255, 255, 0.4)",
-    rowHoverBg: dark ? "rgba(255, 255, 255, 0.08)" : "rgba(255, 255, 255, 0.45)",
+    rowHoverBg: dark
+      ? "rgba(255, 255, 255, 0.08)"
+      : "rgba(255, 255, 255, 0.45)",
     rowHoverShadow: dark
       ? "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)"
       : "0 4px 12px rgba(31, 38, 135, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)",
@@ -119,7 +128,12 @@ interface MotionToggleProps {
  * gets the same starting state and the same button, so the behaviour never
  * depends on a system preference that can change underneath us.
  */
-function MotionToggle({ theme, accentColor, motionEnabled, onToggleMotion }: MotionToggleProps) {
+function MotionToggle({
+  theme,
+  accentColor,
+  motionEnabled,
+  onToggleMotion,
+}: MotionToggleProps) {
   const active = motionEnabled;
   const label = active ? "Animation on" : "Load the animation";
   const hint = active
@@ -157,7 +171,8 @@ function MotionToggle({ theme, accentColor, motionEnabled, onToggleMotion }: Mot
         boxShadow: active
           ? "0 6px 18px rgba(15, 23, 42, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.45)"
           : "inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 4px 14px rgba(31, 38, 135, 0.10)",
-        transition: "background 0.25s ease, box-shadow 0.25s ease, color 0.25s ease, border-color 0.25s ease",
+        transition:
+          "background 0.25s ease, box-shadow 0.25s ease, color 0.25s ease, border-color 0.25s ease",
       }}
     >
       <span
@@ -230,15 +245,29 @@ function LocationsPanel({
         boxShadow: theme.panelShadow,
       }}
     >
-      <div aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none", background: theme.panelSheen }} />
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 0,
+          pointerEvents: "none",
+          background: theme.panelSheen,
+        }}
+      />
 
-      <div style={{
-        position: "relative", zIndex: 1,
-        fontSize: 10, fontWeight: 700,
-        letterSpacing: "0.14em", textTransform: "uppercase",
-        color: theme.textMuted,
-        padding: `20px ${rightPanelPadding}px 10px`,
-      }}>
+      <div
+        style={{
+          position: "relative",
+          zIndex: 1,
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color: theme.textMuted,
+          padding: `20px ${rightPanelPadding}px 10px`,
+        }}
+      >
         Locations
       </div>
 
@@ -256,7 +285,7 @@ function LocationsPanel({
             background: theme.rowHoverBg,
             color: theme.textPrimary,
             fontSize: 12,
-            outline: "none"
+            outline: "none",
           }}
         />
       </div>
@@ -270,22 +299,29 @@ function LocationsPanel({
           // Exactly five rows tall, so the list never grows, shrinks or scrolls.
           // It can still shrink and scroll if a short viewport squeezes the panel.
           flex: "0 1 auto",
-          height: LOCATION_ROW_HEIGHT * LOCATION_ROW_COUNT + LOCATION_LIST_PADDING_BOTTOM,
+          height:
+            LOCATION_ROW_HEIGHT * LOCATION_ROW_COUNT +
+            LOCATION_LIST_PADDING_BOTTOM,
           boxSizing: "border-box",
           minHeight: 0,
           overflowY: "auto",
           overscrollBehavior: "contain",
           padding: `0 10px ${LOCATION_LIST_PADDING_BOTTOM}px`,
           scrollbarWidth: "none",
-          msOverflowStyle: "none"
+          msOverflowStyle: "none",
         }}
       >
         {locations.map(({ location: loc, muted }) => {
-          const selected = selectedLocation && selectedLocation.title === loc.title;
+          const selected =
+            selectedLocation && selectedLocation.title === loc.title;
           const isSuspended = loc.status === "suspended";
           const dotBg = selected
-            ? (isSuspended ? "#EF4444" : "#10B981")
-            : (isSuspended ? "#F87171" : accentColor);
+            ? isSuspended
+              ? "#EF4444"
+              : "#10B981"
+            : isSuspended
+              ? "#F87171"
+              : accentColor;
 
           return (
             <div
@@ -314,21 +350,51 @@ function LocationsPanel({
                 background: selected ? theme.rowHoverBg : "transparent",
                 boxShadow: selected ? theme.rowHoverShadow : "none",
                 transform: selected ? "translateX(3px)" : "none",
-                transition: "background 0.2s ease, box-shadow 0.25s ease, transform 0.25s cubic-bezier(0.22,1,0.36,1)",
+                transition:
+                  "background 0.2s ease, box-shadow 0.25s ease, transform 0.25s cubic-bezier(0.22,1,0.36,1)",
               }}
             >
-              <div style={{
-                width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
-                background: dotBg,
-                boxShadow: selected ? `0 0 8px ${dotBg}` : "none",
-                transform: selected ? "scale(1.4)" : "none",
-                transition: "background 0.2s ease, transform 0.25s cubic-bezier(0.22,1,0.36,1), box-shadow 0.25s ease",
-              }} />
+              <div
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  flexShrink: 0,
+                  background: dotBg,
+                  boxShadow: selected ? `0 0 8px ${dotBg}` : "none",
+                  transform: selected ? "scale(1.4)" : "none",
+                  transition:
+                    "background 0.2s ease, transform 0.25s cubic-bezier(0.22,1,0.36,1), box-shadow 0.25s ease",
+                }}
+              />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: selected ? theme.textPrimary : theme.textSub, letterSpacing: "-0.01em", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: selected ? theme.textPrimary : theme.textSub,
+                    letterSpacing: "-0.01em",
+                    lineHeight: 1.2,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
                   {loc.title}
                 </div>
-                <div style={{ fontSize: 10.5, lineHeight: 1.3, color: theme.textMuted, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{loc.subtitle}</div>
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    lineHeight: 1.3,
+                    color: theme.textMuted,
+                    marginTop: 2,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {loc.subtitle}
+                </div>
               </div>
             </div>
           );
@@ -370,25 +436,31 @@ export default function GlobeDashboard({
   // The render loop reads this ref instead of state, so toggling the animation
   // never requires tearing the loop down and rebuilding it.
   const motionEnabledRef = useRef<boolean>(
-    typeof window !== 'undefined'
-      ? !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    typeof window !== "undefined"
+      ? !window.matchMedia("(prefers-reduced-motion: reduce)").matches
       : ANIMATION_STARTS_ON
   );
-  const arcLineRef = useRef<THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial> | null>(null);
+  const arcLineRef = useRef<THREE.Line<
+    THREE.BufferGeometry,
+    THREE.LineDashedMaterial
+  > | null>(null);
 
   const [mounted, setMounted] = useState(false);
   const [motionEnabled, setMotionEnabled] = useState<boolean>(() => {
     // Respect the OS-level reduced-motion preference on initial render.
     // If the user has "reduce motion" enabled, start with animation OFF.
-    if (typeof window !== 'undefined') {
-      const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (typeof window !== "undefined") {
+      const prefersReduced = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+      ).matches;
       return !prefersReduced;
     }
     return ANIMATION_STARTS_ON;
   });
   const [revealed, setRevealed] = useState(false);
   const [searchValue, setSearchValue] = useState("");
-  const [selectedLocation, setSelectedLocation] = useState<GlobeLocation | null>(null);
+  const [selectedLocation, setSelectedLocation] =
+    useState<GlobeLocation | null>(null);
   const [showServicePopup, setShowServicePopup] = useState(false);
 
   // Rotation & Dragging State
@@ -405,33 +477,35 @@ export default function GlobeDashboard({
   const theme = useMemo(() => getTheme(darkMode), [darkMode]);
 
   // Keep the render loop in step with the parent's toggle when it is controlling.
-/* eslint-disable react-hooks/set-state-in-effect */
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (motionEnabledProp === undefined) return;
     motionEnabledRef.current = motionEnabledProp;
     setMotionEnabled(motionEnabledProp);
   }, [motionEnabledProp]);
-/* eslint-enable react-hooks/set-state-in-effect */
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const visibleLocations = useMemo<LocationEntry[]>(() => {
     const trimmed = searchValue.trim().toLowerCase();
     const searchActive = trimmed.length > 0;
 
     const matched = searchActive
-      ? allLocations.filter(loc =>
-          loc.title.toLowerCase().includes(trimmed) ||
-          (loc.keywords && loc.keywords.some(k => k.toLowerCase().includes(trimmed)))
+      ? allLocations.filter(
+          (loc) =>
+            loc.title.toLowerCase().includes(trimmed) ||
+            (loc.keywords &&
+              loc.keywords.some((k) => k.toLowerCase().includes(trimmed)))
         )
-      : allLocations.filter(loc => loc.isDefault);
+      : allLocations.filter((loc) => loc.isDefault);
 
     const entries: LocationEntry[] = matched
       .slice(0, LOCATION_ROW_COUNT)
-      .map(location => ({ location, muted: false }));
+      .map((location) => ({ location, muted: false }));
 
     // Pad back up to the fixed row count so the list is always the same height.
     // Padding rows are only muted when they follow an actual search.
     if (entries.length < LOCATION_ROW_COUNT) {
-      const taken = new Set(entries.map(entry => entry.location.title));
+      const taken = new Set(entries.map((entry) => entry.location.title));
       for (const location of allLocations) {
         if (entries.length >= LOCATION_ROW_COUNT) break;
         if (taken.has(location.title)) continue;
@@ -467,14 +541,18 @@ export default function GlobeDashboard({
     const hubPos = latLngToVector3(indiaHub.lat, indiaHub.lng, 1.008);
     const hubDotMesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.018, 16, 16),
-      new THREE.MeshBasicMaterial({ color: 0x3B82F6 })
+      new THREE.MeshBasicMaterial({ color: 0x3b82f6 })
     );
     hubDotMesh.position.copy(hubPos);
     activePinsGroupRef.current.add(hubDotMesh);
 
-    const targetPos = latLngToVector3(targetLocation.lat, targetLocation.lng, 1.008);
+    const targetPos = latLngToVector3(
+      targetLocation.lat,
+      targetLocation.lng,
+      1.008
+    );
     const isSuspended = targetLocation.status === "suspended";
-    const destColor = isSuspended ? 0xEF4444 : 0x10B981;
+    const destColor = isSuspended ? 0xef4444 : 0x10b981;
     const targetDotMesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.018, 16, 16),
       new THREE.MeshBasicMaterial({ color: destColor })
@@ -483,10 +561,16 @@ export default function GlobeDashboard({
     activePinsGroupRef.current.add(targetDotMesh);
 
     const startVec = latLngToVector3(INDIA_HUB.lat, INDIA_HUB.lng, 1.01);
-    const endVec = latLngToVector3(targetLocation.lat, targetLocation.lng, 1.01);
+    const endVec = latLngToVector3(
+      targetLocation.lat,
+      targetLocation.lng,
+      1.01
+    );
 
     const distance = startVec.distanceTo(endVec);
-    const midVec = new THREE.Vector3().addVectors(startVec, endVec).multiplyScalar(0.5);
+    const midVec = new THREE.Vector3()
+      .addVectors(startVec, endVec)
+      .multiplyScalar(0.5);
 
     const altitude = 1 + Math.max(0.2, distance * 0.45);
     midVec.normalize().multiplyScalar(altitude);
@@ -494,11 +578,15 @@ export default function GlobeDashboard({
     const curve = new THREE.QuadraticBezierCurve3(startVec, midVec, endVec);
     const points = curve.getPoints(64);
 
-    arcLineRef.current?.material.color.setHex(isSuspended ? 0xEF4444 : 0x3B82F6);
+    arcLineRef.current?.material.color.setHex(
+      isSuspended ? 0xef4444 : 0x3b82f6
+    );
 
     arcLineRef.current?.geometry.dispose();
     if (arcLineRef.current) {
-      arcLineRef.current.geometry = new THREE.BufferGeometry().setFromPoints(points);
+      arcLineRef.current.geometry = new THREE.BufferGeometry().setFromPoints(
+        points
+      );
     }
     arcLineRef.current?.computeLineDistances();
   };
@@ -524,12 +612,19 @@ export default function GlobeDashboard({
       // Allow clicking the animation toggle or inside the UI panel without
       // deselecting. The toggle lives outside the panel now, so it needs its
       // own exemption.
-      if (target.closest && (target.closest('.locations-panel') || target.closest('.motion-toggle'))) {
+      if (
+        target.closest &&
+        (target.closest(".locations-panel") || target.closest(".motion-toggle"))
+      ) {
         return;
       }
 
       // Check distance if clicking on the canvas
-      if (mountRef.current && target.tagName && target.tagName.toLowerCase() === 'canvas') {
+      if (
+        mountRef.current &&
+        target.tagName &&
+        target.tagName.toLowerCase() === "canvas"
+      ) {
         const rect = mountRef.current.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
@@ -550,11 +645,11 @@ export default function GlobeDashboard({
       onLocationDeselect();
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
 
-    if (!document.getElementById('globe-styles')) {
-      const styleEl = document.createElement('style');
-      styleEl.id = 'globe-styles';
+    if (!document.getElementById("globe-styles")) {
+      const styleEl = document.createElement("style");
+      styleEl.id = "globe-styles";
       styleEl.textContent = `
         @keyframes popupFadeIn {
           from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
@@ -574,11 +669,13 @@ export default function GlobeDashboard({
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
@@ -589,7 +686,12 @@ export default function GlobeDashboard({
     const height = container.clientHeight || 480;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(GLOBE_FOV, width / height, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(
+      GLOBE_FOV,
+      width / height,
+      0.1,
+      1000
+    );
     camera.position.set(0, 0, GLOBE_CAMERA_Z);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -629,8 +731,14 @@ export default function GlobeDashboard({
     globeGroup.add(activePinsGroup);
     activePinsGroupRef.current = activePinsGroup;
 
-    const earthSrc = typeof earthTextureUrl === "string" ? earthTextureUrl : earthTextureUrl?.src;
-    const cloudsSrc = typeof cloudsTextureUrl === "string" ? cloudsTextureUrl : cloudsTextureUrl?.src;
+    const earthSrc =
+      typeof earthTextureUrl === "string"
+        ? earthTextureUrl
+        : earthTextureUrl?.src;
+    const cloudsSrc =
+      typeof cloudsTextureUrl === "string"
+        ? cloudsTextureUrl
+        : cloudsTextureUrl?.src;
     const textureLoader = new THREE.TextureLoader();
 
     let disposed = false;
@@ -647,13 +755,18 @@ export default function GlobeDashboard({
     revealFallback.timer = setTimeout(reveal, 1200);
 
     if (earthSrc) {
-      textureLoader.load(earthSrc, (tex) => {
-        tex.colorSpace = THREE.SRGBColorSpace;
-        earthMat.color.setHex(0xffffff);
-        earthMat.map = tex;
-        earthMat.needsUpdate = true;
-        reveal();
-      }, undefined, () => reveal());
+      textureLoader.load(
+        earthSrc,
+        (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          earthMat.color.setHex(0xffffff);
+          earthMat.map = tex;
+          earthMat.needsUpdate = true;
+          reveal();
+        },
+        undefined,
+        () => reveal()
+      );
     } else {
       reveal();
     }
@@ -667,7 +780,7 @@ export default function GlobeDashboard({
     }
 
     const lineMat = new THREE.LineDashedMaterial({
-      color: 0x38BDF8,
+      color: 0x38bdf8,
       linewidth: 3,
       dashSize: 0.08,
       gapSize: 0.04,
@@ -692,14 +805,28 @@ export default function GlobeDashboard({
           targetLatRef.current += (0 - targetLatRef.current) * 0.08;
         }
 
-        currentLngRef.current += (targetLngRef.current - currentLngRef.current) * 0.08;
-        currentLatRef.current += (targetLatRef.current - currentLatRef.current) * 0.08;
+        currentLngRef.current +=
+          (targetLngRef.current - currentLngRef.current) * 0.08;
+        currentLatRef.current +=
+          (targetLatRef.current - currentLatRef.current) * 0.08;
 
         cloudsMesh.rotation.y += 0.0002;
 
-        if (arcLineRef.current && (arcLineRef.current.material as THREE.LineDashedMaterial).isLineDashedMaterial) {
-          (arcLineRef.current.material as THREE.LineDashedMaterial & { dashOffset?: number }).dashOffset =
-            ((arcLineRef.current.material as THREE.LineDashedMaterial & { dashOffset?: number }).dashOffset ?? 0) - 0.004;
+        if (
+          arcLineRef.current &&
+          (arcLineRef.current.material as THREE.LineDashedMaterial)
+            .isLineDashedMaterial
+        ) {
+          (
+            arcLineRef.current.material as THREE.LineDashedMaterial & {
+              dashOffset?: number;
+            }
+          ).dashOffset =
+            ((
+              arcLineRef.current.material as THREE.LineDashedMaterial & {
+                dashOffset?: number;
+              }
+            ).dashOffset ?? 0) - 0.004;
         }
       } else {
         // Animation held still: no ambient drift, but direct manipulation still
@@ -726,7 +853,10 @@ export default function GlobeDashboard({
     // depends on the render loop's easing to take effect.
     const applyDrag = (deltaX: number, deltaY: number) => {
       targetLngRef.current += deltaX * 0.45;
-      targetLatRef.current = Math.max(-60, Math.min(60, targetLatRef.current + deltaY * 0.35));
+      targetLatRef.current = Math.max(
+        -60,
+        Math.min(60, targetLatRef.current + deltaY * 0.35)
+      );
       if (!motionEnabledRef.current) {
         currentLngRef.current = targetLngRef.current;
         currentLatRef.current = targetLatRef.current;
@@ -763,7 +893,10 @@ export default function GlobeDashboard({
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) {
         isDraggingRef.current = true;
-        previousMousePositionRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        previousMousePositionRef.current = {
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY,
+        };
       }
     };
 
@@ -773,7 +906,10 @@ export default function GlobeDashboard({
         e.touches[0].clientX - previousMousePositionRef.current.x,
         e.touches[0].clientY - previousMousePositionRef.current.y
       );
-      previousMousePositionRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      previousMousePositionRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+      };
     };
 
     const onTouchEnd = () => {
@@ -782,13 +918,15 @@ export default function GlobeDashboard({
 
     const targetContainer = globeContainerRef.current;
     if (targetContainer) {
-      targetContainer.addEventListener('mousedown', onMouseDown);
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onMouseUp);
+      targetContainer.addEventListener("mousedown", onMouseDown);
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
 
-      targetContainer.addEventListener('touchstart', onTouchStart, { passive: true });
-      window.addEventListener('touchmove', onTouchMove, { passive: true });
-      window.addEventListener('touchend', onTouchEnd);
+      targetContainer.addEventListener("touchstart", onTouchStart, {
+        passive: true,
+      });
+      window.addEventListener("touchmove", onTouchMove, { passive: true });
+      window.addEventListener("touchend", onTouchEnd);
     }
 
     window.addEventListener("resize", handleResize);
@@ -798,13 +936,13 @@ export default function GlobeDashboard({
       if (revealFallback.timer) clearTimeout(revealFallback.timer);
       window.removeEventListener("resize", handleResize);
       if (targetContainer) {
-        targetContainer.removeEventListener('mousedown', onMouseDown);
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
+        targetContainer.removeEventListener("mousedown", onMouseDown);
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mouseup", onMouseUp);
 
-        targetContainer.removeEventListener('touchstart', onTouchStart);
-        window.removeEventListener('touchmove', onTouchMove);
-        window.removeEventListener('touchend', onTouchEnd);
+        targetContainer.removeEventListener("touchstart", onTouchStart);
+        window.removeEventListener("touchmove", onTouchMove);
+        window.removeEventListener("touchend", onTouchEnd);
       }
       cancelAnimationFrame(animId);
       renderer.dispose();
@@ -846,15 +984,20 @@ export default function GlobeDashboard({
     targetLatRef.current = Math.max(-25, Math.min(25, -midLat * 0.45));
   };
 
-
   const drawTravellingArc = (targetLocation: GlobeLocation) => {
     if (!targetLocation || !arcLineRef.current) return;
 
     const startVec = latLngToVector3(INDIA_HUB.lat, INDIA_HUB.lng, 1.01);
-    const endVec = latLngToVector3(targetLocation.lat, targetLocation.lng, 1.01);
+    const endVec = latLngToVector3(
+      targetLocation.lat,
+      targetLocation.lng,
+      1.01
+    );
 
     const distance = startVec.distanceTo(endVec);
-    const midVec = new THREE.Vector3().addVectors(startVec, endVec).multiplyScalar(0.5);
+    const midVec = new THREE.Vector3()
+      .addVectors(startVec, endVec)
+      .multiplyScalar(0.5);
 
     const altitude = 1 + Math.max(0.2, distance * 0.45);
     midVec.normalize().multiplyScalar(altitude);
@@ -863,10 +1006,12 @@ export default function GlobeDashboard({
     const points = curve.getPoints(64);
 
     const isSuspended = targetLocation.status === "suspended";
-    arcLineRef.current.material.color.setHex(isSuspended ? 0xEF4444 : 0x3B82F6);
+    arcLineRef.current.material.color.setHex(isSuspended ? 0xef4444 : 0x3b82f6);
 
     arcLineRef.current.geometry.dispose();
-    arcLineRef.current.geometry = new THREE.BufferGeometry().setFromPoints(points);
+    arcLineRef.current.geometry = new THREE.BufferGeometry().setFromPoints(
+      points
+    );
     arcLineRef.current.computeLineDistances();
   };
 
@@ -930,8 +1075,11 @@ export default function GlobeDashboard({
         gap: 16,
         background: bgColor,
         opacity: revealed ? 1 : 0,
-        transform: revealed ? "translateY(0) scale(1)" : "translateY(28px) scale(0.94)",
-        transition: "opacity 1.1s cubic-bezier(0.22, 1, 0.36, 1), transform 1.1s cubic-bezier(0.22, 1, 0.36, 1)",
+        transform: revealed
+          ? "translateY(0) scale(1)"
+          : "translateY(28px) scale(0.94)",
+        transition:
+          "opacity 1.1s cubic-bezier(0.22, 1, 0.36, 1), transform 1.1s cubic-bezier(0.22, 1, 0.36, 1)",
         willChange: "opacity, transform",
         ...style,
       }}
@@ -955,41 +1103,43 @@ export default function GlobeDashboard({
             inset: 0,
             width: "100%",
             height: "100%",
-            cursor: "grab"
+            cursor: "grab",
           }}
         />
         {showMotionToggle && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 16,
-            left: 16,
-            right: 16,
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            gap: 12,
-            pointerEvents: 'none'
-          }}
-        >
-          <span style={{
-            fontSize: 12,
-            fontWeight: 600,
-            color: theme.textMuted,
-            letterSpacing: "0.02em",
-            pointerEvents: 'auto'
-          }}>
-            Animation
-          </span>
-          <div style={{ pointerEvents: 'auto', width: 200 }}>
-            <MotionToggle
-              theme={theme}
-              accentColor={accentColor}
-              motionEnabled={motionEnabled}
-              onToggleMotion={onToggleMotion}
-            />
+          <div
+            style={{
+              position: "absolute",
+              bottom: 16,
+              left: 16,
+              right: 16,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 12,
+              pointerEvents: "none",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: theme.textMuted,
+                letterSpacing: "0.02em",
+                pointerEvents: "auto",
+              }}
+            >
+              Animation
+            </span>
+            <div style={{ pointerEvents: "auto", width: 200 }}>
+              <MotionToggle
+                theme={theme}
+                accentColor={accentColor}
+                motionEnabled={motionEnabled}
+                onToggleMotion={onToggleMotion}
+              />
+            </div>
           </div>
-        </div>
         )}
       </div>
 
@@ -1000,14 +1150,14 @@ export default function GlobeDashboard({
           flexDirection: "column",
           justifyContent: "center",
           gap: 14,
-          width: 180,  // Reduced width to give globe more space
+          width: 180, // Reduced width to give globe more space
           flexShrink: 0,
           // Span the globe's rendered bounds and centre the panel on the globe's
           // middle, so the panel sits level with the globe.
           height: `${GLOBE_PROJECTED_DIAMETER * 100}%`,
           maxHeight: "100%",
           minHeight: 0,
-          marginLeft: -20,  // Adjusted margin for narrower panel
+          marginLeft: -20, // Adjusted margin for narrower panel
           transform: `translateY(${SIDE_COLUMN_OFFSET}px)`,
         }}
       >
@@ -1024,21 +1174,39 @@ export default function GlobeDashboard({
       </div>
 
       {showServicePopup && selectedLocation && (
-        <div style={{
-          position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
-          background: isSuspended ? 'rgba(185, 28, 28, 0.92)' : 'rgba(22, 101, 52, 0.92)',
-          color: 'white', padding: '8px 18px',
-          borderRadius: '20px', fontSize: '13px', fontWeight: '600',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.35)', zIndex: 10, pointerEvents: 'none',
-          backdropFilter: 'blur(12px)',
-          animation: 'popupFadeIn 0.3s ease-out',
-          display: 'flex', alignItems: 'center', gap: '8px'
-        }}>
-          <span style={{
-            width: '8px', height: '8px', borderRadius: '50%',
-            background: isSuspended ? '#FECACA' : '#86EFAC',
-            boxShadow: `0 0 8px ${isSuspended ? '#EF4444' : '#22C55E'}`
-          }} />
+        <div
+          style={{
+            position: "absolute",
+            top: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: isSuspended
+              ? "rgba(185, 28, 28, 0.92)"
+              : "rgba(22, 101, 52, 0.92)",
+            color: "white",
+            padding: "8px 18px",
+            borderRadius: "20px",
+            fontSize: "13px",
+            fontWeight: "600",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.35)",
+            zIndex: 10,
+            pointerEvents: "none",
+            backdropFilter: "blur(12px)",
+            animation: "popupFadeIn 0.3s ease-out",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <span
+            style={{
+              width: "8px",
+              height: "8px",
+              borderRadius: "50%",
+              background: isSuspended ? "#FECACA" : "#86EFAC",
+              boxShadow: `0 0 8px ${isSuspended ? "#EF4444" : "#22C55E"}`,
+            }}
+          />
           {isSuspended
             ? `Service to ${selectedLocation.title} currently suspended`
             : `Service available to ${selectedLocation.title}`}

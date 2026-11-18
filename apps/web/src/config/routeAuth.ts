@@ -70,7 +70,9 @@ export function classifyRoute(pathname: string): RouteClassification {
 
   let match: RouteAuth | null = null;
   let matchLength = -1;
-  for (const [prefix, classification] of Object.entries(ROUTE_AUTH_CLASSIFICATION)) {
+  for (const [prefix, classification] of Object.entries(
+    ROUTE_AUTH_CLASSIFICATION
+  )) {
     if (pathname.startsWith(prefix) && prefix.length > matchLength) {
       match = classification;
       matchLength = prefix.length;

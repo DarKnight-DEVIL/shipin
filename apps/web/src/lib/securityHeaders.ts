@@ -99,7 +99,8 @@ const DEV_HMR_SOCKETS =
  * carrying a blanket `https:`/`wss:`.
  */
 export function getDevCSP(): string {
-  const base = "'self' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/";
+  const base =
+    "'self' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/";
   const scriptSrc = `script-src ${base} 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; `;
 
   return (
@@ -232,23 +233,23 @@ export const SECURITY_HEADERS: Record<string, string> = {
     "clipboard-read=(), clipboard-write=(self), speaker=(), display-capture=(), " +
     "document-domain=(), cross-origin-isolated=()",
 
-    /**
-     * Reporting Endpoints.
-     *
-     * Defines named endpoints (used by `report-to` in CSP, Permissions-Policy,
-     * and other reporting APIs) so the browser knows where to send violations.
-     * The endpoint is served at /api/csp-report.
-     */
-    "Reporting-Endpoints": "{\"csp-endpoint\":\"/api/csp-report\"}",
+  /**
+   * Reporting Endpoints.
+   *
+   * Defines named endpoints (used by `report-to` in CSP, Permissions-Policy,
+   * and other reporting APIs) so the browser knows where to send violations.
+   * The endpoint is served at /api/csp-report.
+   */
+  "Reporting-Endpoints": '{"csp-endpoint":"/api/csp-report"}',
 
-    /**
-     * Report-To: the older reporting API, still read by Safari and older
-     * Chromium. Modern browsers use Reporting-Endpoints above; both point at
-     * the same collector so a violation is not dropped just because the
-     * browser predates the newer header.
-     */
-    "Report-To":
-      "{\"group\":\"csp-endpoint\",\"max_age\":10886400,\"endpoints\":[{\"url\":\"/api/csp-report\"}]}",
+  /**
+   * Report-To: the older reporting API, still read by Safari and older
+   * Chromium. Modern browsers use Reporting-Endpoints above; both point at
+   * the same collector so a violation is not dropped just because the
+   * browser predates the newer header.
+   */
+  "Report-To":
+    '{"group":"csp-endpoint","max_age":10886400,"endpoints":[{"url":"/api/csp-report"}]}',
 };
 
 /**

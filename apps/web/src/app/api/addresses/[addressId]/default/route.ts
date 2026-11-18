@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 
-import { requireAuthWithProfile } from '@/lib/auth';
-import { adminDb } from '@/lib/firebaseAdmin';
-import { NotFoundError, withErrorHandler } from '@/utils/errors';
+import { requireAuthWithProfile } from "@/lib/auth";
+import { adminDb } from "@/lib/firebaseAdmin";
+import { NotFoundError, withErrorHandler } from "@/utils/errors";
 
 /**
  * POST /api/addresses/[addressId]/default
@@ -21,14 +21,14 @@ export const POST = withErrorHandler(
     const { addressId } = await params;
 
     const addressesRef = adminDb
-      .collection('users')
+      .collection("users")
       .doc(auth.profile.uid)
-      .collection('addresses');
+      .collection("addresses");
 
     const snapshot = await addressesRef.get();
 
     if (!snapshot.docs.some((doc) => doc.id === addressId)) {
-      throw new NotFoundError('Address');
+      throw new NotFoundError("Address");
     }
 
     const batch = adminDb.batch();
@@ -41,7 +41,7 @@ export const POST = withErrorHandler(
 
     return NextResponse.json(
       { success: true },
-      { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      { status: 200, headers: { "Cache-Control": "no-store" } }
     );
   }
 );

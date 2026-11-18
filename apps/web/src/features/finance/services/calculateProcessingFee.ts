@@ -24,7 +24,6 @@ export function calculateProcessingFee({
   fixedFee,
   absorbFee,
 }: Params): ProcessingFeeResult {
-
   if (absorbFee) {
     return {
       fee: 0,
@@ -36,9 +35,7 @@ export function calculateProcessingFee({
    * Reverse PayPal fee calculation
    */
 
-  const total =
-    (amount + fixedFee) /
-    (1 - percentage);
+  const total = (amount + fixedFee) / (1 - percentage);
 
   /*
    * Round UP, never to nearest: rounding down would leave the fee one cent

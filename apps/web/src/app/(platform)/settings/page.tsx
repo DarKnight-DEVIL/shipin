@@ -10,28 +10,64 @@ import { useDashboardMetricSettings } from "@/features/users/hooks/useDashboardM
 import { useProfileSettings } from "@/features/users/hooks/useProfileSettings";
 
 const AccountSection = dynamic(
-  () => import("@/components/settings/AccountSection").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-48 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  () =>
+    import("@/components/settings/AccountSection").then((mod) => mod.default),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-48 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 const AppearanceSection = dynamic(
-  () => import("@/components/settings/AppearanceSection").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-24 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  () =>
+    import("@/components/settings/AppearanceSection").then(
+      (mod) => mod.default
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-24 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 const DashboardMetricsSection = dynamic(
-  () => import("@/components/settings/DashboardMetricsSection").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-32 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  () =>
+    import("@/components/settings/DashboardMetricsSection").then(
+      (mod) => mod.default
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-32 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 const NotificationsSettings = dynamic(
-  () => import("@/components/settings/NotificationsSettings").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-32 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  () =>
+    import("@/components/settings/NotificationsSettings").then(
+      (mod) => mod.default
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-32 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 const SecuritySection = dynamic(
-  () => import("@/components/settings/SecuritySection").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-48 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  () =>
+    import("@/components/settings/SecuritySection").then((mod) => mod.default),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-48 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 const SECTIONS = [

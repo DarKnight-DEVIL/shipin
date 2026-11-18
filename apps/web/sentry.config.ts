@@ -15,7 +15,10 @@
 import type { NextConfig } from "next";
 // @sentry/nextjs v11 moved the build wrapper to its own entry point; the
 // package root no longer exports it.
-import { withSentryConfig, type SentryBuildOptions } from "@sentry/nextjs/config";
+import {
+  withSentryConfig,
+  type SentryBuildOptions,
+} from "@sentry/nextjs/config";
 
 // v11 reads SENTRY_ORG / SENTRY_PROJECT / SENTRY_AUTH_TOKEN from the environment
 // and dropped the old `disableLogger` / `hideSourceMaps` flags.

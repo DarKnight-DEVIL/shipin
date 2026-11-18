@@ -127,7 +127,9 @@ export default function AdminSecuritySettings() {
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
         <ShieldCheck
           size={18}
-          className={state.session.elevated ? "text-emerald-400" : "text-amber-300"}
+          className={
+            state.session.elevated ? "text-emerald-400" : "text-amber-300"
+          }
         />
         <span className="flex-1 text-slate-200">
           {state.session.elevated

@@ -49,9 +49,7 @@ export function useDashboardOverview(): DashboardOverview {
       }
 
       setUserName(
-        user.displayName?.split(" ")[0] ||
-          user.email?.split("@")[0] ||
-          "there"
+        user.displayName?.split(" ")[0] || user.email?.split("@")[0] || "there"
       );
 
       try {
@@ -80,9 +78,8 @@ export function useDashboardOverview(): DashboardOverview {
 
   const metricValues = useMemo<Record<DashboardMetricId, number>>(
     () => ({
-      active: requests.filter((r) =>
-        ACTIVE_REQUEST_STATUSES.includes(r.status)
-      ).length,
+      active: requests.filter((r) => ACTIVE_REQUEST_STATUSES.includes(r.status))
+        .length,
       submitted: requests.filter((r) => r.status === "submitted").length,
       quote_ready: requests.filter((r) => r.status === "review").length,
       awaiting_payment: requests.filter((r) => {
@@ -103,12 +100,10 @@ export function useDashboardOverview(): DashboardOverview {
       ).length,
       packed: requests.filter((r) => r.status === "packed").length,
       shipped: requests.filter((r) => r.status === "shipped").length,
-      in_transit: requests.filter((r) =>
-        IN_TRANSIT_STATUSES.includes(r.status)
-      ).length,
-      out_for_delivery: requests.filter(
-        (r) => r.status === "out_for_delivery"
-      ).length,
+      in_transit: requests.filter((r) => IN_TRANSIT_STATUSES.includes(r.status))
+        .length,
+      out_for_delivery: requests.filter((r) => r.status === "out_for_delivery")
+        .length,
       delivered: requests.filter((r) => r.status === "delivered").length,
       refunded: requests.filter((r) => r.status === "refunded").length,
     }),

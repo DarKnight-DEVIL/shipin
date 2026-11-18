@@ -35,9 +35,7 @@ function RequestsPageContent() {
     }
   };
 
-  const handleStatusFilter = (
-    event: React.ChangeEvent<HTMLSelectElement>
-  ) => {
+  const handleStatusFilter = (event: React.ChangeEvent<HTMLSelectElement>) => {
     setStatusFilter(event.target.value);
   };
 
@@ -182,10 +180,7 @@ function RequestsPageContent() {
       {/* LIST */}
       {requests.length === 0 ? (
         <div className="app-panel border-dashed px-6 py-16 text-center">
-          <PackageOpen
-            size={20}
-            className="mx-auto text-[var(--muted-soft)]"
-          />
+          <PackageOpen size={20} className="mx-auto text-[var(--muted-soft)]" />
           <h2 className="mt-3 text-[13px] font-semibold text-[var(--foreground)]">
             No requests yet
           </h2>
@@ -255,7 +250,9 @@ function RequestsPageContent() {
                 {needsAttention && (
                   <span
                     className={`absolute left-0 top-0 h-full w-[3px] ${
-                      quoteReady ? "bg-[var(--accent)]" : "bg-[var(--accent-solid)]"
+                      quoteReady
+                        ? "bg-[var(--accent)]"
+                        : "bg-[var(--accent-solid)]"
                     }`}
                   />
                 )}

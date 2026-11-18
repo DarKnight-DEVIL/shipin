@@ -8,7 +8,7 @@
  * a token this project issued, proving it came from a real instance of the app.
  */
 
-import 'server-only';
+import "server-only";
 
 import { getAppCheck } from "firebase-admin/app-check";
 
@@ -43,10 +43,7 @@ export function isAppCheckEnforced(): boolean {
 }
 
 export type AppCheckStatus =
-  | "disabled"
-  | "configured"
-  | "enforced"
-  | "misconfigured";
+  "disabled" | "configured" | "enforced" | "misconfigured";
 
 export interface AppCheckConfiguration {
   /** Whether clients hold a site key and can mint tokens at all. */
@@ -109,7 +106,11 @@ export function reportAppCheckStatus(): AppCheckConfiguration {
       "[AppCheck] APP_CHECK_ENFORCEMENT is on but NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY is empty. " +
         "Clients cannot mint an App Check token. Set the site key, or turn enforcement off."
     );
-  } else if (configuration.configured && !configuration.enforced && process.env.NODE_ENV === "production") {
+  } else if (
+    configuration.configured &&
+    !configuration.enforced &&
+    process.env.NODE_ENV === "production"
+  ) {
     // Site key exists but enforcement is off in production - warn but don't fail.
     console.warn(
       "[AppCheck] NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY is set but APP_CHECK_ENFORCEMENT is not 'true'. " +

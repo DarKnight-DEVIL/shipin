@@ -56,9 +56,9 @@ describe("resolveAppOrigin", () => {
   });
 
   it("honours an explicitly configured origin and strips any path", () => {
-    expect(resolveAppOrigin("https://shipin-9576a.web.app/verify-email", true)).toBe(
-      "https://shipin-9576a.web.app"
-    );
+    expect(
+      resolveAppOrigin("https://shipin-9576a.web.app/verify-email", true)
+    ).toBe("https://shipin-9576a.web.app");
   });
 
   it("rejects an unparseable value in production", () => {

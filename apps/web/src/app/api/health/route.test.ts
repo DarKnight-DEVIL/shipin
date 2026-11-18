@@ -7,18 +7,18 @@
  * status and a warning rather than claiming the deployment is down.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const state = vi.hoisted(() => ({
   isProduction: false,
-  url: '',
-  token: '',
-  appCheckSiteKey: '',
-  appCheckEnforcement: '',
+  url: "",
+  token: "",
+  appCheckSiteKey: "",
+  appCheckEnforcement: "",
   errors: { web: 0, api: 0, strict: 0, login: 0 } as Record<string, number>,
 }));
 
-vi.mock('@/config/env', () => ({
+vi.mock("@/config/env", () => ({
   get isProduction() {
     return state.isProduction;
   },
@@ -45,128 +45,142 @@ vi.mock('@/config/env', () => ({
  * `appCheck.test.ts`, which asserts the real env coupling. That wiring is
  * covered there; this file only checks how the route reports it.
  */
-vi.mock('@/lib/appCheck', () => ({
-  isAppCheckEnforced: () => state.appCheckEnforcement === 'true',
+vi.mock("@/lib/appCheck", () => ({
+  isAppCheckEnforced: () => state.appCheckEnforcement === "true",
   // Mirrors the real mapping closely enough for this file's purpose: how the
   // route *reports* the status, not how the status is derived (appCheck.test.ts
   // covers that against the real env module).
   getAppCheckStatus: () => {
     const configured = Boolean(state.appCheckSiteKey);
-    const enforced = state.appCheckEnforcement === 'true';
+    const enforced = state.appCheckEnforcement === "true";
 
     return {
       configured,
       enforced,
       status: enforced
         ? configured
-          ? 'enforced'
-          : 'misconfigured'
+          ? "enforced"
+          : "misconfigured"
         : configured
-          ? 'configured'
-          : 'disabled',
+          ? "configured"
+          : "disabled",
     } as const;
   },
 }));
 
-vi.mock('@/lib/rateLimiter', () => {
+vi.mock("@/lib/rateLimiter", () => {
   const makeLimiter = (name: string) => ({
     record: vi.fn(),
     getErrorCounts: () => {
       const errors = state.errors[name] ?? 0;
-      return errors > 0 ? [{ ip: '203.0.113.5', errors, lastErrorAt: Date.now() }] : [];
+      return errors > 0
+        ? [{ ip: "203.0.113.5", errors, lastErrorAt: Date.now() }]
+        : [];
     },
   });
 
   return {
-    webRateLimiter: makeLimiter('web'),
-    apiRateLimiter: makeLimiter('api'),
-    strictRateLimiter: makeLimiter('strict'),
-    loginRateLimiter: makeLimiter('login'),
+    webRateLimiter: makeLimiter("web"),
+    apiRateLimiter: makeLimiter("api"),
+    strictRateLimiter: makeLimiter("strict"),
+    loginRateLimiter: makeLimiter("login"),
   };
 });
 
-vi.mock('@/lib/redisRateLimiter', () => ({
+vi.mock("@/lib/redisRateLimiter", () => ({
   RATE_LIMIT_ERROR_WINDOW_MS: 5 * 60 * 1000,
 }));
 
-import { GET } from './route';
+import { GET } from "./route";
 
 beforeEach(() => {
   state.isProduction = false;
-  state.url = '';
-  state.token = '';
-  state.appCheckSiteKey = '';
-  state.appCheckEnforcement = '';
+  state.url = "";
+  state.token = "";
+  state.appCheckSiteKey = "";
+  state.appCheckEnforcement = "";
   state.errors = { web: 0, api: 0, strict: 0, login: 0 };
 });
 
-describe('GET /api/health', () => {
-  it('reports healthy with the in-memory fallback in development', async () => {
+describe("GET /api/health", () => {
+  it("reports healthy with the in-memory fallback in development", async () => {
     const response = await GET();
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.status).toBe('healthy');
+    expect(body.status).toBe("healthy");
     expect(body.redis.configured).toBe(false);
-    expect(body.redis.status).toContain('fallback');
+    expect(body.redis.status).toContain("fallback");
     expect(body.checkedAt).toEqual(expect.any(String));
   });
 
-  it('reports degraded with 200 when production has no shared store', async () => {
+  it("reports degraded with 200 when production has no shared store", async () => {
     state.isProduction = true;
 
     const response = await GET();
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.status).toBe('degraded');
+    expect(body.status).toBe("degraded");
     expect(body.redis.configured).toBe(false);
-    expect(body.redis.status).toBe('missing');
-    expect(body.warning).toContain('UPSTASH_REDIS_REST_URL');
+    expect(body.redis.status).toBe("missing");
+    expect(body.warning).toContain("UPSTASH_REDIS_REST_URL");
   });
 
-  it('reports healthy when production has Redis and no limiter errors', async () => {
+  it("reports healthy when production has Redis and no limiter errors", async () => {
     state.isProduction = true;
-    state.url = 'https://t.upstash.io';
-    state.token = 'tok';
+    state.url = "https://t.upstash.io";
+    state.token = "tok";
 
     const response = await GET();
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.status).toBe('healthy');
-    expect(body.redis.status).toBe('connected');
+    expect(body.status).toBe("healthy");
+    expect(body.redis.status).toBe("connected");
   });
 
-  it('reports App Check as disabled when neither switch is set', async () => {
+  it("reports App Check as disabled when neither switch is set", async () => {
     const response = await GET();
     const body = await response.json();
 
-    expect(body.appCheck).toEqual({ configured: false, enforced: false, status: 'disabled' });
+    expect(body.appCheck).toEqual({
+      configured: false,
+      enforced: false,
+      status: "disabled",
+    });
   });
 
-  it('reports App Check as configured when only the site key is set', async () => {
-    state.appCheckSiteKey = 'site-key';
-
-    const response = await GET();
-    const body = await response.json();
-
-    expect(body.appCheck).toEqual({ configured: true, enforced: false, status: 'configured' });
-  });
-
-  it('reports App Check as enforced when both switches are set', async () => {
-    state.appCheckSiteKey = 'site-key';
-    state.appCheckEnforcement = 'true';
+  it("reports App Check as configured when only the site key is set", async () => {
+    state.appCheckSiteKey = "site-key";
 
     const response = await GET();
     const body = await response.json();
 
-    expect(body.appCheck).toEqual({ configured: true, enforced: true, status: 'enforced' });
+    expect(body.appCheck).toEqual({
+      configured: true,
+      enforced: false,
+      status: "configured",
+    });
+  });
+
+  it("reports App Check as enforced when both switches are set", async () => {
+    state.appCheckSiteKey = "site-key";
+    state.appCheckEnforcement = "true";
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.appCheck).toEqual({
+      configured: true,
+      enforced: true,
+      status: "enforced",
+    });
     expect(body.appCheck.warning).toBeUndefined();
   });
 
-  it('reports enforcement without a site key as misconfigured and degraded', async () => {
-    state.appCheckEnforcement = 'true';
+  it("reports enforcement without a site key as misconfigured and degraded", async () => {
+    state.appCheckEnforcement = "true";
 
     const response = await GET();
     const body = await response.json();
@@ -175,65 +189,67 @@ describe('GET /api/health', () => {
     expect(body.appCheck).toEqual({
       configured: false,
       enforced: true,
-      status: 'misconfigured',
-      warning: expect.stringContaining('APP_CHECK_FAILED'),
+      status: "misconfigured",
+      warning: expect.stringContaining("APP_CHECK_FAILED"),
     });
     // Healthy here would hide a deployment that rejects every browser request.
-    expect(body.status).toBe('degraded');
+    expect(body.status).toBe("degraded");
   });
 
-  it('stays healthy when App Check is enforced and configured', async () => {
-    state.appCheckSiteKey = 'site-key';
-    state.appCheckEnforcement = 'true';
+  it("stays healthy when App Check is enforced and configured", async () => {
+    state.appCheckSiteKey = "site-key";
+    state.appCheckEnforcement = "true";
 
     const response = await GET();
     const body = await response.json();
 
     // The control for the test above: correct App Check setup must not degrade
     // the report, or the alert is noise nobody reads.
-    expect(body.status).toBe('healthy');
-    expect(body.appCheck.status).toBe('enforced');
+    expect(body.status).toBe("healthy");
+    expect(body.appCheck.status).toBe("enforced");
   });
 
-  it('reports degraded counters when Redis is failing', async () => {
+  it("reports degraded counters when Redis is failing", async () => {
     state.isProduction = true;
-    state.url = 'https://t.upstash.io';
-    state.token = 'tok';
+    state.url = "https://t.upstash.io";
+    state.token = "tok";
     state.errors.api = 3;
 
     const response = await GET();
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.status).toBe('degraded');
+    expect(body.status).toBe("degraded");
     expect(body.rateLimits.totalRecentErrors).toBe(3);
     expect(body.rateLimits.errors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: 'api',
+          name: "api",
           recentErrors: 3,
           affectedClients: 1,
           lastErrorAt: expect.any(String),
         }),
       ])
     );
-    expect(body.rateLimits.warning).toEqual(expect.stringContaining('not being enforced'));
+    expect(body.rateLimits.warning).toEqual(
+      expect.stringContaining("not being enforced")
+    );
   });
 
-  it('never publishes the client addresses behind a limiter error', async () => {
+  it("never publishes the client addresses behind a limiter error", async () => {
     // The probe is unauthenticated: a per-address row here would hand out a
     // list of live user IPs. The limiter mock returns `203.0.113.5`, so any
     // surface that still carries the address shows up as a literal match.
     state.isProduction = true;
-    state.url = 'https://t.upstash.io';
-    state.token = 'tok';
+    state.url = "https://t.upstash.io";
+    state.token = "tok";
     state.errors.api = 3;
     state.errors.web = 1;
 
     const response = await GET();
     const body = await response.json();
 
-    expect(JSON.stringify(body)).not.toContain('203.0.113.5');
+    expect(JSON.stringify(body)).not.toContain("203.0.113.5");
     expect(body.redisErrorDetails).toBeUndefined();
   });
 });

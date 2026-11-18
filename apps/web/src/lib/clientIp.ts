@@ -21,7 +21,7 @@
 /** First comma-separated address, trimmed; `null` when absent or empty. */
 function firstAddress(header: string | null): string | null {
   if (!header) return null;
-  const value = header.split(',')[0]?.trim();
+  const value = header.split(",")[0]?.trim();
   return value ? value : null;
 }
 
@@ -29,7 +29,7 @@ function firstAddress(header: string | null): string | null {
 function lastAddress(header: string | null): string | null {
   if (!header) return null;
   const parts = header
-    .split(',')
+    .split(",")
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
   return parts.length > 0 ? parts[parts.length - 1]! : null;
@@ -41,11 +41,13 @@ function lastAddress(header: string | null): string | null {
  * fallback (a shared bucket for rate limiting, `"unknown"` for an audit log).
  */
 export function getClientIp(request: Request): string | null {
-  const platformForwarded = firstAddress(request.headers.get('x-vercel-forwarded-for'));
+  const platformForwarded = firstAddress(
+    request.headers.get("x-vercel-forwarded-for")
+  );
   if (platformForwarded) return platformForwarded;
 
-  const realIp = firstAddress(request.headers.get('x-real-ip'));
+  const realIp = firstAddress(request.headers.get("x-real-ip"));
   if (realIp) return realIp;
 
-  return lastAddress(request.headers.get('x-forwarded-for'));
+  return lastAddress(request.headers.get("x-forwarded-for"));
 }

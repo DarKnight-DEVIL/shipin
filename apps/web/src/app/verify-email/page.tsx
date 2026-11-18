@@ -9,7 +9,9 @@ export const metadata = {
 
 export default function VerifyEmailPage() {
   return (
-    <Suspense fallback={<div className="verify verify--boot" aria-busy="true" />}>
+    <Suspense
+      fallback={<div className="verify verify--boot" aria-busy="true" />}
+    >
       <VerifyEmailClient />
     </Suspense>
   );

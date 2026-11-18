@@ -54,45 +54,32 @@ export interface InvoiceSummary {
   totalPaid: number;
 }
 
-export function buildInvoiceSummary(
-  request: Request
-): InvoiceSummary {
+export function buildInvoiceSummary(request: Request): InvoiceSummary {
   /*
    * =========================================
    * ORIGINAL PRODUCTS
    * =========================================
    */
 
-  const originalItems: InvoiceLineItem[] =
-    (request.quote?.items || []).map(
-      (quoteItem, index) => {
-        const requestItem =
-          request.items?.[index];
+  const originalItems: InvoiceLineItem[] = (request.quote?.items || []).map(
+    (quoteItem, index) => {
+      const requestItem = request.items?.[index];
 
-        return {
-          id: `original-${index}`,
+      return {
+        id: `original-${index}`,
 
-          type: "original",
+        type: "original",
 
-          name:
-            quoteItem.name ??
-            requestItem?.name ??
-            "Product",
+        name: quoteItem.name ?? requestItem?.name ?? "Product",
 
-          quantity:
-            quoteItem.quantity ??
-            requestItem?.quantity ??
-            1,
+        quantity: quoteItem.quantity ?? requestItem?.quantity ?? 1,
 
-          unitPrice:
-            quoteItem.unitPrice ?? 0,
+        unitPrice: quoteItem.unitPrice ?? 0,
 
-          subtotal:
-            quoteItem.subtotal ?? 0,
-        };
-      }
-    );
-
+        subtotal: quoteItem.subtotal ?? 0,
+      };
+    }
+  );
 
   /*
    * =========================================
@@ -103,55 +90,33 @@ export function buildInvoiceSummary(
    * been paid for.
    */
 
-  const paidAdditionalRequests =
-    (
-      request.additionalItemRequests ||
-      []
-    ).filter(
-      (item) =>
-        item.status === "paid" ||
-        item.status === "purchased" ||
-        item.status ===
-          "warehouse_received" ||
-        item.status === "packed"
-    );
+  const paidAdditionalRequests = (request.additionalItemRequests || []).filter(
+    (item) =>
+      item.status === "paid" ||
+      item.status === "purchased" ||
+      item.status === "warehouse_received" ||
+      item.status === "packed"
+  );
 
+  const additionalItems: InvoiceLineItem[] = paidAdditionalRequests.map(
+    (additionalItem) => {
+      const quote = additionalItem.quote;
 
-  const additionalItems: InvoiceLineItem[] =
-    paidAdditionalRequests.map(
-      (additionalItem) => {
-        const quote =
-          additionalItem.quote;
+      return {
+        id: additionalItem.id,
 
-        return {
-          id:
-            additionalItem.id,
+        type: "additional",
 
-          type: "additional",
+        name: additionalItem.item.name,
 
-          name:
-            additionalItem
-              .item.name,
+        quantity: additionalItem.item.quantity,
 
-          quantity:
-            additionalItem
-              .item.quantity,
+        unitPrice: quote?.unitPrice ?? additionalItem.unitPrice ?? 0,
 
-          unitPrice:
-            quote?.unitPrice ??
-            additionalItem
-              .unitPrice ??
-            0,
-
-          subtotal:
-            quote?.subtotal ??
-            additionalItem
-              .subtotal ??
-            0,
-        };
-      }
-    );
-
+        subtotal: quote?.subtotal ?? additionalItem.subtotal ?? 0,
+      };
+    }
+  );
 
   /*
    * =========================================
@@ -159,66 +124,34 @@ export function buildInvoiceSummary(
    * =========================================
    */
 
-  const additionalPurchases:
-    InvoiceAdditionalPurchase[] =
-    paidAdditionalRequests.map(
-      (additionalItem) => {
-        const quote =
-          additionalItem.quote;
+  const additionalPurchases: InvoiceAdditionalPurchase[] =
+    paidAdditionalRequests.map((additionalItem) => {
+      const quote = additionalItem.quote;
 
-        return {
-          id:
-            additionalItem.id,
+      return {
+        id: additionalItem.id,
 
-          name:
-            additionalItem
-              .item.name,
+        name: additionalItem.item.name,
 
-          quantity:
-            additionalItem
-              .item.quantity,
+        quantity: additionalItem.item.quantity,
 
-          unitPrice:
-            quote?.unitPrice ??
-            additionalItem
-              .unitPrice ??
-            0,
+        unitPrice: quote?.unitPrice ?? additionalItem.unitPrice ?? 0,
 
-          subtotal:
-            quote?.subtotal ??
-            additionalItem
-              .subtotal ??
-            0,
+        subtotal: quote?.subtotal ?? additionalItem.subtotal ?? 0,
 
-          serviceFee:
-            quote?.serviceFee ??
-            additionalItem
-              .serviceFee ??
-            0,
+        serviceFee: quote?.serviceFee ?? additionalItem.serviceFee ?? 0,
 
-          repackingFee:
-            quote?.repackingFee ??
-            additionalItem
-              .repackingFee ??
-            0,
+        repackingFee: quote?.repackingFee ?? additionalItem.repackingFee ?? 0,
 
-          storageFee:
-            quote?.storageFee ??
-            additionalItem
-              .storageFee ??
-            0,
+        storageFee: quote?.storageFee ?? additionalItem.storageFee ?? 0,
 
-          totalPaid:
-            additionalItem
-              .amountPaid ??
-            quote?.totalDue ??
-            additionalItem
-              .totalDue ??
-            0,
-        };
-      }
-    );
-
+        totalPaid:
+          additionalItem.amountPaid ??
+          quote?.totalDue ??
+          additionalItem.totalDue ??
+          0,
+      };
+    });
 
   /*
    * =========================================
@@ -226,32 +159,17 @@ export function buildInvoiceSummary(
    * =========================================
    */
 
-  const breakdown =
-    request.quote?.breakdown;
+  const breakdown = request.quote?.breakdown;
 
   const productsTotal =
     breakdown?.productsTotal ??
-    originalItems.reduce(
-      (sum, item) =>
-        sum +
-        item.subtotal,
-      0
-    );
+    originalItems.reduce((sum, item) => sum + item.subtotal, 0);
 
-  const domesticShipping =
-    breakdown
-      ?.domesticShipping ??
-    0;
+  const domesticShipping = breakdown?.domesticShipping ?? 0;
 
-  const internationalShipping =
-    breakdown
-      ?.internationalShipping ??
-    0;
+  const internationalShipping = breakdown?.internationalShipping ?? 0;
 
-  const serviceFee =
-    breakdown?.serviceFee ??
-    0;
-
+  const serviceFee = breakdown?.serviceFee ?? 0;
 
   /*
    * =========================================
@@ -259,25 +177,14 @@ export function buildInvoiceSummary(
    * =========================================
    */
 
-  const originalTotal =
-    request.payment?.amount ??
-    breakdown?.grandTotal ??
-    0;
+  const originalTotal = request.payment?.amount ?? breakdown?.grandTotal ?? 0;
 
+  const additionalTotal = additionalPurchases.reduce(
+    (sum, purchase) => sum + purchase.totalPaid,
+    0
+  );
 
-  const additionalTotal =
-    additionalPurchases.reduce(
-      (sum, purchase) =>
-        sum +
-        purchase.totalPaid,
-      0
-    );
-
-
-  const totalPaid =
-    originalTotal +
-    additionalTotal;
-
+  const totalPaid = originalTotal + additionalTotal;
 
   /*
    * =========================================
@@ -286,13 +193,9 @@ export function buildInvoiceSummary(
    */
 
   return {
-    id:
-      request.id
-        .slice(0, 8)
-        .toUpperCase(),
+    id: request.id.slice(0, 8).toUpperCase(),
 
-    requestId:
-      request.id,
+    requestId: request.id,
 
     /*
      * Your Request interface currently
@@ -307,8 +210,7 @@ export function buildInvoiceSummary(
           customerName?: string;
         }
       ).customerName ??
-      request.shippingAddress
-        ?.recipientName ??
+      request.shippingAddress?.recipientName ??
       "Customer",
 
     /*
@@ -316,9 +218,7 @@ export function buildInvoiceSummary(
      * Fixes the admin invoice showing
      * "No email provided".
      */
-    email:
-      request.email ||
-      "No email provided",
+    email: request.email || "No email provided",
 
     originalItems,
 
@@ -327,10 +227,7 @@ export function buildInvoiceSummary(
     /*
      * Combined list used by invoice tables.
      */
-    items: [
-      ...originalItems,
-      ...additionalItems,
-    ],
+    items: [...originalItems, ...additionalItems],
 
     additionalPurchases,
 
@@ -351,8 +248,7 @@ export function buildInvoiceSummary(
      * customer has paid across the
      * original + supplementary payments.
      */
-    grandTotal:
-      totalPaid,
+    grandTotal: totalPaid,
 
     totalPaid,
   };

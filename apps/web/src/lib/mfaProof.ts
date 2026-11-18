@@ -104,8 +104,8 @@ function hasWebAuthnCredential(
 
   return (webauthn.credentials ?? []).some(
     (credential) =>
-      typeof (credential as { credentialID?: string }).credentialID === "string" &&
-      typeof credential?.publicKey === "string"
+      typeof (credential as { credentialID?: string }).credentialID ===
+        "string" && typeof credential?.publicKey === "string"
   );
 }
 
@@ -123,8 +123,8 @@ export function hasAnyMfaMethod(profile: MfaProfile | null): boolean {
 
   return Boolean(
     webauthn?.enabled &&
-      ((webauthn?.credentials?.length ?? 0) > 0 ||
-        (webauthn?.credentialIds?.length ?? 0) > 0)
+    ((webauthn?.credentials?.length ?? 0) > 0 ||
+      (webauthn?.credentialIds?.length ?? 0) > 0)
   );
 }
 

@@ -39,7 +39,9 @@ const yaml = loadYaml();
 
 function parse(source) {
   if (!yaml) return null;
-  return typeof yaml.parse === "function" ? yaml.parse(source) : yaml.load(source);
+  return typeof yaml.parse === "function"
+    ? yaml.parse(source)
+    : yaml.load(source);
 }
 
 function checkFile(file) {
@@ -47,13 +49,20 @@ function checkFile(file) {
   const notes = [];
   const bytes = readFileSync(file);
 
-  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xef &&
+    bytes[1] === 0xbb &&
+    bytes[2] === 0xbf
+  ) {
     failures.push("starts with a UTF-8 BOM; save as UTF-8 without BOM");
   } else if (
     (bytes[0] === 0xff && bytes[1] === 0xfe) ||
     (bytes[0] === 0xfe && bytes[1] === 0xff)
   ) {
-    failures.push("is UTF-16; GitHub cannot parse it, so the workflow never runs");
+    failures.push(
+      "is UTF-16; GitHub cannot parse it, so the workflow never runs"
+    );
   }
 
   if (bytes.includes(0x00)) {
@@ -76,7 +85,9 @@ function checkFile(file) {
     try {
       parsed = parse(text);
     } catch (error) {
-      failures.push(`does not parse as YAML: ${error instanceof Error ? error.message : error}`);
+      failures.push(
+        `does not parse as YAML: ${error instanceof Error ? error.message : error}`
+      );
     }
 
     if (parsed && typeof parsed === "object" && !("jobs" in parsed)) {
@@ -115,7 +126,9 @@ for (const name of files) {
 }
 
 if (!yaml) {
-  console.warn("(YAML parsing skipped: neither `yaml` nor `js-yaml` is resolvable)");
+  console.warn(
+    "(YAML parsing skipped: neither `yaml` nor `js-yaml` is resolvable)"
+  );
 }
 
 if (failed > 0) {

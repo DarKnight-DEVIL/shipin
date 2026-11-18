@@ -19,11 +19,7 @@ export interface Shipment {
 
   height?: number;
 
-  status:
-    | "building"
-    | "ready"
-    | "shipped"
-    | "delivered";
+  status: "building" | "ready" | "shipped" | "delivered";
 
   createdAt?: Timestamp;
 

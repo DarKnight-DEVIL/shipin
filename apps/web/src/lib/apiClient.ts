@@ -7,7 +7,10 @@
  * and any extra headers it attaches.
  */
 
-import { clearAppCheckFailure, notifyAppCheckFailure } from "@/lib/appCheckFailure";
+import {
+  clearAppCheckFailure,
+  notifyAppCheckFailure,
+} from "@/lib/appCheckFailure";
 import { HTTP_TIMEOUT_MS } from "@/config/constants";
 import { beginRetryNotice, endRetryNotice } from "@/lib/requestRetry";
 import { auth, getAppCheckToken } from "@/lib/firebase";
@@ -56,7 +59,6 @@ function createError(
   code: string,
   status: number
 ): ApiError {
-   
   return new errorClass(message, code, status);
 }
 
@@ -222,7 +224,9 @@ async function refreshIdToken(user: ProfileRepairUser): Promise<string | null> {
   }
 }
 
-async function readPayload(response: Response): Promise<Record<string, unknown>> {
+async function readPayload(
+  response: Response
+): Promise<Record<string, unknown>> {
   try {
     return (await response.json()) as Record<string, unknown>;
   } catch {
@@ -243,7 +247,12 @@ export async function apiFetch<T>(
   const user = auth.currentUser;
 
   if (!user) {
-    throw createError(errorClass, "You are signed out. Sign in again.", "AUTHENTICATION_REQUIRED", 401);
+    throw createError(
+      errorClass,
+      "You are signed out. Sign in again.",
+      "AUTHENTICATION_REQUIRED",
+      401
+    );
   }
 
   let idToken = await user.getIdToken();
@@ -368,7 +377,12 @@ export async function apiFetch<T>(
       try {
         response = await send();
       } catch {
-        throw createError(errorClass, "Could not reach the server.", "NETWORK_ERROR", 0);
+        throw createError(
+          errorClass,
+          "Could not reach the server.",
+          "NETWORK_ERROR",
+          0
+        );
       }
       payload = await readPayload(response);
     }

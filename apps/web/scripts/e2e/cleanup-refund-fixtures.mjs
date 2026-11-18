@@ -37,9 +37,9 @@
  *   node scripts/e2e/cleanup-refund-fixtures.mjs           # report only
  *   node scripts/e2e/cleanup-refund-fixtures.mjs --apply   # delete
  */
-import { normalizePrivateKey } from '../lib/private-key.mjs';
-import { createRequire } from 'node:module';
-import { pathToFileURL } from 'node:url';
+import { normalizePrivateKey } from "../lib/private-key.mjs";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
 
@@ -56,7 +56,7 @@ export function isStaleFixture(data, cutoffMs) {
   if (!data || data.e2eFixture !== true) return false;
 
   const createdAt = data.createdAt;
-  if (!createdAt || typeof createdAt.toMillis !== 'function') return false;
+  if (!createdAt || typeof createdAt.toMillis !== "function") return false;
 
   return createdAt.toMillis() < cutoffMs;
 }
@@ -67,7 +67,7 @@ function fail(message) {
 }
 
 function positiveInt(raw, name, fallback) {
-  if (raw === undefined || raw === '') return fallback;
+  if (raw === undefined || raw === "") return fallback;
 
   const value = Number(raw);
   if (!Number.isInteger(value) || value <= 0) {
@@ -85,32 +85,42 @@ async function deleteInChunks(db, refs) {
 }
 
 async function main() {
-  const APPLY = process.argv.includes('--apply');
+  const APPLY = process.argv.includes("--apply");
 
-  const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID ?? '';
-  const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL ?? '';
-  const privateKey = normalizePrivateKey(process.env.FIREBASE_ADMIN_PRIVATE_KEY);
-  const confirm = process.env.E2E_SEED_CONFIRM ?? '';
+  const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID ?? "";
+  const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL ?? "";
+  const privateKey = normalizePrivateKey(
+    process.env.FIREBASE_ADMIN_PRIVATE_KEY
+  );
+  const confirm = process.env.E2E_SEED_CONFIRM ?? "";
 
   if (!projectId || !clientEmail || !privateKey) {
     fail(
-      'missing FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL or FIREBASE_ADMIN_PRIVATE_KEY.'
+      "missing FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL or FIREBASE_ADMIN_PRIVATE_KEY."
     );
   }
 
   if (confirm !== projectId) {
     fail(
       `E2E_SEED_CONFIRM must equal the target project id ("${projectId}") — ` +
-        'this sweep deletes documents, so staging must not be confusable with production.'
+        "this sweep deletes documents, so staging must not be confusable with production."
     );
   }
 
-  const ttlHours = positiveInt(process.env.E2E_FIXTURE_TTL_HOURS, 'E2E_FIXTURE_TTL_HOURS', 6);
-  const maxDelete = positiveInt(process.env.E2E_FIXTURE_MAX_DELETE, 'E2E_FIXTURE_MAX_DELETE', 200);
+  const ttlHours = positiveInt(
+    process.env.E2E_FIXTURE_TTL_HOURS,
+    "E2E_FIXTURE_TTL_HOURS",
+    6
+  );
+  const maxDelete = positiveInt(
+    process.env.E2E_FIXTURE_MAX_DELETE,
+    "E2E_FIXTURE_MAX_DELETE",
+    200
+  );
   const cutoff = Date.now() - ttlHours * 60 * 60 * 1000;
 
-  const { cert, initializeApp, getApps } = require('firebase-admin/app');
-  const { getFirestore } = require('firebase-admin/firestore');
+  const { cert, initializeApp, getApps } = require("firebase-admin/app");
+  const { getFirestore } = require("firebase-admin/firestore");
 
   if (getApps().length === 0) {
     initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
@@ -118,12 +128,14 @@ async function main() {
   const db = getFirestore();
 
   const snapshot = await db
-    .collection('requests')
-    .where('e2eFixture', '==', true)
+    .collection("requests")
+    .where("e2eFixture", "==", true)
     .limit(BATCH_LIMIT)
     .get();
 
-  const stale = snapshot.docs.filter((doc) => isStaleFixture(doc.data(), cutoff)).slice(0, maxDelete);
+  const stale = snapshot.docs
+    .filter((doc) => isStaleFixture(doc.data(), cutoff))
+    .slice(0, maxDelete);
 
   if (stale.length === 0) {
     console.error(
@@ -135,24 +147,26 @@ async function main() {
   const plan = [];
   for (const request of stale) {
     const data = request.data();
-    const customerId = typeof data.userId === 'string' ? data.userId : '';
+    const customerId = typeof data.userId === "string" ? data.userId : "";
 
     const transactions = await db
-      .collection('walletTransactions')
-      .where('requestId', '==', request.id)
+      .collection("walletTransactions")
+      .where("requestId", "==", request.id)
       .get();
 
     const refs = [request.ref, ...transactions.docs.map((doc) => doc.ref)];
 
     if (customerId) {
-      for (const collection of ['users', 'wallets']) {
+      for (const collection of ["users", "wallets"]) {
         const doc = await db.collection(collection).doc(customerId).get();
         // Only delete account documents when they are marked fixtures too: a
         // real user must never be swept up because a fixture referenced them.
         if (doc.exists && doc.data()?.e2eFixture === true) {
           refs.push(doc.ref);
         } else if (doc.exists) {
-          console.error(`keeping ${collection}/${customerId}: not marked as an e2e fixture.`);
+          console.error(
+            `keeping ${collection}/${customerId}: not marked as an e2e fixture.`
+          );
         }
       }
     }
@@ -164,7 +178,7 @@ async function main() {
 
   for (const item of plan) {
     console.error(
-      `${APPLY ? 'deleting' : 'would delete'} requests/${item.id} ` +
+      `${APPLY ? "deleting" : "would delete"} requests/${item.id} ` +
         `(${item.refs.length} docs, ${item.transactions} wallet transactions)`
     );
   }
@@ -172,12 +186,15 @@ async function main() {
   if (!APPLY) {
     console.error(
       `${plan.length} stale fixture(s), ${totalRefs} document(s) total — dry run, nothing deleted. ` +
-        'Re-run with --apply.'
+        "Re-run with --apply."
     );
     return;
   }
 
-  await deleteInChunks(db, plan.flatMap((item) => item.refs));
+  await deleteInChunks(
+    db,
+    plan.flatMap((item) => item.refs)
+  );
 
   console.error(
     `deleted ${plan.length} stale fixture(s), ${totalRefs} document(s) older than ${ttlHours}h.`
@@ -186,14 +203,15 @@ async function main() {
   if (stale.length === maxDelete || snapshot.size === BATCH_LIMIT) {
     console.error(
       `hit the ${maxDelete}-fixture cap or the ${BATCH_LIMIT}-document scan limit; ` +
-        'run again to sweep the rest.'
+        "run again to sweep the rest."
     );
   }
 }
 
 // Only run when executed directly, so the predicate above stays importable.
 const invokedDirectly =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (invokedDirectly) {
   main().catch((error) => {

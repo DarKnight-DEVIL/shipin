@@ -53,9 +53,8 @@ export default function PlatformLayout({
         // Imported here, not at module scope: the profile service pulls in the
         // Firestore SDK, and the shell is the first thing every platform route
         // renders.
-        const { ensureUserProfile } = await import(
-          "@/features/users/services/userProfile"
-        );
+        const { ensureUserProfile } =
+          await import("@/features/users/services/userProfile");
         // Google sign-in never passes through registration, so an account can
         // authenticate while having no `users/{uid}` document. Every API route
         // then answers 403 USER_PROFILE_NOT_FOUND, which looks like a broken

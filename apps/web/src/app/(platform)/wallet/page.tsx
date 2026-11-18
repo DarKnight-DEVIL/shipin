@@ -2,15 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  ArrowDownToLine,
-  ArrowUpRight,
-  Plus,
-  ReceiptText,
-} from "lucide-react";
+import { ArrowDownToLine, ArrowUpRight, Plus, ReceiptText } from "lucide-react";
 
 import { auth } from "@/lib/firebase";
-import { getWallet, getWalletTransactions } from "@/features/wallet/services/wallet";
+import {
+  getWallet,
+  getWalletTransactions,
+} from "@/features/wallet/services/wallet";
 import EmptyState from "@/components/ui/EmptyState";
 import PageHeader from "@/components/ui/PageHeader";
 
@@ -136,9 +134,7 @@ export default function WalletPage() {
           </div>
 
           <div className="dash-card p-5">
-            <p className="app-kicker text-[var(--muted)]">
-              Available balance
-            </p>
+            <p className="app-kicker text-[var(--muted)]">Available balance</p>
 
             <p className="mt-2 text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-[var(--foreground)]">
               {formatMoney(wallet.balance)}

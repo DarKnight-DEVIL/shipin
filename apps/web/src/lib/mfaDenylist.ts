@@ -99,7 +99,7 @@ export async function isMfaSessionDenied(jti: string): Promise<boolean> {
     // Fail open when MFA_DENYLIST_OPTIONAL=1 is set (E2E only):
     // without a store we cannot prove revocation, so don't block.
     // Use process.env directly to avoid vitest mock issues with getters.
-    const mfaOptional = process.env['MFA_DENYLIST_OPTIONAL'] === '1';
+    const mfaOptional = process.env["MFA_DENYLIST_OPTIONAL"] === "1";
     if (mfaOptional) return false;
 
     return false;

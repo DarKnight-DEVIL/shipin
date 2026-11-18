@@ -113,10 +113,7 @@ export default function AddressesPage() {
         <div className="mb-8 h-8 w-48 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
         <div className="grid gap-4 sm:grid-cols-2">
           {[1, 2].map((i) => (
-            <div
-              key={i}
-              className="app-panel h-48 animate-pulse"
-            />
+            <div key={i} className="app-panel h-48 animate-pulse" />
           ))}
         </div>
       </div>

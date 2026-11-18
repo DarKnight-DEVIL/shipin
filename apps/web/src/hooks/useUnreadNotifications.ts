@@ -19,10 +19,13 @@ export function useUnreadNotifications() {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
 
-    const unsubscribe = subscribeToNotifications(currentUser.uid, (notifications) => {
-      const count = notifications.filter((n: Notification) => !n.read).length;
-      setUnreadCount(count);
-    });
+    const unsubscribe = subscribeToNotifications(
+      currentUser.uid,
+      (notifications) => {
+        const count = notifications.filter((n: Notification) => !n.read).length;
+        setUnreadCount(count);
+      }
+    );
 
     return unsubscribe;
   }, []);

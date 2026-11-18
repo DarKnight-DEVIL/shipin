@@ -18,7 +18,12 @@
  */
 
 /** Public routes a crawler may index, and the sitemap may advertise. */
-export const INDEXABLE_ROUTES = ['/', '/track', '/privacy-policy', '/terms'] as const;
+export const INDEXABLE_ROUTES = [
+  "/",
+  "/track",
+  "/privacy-policy",
+  "/terms",
+] as const;
 
 export type IndexableRoute = (typeof INDEXABLE_ROUTES)[number];
 
@@ -38,9 +43,9 @@ export const INDEX_ROBOTS = {
   googleBot: {
     index: true,
     follow: true,
-    'max-image-preview': 'large',
-    'max-snippet': -1,
-    'max-video-preview': -1,
+    "max-image-preview": "large",
+    "max-snippet": -1,
+    "max-video-preview": -1,
   },
 } as const;
 

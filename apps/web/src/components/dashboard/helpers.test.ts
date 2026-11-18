@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { DashboardMetricId } from "@/features/users/services/dashboardMetrics";
-import { getMetricHref, METRIC_ICONS, SHIPMENT_PHASES, SHORTCUTS } from "./helpers";
+import {
+  getMetricHref,
+  METRIC_ICONS,
+  SHIPMENT_PHASES,
+  SHORTCUTS,
+} from "./helpers";
 
 const EXPECTED_HREFS: Record<DashboardMetricId, string> = {
   active: "/requests",

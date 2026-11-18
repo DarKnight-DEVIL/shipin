@@ -18,10 +18,7 @@ const NO_STORE = { "Cache-Control": "no-store" } as const;
  * `adminAuditLog` entry naming the actor.
  */
 export const POST = withErrorHandler(
-  async (
-    req: NextRequest,
-    context: { params: Promise<{ uid: string }> }
-  ) => {
+  async (req: NextRequest, context: { params: Promise<{ uid: string }> }) => {
     try {
       const admin = await requireAdmin(req);
 

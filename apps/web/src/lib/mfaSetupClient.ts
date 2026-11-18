@@ -53,9 +53,7 @@ type TotpSetupResponse = {
 type BackupCodesResponse = { backupCodes?: unknown };
 
 function readBackupCodes(body: BackupCodesResponse): string[] {
-  return Array.isArray(body.backupCodes)
-    ? (body.backupCodes as string[])
-    : [];
+  return Array.isArray(body.backupCodes) ? (body.backupCodes as string[]) : [];
 }
 
 /** Which factors are configured for the signed-in admin. */
@@ -74,12 +72,9 @@ export async function getMfaConfigStatus(
     sms: {
       enabled: Boolean(body.sms?.enabled),
       phoneNumber:
-        typeof body.sms?.phoneNumber === "string"
-          ? body.sms.phoneNumber
-          : null,
+        typeof body.sms?.phoneNumber === "string" ? body.sms.phoneNumber : null,
     },
-    backupCodes:
-      typeof body.backupCodes === "number" ? body.backupCodes : 0,
+    backupCodes: typeof body.backupCodes === "number" ? body.backupCodes : 0,
     webauthn: {
       enabled: Boolean(body.webauthn?.enabled),
       credentials: readSecurityKeys(body.webauthn?.credentials),
@@ -116,10 +111,11 @@ export async function confirmTotpEnrollment(
   idToken: string,
   code: string
 ): Promise<string[]> {
-  const body = await mfaApi<BackupCodesResponse>(
-    "/api/auth/mfa/totp/verify",
-    { idToken, method: "POST", body: { code } }
-  );
+  const body = await mfaApi<BackupCodesResponse>("/api/auth/mfa/totp/verify", {
+    idToken,
+    method: "POST",
+    body: { code },
+  });
 
   return readBackupCodes(body);
 }

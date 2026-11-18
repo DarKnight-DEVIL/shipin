@@ -38,12 +38,18 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
   if (auth instanceof NextResponse) return auth;
 
-
-  const snapshot = await adminDb.collection("users").doc(auth.profile.uid).get();
+  const snapshot = await adminDb
+    .collection("users")
+    .doc(auth.profile.uid)
+    .get();
 
   if (!snapshot.exists) {
     return NextResponse.json(
-      { success: false, error: "User not found.", code: "USER_PROFILE_NOT_FOUND" },
+      {
+        success: false,
+        error: "User not found.",
+        code: "USER_PROFILE_NOT_FOUND",
+      },
       { status: 404, headers: NO_STORE }
     );
   }
@@ -63,7 +69,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
       (factor) => factor.factorId === "phone"
     );
     smsPhoneNumber =
-      (phoneFactor as { phoneNumber?: string } | undefined)?.phoneNumber ?? null;
+      (phoneFactor as { phoneNumber?: string } | undefined)?.phoneNumber ??
+      null;
   } catch {
     smsPhoneNumber = null;
   }

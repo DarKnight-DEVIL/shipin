@@ -37,11 +37,7 @@ export default function ConfirmDialog({
                 : "bg-[var(--surface-2)] text-[var(--muted)]"
             }`}
           >
-            {danger ? (
-              <AlertTriangle size={17} />
-            ) : (
-              <CheckCircle2 size={17} />
-            )}
+            {danger ? <AlertTriangle size={17} /> : <CheckCircle2 size={17} />}
           </div>
 
           <div className="min-w-0 flex-1">

@@ -122,12 +122,16 @@ function validateFloors() {
       }
 
       if (typeof value !== "number" || !Number.isFinite(value)) {
-        problems.push(`${glob}: ${metric} floor ${String(value)} is not a number`);
+        problems.push(
+          `${glob}: ${metric} floor ${String(value)} is not a number`
+        );
         continue;
       }
 
       if (value > 100) {
-        problems.push(`${glob}: ${metric} floor ${value}% is above 100%, which can never pass`);
+        problems.push(
+          `${glob}: ${metric} floor ${value}% is above 100%, which can never pass`
+        );
       }
 
       if (value < GLOBAL_COVERAGE_FLOORS[metric]) {

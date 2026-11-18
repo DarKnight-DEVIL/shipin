@@ -30,10 +30,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  const prefix = typeof body.prefix === "string" ? body.prefix.trim().toUpperCase() : "";
+  const prefix =
+    typeof body.prefix === "string" ? body.prefix.trim().toUpperCase() : "";
   if (!/^[0-9A-F]{5}$/.test(prefix)) {
     return NextResponse.json(
-      { success: false, error: "Invalid prefix.", code: "INVALID_REQUEST_BODY" },
+      {
+        success: false,
+        error: "Invalid prefix.",
+        code: "INVALID_REQUEST_BODY",
+      },
       { status: 400, headers: NO_STORE }
     );
   }
@@ -69,9 +74,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       { status: 200, headers: NO_STORE }
     );
   } catch (error) {
-    console.error("Password leak check failed:", error instanceof Error ? error.message : error);
+    console.error(
+      "Password leak check failed:",
+      error instanceof Error ? error.message : error
+    );
     return NextResponse.json(
-      { success: false, error: "Leak check unavailable.", code: "EXTERNAL_SERVICE_ERROR" },
+      {
+        success: false,
+        error: "Leak check unavailable.",
+        code: "EXTERNAL_SERVICE_ERROR",
+      },
       { status: 502, headers: NO_STORE }
     );
   }

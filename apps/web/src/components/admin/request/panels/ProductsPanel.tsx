@@ -35,9 +35,7 @@ export default function ProductsPanel({ request }: Props) {
       ====================================== */}
       <Section
         title="Products"
-        subtitle={`${items.length} product${
-          items.length !== 1 ? "s" : ""
-        }`}
+        subtitle={`${items.length} product${items.length !== 1 ? "s" : ""}`}
       >
         {items.length === 0 ? (
           <EmptyState
@@ -133,8 +131,7 @@ function AdditionalItemCard({
     null
   );
 
-  const subtotal =
-    (Number(unitPrice) || 0) * additionalRequest.item.quantity;
+  const subtotal = (Number(unitPrice) || 0) * additionalRequest.item.quantity;
 
   const serviceFee = 0;
 
@@ -195,16 +192,13 @@ function AdditionalItemCard({
         };
       });
 
-      await adminApi<void>(
-        `/api/requests/${request.id}/additional-items`,
-        {
-          method: "PATCH",
-          body: {
-            additionalItemRequests: updatedAdditionalRequests,
-            status: "awaiting_payment"
-          }
-        }
-      );
+      await adminApi<void>(`/api/requests/${request.id}/additional-items`, {
+        method: "PATCH",
+        body: {
+          additionalItemRequests: updatedAdditionalRequests,
+          status: "awaiting_payment",
+        },
+      });
 
       toast.success(
         "Additional item approved. Additional payment is now pending."
@@ -251,25 +245,22 @@ function AdditionalItemCard({
 
       const now = new Date();
 
-      await adminApi<void>(
-        `/api/requests/${request.id}/additional-items`,
-        {
-          method: "PATCH",
-          body: {
-            additionalItemRequests: updatedAdditionalRequests,
-            ...(allAdditionalItemsResolved
-              ? {
-                  orderChange: {
-                    ...(latestRequest.orderChange || { active: false }),
-                    active: false,
-                    completedAt: now,
-                  },
-                }
-              : {}),
-            updatedAt: now,
-          }
-        }
-      );
+      await adminApi<void>(`/api/requests/${request.id}/additional-items`, {
+        method: "PATCH",
+        body: {
+          additionalItemRequests: updatedAdditionalRequests,
+          ...(allAdditionalItemsResolved
+            ? {
+                orderChange: {
+                  ...(latestRequest.orderChange || { active: false }),
+                  active: false,
+                  completedAt: now,
+                },
+              }
+            : {}),
+          updatedAt: now,
+        },
+      });
 
       toast.success("Additional item request rejected.");
     } catch (error) {
@@ -331,29 +322,24 @@ function AdditionalItemCard({
           item.status === "cancelled"
       );
 
-      await adminApi<void>(
-        `/api/requests/${request.id}/additional-items`,
-        {
-          method: "PATCH",
-          body: {
-            additionalItemRequests: updatedAdditionalRequests,
-            ...(allAdditionalItemsResolved
-              ? {
-                  orderChange: {
-                    ...(latestRequest.orderChange || { active: false }),
-                    active: false,
-                    completedAt: now,
-                  },
-                }
-              : {}),
-            updatedAt: now,
-          }
-        }
-      );
+      await adminApi<void>(`/api/requests/${request.id}/additional-items`, {
+        method: "PATCH",
+        body: {
+          additionalItemRequests: updatedAdditionalRequests,
+          ...(allAdditionalItemsResolved
+            ? {
+                orderChange: {
+                  ...(latestRequest.orderChange || { active: false }),
+                  active: false,
+                  completedAt: now,
+                },
+              }
+            : {}),
+          updatedAt: now,
+        },
+      });
 
-      toast.success(
-        `Additional item marked as ${STATUS_LABELS[nextStatus]}.`
-      );
+      toast.success(`Additional item marked as ${STATUS_LABELS[nextStatus]}.`);
     } catch (error) {
       console.error("Additional item status update error:", error);
       toast.error("Unable to update the additional item status.");
@@ -507,8 +493,8 @@ function AdditionalItemCard({
                   Waiting for customer payment.
                 </p>
                 <p className="mt-1 text-xs text-slate-400">
-                  This item will automatically become paid after successful PayPal
-                  payment.
+                  This item will automatically become paid after successful
+                  PayPal payment.
                 </p>
               </div>
             )}
@@ -592,9 +578,7 @@ function AdditionalItemCard({
             ? `Mark this item as "${STATUS_LABELS[pendingStatus]}"?`
             : "Are you sure you want to update status?"
         }
-        confirmText={
-          pendingStatus ? STATUS_LABELS[pendingStatus] : "Confirm"
-        }
+        confirmText={pendingStatus ? STATUS_LABELS[pendingStatus] : "Confirm"}
         onCancel={() => {
           setShowStatusDialog(false);
           setPendingStatus(null);

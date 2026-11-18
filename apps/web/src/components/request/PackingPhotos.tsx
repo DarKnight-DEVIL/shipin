@@ -4,7 +4,7 @@ import Image from "next/image";
 
 // Every image here is a presigned R2 URL (per-account host, 15-minute
 // signature), so each <Image> bypasses the optimizer via `unoptimized`:
-// /_next/image cannot cache a signature and would expose it in our URL.
+// /_next/image cannot cache a signature and would expose it in our URL.
 
 interface Props {
   beforePacking?: string[];
@@ -21,15 +21,10 @@ export default function PackingPhotos({
 }: Props) {
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-
-      <h2 className="text-2xl font-semibold text-white mb-6">
-        Packing Photos
-      </h2>
+      <h2 className="text-2xl font-semibold text-white mb-6">Packing Photos</h2>
 
       <div className="space-y-8">
-
         <section>
-
           <h3 className="text-lg font-semibold text-white mb-4">
             Before Packing
           </h3>
@@ -47,11 +42,9 @@ export default function PackingPhotos({
               />
             ))}
           </div>
-
         </section>
 
         <section>
-
           <h3 className="text-lg font-semibold text-white mb-4">
             After Packing
           </h3>
@@ -69,12 +62,10 @@ export default function PackingPhotos({
               />
             ))}
           </div>
-
         </section>
 
         {shippingLabel && (
           <section>
-
             <h3 className="text-lg font-semibold text-white mb-4">
               Shipping Label
             </h3>
@@ -87,12 +78,9 @@ export default function PackingPhotos({
               className="rounded-xl border border-slate-700 max-w-sm"
               alt="Shipping label"
             />
-
           </section>
         )}
-
       </div>
-
     </div>
   );
 }

@@ -8,15 +8,8 @@ interface AccountSectionProps {
 }
 
 export default function AccountSection({ settings }: AccountSectionProps) {
-  const {
-    profile,
-    loading,
-    editing,
-    saving,
-    setField,
-    setEditing,
-    save,
-  } = settings;
+  const { profile, loading, editing, saving, setField, setEditing, save } =
+    settings;
 
   return (
     <SettingsSection

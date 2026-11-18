@@ -52,7 +52,9 @@ export default function CountrySelect({ value, onChange }: Props) {
       backgroundColor: isDark ? "#020617" : "#ffffff",
       borderColor: state.isFocused ? accent : border,
       boxShadow: state.isFocused ? `0 0 0 2px ${accent}33` : "none",
-      "&:hover": { borderColor: state.isFocused ? accent : isDark ? "#475569" : "#cbd5e1" },
+      "&:hover": {
+        borderColor: state.isFocused ? accent : isDark ? "#475569" : "#cbd5e1",
+      },
     }),
     valueContainer: (base) => ({ ...base, padding: "0 12px" }),
     singleValue: (base) => ({ ...base, color: text }),

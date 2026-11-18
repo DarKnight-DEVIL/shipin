@@ -22,21 +22,25 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   if (auth instanceof NextResponse) return auth;
 
-
   let body: unknown;
 
   try {
     body = await request.json();
   } catch {
     return NextResponse.json(
-      { success: false, error: "Invalid request body.", code: "INVALID_REQUEST_BODY" },
+      {
+        success: false,
+        error: "Invalid request body.",
+        code: "INVALID_REQUEST_BODY",
+      },
       { status: 400, headers: NO_STORE }
     );
   }
 
-  const code = typeof (body as { code?: unknown })?.code === "string"
-    ? ((body as { code: string }).code).replace(/\s+/g, "")
-    : "";
+  const code =
+    typeof (body as { code?: unknown })?.code === "string"
+      ? (body as { code: string }).code.replace(/\s+/g, "")
+      : "";
 
   if (!/^\d{6}$/.test(code)) {
     return NextResponse.json(
@@ -49,23 +53,33 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  const snapshot = await adminDb.collection("users").doc(auth.profile.uid).get();
+  const snapshot = await adminDb
+    .collection("users")
+    .doc(auth.profile.uid)
+    .get();
 
   if (!snapshot.exists) {
     return NextResponse.json(
-      { success: false, error: "User not found.", code: "USER_PROFILE_NOT_FOUND" },
+      {
+        success: false,
+        error: "User not found.",
+        code: "USER_PROFILE_NOT_FOUND",
+      },
       { status: 404, headers: NO_STORE }
     );
   }
 
-  const totp = (snapshot.data()?.mfa as { totp?: { secret?: unknown } } | undefined)?.totp;
+  const totp = (
+    snapshot.data()?.mfa as { totp?: { secret?: unknown } } | undefined
+  )?.totp;
   const secret = typeof totp?.secret === "string" ? totp.secret : null;
 
   if (!secret) {
     return NextResponse.json(
       {
         success: false,
-        error: "Authenticator setup was not started. Start it again to get a new secret.",
+        error:
+          "Authenticator setup was not started. Start it again to get a new secret.",
         code: "TOTP_NOT_SETUP",
       },
       { status: 400, headers: NO_STORE }
@@ -77,7 +91,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     return NextResponse.json(
       {
         success: false,
-        error: "That code is not valid. Check your authenticator app and try again.",
+        error:
+          "That code is not valid. Check your authenticator app and try again.",
         code: "INVALID_TOTP_CODE",
       },
       { status: 400, headers: NO_STORE }

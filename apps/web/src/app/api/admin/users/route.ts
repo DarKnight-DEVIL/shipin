@@ -45,21 +45,28 @@ async function handleGet(request: NextRequest): Promise<NextResponse> {
   const users: AdminUserRow[] = snapshot.docs
     .map((doc) => {
       const data = doc.data() as Record<string, unknown>;
-      const createdAt = data.createdAt as { toMillis?: () => number } | undefined;
+      const createdAt = data.createdAt as
+        { toMillis?: () => number } | undefined;
 
       return {
         uid: doc.id,
         email: typeof data.email === "string" ? data.email : "",
-        displayName: typeof data.displayName === "string" ? data.displayName : "",
+        displayName:
+          typeof data.displayName === "string" ? data.displayName : "",
         role: readRole(data.role),
         mfaEnabled: mfaSummary(data.mfa),
         createdAt:
-          typeof createdAt?.toMillis === "function" ? createdAt.toMillis() : null,
+          typeof createdAt?.toMillis === "function"
+            ? createdAt.toMillis()
+            : null,
       };
     })
     .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
-  return NextResponse.json({ success: true, users }, { status: 200, headers: NO_STORE });
+  return NextResponse.json(
+    { success: true, users },
+    { status: 200, headers: NO_STORE }
+  );
 }
 
 /**
@@ -79,7 +86,11 @@ async function handlePatch(request: NextRequest): Promise<NextResponse> {
     body = await request.json();
   } catch {
     return NextResponse.json(
-      { success: false, error: "Invalid request body.", code: "INVALID_REQUEST_BODY" },
+      {
+        success: false,
+        error: "Invalid request body.",
+        code: "INVALID_REQUEST_BODY",
+      },
       { status: 400, headers: NO_STORE }
     );
   }
@@ -88,14 +99,22 @@ async function handlePatch(request: NextRequest): Promise<NextResponse> {
 
   if (typeof uid !== "string" || !uid) {
     return NextResponse.json(
-      { success: false, error: "A user id is required.", code: "INVALID_REQUEST_BODY" },
+      {
+        success: false,
+        error: "A user id is required.",
+        code: "INVALID_REQUEST_BODY",
+      },
       { status: 400, headers: NO_STORE }
     );
   }
 
   if (typeof role !== "string" || !ROLES.includes(role as AssignableRole)) {
     return NextResponse.json(
-      { success: false, error: "Role must be 'admin' or 'customer'.", code: "INVALID_ROLE" },
+      {
+        success: false,
+        error: "Role must be 'admin' or 'customer'.",
+        code: "INVALID_ROLE",
+      },
       { status: 400, headers: NO_STORE }
     );
   }
@@ -116,7 +135,11 @@ async function handlePatch(request: NextRequest): Promise<NextResponse> {
 
   if (!target.exists) {
     return NextResponse.json(
-      { success: false, error: "User not found.", code: "USER_PROFILE_NOT_FOUND" },
+      {
+        success: false,
+        error: "User not found.",
+        code: "USER_PROFILE_NOT_FOUND",
+      },
       { status: 404, headers: NO_STORE }
     );
   }
@@ -134,7 +157,8 @@ async function handlePatch(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json(
         {
           success: false,
-          error: "This is the last administrator. Promote another account first.",
+          error:
+            "This is the last administrator. Promote another account first.",
           code: "LAST_ADMIN",
         },
         { status: 409, headers: NO_STORE }

@@ -184,7 +184,9 @@ export function readRequestCookie(
  * Async because revocation lives in Redis: a valid signature is no longer
  * enough on its own once a session can be revoked before it expires.
  */
-export async function getMfaSession(request: Request): Promise<MfaSession | null> {
+export async function getMfaSession(
+  request: Request
+): Promise<MfaSession | null> {
   const session = verifyMfaSessionToken(
     readRequestCookie(request, MFA_SESSION_COOKIE)
   );

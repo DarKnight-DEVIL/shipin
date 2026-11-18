@@ -16,9 +16,9 @@ export default function NetworkSection({ corridors }: NetworkSectionProps) {
             <h2>The route is visible while it happens.</h2>
           </div>
           <p className="lede">
-            Every request gets a manifest ID and an event log. Watch the
-            parcel move from the seller&apos;s counter to your address without
-            emailing an account manager for an update.
+            Every request gets a manifest ID and an event log. Watch the parcel
+            move from the seller&apos;s counter to your address without emailing
+            an account manager for an update.
           </p>
         </div>
 
@@ -48,8 +48,8 @@ export default function NetworkSection({ corridors }: NetworkSectionProps) {
               </tbody>
             </table>
             <p className="corridors__note">
-              Transit excludes customs holds. Freight is quoted per
-              consolidated manifest, not per parcel.
+              Transit excludes customs holds. Freight is quoted per consolidated
+              manifest, not per parcel.
             </p>
           </div>
 

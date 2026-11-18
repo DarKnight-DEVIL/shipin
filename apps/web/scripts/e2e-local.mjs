@@ -60,7 +60,9 @@ function run(command, env) {
 const signedIn = process.argv.includes("--signed-in");
 const extraArgs = process.argv.slice(2).filter((arg) => arg !== "--signed-in");
 
-const quotedArg = extraArgs.find((arg) => arg.includes('"') || arg.includes("$"));
+const quotedArg = extraArgs.find(
+  (arg) => arg.includes('"') || arg.includes("$")
+);
 if (quotedArg) {
   console.error(
     `Passing "${quotedArg}" to Playwright through this runner is not supported: ` +
@@ -168,8 +170,7 @@ const specs = signedIn
       "tests/smoke.spec.ts",
       "tests/hydration.spec.ts",
       "tests/sitemap-check.spec.ts",
-    ].join(" ") +
-    ` ${API_CONTRACT_SPECS}`;
+    ].join(" ") + ` ${API_CONTRACT_SPECS}`;
 
 const playwright = [
   "npx playwright test --config=playwright.config.ts",

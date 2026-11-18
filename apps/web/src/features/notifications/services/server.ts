@@ -1,7 +1,7 @@
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue } from "firebase-admin/firestore";
 
-import { adminDb } from '@/lib/firebaseAdmin';
-import type { Notification } from '@/types/notification';
+import { adminDb } from "@/lib/firebaseAdmin";
+import type { Notification } from "@/types/notification";
 
 /**
  * Server-side notification writer.
@@ -15,9 +15,9 @@ export async function createNotification(
   requestId: string | null,
   title: string,
   message: string,
-  type: Notification['type']
+  type: Notification["type"]
 ): Promise<string> {
-  const docRef = await adminDb.collection('notifications').add({
+  const docRef = await adminDb.collection("notifications").add({
     userId,
     requestId,
     title,

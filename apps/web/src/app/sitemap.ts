@@ -1,8 +1,9 @@
-import type { MetadataRoute } from 'next';
-import { siteConfig } from '@/config/site';
-import { INDEXABLE_ROUTES, type IndexableRoute } from '@/config/seo';
+import type { MetadataRoute } from "next";
+import { siteConfig } from "@/config/site";
+import { INDEXABLE_ROUTES, type IndexableRoute } from "@/config/seo";
 
-type ChangeFrequency = 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never';
+type ChangeFrequency =
+  "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
 
 /**
  * Crawl hints per public route. The list itself lives in `@/config/seo` so the
@@ -14,10 +15,22 @@ const ROUTE_META: Record<
   IndexableRoute,
   { changeFrequency: ChangeFrequency; priority: number; lastModified: string }
 > = {
-  '/': { changeFrequency: 'weekly', priority: 1, lastModified: '2026-11-01' },
-  '/track': { changeFrequency: 'weekly', priority: 0.8, lastModified: '2026-11-01' },
-  '/privacy-policy': { changeFrequency: 'monthly', priority: 0.7, lastModified: '2026-09-01' },
-  '/terms': { changeFrequency: 'monthly', priority: 0.7, lastModified: '2026-09-01' },
+  "/": { changeFrequency: "weekly", priority: 1, lastModified: "2026-11-01" },
+  "/track": {
+    changeFrequency: "weekly",
+    priority: 0.8,
+    lastModified: "2026-11-01",
+  },
+  "/privacy-policy": {
+    changeFrequency: "monthly",
+    priority: 0.7,
+    lastModified: "2026-09-01",
+  },
+  "/terms": {
+    changeFrequency: "monthly",
+    priority: 0.7,
+    lastModified: "2026-09-01",
+  },
 };
 
 /**

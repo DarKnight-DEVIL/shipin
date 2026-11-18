@@ -71,7 +71,9 @@ describe("createMfaSessionToken / verifyMfaSessionToken", () => {
     const now = Date.now();
     const { expiresAt } = mfa.createMfaSessionToken(UID, now);
 
-    expect(expiresAt).toBe(Math.floor(now / 1000) + mfa.MFA_SESSION_TTL_MS / 1000);
+    expect(expiresAt).toBe(
+      Math.floor(now / 1000) + mfa.MFA_SESSION_TTL_MS / 1000
+    );
   });
 
   it("rejects an expired token", () => {
@@ -100,11 +102,15 @@ describe("createMfaSessionToken / verifyMfaSessionToken", () => {
     const { token } = mfa.createMfaSessionToken(UID);
     const [encoded, signature] = token.split(".");
     const forgedPayload = Buffer.from(
-      Buffer.from(encoded, "base64url").toString("utf8").replace(UID, "someone-else"),
+      Buffer.from(encoded, "base64url")
+        .toString("utf8")
+        .replace(UID, "someone-else"),
       "utf8"
     ).toString("base64url");
 
-    expect(mfa.verifyMfaSessionToken(`${forgedPayload}.${signature}`)).toBeNull();
+    expect(
+      mfa.verifyMfaSessionToken(`${forgedPayload}.${signature}`)
+    ).toBeNull();
   });
 
   it("rejects malformed tokens", () => {
@@ -139,16 +145,23 @@ describe("cookie helpers", () => {
       `theme=dark; ${mfa.MFA_SESSION_COOKIE}=abc.def; other=1`
     );
 
-    expect(mfa.readRequestCookie(request, mfa.MFA_SESSION_COOKIE)).toBe("abc.def");
+    expect(mfa.readRequestCookie(request, mfa.MFA_SESSION_COOKIE)).toBe(
+      "abc.def"
+    );
     expect(mfa.readRequestCookie(request, "missing")).toBeNull();
-    expect(mfa.readRequestCookie(requestWithCookie(""), mfa.MFA_SESSION_COOKIE)).toBeNull();
+    expect(
+      mfa.readRequestCookie(requestWithCookie(""), mfa.MFA_SESSION_COOKIE)
+    ).toBeNull();
   });
 
   it("extracts a verifying session from a request", async () => {
     const { token, jti } = mfa.createMfaSessionToken(UID);
     const request = requestWithCookie(`${mfa.MFA_SESSION_COOKIE}=${token}`);
 
-    await expect(mfa.getMfaSession(request)).resolves.toMatchObject({ uid: UID, jti });
+    await expect(mfa.getMfaSession(request)).resolves.toMatchObject({
+      uid: UID,
+      jti,
+    });
     expect(denylist.isMfaSessionDenied).toHaveBeenCalledWith(jti);
   });
 
@@ -185,7 +198,12 @@ describe("parseMfaSessionPayload", () => {
   const issued = Math.floor(now / 1000);
 
   it("accepts a current payload", () => {
-    expect(mfa.parseMfaSessionPayload(`2.${UID}.${issued}.${issued + 900}.jti-1`, now)).toEqual({
+    expect(
+      mfa.parseMfaSessionPayload(
+        `2.${UID}.${issued}.${issued + 900}.jti-1`,
+        now
+      )
+    ).toEqual({
       uid: UID,
       expiresAt: issued + 900,
       jti: "jti-1",
@@ -195,10 +213,14 @@ describe("parseMfaSessionPayload", () => {
   it("rejects version 1 tokens, which have no session id", () => {
     // Those cookies shipped before revocation existed, so honouring them would
     // leave a 30-minute window that nothing can close.
-    expect(mfa.parseMfaSessionPayload(`1.${UID}.${issued}.${issued + 900}`, now)).toBeNull();
+    expect(
+      mfa.parseMfaSessionPayload(`1.${UID}.${issued}.${issued + 900}`, now)
+    ).toBeNull();
   });
 
   it("rejects a version 2 payload with no jti", () => {
-    expect(mfa.parseMfaSessionPayload(`2.${UID}.${issued}.${issued + 900}`, now)).toBeNull();
+    expect(
+      mfa.parseMfaSessionPayload(`2.${UID}.${issued}.${issued + 900}`, now)
+    ).toBeNull();
   });
 });

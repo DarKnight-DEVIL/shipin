@@ -15,7 +15,6 @@ export default function ConsolidationCard({
 }: Props) {
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-
       <h2 className="text-2xl font-semibold text-white mb-6">
         Package Consolidation
       </h2>
@@ -35,9 +34,7 @@ export default function ConsolidationCard({
         </>
       ) : (
         <>
-          <p className="text-slate-400 mb-2">
-            Shipment ID
-          </p>
+          <p className="text-slate-400 mb-2">Shipment ID</p>
 
           <div className="bg-slate-950 rounded-xl p-4 text-white font-mono mb-6">
             {shipmentId}
@@ -51,7 +48,6 @@ export default function ConsolidationCard({
           </button>
         </>
       )}
-
     </div>
   );
 }

@@ -52,19 +52,26 @@ const MESSAGES: Record<string, string> = {
   "auth/code-expired": "That code expired. Send a new one.",
   "auth/invalid-verification-code": "That code is not correct. Try again.",
   "auth/invalid-verification-id": "This verification expired. Start again.",
-  "auth/too-many-requests": "Too many attempts. Wait a few minutes and try again.",
-  "auth/quota-exceeded": "The SMS quota for this project is exhausted. Try again later.",
+  "auth/too-many-requests":
+    "Too many attempts. Wait a few minutes and try again.",
+  "auth/quota-exceeded":
+    "The SMS quota for this project is exhausted. Try again later.",
   "auth/operation-not-allowed":
     "SMS MFA is not enabled for this project yet. Ask an administrator to enable it in Firebase.",
-  "auth/unauthorized-domain": "This domain is not authorised for SMS verification.",
-  "auth/captcha-check-failed": "The reCAPTCHA check failed. Reload the page and try again.",
+  "auth/unauthorized-domain":
+    "This domain is not authorised for SMS verification.",
+  "auth/captcha-check-failed":
+    "The reCAPTCHA check failed. Reload the page and try again.",
   "auth/missing-phone-number": "Enter a phone number in international format.",
-  "auth/invalid-phone-number": "That phone number is not valid. Use international format.",
+  "auth/invalid-phone-number":
+    "That phone number is not valid. Use international format.",
 };
 
 function toMfaError(error: unknown): FirebaseMfaError {
   const code =
-    error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
+    error &&
+    typeof error === "object" &&
+    typeof (error as { code?: unknown }).code === "string"
       ? (error as { code: string }).code
       : "MFA_FAILED";
 
@@ -75,18 +82,22 @@ function toMfaError(error: unknown): FirebaseMfaError {
 }
 
 /** True when sign-in stopped for a second factor instead of failing. */
-export function isMultiFactorRequired(error: unknown): error is MultiFactorError {
+export function isMultiFactorRequired(
+  error: unknown
+): error is MultiFactorError {
   return Boolean(
     error &&
-      typeof error === "object" &&
-      (error as { code?: unknown }).code === "auth/multi-factor-auth-required"
+    typeof error === "object" &&
+    (error as { code?: unknown }).code === "auth/multi-factor-auth-required"
   );
 }
 
 function createVerifier(auth: Auth): RecaptchaVerifier {
   // Invisible: Firebase resolves it without user interaction in the common
   // case, and it does not need layout space of its own.
-  return new RecaptchaVerifier(auth, RECAPTCHA_CONTAINER_ID, { size: "invisible" });
+  return new RecaptchaVerifier(auth, RECAPTCHA_CONTAINER_ID, {
+    size: "invisible",
+  });
 }
 
 /** The phone factor currently enrolled on this user, if any. */
@@ -196,7 +207,10 @@ export async function confirmSecondFactorChallenge(
   code: string
 ): Promise<User> {
   try {
-    const credential = PhoneAuthProvider.credential(challenge.verificationId, code);
+    const credential = PhoneAuthProvider.credential(
+      challenge.verificationId,
+      code
+    );
     const result = await challenge.resolver.resolveSignIn(
       PhoneMultiFactorGenerator.assertion(credential)
     );

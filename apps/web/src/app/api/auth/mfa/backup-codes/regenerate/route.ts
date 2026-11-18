@@ -18,21 +18,31 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
-
   const body = await request.json();
   const { totpCode } = body as { totpCode?: unknown };
 
   if (typeof totpCode !== "string" || totpCode.length !== 6) {
     return NextResponse.json(
-      { success: false, error: "Invalid TOTP code.", code: "INVALID_TOTP_CODE" },
+      {
+        success: false,
+        error: "Invalid TOTP code.",
+        code: "INVALID_TOTP_CODE",
+      },
       { status: 400, headers: NO_STORE }
     );
   }
 
-  const userSnapshot = await adminDb.collection("users").doc(auth.profile.uid).get();
+  const userSnapshot = await adminDb
+    .collection("users")
+    .doc(auth.profile.uid)
+    .get();
   if (!userSnapshot.exists) {
     return NextResponse.json(
-      { success: false, error: "User not found.", code: "USER_PROFILE_NOT_FOUND" },
+      {
+        success: false,
+        error: "User not found.",
+        code: "USER_PROFILE_NOT_FOUND",
+      },
       { status: 404, headers: NO_STORE }
     );
   }
@@ -51,7 +61,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   // Verify TOTP before regenerating backup codes
   if (!verifyTotp(totpSecret, totpCode, 1)) {
     return NextResponse.json(
-      { success: false, error: "Invalid TOTP code.", code: "INVALID_TOTP_CODE" },
+      {
+        success: false,
+        error: "Invalid TOTP code.",
+        code: "INVALID_TOTP_CODE",
+      },
       { status: 400, headers: NO_STORE }
     );
   }
@@ -69,7 +83,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     {
       success: true,
       backupCodes,
-      message: "New backup codes generated. Store them securely - old codes are now invalid.",
+      message:
+        "New backup codes generated. Store them securely - old codes are now invalid.",
     },
     { status: 200, headers: NO_STORE }
   );

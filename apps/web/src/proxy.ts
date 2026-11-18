@@ -15,7 +15,11 @@ import {
   isRateLimited,
   addRateLimitHeaders,
 } from "@/lib/rateLimiter";
-import { SECURITY_HEADERS, getProductionCSP, getDevCSP } from "@/lib/securityHeaders";
+import {
+  SECURITY_HEADERS,
+  getProductionCSP,
+  getDevCSP,
+} from "@/lib/securityHeaders";
 import { getCorsHeaders, isAllowedOrigin } from "@/lib/cors";
 import { classifyRoute } from "@/config/routeAuth";
 import { isIndexableRoute } from "@/config/seo";
@@ -112,9 +116,15 @@ export default async function proxy(request: NextRequest) {
     if (classification === "unclassified") {
       // In production, fail closed on unclassified routes to prevent accidental exposure.
       if (process.env.NODE_ENV === "production") {
-        console.error(`[proxy] UNCLASSIFIED ROUTE: ${pathname} — rejecting request. Add to ROUTE_AUTH_CLASSIFICATION.`);
+        console.error(
+          `[proxy] UNCLASSIFIED ROUTE: ${pathname} — rejecting request. Add to ROUTE_AUTH_CLASSIFICATION.`
+        );
         return NextResponse.json(
-          { success: false, error: "Route not configured.", code: "ROUTE_UNCLASSIFIED" },
+          {
+            success: false,
+            error: "Route not configured.",
+            code: "ROUTE_UNCLASSIFIED",
+          },
           { status: 500 }
         );
       } else {

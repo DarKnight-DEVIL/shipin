@@ -8,9 +8,18 @@
  * here keeps each file self-contained, and `vi.resetModules()` in the hoisted
  * block clears whatever a previous file left behind before these imports run.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import { logRightsRequest, getUserRightsRequests, updateRightsRequest, getPendingRightsRequests, getAllRightsRequests, getOverdueRightsRequests, assignRightsRequest, escalateRightsRequest } from './rightsOps2';
+import {
+  logRightsRequest,
+  getUserRightsRequests,
+  updateRightsRequest,
+  getPendingRightsRequests,
+  getAllRightsRequests,
+  getOverdueRightsRequests,
+  assignRightsRequest,
+  escalateRightsRequest,
+} from "./rightsOps2";
 
 // Runs before this file's imports are evaluated, so the subjects below bind to
 // the stubs declared in this file.
@@ -23,7 +32,7 @@ vi.hoisted(() => {
 // ---------------------------------------------------------------------------
 
 function fakeDoc(data: Record<string, unknown>, exists = true) {
-  const safeData = { id: 'doc-id', ...data };
+  const safeData = { id: "doc-id", ...data };
   const snap = {
     exists,
     data: () => safeData,
@@ -40,8 +49,8 @@ function fakeDoc(data: Record<string, unknown>, exists = true) {
 
 function fakeCollection(docs: ReturnType<typeof fakeDoc>[]) {
   return {
-    doc: (id?: string) => docs.find(d => d.data().id === id) || docs[0],
-    add: vi.fn((_data?: Record<string, unknown>) => ({ id: 'added-id' })),
+    doc: (id?: string) => docs.find((d) => d.data().id === id) || docs[0],
+    add: vi.fn((_data?: Record<string, unknown>) => ({ id: "added-id" })),
     get: () => ({ docs, empty: docs.length === 0 }),
     where: () => fakeCollection(docs),
     orderBy: () => fakeCollection(docs),
@@ -68,11 +77,11 @@ const mocks = vi.hoisted(() => ({
   serverTimestamp: vi.fn(() => ({ toDate: () => new Date() })),
 }));
 
-vi.mock('@/lib/firebaseAdmin', () => ({
+vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: mocks.adminDb,
 }));
 
-vi.mock('firebase-admin/firestore', () => ({
+vi.mock("firebase-admin/firestore", () => ({
   FieldValue: {
     serverTimestamp: mocks.serverTimestamp,
   },
@@ -82,7 +91,9 @@ beforeEach(() => {
   mocks.adminDb.collection.mockReset();
   mocks.adminDb.collection.mockImplementation(() => fakeCollection([]));
   mocks.serverTimestamp.mockReset();
-  mocks.serverTimestamp.mockImplementation(() => ({ toDate: () => new Date() }));
+  mocks.serverTimestamp.mockImplementation(() => ({
+    toDate: () => new Date(),
+  }));
 });
 
 /**
@@ -102,35 +113,34 @@ function stubCollections(
   ).mockImplementation(factory);
 }
 
-
-describe('compliance rights ops', () => {
-  it('logRightsRequest creates a request with the correct deadline', async () => {
+describe("compliance rights ops", () => {
+  it("logRightsRequest creates a request with the correct deadline", async () => {
     const collection = fakeCollection([]);
     mocks.adminDb.collection.mockImplementation(() => collection);
-    collection.add.mockReturnValue({ id: 'req-1' });
+    collection.add.mockReturnValue({ id: "req-1" });
 
     const id = await logRightsRequest({
-      userId: 'u-1',
-      right: 'erasure',
-      details: 'Please erase my data',
+      userId: "u-1",
+      right: "erasure",
+      details: "Please erase my data",
     });
 
-    expect(id).toBe('req-1');
+    expect(id).toBe("req-1");
     expect(collection.add).toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: 'u-1',
-        right: 'erasure',
-        status: 'pending',
-        details: 'Please erase my data',
+        userId: "u-1",
+        right: "erasure",
+        status: "pending",
+        details: "Please erase my data",
       })
     );
   });
 
-  it('getUserRightsRequests returns every request for the user', async () => {
+  it("getUserRightsRequests returns every request for the user", async () => {
     const stored: Record<string, unknown> = {
-      userId: 'u-1',
-      right: 'access',
-      status: 'completed',
+      userId: "u-1",
+      right: "access",
+      status: "completed",
       details: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -140,28 +150,33 @@ describe('compliance rights ops', () => {
     const collection = fakeCollection([fakeDoc(stored)]);
     mocks.adminDb.collection.mockImplementation(() => collection);
 
-    const result = await getUserRightsRequests('u-1');
+    const result = await getUserRightsRequests("u-1");
     expect(result).toHaveLength(1);
-    expect(result[0].userId).toBe('u-1');
-    expect(result[0].right).toBe('access');
+    expect(result[0].userId).toBe("u-1");
+    expect(result[0].right).toBe("access");
   });
 
-  it('updateRightsRequest writes status and optional response/assignee', async () => {
-    const stored: Record<string, unknown> = { userId: 'u-1', right: 'access', status: 'pending', id: 'req-1' };
+  it("updateRightsRequest writes status and optional response/assignee", async () => {
+    const stored: Record<string, unknown> = {
+      userId: "u-1",
+      right: "access",
+      status: "pending",
+      id: "req-1",
+    };
     const collection = fakeCollection([fakeDoc(stored)]);
     mocks.adminDb.collection.mockImplementation(() => collection);
 
-    await updateRightsRequest('req-1', 'completed', 'Done', 'dpo');
+    await updateRightsRequest("req-1", "completed", "Done", "dpo");
 
-    expect(mocks.adminDb.collection).toHaveBeenCalledWith('rightsRequests');
-    expect(collection.doc('req-1').update).toHaveBeenCalledOnce();
+    expect(mocks.adminDb.collection).toHaveBeenCalledWith("rightsRequests");
+    expect(collection.doc("req-1").update).toHaveBeenCalledOnce();
   });
 
-  it('getPendingRightsRequests only returns pending/processing/on_hold requests', async () => {
+  it("getPendingRightsRequests only returns pending/processing/on_hold requests", async () => {
     const stored: Record<string, unknown> = {
-      userId: 'u-1',
-      right: 'correction',
-      status: 'on_hold',
+      userId: "u-1",
+      right: "correction",
+      status: "on_hold",
       details: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -171,16 +186,16 @@ describe('compliance rights ops', () => {
     const collection = fakeCollection([fakeDoc(stored)]);
     mocks.adminDb.collection.mockImplementation(() => collection);
 
-    const result = await getPendingRightsRequests('u-1');
+    const result = await getPendingRightsRequests("u-1");
     expect(result).toHaveLength(1);
-    expect(result[0].status).toBe('on_hold');
+    expect(result[0].status).toBe("on_hold");
   });
 
-  it('getAllRightsRequests supports filtering by status', async () => {
+  it("getAllRightsRequests supports filtering by status", async () => {
     const stored: Record<string, unknown> = {
-      userId: 'u-1',
-      right: 'access',
-      status: 'completed',
+      userId: "u-1",
+      right: "access",
+      status: "completed",
       details: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -190,9 +205,9 @@ describe('compliance rights ops', () => {
     const collection = fakeCollection([fakeDoc(stored)]);
     mocks.adminDb.collection.mockImplementation(() => collection);
 
-    const result = await getAllRightsRequests('completed', 100);
+    const result = await getAllRightsRequests("completed", 100);
     expect(result).toHaveLength(1);
-    expect(result[0].status).toBe('completed');
+    expect(result[0].status).toBe("completed");
   });
 });
 
@@ -200,16 +215,16 @@ describe('compliance rights ops', () => {
 // Consent ops
 // ---------------------------------------------------------------------------
 
-describe('compliance rights escalation', () => {
-  it('getOverdueRightsRequests maps the returned rows', async () => {
+describe("compliance rights escalation", () => {
+  it("getOverdueRightsRequests maps the returned rows", async () => {
     stubCollections(() =>
       fakeCollection([
         fakeDoc({
-          id: 'overdue-1',
-          userId: 'user-1',
-          right: 'erasure',
-          status: 'processing',
-          createdAt: { toDate: () => new Date('2026-01-01T00:00:00Z') },
+          id: "overdue-1",
+          userId: "user-1",
+          right: "erasure",
+          status: "processing",
+          createdAt: { toDate: () => new Date("2026-01-01T00:00:00Z") },
         }),
       ])
     );
@@ -217,81 +232,86 @@ describe('compliance rights escalation', () => {
     const result = await getOverdueRightsRequests();
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({ id: 'overdue-1', status: 'processing' });
+    expect(result[0]).toMatchObject({ id: "overdue-1", status: "processing" });
     expect(result[0].createdAt).toBeInstanceOf(Date);
   });
 
-  it('getOverdueRightsRequests returns an empty list when nothing is overdue', async () => {
+  it("getOverdueRightsRequests returns an empty list when nothing is overdue", async () => {
     stubCollections(() => fakeCollection([]));
 
     await expect(getOverdueRightsRequests()).resolves.toEqual([]);
   });
 
-  it('assignRightsRequest moves the request to processing', async () => {
-    const requests = fakeCollection([fakeDoc({ id: 'rights-1' })]);
+  it("assignRightsRequest moves the request to processing", async () => {
+    const requests = fakeCollection([fakeDoc({ id: "rights-1" })]);
     stubCollections(() => requests);
 
-    await assignRightsRequest('rights-1', 'dpo@shipin.test');
+    await assignRightsRequest("rights-1", "dpo@shipin.test");
 
-    const doc = requests.doc('rights-1') as ReturnType<typeof fakeDoc>;
+    const doc = requests.doc("rights-1") as ReturnType<typeof fakeDoc>;
     expect(doc.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        assignedTo: 'dpo@shipin.test',
-        status: 'processing',
+        assignedTo: "dpo@shipin.test",
+        status: "processing",
       })
     );
   });
 
-  it('escalateRightsRequest is a no-op for a missing request', async () => {
-    const requests = fakeCollection([fakeDoc({ id: 'other' }, false)]);
+  it("escalateRightsRequest is a no-op for a missing request", async () => {
+    const requests = fakeCollection([fakeDoc({ id: "other" }, false)]);
     stubCollections(() => requests);
 
-    await escalateRightsRequest('missing');
+    await escalateRightsRequest("missing");
 
     expect(requests.add).not.toHaveBeenCalled();
   });
 
-  it('escalateRightsRequest records a level-1 escalation', async () => {
-    const deadline = new Date('2026-02-01T00:00:00Z');
+  it("escalateRightsRequest records a level-1 escalation", async () => {
+    const deadline = new Date("2026-02-01T00:00:00Z");
     const requests = fakeCollection([
       fakeDoc({
-        id: 'rights-1',
-        userId: 'user-1',
-        right: 'erasure',
+        id: "rights-1",
+        userId: "user-1",
+        right: "erasure",
         responseDeadline: deadline,
       }),
     ]);
     stubCollections(() => requests);
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    await escalateRightsRequest('rights-1');
+    await escalateRightsRequest("rights-1");
 
     expect(requests.add).toHaveBeenCalledWith(
       expect.objectContaining({
-        requestId: 'rights-1',
-        userId: 'user-1',
+        requestId: "rights-1",
+        userId: "user-1",
         originalDeadline: deadline,
         escalationLevel: 1,
       })
     );
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('RIGHTS REQUEST ESCALATED')
+      expect.stringContaining("RIGHTS REQUEST ESCALATED")
     );
 
     warn.mockRestore();
   });
 
-  it('getAllRightsRequests applies an optional status filter', async () => {
+  it("getAllRightsRequests applies an optional status filter", async () => {
     stubCollections(() =>
       fakeCollection([
-        fakeDoc({ id: 'rights-8', userId: 'user-1', right: 'access', status: 'completed' }),
+        fakeDoc({
+          id: "rights-8",
+          userId: "user-1",
+          right: "access",
+          status: "completed",
+        }),
       ])
     );
 
-    const result = await getAllRightsRequests('completed', 10);
+    const result = await getAllRightsRequests("completed", 10);
 
     expect(result).toHaveLength(1);
-    expect(result[0].status).toBe('completed');
+    expect(result[0].status).toBe("completed");
   });
 });
 // ---------------------------------------------------------------------------

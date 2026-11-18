@@ -5,29 +5,29 @@
  * the assertions are about the configuration the factory passes in.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   S3Client: vi.fn(function (this: unknown, config: unknown) {
     return { config };
   }),
   serverEnv: {
-    R2_ACCOUNT_ID: 'account-123',
-    R2_ACCESS_KEY_ID: 'access-key',
-    R2_SECRET_ACCESS_KEY: 'secret-key',
-    R2_BUCKET_NAME: 'shipin-bucket',
-    R2_REGION: 'auto',
-    R2_ENDPOINT: '',
+    R2_ACCOUNT_ID: "account-123",
+    R2_ACCESS_KEY_ID: "access-key",
+    R2_SECRET_ACCESS_KEY: "secret-key",
+    R2_BUCKET_NAME: "shipin-bucket",
+    R2_REGION: "auto",
+    R2_ENDPOINT: "",
   },
 }));
 
-vi.mock('@aws-sdk/client-s3', () => ({ S3Client: mocks.S3Client }));
-vi.mock('@/config/env', () => ({ serverEnv: mocks.serverEnv }));
+vi.mock("@aws-sdk/client-s3", () => ({ S3Client: mocks.S3Client }));
+vi.mock("@/config/env", () => ({ serverEnv: mocks.serverEnv }));
 
 // Imported per test: the module caches the client, so each test needs a fresh
 // instance after `vi.resetModules()`.
 async function loadModule() {
-  return import('./r2');
+  return import("./r2");
 }
 
 beforeEach(() => {
@@ -35,33 +35,33 @@ beforeEach(() => {
   mocks.S3Client.mockClear();
 });
 
-describe('getR2BucketName', () => {
-  it('returns the configured bucket', async () => {
+describe("getR2BucketName", () => {
+  it("returns the configured bucket", async () => {
     const { getR2BucketName } = await loadModule();
 
-    expect(getR2BucketName()).toBe('shipin-bucket');
+    expect(getR2BucketName()).toBe("shipin-bucket");
   });
 });
 
-describe('getR2Client', () => {
-  it('builds an S3 client pointed at the account R2 endpoint', async () => {
+describe("getR2Client", () => {
+  it("builds an S3 client pointed at the account R2 endpoint", async () => {
     const { getR2Client } = await loadModule();
 
     getR2Client();
 
     expect(mocks.S3Client).toHaveBeenCalledWith({
-      region: 'auto',
-      endpoint: 'https://account-123.r2.cloudflarestorage.com',
+      region: "auto",
+      endpoint: "https://account-123.r2.cloudflarestorage.com",
       credentials: {
-        accessKeyId: 'access-key',
-        secretAccessKey: 'secret-key',
+        accessKeyId: "access-key",
+        secretAccessKey: "secret-key",
       },
     });
   });
 
-  it('honours a configured region and endpoint for a non-R2 store', async () => {
-    mocks.serverEnv.R2_REGION = 'ap-south-1';
-    mocks.serverEnv.R2_ENDPOINT = 'https://s3.ap-south-1.amazonaws.com';
+  it("honours a configured region and endpoint for a non-R2 store", async () => {
+    mocks.serverEnv.R2_REGION = "ap-south-1";
+    mocks.serverEnv.R2_ENDPOINT = "https://s3.ap-south-1.amazonaws.com";
 
     try {
       const { getR2Client } = await loadModule();
@@ -70,17 +70,17 @@ describe('getR2Client', () => {
 
       expect(mocks.S3Client).toHaveBeenCalledWith(
         expect.objectContaining({
-          region: 'ap-south-1',
-          endpoint: 'https://s3.ap-south-1.amazonaws.com',
+          region: "ap-south-1",
+          endpoint: "https://s3.ap-south-1.amazonaws.com",
         })
       );
     } finally {
-      mocks.serverEnv.R2_REGION = 'auto';
-      mocks.serverEnv.R2_ENDPOINT = '';
+      mocks.serverEnv.R2_REGION = "auto";
+      mocks.serverEnv.R2_ENDPOINT = "";
     }
   });
 
-  it('caches the client across calls', async () => {
+  it("caches the client across calls", async () => {
     const { getR2Client } = await loadModule();
 
     const first = getR2Client();

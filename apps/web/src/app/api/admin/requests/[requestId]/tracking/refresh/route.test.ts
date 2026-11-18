@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { NextRequest, NextResponse } from 'next/server';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
@@ -7,57 +7,64 @@ const mocks = vi.hoisted(() => ({
   resolveTracking: vi.fn(),
 }));
 
-vi.mock('@/lib/auth', () => ({
+vi.mock("@/lib/auth", () => ({
   requireAdmin: mocks.requireAdmin,
 }));
 
-vi.mock('@/lib/firebaseAdmin', () => ({
+vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
     collection: () => ({ doc: () => ({ get: mocks.get }) }),
   },
 }));
 
-vi.mock('@/features/shipments/services/trackingSync', () => ({
+vi.mock("@/features/shipments/services/trackingSync", () => ({
   resolveTracking: mocks.resolveTracking,
 }));
 
 import {
   CarrierNotConfiguredError,
   CarrierRequestError,
-} from '@/features/shipments/carriers';
-import { POST } from './route';
+} from "@/features/shipments/carriers";
+import { POST } from "./route";
 
-const context = (requestId = 'req-1') => ({ params: Promise.resolve({ requestId }) });
+const context = (requestId = "req-1") => ({
+  params: Promise.resolve({ requestId }),
+});
 
 const post = () =>
-  new NextRequest('http://localhost/api/admin/requests/req-1/tracking/refresh', {
-    method: 'POST',
-  });
+  new NextRequest(
+    "http://localhost/api/admin/requests/req-1/tracking/refresh",
+    {
+      method: "POST",
+    }
+  );
 
 const respondWith = (data: Record<string, unknown> | undefined) =>
   mocks.get.mockResolvedValue({ exists: data !== undefined, data: () => data });
 
 const shipped = {
-  status: 'shipped',
+  status: "shipped",
   tracking: {
-    internalTrackingId: 'SHP-2026-000001',
-    trackingNumber: 'EE123456789IN',
+    internalTrackingId: "SHP-2026-000001",
+    trackingNumber: "EE123456789IN",
   },
 };
 
 beforeEach(() => {
-  mocks.requireAdmin.mockReset().mockResolvedValue({ uid: 'admin-1' });
-  mocks.resolveTracking.mockReset().mockResolvedValue({ trackingId: 'SHP-2026-000001' });
+  mocks.requireAdmin.mockReset().mockResolvedValue({ uid: "admin-1" });
+  mocks.resolveTracking
+    .mockReset()
+    .mockResolvedValue({ trackingId: "SHP-2026-000001" });
   respondWith(shipped);
-  vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('POST /api/admin/requests/[requestId]/tracking/refresh', () => {
-  it('returns the auth response for a non-admin caller', async () => {
+describe("POST /api/admin/requests/[requestId]/tracking/refresh", () => {
+  it("returns the auth response for a non-admin caller", async () => {
     mocks.requireAdmin.mockResolvedValue(
       NextResponse.json({ success: false }, { status: 403 })
     );
@@ -68,27 +75,27 @@ describe('POST /api/admin/requests/[requestId]/tracking/refresh', () => {
     expect(mocks.resolveTracking).not.toHaveBeenCalled();
   });
 
-  it('forces a refresh through the sync layer', async () => {
+  it("forces a refresh through the sync layer", async () => {
     const response = await POST(post(), context());
 
     expect(response.status).toBe(200);
-    expect(mocks.resolveTracking).toHaveBeenCalledWith('SHP-2026-000001', {
+    expect(mocks.resolveTracking).toHaveBeenCalledWith("SHP-2026-000001", {
       force: true,
     });
   });
 
-  it('requires an administrator (rejects when requireAdmin throws)', async () => {
-    mocks.requireAdmin.mockRejectedValue(new Error('ADMIN_ACCESS_REQUIRED'));
+  it("requires an administrator (rejects when requireAdmin throws)", async () => {
+    mocks.requireAdmin.mockRejectedValue(new Error("ADMIN_ACCESS_REQUIRED"));
     const response = await POST(post(), context());
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
-      code: 'INTERNAL_ERROR',
-      error: 'ADMIN_ACCESS_REQUIRED',
+      code: "INTERNAL_ERROR",
+      error: "ADMIN_ACCESS_REQUIRED",
     });
     expect(mocks.resolveTracking).not.toHaveBeenCalled();
   });
 
-  it('returns 404 for an unknown request', async () => {
+  it("returns 404 for an unknown request", async () => {
     respondWith(undefined);
 
     const response = await POST(post(), context());
@@ -96,8 +103,8 @@ describe('POST /api/admin/requests/[requestId]/tracking/refresh', () => {
     expect(response.status).toBe(404);
   });
 
-  it('refuses a request without a ShipIN number', async () => {
-    respondWith({ status: 'packed', tracking: { trackingNumber: 'EE1IN' } });
+  it("refuses a request without a ShipIN number", async () => {
+    respondWith({ status: "packed", tracking: { trackingNumber: "EE1IN" } });
 
     const response = await POST(post(), context());
 
@@ -105,10 +112,10 @@ describe('POST /api/admin/requests/[requestId]/tracking/refresh', () => {
     expect(mocks.resolveTracking).not.toHaveBeenCalled();
   });
 
-  it('refuses a request without a consignment number', async () => {
+  it("refuses a request without a consignment number", async () => {
     respondWith({
-      status: 'packed',
-      tracking: { internalTrackingId: 'SHP-2026-000001' },
+      status: "packed",
+      tracking: { internalTrackingId: "SHP-2026-000001" },
     });
 
     const response = await POST(post(), context());
@@ -117,9 +124,9 @@ describe('POST /api/admin/requests/[requestId]/tracking/refresh', () => {
     expect(mocks.resolveTracking).not.toHaveBeenCalled();
   });
 
-  it('maps an unconfigured carrier to 503', async () => {
+  it("maps an unconfigured carrier to 503", async () => {
     mocks.resolveTracking.mockRejectedValue(
-      new CarrierNotConfiguredError('India Post')
+      new CarrierNotConfiguredError("India Post")
     );
 
     const response = await POST(post(), context());
@@ -127,9 +134,9 @@ describe('POST /api/admin/requests/[requestId]/tracking/refresh', () => {
     expect(response.status).toBe(503);
   });
 
-  it('maps a carrier failure to 502', async () => {
+  it("maps a carrier failure to 502", async () => {
     mocks.resolveTracking.mockRejectedValue(
-      new CarrierRequestError('India Post', 'down', 503)
+      new CarrierRequestError("India Post", "down", 503)
     );
 
     const response = await POST(post(), context());
@@ -137,8 +144,10 @@ describe('POST /api/admin/requests/[requestId]/tracking/refresh', () => {
     expect(response.status).toBe(502);
   });
 
-  it('rejects an invalid request id', async () => {
-    const response = await POST(post(), { params: Promise.resolve({ requestId: 'bad id!' }) });
+  it("rejects an invalid request id", async () => {
+    const response = await POST(post(), {
+      params: Promise.resolve({ requestId: "bad id!" }),
+    });
 
     expect(response.status).toBe(400);
   });

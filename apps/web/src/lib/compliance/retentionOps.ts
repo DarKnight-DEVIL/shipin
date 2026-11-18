@@ -11,11 +11,11 @@
  * that reports what it would do.
  */
 
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue } from "firebase-admin/firestore";
 
-import { adminAuth, adminDb } from '@/lib/firebaseAdmin';
-import { logger } from '@/lib/logger';
-import { PERSONAL_DATA_CATEGORIES, PROCESSING_REGISTER } from './dpdp';
+import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
+import { logger } from "@/lib/logger";
+import { PERSONAL_DATA_CATEGORIES, PROCESSING_REGISTER } from "./dpdp";
 
 /** Firestore allows 500 writes per batch; one page per collection is 100. */
 const PAGE_SIZE = 100;
@@ -42,19 +42,19 @@ export type RetentionCategory =
 
 /** Collections each register category is allowed to touch. */
 const COLLECTIONS_BY_CATEGORY: Record<string, string[]> = {
-  account: ['users'],
-  shipping: ['requests', 'users'],
-  order: ['requests'],
-  payment: ['walletTransactions', 'paypalPaymentOrders', 'requests'],
-  support: ['supportTickets', 'supportMessages', 'notifications'],
-  auth: ['users'],
+  account: ["users"],
+  shipping: ["requests", "users"],
+  order: ["requests"],
+  payment: ["walletTransactions", "paypalPaymentOrders", "requests"],
+  support: ["supportTickets", "supportMessages", "notifications"],
+  auth: ["users"],
   analytics: [],
-  marketing: ['users'],
+  marketing: ["users"],
   cookie: [],
 };
 
 /** Hold flags that make a document ineligible regardless of age. */
-const HOLD_FLAGS = ['legalHold', 'litigationHold', 'auditHold'] as const;
+const HOLD_FLAGS = ["legalHold", "litigationHold", "auditHold"] as const;
 
 function hasHold(data: Record<string, unknown>): boolean {
   return HOLD_FLAGS.some((flag) => data[flag] === true);
@@ -66,7 +66,9 @@ function hasHold(data: Record<string, unknown>): boolean {
  * that would remove the profile while the Auth account kept signing in.
  */
 function isClosedAccount(data: Record<string, unknown>): boolean {
-  return Boolean(data.deletedAt || data.deletionRequestedAt || data.anonymizedAt);
+  return Boolean(
+    data.deletedAt || data.deletionRequestedAt || data.anonymizedAt
+  );
 }
 
 function emptyResult(): RetentionResult {
@@ -84,7 +86,9 @@ function merge(into: RetentionResult, from: RetentionResult): void {
 /**
  * Execute retention cleanup. `dryRun` defaults to true; pass false to delete.
  */
-export async function executeRetentionCleanup(dryRun = true): Promise<RetentionResult> {
+export async function executeRetentionCleanup(
+  dryRun = true
+): Promise<RetentionResult> {
   const totals = emptyResult();
   // The register maps several categories to the same collection. One document
   // is processed once, however many categories cover it.
@@ -94,16 +98,24 @@ export async function executeRetentionCleanup(dryRun = true): Promise<RetentionR
     try {
       merge(
         totals,
-        await cleanupCategory(category as RetentionCategory, config, dryRun, handled)
+        await cleanupCategory(
+          category as RetentionCategory,
+          config,
+          dryRun,
+          handled
+        )
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : "Unknown error";
       totals.errors.push(`${category}: ${message}`);
-      logger.error('Retention cleanup failed for category', { category, error: message });
+      logger.error("Retention cleanup failed for category", {
+        category,
+        error: message,
+      });
     }
   }
 
-  logger.info('Retention cleanup finished', {
+  logger.info("Retention cleanup finished", {
     dryRun,
     deleted: totals.deleted,
     expired: totals.expired,
@@ -128,7 +140,7 @@ async function cleanupCategory(
     try {
       const snapshot = await adminDb
         .collection(collectionName)
-        .where('createdAt', '<', cutoff)
+        .where("createdAt", "<", cutoff)
         .limit(PAGE_SIZE)
         .get();
 
@@ -138,7 +150,7 @@ async function cleanupCategory(
       for (const doc of snapshot.docs) {
         const data = (doc.data() ?? {}) as Record<string, unknown>;
 
-        if (collectionName === 'users' && !isClosedAccount(data)) {
+        if (collectionName === "users" && !isClosedAccount(data)) {
           result.skipped += 1;
           continue;
         }
@@ -148,11 +160,11 @@ async function cleanupCategory(
           continue;
         }
 
-        const ownerId = typeof data.userId === 'string' ? data.userId : doc.id;
+        const ownerId = typeof data.userId === "string" ? data.userId : doc.id;
         const openRequest = await adminDb
-          .collection('rightsRequests')
-          .where('userId', '==', ownerId)
-          .where('status', 'in', ['pending', 'processing', 'on_hold'])
+          .collection("rightsRequests")
+          .where("userId", "==", ownerId)
+          .where("status", "in", ["pending", "processing", "on_hold"])
           .limit(1)
           .get();
 
@@ -168,24 +180,24 @@ async function cleanupCategory(
         // Deleting the profile while the Auth account can still sign in leaves
         // a live login with no record behind it, so Auth goes first. If Auth
         // refuses, the profile is kept for the next run.
-        if (collectionName === 'users' && !dryRun) {
+        if (collectionName === "users" && !dryRun) {
           try {
             await adminAuth.deleteUser(doc.id);
           } catch (error) {
             const code = (error as { code?: string }).code;
 
-            if (code !== 'auth/user-not-found') {
+            if (code !== "auth/user-not-found") {
               result.skipped += 1;
               result.errors.push(
-                `users/${doc.id}: could not delete the Auth account (${code ?? 'unknown'})`
+                `users/${doc.id}: could not delete the Auth account (${code ?? "unknown"})`
               );
-              await recordRetentionFailure(doc.id, code ?? 'unknown');
+              await recordRetentionFailure(doc.id, code ?? "unknown");
               continue;
             }
           }
         }
 
-        if (collectionName === 'users' && !dryRun) {
+        if (collectionName === "users" && !dryRun) {
           await clearRetentionFailure(doc.id);
         }
 
@@ -208,9 +220,9 @@ async function cleanupCategory(
         result.deleted += queued;
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : "Unknown error";
       result.errors.push(`${collectionName}: ${message}`);
-      logger.error('Retention cleanup failed for collection', {
+      logger.error("Retention cleanup failed for collection", {
         collection: collectionName,
         error: message,
       });
@@ -227,10 +239,13 @@ async function cleanupCategory(
  * ledger makes the stuck accounts a queryable list instead of a line in each
  * run's output, and `attempts` shows whether it is retrying or genuinely stuck.
  */
-async function recordRetentionFailure(uid: string, code: string): Promise<void> {
+async function recordRetentionFailure(
+  uid: string,
+  code: string
+): Promise<void> {
   try {
     await adminDb
-      .collection('retentionFailures')
+      .collection("retentionFailures")
       .doc(uid)
       .set(
         {
@@ -243,20 +258,20 @@ async function recordRetentionFailure(uid: string, code: string): Promise<void> 
         { merge: true }
       );
   } catch (error) {
-    logger.error('Could not record a retention failure', {
+    logger.error("Could not record a retention failure", {
       uid,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
 
 async function clearRetentionFailure(uid: string): Promise<void> {
   try {
-    await adminDb.collection('retentionFailures').doc(uid).delete();
+    await adminDb.collection("retentionFailures").doc(uid).delete();
   } catch (error) {
-    logger.error('Could not clear a retention failure', {
+    logger.error("Could not clear a retention failure", {
       uid,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
@@ -278,11 +293,13 @@ export interface OrphanSweepResult {
  * account is older than `minAgeMs`, so a signup racing its profile write is not
  * deleted. Defaults to a dry run.
  */
-export async function deleteOrphanedAuthAccounts(options: {
-  dryRun?: boolean;
-  maxUsers?: number;
-  minAgeMs?: number;
-} = {}): Promise<OrphanSweepResult> {
+export async function deleteOrphanedAuthAccounts(
+  options: {
+    dryRun?: boolean;
+    maxUsers?: number;
+    minAgeMs?: number;
+  } = {}
+): Promise<OrphanSweepResult> {
   const dryRun = options.dryRun !== false;
   const maxUsers = options.maxUsers ?? 1000;
   const minAgeMs = options.minAgeMs ?? 7 * 24 * 60 * 60 * 1000;
@@ -308,13 +325,14 @@ export async function deleteOrphanedAuthAccounts(options: {
         ? Date.parse(user.metadata.creationTime)
         : Number.NaN;
 
-      if (!Number.isFinite(created) || Date.now() - created < minAgeMs) continue;
+      if (!Number.isFinite(created) || Date.now() - created < minAgeMs)
+        continue;
 
-      const profile = await adminDb.collection('users').doc(user.uid).get();
+      const profile = await adminDb.collection("users").doc(user.uid).get();
       if (profile.exists) continue;
 
       result.orphaned += 1;
-      result.details.push({ uid: user.uid, reason: 'no users/{uid} profile' });
+      result.details.push({ uid: user.uid, reason: "no users/{uid} profile" });
 
       if (dryRun) continue;
 
@@ -323,15 +341,15 @@ export async function deleteOrphanedAuthAccounts(options: {
         result.deleted += 1;
       } catch (error) {
         const code = (error as { code?: string }).code;
-        if (code === 'auth/user-not-found') continue;
-        result.errors.push(`${user.uid}: ${code ?? 'unknown'}`);
+        if (code === "auth/user-not-found") continue;
+        result.errors.push(`${user.uid}: ${code ?? "unknown"}`);
       }
     }
 
     pageToken = page.pageToken;
   } while (pageToken && result.examined < maxUsers);
 
-  logger.info('Orphaned Auth account sweep finished', {
+  logger.info("Orphaned Auth account sweep finished", {
     dryRun,
     examined: result.examined,
     orphaned: result.orphaned,
@@ -350,7 +368,7 @@ export async function retentionCleanupHandler(
   request: { query: { dryRun?: string } },
   response: { status: (code: number) => { json: (body: unknown) => void } }
 ): Promise<void> {
-  const dryRun = request.query.dryRun !== 'false';
+  const dryRun = request.query.dryRun !== "false";
 
   try {
     const result = await executeRetentionCleanup(dryRun);
@@ -361,12 +379,12 @@ export async function retentionCleanupHandler(
       ...result,
     });
   } catch (error) {
-    logger.error('Retention cleanup failed', {
-      error: error instanceof Error ? error.message : 'Unknown error',
+    logger.error("Retention cleanup failed", {
+      error: error instanceof Error ? error.message : "Unknown error",
     });
     response.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
@@ -374,8 +392,10 @@ export async function retentionCleanupHandler(
 /**
  * Manual entry point used by operators.
  */
-export async function runRetentionCleanupManually(dryRun = true): Promise<RetentionResult> {
+export async function runRetentionCleanupManually(
+  dryRun = true
+): Promise<RetentionResult> {
   const result = await executeRetentionCleanup(dryRun);
-  logger.info('Manual retention cleanup finished', { dryRun, ...result });
+  logger.info("Manual retention cleanup finished", { dryRun, ...result });
   return result;
 }

@@ -1,4 +1,4 @@
-import { SITE_CONFIG } from '@shipin/config';
+import { SITE_CONFIG } from "@shipin/config";
 
 /**
  * Site-wide configuration constants.
@@ -20,12 +20,13 @@ export const siteConfig = {
   url: SITE_CONFIG.url,
   // PNG: social platforms (Facebook, LinkedIn, X, WhatsApp, Slack) do not
   // render SVG preview images, so the raster version is the shareable one.
-  ogImage: '/og-image.png',
-  twitterHandle: '@shipin',
+  ogImage: "/og-image.png",
+  twitterHandle: "@shipin",
   contact: {
     email: SITE_CONFIG.supportEmail,
-    address: 'ShipIN, 4th Floor, Trade Center, Andheri East, Mumbai 400069, India',
-    phone: '+91 22 6823 4567',
+    address:
+      "ShipIN, 4th Floor, Trade Center, Andheri East, Mumbai 400069, India",
+    phone: "+91 22 6823 4567",
   },
 } as const;
 

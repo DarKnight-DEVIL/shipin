@@ -1,6 +1,12 @@
 // @vitest-environment happy-dom
 import React from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -35,7 +41,8 @@ vi.mock("firebase/auth", () => ({
     void callback(h.currentUser);
     return () => {};
   },
-  sendEmailVerification: (...args: unknown[]) => h.sendEmailVerification(...args),
+  sendEmailVerification: (...args: unknown[]) =>
+    h.sendEmailVerification(...args),
   reload: (...args: unknown[]) => h.reload(...args),
 }));
 
@@ -46,7 +53,11 @@ vi.mock("next/navigation", () => ({
 // Next's Link needs an app-router context that a unit test does not have.
 vi.mock("next/link", () => ({
   default: ({ href, children }: { href: unknown; children: unknown }) =>
-    React.createElement("a", { href: String(href) }, children as React.ReactNode),
+    React.createElement(
+      "a",
+      { href: String(href) },
+      children as React.ReactNode
+    ),
 }));
 
 vi.mock("sonner", () => ({
@@ -103,7 +114,9 @@ describe("VerifyEmailClient: resend", () => {
     user(false);
     render(<VerifyEmailClient />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /resend email/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /resend email/i })
+    );
 
     await waitFor(() =>
       expect(h.sendEmailVerification).toHaveBeenCalledTimes(1)
@@ -122,7 +135,9 @@ describe("VerifyEmailClient: resend", () => {
     });
     render(<VerifyEmailClient />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /resend email/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /resend email/i })
+    );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Too many attempts. Wait a minute, then try again."
@@ -140,7 +155,9 @@ describe("VerifyEmailClient: resend", () => {
   it("re-enables resend when the cooldown elapses", async () => {
     vi.useFakeTimers();
     user(false);
-    h.sendEmailVerification.mockRejectedValueOnce({ code: "auth/too-many-requests" });
+    h.sendEmailVerification.mockRejectedValueOnce({
+      code: "auth/too-many-requests",
+    });
     render(<VerifyEmailClient />);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -188,7 +205,9 @@ describe("VerifyEmailClient: resend", () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     render(<VerifyEmailClient />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /resend email/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /resend email/i })
+    );
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(
@@ -197,17 +216,23 @@ describe("VerifyEmailClient: resend", () => {
     expect(alert).toHaveAttribute("aria-live", "assertive");
     expect(h.error).not.toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: /resend email/i })).not.toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /resend email/i })
+    ).not.toBeDisabled();
 
     consoleSpy.mockRestore();
   });
 
   it("clears the previous failure when a retry starts", async () => {
     user(false);
-    h.sendEmailVerification.mockRejectedValueOnce({ code: "auth/internal-error" });
+    h.sendEmailVerification.mockRejectedValueOnce({
+      code: "auth/internal-error",
+    });
     render(<VerifyEmailClient />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /resend email/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /resend email/i })
+    );
     await screen.findByRole("alert");
 
     fireEvent.click(screen.getByRole("button", { name: /resend email/i }));
@@ -222,7 +247,9 @@ describe("VerifyEmailClient: resend", () => {
     });
     render(<VerifyEmailClient />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /resend email/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /resend email/i })
+    );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Please contact support"

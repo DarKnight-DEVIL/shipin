@@ -72,7 +72,9 @@ export class InMemoryRateLimiter {
     }
   }
 
-  async record(request: Request): Promise<import("./redisRateLimiter").RateLimitResult> {
+  async record(
+    request: Request
+  ): Promise<import("./redisRateLimiter").RateLimitResult> {
     const now = Date.now();
     const pathname = new URL(request.url).pathname;
     if (this.policy.skipRoutes?.includes(pathname)) {
@@ -93,7 +95,10 @@ export class InMemoryRateLimiter {
 
     const limit = this.policy.maxRequests;
     const oldest = history[0]?.timestamp;
-    const reset = oldest === undefined ? now + this.policy.windowMs : oldest + this.policy.windowMs;
+    const reset =
+      oldest === undefined
+        ? now + this.policy.windowMs
+        : oldest + this.policy.windowMs;
 
     if (history.length >= limit) {
       return { ok: false, limit, remaining: 0, reset };
@@ -192,11 +197,16 @@ export const authEntryRateLimiter = createSharedRateLimiter(
   authEntryLimiterMemory
 );
 
-export function isRateLimited(result: import("./redisRateLimiter").RateLimitResult): boolean {
+export function isRateLimited(
+  result: import("./redisRateLimiter").RateLimitResult
+): boolean {
   return !result.ok;
 }
 
-export function addRateLimitHeaders(headers: Headers, result: import("./redisRateLimiter").RateLimitResult): void {
+export function addRateLimitHeaders(
+  headers: Headers,
+  result: import("./redisRateLimiter").RateLimitResult
+): void {
   headers.set("X-RateLimit-Limit", String(result.limit));
   headers.set("X-RateLimit-Remaining", String(result.remaining));
   headers.set("X-RateLimit-Reset", String(Math.floor(result.reset / 1000)));

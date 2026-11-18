@@ -2,10 +2,6 @@
  * PDF generation barrel.
  */
 
-export {
-  generateShippingLabel,
-} from './shippingLabel';
+export { generateShippingLabel } from "./shippingLabel";
 
-export {
-  generateWarehouseSlip,
-} from './warehouseSlip';
+export { generateWarehouseSlip } from "./warehouseSlip";

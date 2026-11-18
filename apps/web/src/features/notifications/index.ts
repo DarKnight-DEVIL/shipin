@@ -2,7 +2,7 @@
  * @fileoverview Notifications feature – barrel export.
  */
 
-export type { Notification } from './types';
+export type { Notification } from "./types";
 
 export {
   createNotification,
@@ -14,5 +14,4 @@ export {
   subscribeToNotifications,
   getNotificationPreferences,
   saveNotificationPreferences,
-} from './services/index';
-
+} from "./services/index";

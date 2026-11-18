@@ -119,7 +119,7 @@ export default function SmsEnrollmentCard({
           enabled={status.sms.enabled}
           label={
             status.sms.enabled
-              ? status.sms.phoneNumber ?? "Enabled"
+              ? (status.sms.phoneNumber ?? "Enabled")
               : undefined
           }
         />
@@ -156,16 +156,12 @@ export default function SmsEnrollmentCard({
             </button>
           </div>
 
-          {notice ? (
-            <p className="text-xs text-emerald-400">{notice}</p>
-          ) : null}
+          {notice ? <p className="text-xs text-emerald-400">{notice}</p> : null}
           {error ? <p className="text-xs text-rose-400">{error}</p> : null}
         </form>
       ) : (
         <form onSubmit={confirm} className="space-y-3">
-          {notice ? (
-            <p className="text-xs text-emerald-400">{notice}</p>
-          ) : null}
+          {notice ? <p className="text-xs text-emerald-400">{notice}</p> : null}
 
           <label
             htmlFor="mfa-sms-code"

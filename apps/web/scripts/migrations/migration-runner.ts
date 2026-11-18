@@ -18,7 +18,12 @@
  */
 
 import { getApps, initializeApp, cert, type App } from "firebase-admin/app";
-import { getFirestore, type Firestore, FieldValue, Timestamp } from "firebase-admin/firestore";
+import {
+  getFirestore,
+  type Firestore,
+  FieldValue,
+  Timestamp,
+} from "firebase-admin/firestore";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { readdirSync } from "node:fs";
@@ -97,12 +102,19 @@ async function isApplied(db: Firestore, name: string): Promise<boolean> {
   return data?.status === "completed";
 }
 
-async function markApplied(db: Firestore, name: string, record: Omit<MigrationRecord, "name" | "appliedAt">): Promise<void> {
-  await db.collection("migrations").doc(name).set({
-    ...record,
-    name,
-    appliedAt: FieldValue.serverTimestamp(),
-  });
+async function markApplied(
+  db: Firestore,
+  name: string,
+  record: Omit<MigrationRecord, "name" | "appliedAt">
+): Promise<void> {
+  await db
+    .collection("migrations")
+    .doc(name)
+    .set({
+      ...record,
+      name,
+      appliedAt: FieldValue.serverTimestamp(),
+    });
 }
 
 async function runMigration(
@@ -181,7 +193,9 @@ async function main() {
 
     // Check if already applied
     if (await isApplied(db, migrationName)) {
-      console.log(`⚠️  Migration ${migrationName} already applied. Use --dry-run to test.`);
+      console.log(
+        `⚠️  Migration ${migrationName} already applied. Use --dry-run to test.`
+      );
       process.exit(0);
     }
 
@@ -194,7 +208,10 @@ async function main() {
       console.log("\n✅ Migration applied successfully!");
     }
   } catch (error) {
-    console.error("\n❌ Migration failed:", error instanceof Error ? error.message : error);
+    console.error(
+      "\n❌ Migration failed:",
+      error instanceof Error ? error.message : error
+    );
     process.exit(1);
   } finally {
     // Clean up

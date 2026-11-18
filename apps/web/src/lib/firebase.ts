@@ -59,7 +59,9 @@ function startAppCheck(firebaseApp: FirebaseApp): void {
         // Must be assigned before initializeAppCheck: the SDK then exchanges a
         // locally generated debug token instead of calling reCAPTCHA. The token
         // still has to be registered under App Check → Debug tokens.
-        (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+        (
+          self as unknown as Record<string, unknown>
+        ).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
       }
 
       appCheck = initializeAppCheck(firebaseApp, {
@@ -131,7 +133,8 @@ export function ensureFirebaseApp(): { app: FirebaseApp; auth: Auth } {
     // Optional, and `undefined` at runtime when the build set no value: the
     // bundler leaves a runtime `process.env` read for it instead of inlining
     // the `''` default from `clientEnv`. See the same guard in `./firebaseDb`.
-    const authEmulatorHost = clientEnv.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST?.trim() ?? "";
+    const authEmulatorHost =
+      clientEnv.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST?.trim() ?? "";
     if (authEmulatorHost && typeof window !== "undefined") {
       connectAuthEmulator(_auth, `http://${authEmulatorHost}`, {
         disableWarnings: true,

@@ -104,14 +104,11 @@ function PurchaseForm({
         { method: "PATCH", body: payload }
       );
 
-      toast.success(
-        alreadyPurchased ? "Vendor added" : "Marked as purchased",
-        {
-          description: alreadyPurchased
-            ? `${payload.vendor} was added to request #${request.id.slice(0, 6)}.`
-            : `Request #${request.id.slice(0, 6)} is now in the warehouse queue.`,
-        }
-      );
+      toast.success(alreadyPurchased ? "Vendor added" : "Marked as purchased", {
+        description: alreadyPurchased
+          ? `${payload.vendor} was added to request #${request.id.slice(0, 6)}.`
+          : `Request #${request.id.slice(0, 6)} is now in the warehouse queue.`,
+      });
 
       setVendor("");
       setOrderNumber("");
@@ -366,12 +363,19 @@ export default function PurchasingPage() {
           disabled={loading}
           className="inline-flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <RefreshCw size={16} className={loading ? "animate-spin" : undefined} />
+          <RefreshCw
+            size={16}
+            className={loading ? "animate-spin" : undefined}
+          />
           Refresh
         </button>
       </header>
 
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Purchasing queues">
+      <div
+        className="flex flex-wrap gap-2"
+        role="tablist"
+        aria-label="Purchasing queues"
+      >
         {[
           { key: "to_buy" as const, label: "To purchase", count: toBuy.length },
           {
@@ -463,7 +467,8 @@ export default function PurchasingPage() {
         )}
 
         <p className="text-xs text-slate-500">
-          {visible.length} of {tab === "to_buy" ? toBuy.length : purchased.length}
+          {visible.length} of{" "}
+          {tab === "to_buy" ? toBuy.length : purchased.length}
         </p>
       </div>
 

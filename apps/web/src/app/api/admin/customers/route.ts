@@ -42,9 +42,7 @@ async function handleGetCustomers(request: NextRequest): Promise<NextResponse> {
     }
     const data = docSnap.data() ?? {};
     const preference =
-      data.refundRequest?.preference ??
-      data.preference ??
-      "wallet";
+      data.refundRequest?.preference ?? data.preference ?? "wallet";
     const totalRefundAmount = Number(
       data.refundRequest?.amount ?? data.amount ?? 0
     );
@@ -108,7 +106,10 @@ async function handleGetCustomers(request: NextRequest): Promise<NextResponse> {
     })
     .filter((c) => c.role !== "admin");
 
-  return NextResponse.json({ success: true, customers }, { status: 200, headers: NO_STORE });
+  return NextResponse.json(
+    { success: true, customers },
+    { status: 200, headers: NO_STORE }
+  );
 }
 
 export const GET = async (request: NextRequest): Promise<NextResponse> => {

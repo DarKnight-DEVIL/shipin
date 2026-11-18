@@ -1,13 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb } from '@/lib/firebaseAdmin';
-import { withErrorHandler } from '@/utils/errors';
-import { isQuoteExpired } from '@/features/requests/services/quoteExpiry';
-import { createNotification } from '@/features/notifications/services/server';
-import type { Request } from '@/types/request';
-import crypto from 'crypto';
+import { NextRequest, NextResponse } from "next/server";
+import { FieldValue } from "firebase-admin/firestore";
+import { adminDb } from "@/lib/firebaseAdmin";
+import { withErrorHandler } from "@/utils/errors";
+import { isQuoteExpired } from "@/features/requests/services/quoteExpiry";
+import { createNotification } from "@/features/notifications/services/server";
+import type { Request } from "@/types/request";
+import crypto from "crypto";
 
-const NO_STORE = { 'Cache-Control': 'no-store' } as const;
+const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 /**
  * Quotes expired per run.
@@ -31,13 +31,13 @@ const SWEEP_LIMIT = 200;
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
   const cronSecret = process.env.CRON_SECRET;
-  const timestampHeader = request.headers.get('x-cron-timestamp');
-  const signatureHeader = request.headers.get('x-cron-signature');
+  const timestampHeader = request.headers.get("x-cron-timestamp");
+  const signatureHeader = request.headers.get("x-cron-signature");
 
   if (!cronSecret) {
-    console.error('[Cron] CRON_SECRET not configured');
+    console.error("[Cron] CRON_SECRET not configured");
     return NextResponse.json(
-      { success: false, error: 'Cron not configured.', code: 'CONFIG_ERROR' },
+      { success: false, error: "Cron not configured.", code: "CONFIG_ERROR" },
       { status: 500, headers: NO_STORE }
     );
   }
@@ -59,12 +59,12 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     ) {
       const body = await request.text();
       const expectedSignature = crypto
-        .createHmac('sha256', cronSecret)
+        .createHmac("sha256", cronSecret)
         .update(`${timestampHeader}|${body}`)
-        .digest('hex');
+        .digest("hex");
 
-      const providedSig = Buffer.from(signatureHeader, 'hex');
-      const expectedSig = Buffer.from(expectedSignature, 'hex');
+      const providedSig = Buffer.from(signatureHeader, "hex");
+      const expectedSig = Buffer.from(expectedSignature, "hex");
       if (
         providedSig.length === expectedSig.length &&
         crypto.timingSafeEqual(providedSig, expectedSig)
@@ -76,7 +76,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   if (!isAuthValid) {
     return NextResponse.json(
-      { success: false, error: 'Unauthorized.', code: 'UNAUTHORIZED' },
+      { success: false, error: "Unauthorized.", code: "UNAUTHORIZED" },
       { status: 401, headers: NO_STORE }
     );
   }
@@ -101,10 +101,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   // Firestore has no "field is missing" filter. Migration
   // 002-normalize-quote-expiry brings those rows into this shape once.
   const snapshot = await adminDb
-    .collection('requests')
-    .where('quote.expired', '==', false)
-    .where('quote.expiresAt', '<=', new Date(now))
-    .orderBy('quote.expiresAt', 'asc')
+    .collection("requests")
+    .where("quote.expired", "==", false)
+    .where("quote.expiresAt", "<=", new Date(now))
+    .orderBy("quote.expiresAt", "asc")
     .limit(SWEEP_LIMIT)
     .get();
 
@@ -120,8 +120,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     if (!isQuoteExpired(quote.expiresAt)) continue;
 
     await doc.ref.update({
-      'quote.expired': true,
-      'quote.expiredAt': FieldValue.serverTimestamp(),
+      "quote.expired": true,
+      "quote.expiredAt": FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
 
@@ -131,14 +131,17 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       await createNotification(
         data.userId,
         doc.id,
-        'Your quote has expired',
+        "Your quote has expired",
         `The quote for request #${doc.id} has expired. Please request a new quote to continue.`,
-        'quote'
+        "quote"
       );
     } catch (notifyError) {
-      console.error('[Cron] Failed to send quote-expiry notification:', {
+      console.error("[Cron] Failed to send quote-expiry notification:", {
         requestId: doc.id,
-        error: notifyError instanceof Error ? notifyError.message : String(notifyError),
+        error:
+          notifyError instanceof Error
+            ? notifyError.message
+            : String(notifyError),
       });
     }
 

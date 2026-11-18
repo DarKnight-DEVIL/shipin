@@ -1,4 +1,4 @@
-import { REQUEST_STATUS, type RequestStatus } from './requestStatus';
+import { REQUEST_STATUS, type RequestStatus } from "./requestStatus";
 
 /**
  * Server-side workflow rules for a request.
@@ -27,10 +27,7 @@ export const RESERVED_STATUSES: readonly RequestStatus[] = [
 export const ADMIN_STATUS_TRANSITIONS: Readonly<
   Record<string, readonly RequestStatus[]>
 > = {
-  [REQUEST_STATUS.submitted]: [
-    REQUEST_STATUS.review,
-    REQUEST_STATUS.rejected,
-  ],
+  [REQUEST_STATUS.submitted]: [REQUEST_STATUS.review, REQUEST_STATUS.rejected],
   [REQUEST_STATUS.review]: [REQUEST_STATUS.rejected],
   [REQUEST_STATUS.awaiting_payment]: [REQUEST_STATUS.rejected],
   [REQUEST_STATUS.paid]: [REQUEST_STATUS.purchased],

@@ -38,7 +38,7 @@ export default function SplineHero({
     canvas.style.display = "block";
 
     // 2. THE SECRET FIX: Block "mouse left" events!
-    // By capturing and stopping these events before Spline gets them, 
+    // By capturing and stopping these events before Spline gets them,
     // Spline never realizes the mouse is hovering over a React button.
     const blockLeave = (e: Event) => e.stopPropagation();
     canvas.addEventListener("pointerleave", blockLeave, true);
@@ -84,7 +84,9 @@ export default function SplineHero({
       canvas.dispatchEvent(clonedEvent);
     };
 
-    window.addEventListener("pointermove", forwardPointerMove, { passive: true });
+    window.addEventListener("pointermove", forwardPointerMove, {
+      passive: true,
+    });
 
     return () => {
       window.removeEventListener("pointermove", forwardPointerMove);
