@@ -14,12 +14,12 @@ const mocks = vi.hoisted(() => ({
   verifyAppCheckRequest: vi.fn(),
   verifyTotp: vi.fn(),
   verifyBackupCode: vi.fn(),
-  hashSmsCode: vi.fn(),
+  getUser: vi.fn(),
   getMfaSession: vi.fn(),
 }));
 
 vi.mock('@/lib/firebaseAdmin', () => ({
-  adminAuth: { verifyIdToken: mocks.verifyIdToken },
+  adminAuth: { verifyIdToken: mocks.verifyIdToken, getUser: mocks.getUser },
   adminDb: {
     collection: () => ({
       doc: (uid: string) => ({
@@ -46,7 +46,7 @@ vi.mock('firebase-admin/firestore', () => ({
 vi.mock('@/lib/mfa', () => ({
   verifyTotp: mocks.verifyTotp,
   verifyBackupCode: mocks.verifyBackupCode,
-  hashSmsCode: mocks.hashSmsCode,
+
 }));
 
 vi.mock('@/lib/mfaSession', () => ({
@@ -90,7 +90,9 @@ beforeEach(async () => {
   mocks.verifyAppCheckRequest.mockResolvedValue('not-enforced');
   mocks.verifyTotp.mockReset();
   mocks.verifyBackupCode.mockReset();
-  mocks.hashSmsCode.mockReset();
+  mocks.getUser.mockReset();
+  mocks.getUser.mockResolvedValue({ multiFactor: { enrolledFactors: [] } });
+
   mocks.getMfaSession.mockReset();
   mocks.getMfaSession.mockReturnValue(null);
   mocks.verifyIdToken.mockResolvedValue({
@@ -246,72 +248,36 @@ describe('requireAdmin — MFA enforcement', () => {
     ).rejects.toThrow('MFA_REQUIRED');
   });
 
-  it('accepts a matching, unexpired SMS challenge and consumes it', async () => {
-    mocks.users.set(
-      UID,
-      adminUser({
-        mfa: {
-          sms: {
-            enabled: true,
-            phoneNumber: '+919876543210',
-            pendingCode: 'hashed-code',
-            pendingExpires: Date.now() + 60_000,
-          },
-        },
-      })
-    );
-    mocks.hashSmsCode.mockReturnValue('hashed-code');
-
-    await expect(requireAdmin(bearer({ 'x-mfa-sms': '123456' }))).resolves.toMatchObject({
-      mfaVerified: true,
+  it('accepts a token Firebase already elevated with a second factor', async () => {
+    // Identity Platform verifies SMS itself, so a token carrying
+    // sign_in_second_factor could not exist before that challenge passed.
+    mocks.users.set(UID, adminUser({ mfa: {} }));
+    mocks.verifyIdToken.mockResolvedValue({
+      uid: UID,
+      email: 'token@shipin.app',
+      email_verified: true,
+      firebase: { sign_in_second_factor: 'phone' },
     });
-    expect(mocks.updates).toEqual([
-      {
-        uid: UID,
-        data: {
-          'mfa.sms.pendingCode': '__DELETE__',
-          'mfa.sms.pendingExpires': '__DELETE__',
-        },
-      },
-    ]);
+
+    await expect(requireAdmin(bearer())).resolves.toMatchObject({ mfaVerified: true });
   });
 
-  it('rejects an expired SMS challenge without consuming it', async () => {
-    mocks.users.set(
-      UID,
-      adminUser({
-        mfa: {
-          sms: {
-            enabled: true,
-            phoneNumber: '+919876543210',
-            pendingCode: 'hashed-code',
-            pendingExpires: Date.now() - 1,
-          },
-        },
-      })
-    );
-    mocks.hashSmsCode.mockReturnValue('hashed-code');
+  it('treats an Auth-enrolled factor as configured MFA', async () => {
+    mocks.users.set(UID, adminUser({ mfa: {} }));
+    mocks.getUser.mockResolvedValue({
+      multiFactor: { enrolledFactors: [{ factorId: 'phone', phoneNumber: '+15551234567' }] },
+    });
+
+    await expect(requireAdmin(bearer())).rejects.toThrow('MFA_REQUIRED');
+    expect(mocks.getUser).toHaveBeenCalledWith(UID);
+  });
+
+  it('ignores the removed custom SMS header', async () => {
+    mocks.users.set(UID, adminUser({ mfa: {} }));
 
     await expect(requireAdmin(bearer({ 'x-mfa-sms': '123456' }))).rejects.toThrow(
-      'MFA_REQUIRED'
+      'MFA_SETUP_REQUIRED'
     );
-    expect(mocks.updates).toHaveLength(0);
-  });
-
-  it('rejects a malformed SMS code before hashing', async () => {
-    mocks.users.set(
-      UID,
-      adminUser({
-        mfa: {
-          sms: { enabled: true, phoneNumber: '+91', pendingCode: 'h', pendingExpires: 1 },
-        },
-      })
-    );
-
-    await expect(requireAdmin(bearer({ 'x-mfa-sms': '12ab' }))).rejects.toThrow(
-      'MFA_REQUIRED'
-    );
-    expect(mocks.hashSmsCode).not.toHaveBeenCalled();
   });
 
   it('ignores a WebAuthn header at the gate (fail closed)', async () => {

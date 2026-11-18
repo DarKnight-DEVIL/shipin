@@ -5,10 +5,12 @@ const mocks = vi.hoisted(() => ({
   requireAuthWithProfile: vi.fn(),
   get: vi.fn(),
   readStoredCredentials: vi.fn(),
+  getUser: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({ requireAuthWithProfile: mocks.requireAuthWithProfile }));
 vi.mock('@/lib/firebaseAdmin', () => ({
+  adminAuth: { getUser: mocks.getUser },
   adminDb: { collection: vi.fn(() => ({ doc: vi.fn(() => ({ get: mocks.get })) })) },
 }));
 vi.mock('@/lib/webauthn', () => ({ readStoredCredentials: mocks.readStoredCredentials }));
@@ -23,6 +25,7 @@ beforeEach(() => {
     .mockResolvedValue({ profile: { uid: 'admin-1', role: 'admin' } });
   mocks.get.mockReset();
   mocks.readStoredCredentials.mockReset().mockReturnValue([]);
+  mocks.getUser.mockReset().mockResolvedValue({ multiFactor: { enrolledFactors: [] } });
 });
 
 describe('GET /api/auth/mfa/status', () => {
@@ -74,10 +77,13 @@ describe('GET /api/auth/mfa/status', () => {
       data: () => ({
         mfa: {
           totp: { enabled: true, secret: 'SECRET', backupCodes: ['a', 'b', 'c'] },
-          sms: { enabled: true, phoneNumber: '+44 7700 900123' },
           webauthn: { credentials: [] },
         },
       }),
+    });
+    // SMS now comes from the Firebase Auth user, not Firestore.
+    mocks.getUser.mockResolvedValue({
+      multiFactor: { enrolledFactors: [{ factorId: 'phone', phoneNumber: '+44 7700 900123' }] },
     });
     mocks.readStoredCredentials.mockReturnValue([
       { credentialID: 'cred-1', name: 'YubiKey', createdAt: '2026-01-01T00:00:00.000Z' },
@@ -113,9 +119,9 @@ describe('GET /api/auth/mfa/status', () => {
   });
 
   it('hides a phone number that is too short to mask', async () => {
-    mocks.get.mockResolvedValue({
-      exists: true,
-      data: () => ({ mfa: { sms: { enabled: true, phoneNumber: '12' } } }),
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({}) });
+    mocks.getUser.mockResolvedValue({
+      multiFactor: { enrolledFactors: [{ factorId: 'phone', phoneNumber: '12' }] },
     });
 
     const body = await (await GET(request())).json();
@@ -124,10 +130,10 @@ describe('GET /api/auth/mfa/status', () => {
     expect(body.sms).toEqual({ enabled: true, phoneNumber: null });
   });
 
-  it('reports SMS as disabled without a number', async () => {
+  it('ignores a legacy Firestore SMS record', async () => {
     mocks.get.mockResolvedValue({
       exists: true,
-      data: () => ({ mfa: { sms: { enabled: true } } }),
+      data: () => ({ mfa: { sms: { enabled: true, phoneNumber: '+15551234567' } } }),
     });
 
     const body = await (await GET(request())).json();

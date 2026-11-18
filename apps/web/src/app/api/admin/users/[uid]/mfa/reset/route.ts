@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
-import { adminDb } from "@/lib/firebaseAdmin";
+import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { recordAdminAudit } from "@/lib/adminAudit";
 import { withErrorHandler } from "@/utils/errors";
 import { getAdminAuthError, requireAdmin } from "@/lib/adminAuth";
@@ -44,6 +44,17 @@ export const POST = withErrorHandler(
         );
       }
 
+      // Firebase-managed factors (SMS/phone) live on the Auth user, so
+      // clearing only the Firestore fields would leave the account locked
+      // behind a factor support cannot see. Best-effort: the Firestore
+      // cleanup still runs if Auth rejects the update.
+      try {
+        await adminAuth.updateUser(uid, {
+          multiFactor: { enrolledFactors: [] },
+        });
+      } catch (authError) {
+        console.error("Could not clear Firebase MFA factors:", authError);
+      }
       await userRef.update({
         "mfa.totp": FieldValue.delete(),
         "mfa.sms": FieldValue.delete(),

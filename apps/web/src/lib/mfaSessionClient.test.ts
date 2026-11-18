@@ -82,9 +82,9 @@ describe('startMfaSession', () => {
   it('falls back to the requested method and a null expiry', async () => {
     mocks.mfaApi.mockResolvedValue({});
 
-    await expect(startMfaSession('token', 'sms', '999999')).resolves.toEqual({
+    await expect(startMfaSession('token', 'backup', 'XXXX-XXXX')).resolves.toEqual({
       expiresAt: null,
-      method: 'sms',
+      method: 'backup',
     });
   });
 });

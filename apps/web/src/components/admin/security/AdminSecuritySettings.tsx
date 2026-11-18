@@ -163,11 +163,7 @@ export default function AdminSecuritySettings() {
         onChanged={refresh}
       />
 
-      <SmsEnrollmentCard
-        idToken={state.idToken}
-        status={state.config}
-        onChanged={refresh}
-      />
+      <SmsEnrollmentCard status={state.config} onChanged={refresh} />
     </div>
   );
 }

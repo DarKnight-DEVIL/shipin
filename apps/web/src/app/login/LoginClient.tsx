@@ -12,6 +12,15 @@ import {
   sendEmailVerification,
   signInWithRedirect,
 } from "firebase/auth";
+import type { User } from "firebase/auth";
+import {
+  FirebaseMfaError,
+  RECAPTCHA_CONTAINER_ID,
+  confirmSecondFactorChallenge,
+  isMultiFactorRequired,
+  startSecondFactorChallenge,
+  type SecondFactorChallenge,
+} from "@/lib/firebaseMfa";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowUpRight, Mail } from "lucide-react";
 import { toast } from "sonner";
@@ -79,12 +88,119 @@ export default function LoginClient() {
     label: string;
   } | null>(null);
 
+  // Second-factor challenge, present only while a sign-in is waiting for an
+  // SMS code from Firebase Identity Platform.
+  const [mfaChallenge, setMfaChallenge] = useState<SecondFactorChallenge | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaBusy, setMfaBusy] = useState(false);
+  const [mfaError, setMfaError] = useState("");
+
   const requestedNext = searchParams.get("next");
 
   const safeRequestedNext =
     requestedNext?.startsWith("/") && !requestedNext.startsWith("//")
       ? requestedNext
       : null;
+
+  /** Post-authentication routing, shared by every sign-in path. */
+  async function finishSignIn(user: User) {
+    if (!user.emailVerified) {
+      try {
+        await sendEmailVerification(user, verificationEmailOptions());
+      } catch (sendError) {
+        console.error("Failed to send verification email:", sendError);
+      }
+      toast.success("We sent a verification email. Please check your inbox.");
+      router.replace("/verify-email");
+      router.refresh();
+      return;
+    }
+
+    let destination = "/dashboard";
+
+    try {
+      const { ensureUserProfile } = await import(
+        "@/features/users/services/userProfile"
+      );
+      const profile = await ensureUserProfile({
+        uid: user.uid,
+        displayName: user.displayName,
+        email: user.email,
+        photoURL: user.photoURL,
+      });
+
+      if (profile?.role === "admin") {
+        destination = safeRequestedNext || "/admin/dashboard";
+      } else {
+        destination =
+          safeRequestedNext && !safeRequestedNext.startsWith("/admin")
+            ? safeRequestedNext
+            : "/dashboard";
+      }
+    } catch (profileError) {
+      console.error("Profile load failed:", profileError);
+      destination =
+        safeRequestedNext && !safeRequestedNext.startsWith("/admin")
+          ? safeRequestedNext
+          : "/dashboard";
+    }
+
+    toast.success(`Welcome${user.displayName ? `, ${user.displayName}` : ""}!`);
+    router.replace(destination);
+    router.refresh();
+  }
+
+  /**
+   * If sign-in stopped for a second factor, send its code and show the form.
+   * Returns true when the error was handled.
+   */
+  async function beginSecondFactor(error: unknown): Promise<boolean> {
+    if (!isMultiFactorRequired(error)) return false;
+
+    try {
+      const challenge = await startSecondFactorChallenge(auth, error);
+      setMfaChallenge(challenge);
+      setMfaCode("");
+      setMfaError("");
+      setFormError("");
+      setFormErrorHelp(null);
+      toast.success("We sent you a verification code by SMS.");
+    } catch (challengeError) {
+      fail(
+        challengeError instanceof FirebaseMfaError
+          ? challengeError.message
+          : "Could not start SMS verification. Try again."
+      );
+    }
+
+    return true;
+  }
+
+  /** Complete the second factor, then continue the normal post-login flow. */
+  async function verifySecondFactor(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!mfaChallenge || mfaBusy) return;
+
+    setMfaBusy(true);
+    setMfaError("");
+
+    try {
+      const user = await confirmSecondFactorChallenge(mfaChallenge, mfaCode.trim());
+      setMfaChallenge(null);
+      setMfaCode("");
+      await finishSignIn(user);
+    } catch (verificationError) {
+      setMfaError(
+        verificationError instanceof FirebaseMfaError
+          ? verificationError.message
+          : "That code could not be verified."
+      );
+    } finally {
+      setMfaBusy(false);
+      setLoading(false);
+    }
+  }
 
   async function handleGoogleLogin() {
     try {
@@ -95,45 +211,9 @@ export default function LoginClient() {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
-      toast.success(
-        `Welcome${user.displayName ? `, ${user.displayName}` : ""}!`
-      );
-
-      let destination = "/dashboard";
-
-      try {
-        const { ensureUserProfile } = await import(
-          "@/features/users/services/userProfile"
-        );
-        // A Google account has never gone through registration, so it may have
-        // no users/{uid} document. Without the repair every authenticated API
-        // call answers 403 USER_PROFILE_NOT_FOUND once the user lands.
-        const profile = await ensureUserProfile({
-          uid: user.uid,
-          displayName: user.displayName,
-          email: user.email,
-          photoURL: user.photoURL,
-        });
-        if (profile?.role === "admin") {
-          destination = safeRequestedNext || "/admin/dashboard";
-        } else {
-          destination =
-            safeRequestedNext && !safeRequestedNext.startsWith("/admin")
-              ? safeRequestedNext
-              : "/dashboard";
-        }
-      } catch (profileError) {
-        console.error("Profile load failed:", profileError);
-        destination =
-          safeRequestedNext && !safeRequestedNext.startsWith("/admin")
-            ? safeRequestedNext
-            : "/dashboard";
-      }
-
       setLoading(true);
+      await finishSignIn(user);
 
-      router.replace(destination);
-      router.refresh();
 
       // Rate-limit gate runs AFTER the popup so the user-gesture token
       // is preserved for signInWithPopup above. Best-effort: never block
@@ -144,6 +224,11 @@ export default function LoginClient() {
         // Ignore â€” analytics failures must not break sign-in.
       }
     } catch (error) {
+      if (await beginSecondFactor(error)) {
+        setLoading(false);
+        return;
+      }
+
       setLoading(false);
       // The previous inline error is about a different attempt, so it must
       // not outlive this one. Clearing it also unmounts any documentation
@@ -366,45 +451,13 @@ export default function LoginClient() {
         user = result.user;
       }
 
-      // If the account is not yet verified, send a verification email
-      // and redirect to the dedicated verification screen.
-      if (!user.emailVerified) {
-        try {
-          await sendEmailVerification(user, verificationEmailOptions());
-        } catch (sendError) {
-          console.error("Failed to send verification email:", sendError);
-        }
-        toast.success(
-          "We sent a verification email. Please check your inbox."
-        );
-        router.replace("/verify-email");
-        router.refresh();
+      await finishSignIn(user);
+    } catch (error: unknown) {
+      if (await beginSecondFactor(error)) {
+        setLoading(false);
         return;
       }
 
-      // Verified email â€” proceed to the dashboard (or admin).
-      const { ensureUserProfile } = await import(
-        "@/features/users/services/userProfile"
-      );
-      const profile = await ensureUserProfile({
-        uid: user.uid,
-        displayName: user.displayName,
-        email: user.email,
-        photoURL: user.photoURL,
-      });
-      let destination = "/dashboard";
-      if (profile?.role === "admin") {
-        destination = safeRequestedNext || "/admin/dashboard";
-      } else {
-        destination =
-          safeRequestedNext && !safeRequestedNext.startsWith("/admin")
-            ? safeRequestedNext
-            : "/dashboard";
-      }
-      toast.success(`Welcome${user.displayName ? `, ${user.displayName}` : ""}!`);
-      router.replace(destination);
-      router.refresh();
-    } catch (error: unknown) {
       console.error("Email auth failed:", error);
       const err = error as { code?: string };
       if (err.code === "auth/user-not-found") {
@@ -487,7 +540,7 @@ export default function LoginClient() {
             </p>
           )}
 
-          {mode === "email" && (
+          {!mfaChallenge && mode === "email" && (
             <motion.div custom={1} variants={fadeUp} initial="hidden" animate="show">
               <form
                 className="login__email-form"
@@ -567,7 +620,75 @@ export default function LoginClient() {
             </motion.div>
           )}
 
-          {mode === "google" && (
+          {mfaChallenge && (
+            <motion.div
+              custom={0}
+              variants={fadeUp}
+              initial="hidden"
+              animate="show"
+              className="login__field"
+            >
+              <h2 className="login__title" style={{ fontSize: "1.1rem" }}>
+                Enter your SMS code
+              </h2>
+              <p className="login__sub">
+                We sent a 6-digit code to {mfaChallenge.phoneNumber ?? "your enrolled phone"}.
+              </p>
+
+              <form onSubmit={verifySecondFactor} className="login__form">
+                <label className="login__field">
+                  <span className="login__label">Verification code</span>
+                  <input
+                    className="login__input"
+                    value={mfaCode}
+                    onChange={(event) => setMfaCode(event.target.value)}
+                    placeholder="123456"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    disabled={mfaBusy}
+                    required
+                  />
+                </label>
+
+                <button
+                  type="submit"
+                  className="login__google"
+                  disabled={mfaBusy || mfaCode.trim().length < 6}
+                >
+                  {mfaBusy ? (
+                    <>
+                      <span className="login__spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    "Verify and sign in"
+                  )}
+                </button>
+              </form>
+
+              {mfaError ? (
+                <p className="login__error" role="alert">
+                  {mfaError}
+                </p>
+              ) : null}
+
+              <button
+                type="button"
+                className="login__link"
+                onClick={() => {
+                  setMfaChallenge(null);
+                  setMfaCode("");
+                  setMfaError("");
+                }}
+              >
+                Use a different account
+              </button>
+
+              <div id={RECAPTCHA_CONTAINER_ID} />
+            </motion.div>
+          )}
+          {!mfaChallenge && mode === "google" && (
             <motion.div custom={1} variants={fadeUp} initial="hidden" animate="show">
               <button
                 type="button"
@@ -618,7 +739,7 @@ export default function LoginClient() {
             </motion.div>
           )}
 
-          {mode === "email" && (
+          {!mfaChallenge && mode === "email" && (
             <motion.p custom={2} variants={fadeUp} initial="hidden" animate="show" className="login__switch">
               Already have a Google account?{" "}
               <button type="button" className="login__link" onClick={() => setMode("google")}>

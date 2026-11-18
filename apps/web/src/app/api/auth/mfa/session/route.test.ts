@@ -169,6 +169,21 @@ describe('GET /api/auth/mfa/session', () => {
     );
   });
 
+  it('elevates a token Firebase already raised with a second factor', async () => {
+    mocks.verifyIdToken.mockResolvedValue({
+      uid: 'admin-1',
+      email: 'a@x.com',
+      email_verified: true,
+      firebase: { sign_in_second_factor: 'phone' },
+    });
+
+    const response = await GET(authRequest());
+
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ elevated: true })
+    );
+  });
+
   it("does not elevate another user's session", async () => {
     mocks.getMfaSession.mockReturnValue({ uid: 'someone-else', expiresAt: 42 });
 
@@ -356,21 +371,9 @@ describe('POST /api/auth/mfa/session', () => {
     expect(mocks.verifyMfaProof).toHaveBeenCalledWith(adminProfile, {
       totp: undefined,
       backup: undefined,
-      sms: undefined,
     });
   });
 
-  it('consumes a one-time SMS challenge', async () => {
-    mocks.verifyMfaProof.mockReturnValue({ ok: true, method: 'sms', consumeSmsChallenge: true });
-
-    const response = await POST(authRequest({ method: 'sms', code: '123456' }));
-
-    expect(response.status).toBe(200);
-    expect(mocks.update).toHaveBeenCalledWith({
-      'mfa.sms.pendingCode': '__DELETE__',
-      'mfa.sms.pendingExpires': '__DELETE__',
-    });
-  });
 });
 
 const deleteRequest = (authorization?: string) =>

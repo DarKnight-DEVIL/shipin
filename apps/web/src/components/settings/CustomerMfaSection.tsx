@@ -13,14 +13,18 @@ import { useCallback, useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
+import {
+  FirebaseMfaError,
+  RECAPTCHA_CONTAINER_ID,
+  confirmSmsEnrollment,
+  startSmsEnrollment,
+} from "@/lib/firebaseMfa";
 import { MfaApiError } from "@/lib/mfaApi";
 import {
   beginTotpEnrollment,
-  confirmSmsCode,
   confirmTotpEnrollment,
   getMfaConfigStatus,
   regenerateBackupCodes,
-  sendSmsCode,
   type MfaConfigStatus,
 } from "@/lib/mfaSetupClient";
 import {
@@ -44,7 +48,11 @@ const secondaryBtn =
   "rounded-lg bg-[var(--surface-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--foreground)] transition hover:bg-[var(--surface-3,rgba(148,163,184,0.18))] disabled:cursor-not-allowed disabled:opacity-60";
 
 function errorMessage(caught: unknown, fallback: string): string {
-  if (caught instanceof MfaApiError || caught instanceof WebAuthnCeremonyError) {
+  if (
+    caught instanceof MfaApiError ||
+    caught instanceof WebAuthnCeremonyError ||
+    caught instanceof FirebaseMfaError
+  ) {
     return caught.message;
   }
   if (caught instanceof Error && caught.message) return caught.message;
@@ -68,6 +76,7 @@ export default function CustomerMfaSection() {
   const [phone, setPhone] = useState("");
   const [smsCode, setSmsCode] = useState("");
   const [smsPending, setSmsPending] = useState(false);
+  const [smsVerificationId, setSmsVerificationId] = useState("");
 
   // Security key
   const [keyName, setKeyName] = useState("");
@@ -159,27 +168,62 @@ export default function CustomerMfaSection() {
       return;
     }
 
-    void withToken("sms-send", async (idToken) => {
-      const reply = await sendSmsCode(idToken, value);
-      setSmsPending(true);
-      setSmsCode("");
-      setMessage(reply);
-    });
+    const user = auth.currentUser;
+
+    if (!user) {
+      setError("Sign in to manage two-factor authentication.");
+      return;
+    }
+
+    setBusy("sms-send");
+    setError(null);
+    setMessage(null);
+
+    void (async () => {
+      try {
+        // Google sends and verifies this code; nothing is stored in Firestore.
+        const verificationId = await startSmsEnrollment(auth, user, value);
+        setSmsVerificationId(verificationId);
+        setSmsPending(true);
+        setSmsCode("");
+        setMessage(`Google sent a code to ${value}.`);
+      } catch (caught) {
+        setError(errorMessage(caught, "Could not send the code."));
+      } finally {
+        setBusy(null);
+      }
+    })();
   }
 
   function submitSmsCode(event: React.FormEvent) {
     event.preventDefault();
 
-    void withToken("sms-verify", async (idToken) => {
-      const reply = await confirmSmsCode(idToken, smsCode.trim());
-      setSmsPending(false);
-      setSmsCode("");
-      setPhone("");
-      setMessage(reply);
-      await load();
-    });
-  }
+    const user = auth.currentUser;
 
+    if (!user) {
+      setError("Sign in to manage two-factor authentication.");
+      return;
+    }
+
+    setBusy("sms-verify");
+    setError(null);
+
+    void (async () => {
+      try {
+        await confirmSmsEnrollment(user, smsVerificationId, smsCode.trim());
+        setSmsPending(false);
+        setSmsCode("");
+        setPhone("");
+        setSmsVerificationId("");
+        setMessage("SMS enabled. You will be asked for a code at every sign-in.");
+        await load();
+      } catch (caught) {
+        setError(errorMessage(caught, "Could not verify that code."));
+      } finally {
+        setBusy(null);
+      }
+    })();
+  }
   function addSecurityKey(event: React.FormEvent) {
     event.preventDefault();
 
@@ -446,6 +490,8 @@ export default function CustomerMfaSection() {
 
       {/* SMS -------------------------------------------------------------- */}
       <div className={cardClass}>
+        {/* Invisible reCAPTCHA for the Identity Platform ceremony. */}
+        <div id={RECAPTCHA_CONTAINER_ID} />
         <p className={titleClass}>SMS codes</p>
         <p className={hintClass}>
           A six-digit code by text message. Weaker than an app-based code, but

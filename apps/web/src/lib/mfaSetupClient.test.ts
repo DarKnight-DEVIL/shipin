@@ -13,11 +13,9 @@ vi.mock('@/lib/mfaApi', () => ({
 
 import {
   beginTotpEnrollment,
-  confirmSmsCode,
   confirmTotpEnrollment,
   getMfaConfigStatus,
   regenerateBackupCodes,
-  sendSmsCode,
 } from './mfaSetupClient';
 
 beforeEach(() => {
@@ -146,41 +144,5 @@ describe('backup codes', () => {
       '/api/auth/mfa/backup-codes/regenerate',
       { idToken: 'token', method: 'POST', body: { totpCode: '654321' } }
     );
-  });
-});
-
-describe('SMS enrolment', () => {
-  it('sends a code to a phone number', async () => {
-    mocks.mfaApi.mockResolvedValue({ message: 'Sent' });
-
-    await expect(sendSmsCode('token', '+919876543210')).resolves.toBe('Sent');
-    expect(mocks.mfaApi).toHaveBeenCalledWith('/api/auth/mfa/sms/setup', {
-      idToken: 'token',
-      method: 'POST',
-      body: { phoneNumber: '+919876543210' },
-    });
-  });
-
-  it('uses a default message when the body omits one', async () => {
-    mocks.mfaApi.mockResolvedValue({});
-
-    await expect(sendSmsCode('token', '+919876543210')).resolves.toBe('Code sent.');
-  });
-
-  it('confirms the SMS code', async () => {
-    mocks.mfaApi.mockResolvedValue({ message: 'SMS enabled' });
-
-    await expect(confirmSmsCode('token', '123456')).resolves.toBe('SMS enabled');
-    expect(mocks.mfaApi).toHaveBeenCalledWith('/api/auth/mfa/sms/verify', {
-      idToken: 'token',
-      method: 'POST',
-      body: { code: '123456' },
-    });
-  });
-
-  it('uses a default message when confirmation omits one', async () => {
-    mocks.mfaApi.mockResolvedValue({});
-
-    await expect(confirmSmsCode('token', '123456')).resolves.toBe('SMS enabled.');
   });
 });

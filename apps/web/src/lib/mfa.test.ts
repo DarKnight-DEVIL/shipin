@@ -1,5 +1,5 @@
 /**
- * Unit tests for MFA (TOTP, backup codes, SMS) utilities.
+ * Unit tests for MFA (TOTP and backup code) utilities.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -13,9 +13,6 @@ import {
   verifyBackupCode,
   getTotpQrUrl,
   renderTotpQrDataUrl,
-  generateSmsCode,
-  hashSmsCode,
-  SMS_CODE_TTL_MS,
 } from './mfa';
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
@@ -150,30 +147,5 @@ describe('renderTotpQrDataUrl', () => {
 
     expect(dataUrl.startsWith('data:image/png;base64,')).toBe(true);
     expect(dataUrl.length).toBeGreaterThan(100);
-  });
-});
-
-describe('SMS codes', () => {
-  it('generates a 6-digit code', () => {
-    for (let i = 0; i < 20; i++) {
-      expect(generateSmsCode()).toMatch(/^\d{6}$/);
-    }
-  });
-
-  it('does not always generate the same code', () => {
-    const codes = new Set(Array.from({ length: 20 }, generateSmsCode));
-    expect(codes.size).toBeGreaterThan(1);
-  });
-
-  it('hashes codes with SHA-256', () => {
-    const hash = hashSmsCode('123456');
-
-    expect(hash).toMatch(/^[a-f0-9]{64}$/);
-    expect(hash).toBe(hashSmsCode('123456'));
-    expect(hash).not.toBe(hashSmsCode('654321'));
-  });
-
-  it('exposes a 5 minute TTL', () => {
-    expect(SMS_CODE_TTL_MS).toBe(5 * 60 * 1000);
   });
 });

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   update: vi.fn(),
   recordAdminAudit: vi.fn(),
+  updateUser: vi.fn(),
 }));
 
 vi.mock('@/lib/adminAuth', () => ({
@@ -15,6 +16,7 @@ vi.mock('@/lib/adminAuth', () => ({
 }));
 
 vi.mock('@/lib/firebaseAdmin', () => ({
+  adminAuth: { updateUser: mocks.updateUser },
   adminDb: {
     collection: () => ({
       doc: () => ({ get: mocks.get, update: mocks.update }),
@@ -49,6 +51,7 @@ describe('POST /api/admin/users/[uid]/mfa/reset', () => {
     mocks.get.mockReset();
     mocks.update.mockReset();
     mocks.recordAdminAudit.mockReset();
+    mocks.updateUser.mockReset().mockResolvedValue(undefined);
 
     mocks.requireAdmin.mockResolvedValue({
       uid: 'admin-1',
@@ -76,6 +79,9 @@ describe('POST /api/admin/users/[uid]/mfa/reset', () => {
       'mfa.webauthn': '__DELETE__',
       'mfa.resetAt': '__SERVER_TS__',
       'mfa.resetBy': 'admin-1',
+    });
+    expect(mocks.updateUser).toHaveBeenCalledWith('cust-1', {
+      multiFactor: { enrolledFactors: [] },
     });
     expect(mocks.recordAdminAudit).toHaveBeenCalledWith({
       actorUid: 'admin-1',

@@ -1,42 +1,44 @@
 "use client";
 
 /**
- * SMS enrollment: send a code to an E.164 number, then confirm it.
+ * SMS enrollment for the admin security screen.
  *
- * The delivered code lives server-side for five minutes and is deleted once
- * confirmed.
+ * The factor belongs to Firebase Identity Platform: Google sends and verifies
+ * the code, and from then on every sign-in for this account needs it. Nothing
+ * is stored in Firestore, so this card only talks to the Firebase SDK.
  */
 
 import { useState } from "react";
 
-import { MfaApiError } from "@/lib/mfaApi";
+import { auth } from "@/lib/firebase";
 import {
-  confirmSmsCode,
-  sendSmsCode,
-  type MfaConfigStatus,
-} from "@/lib/mfaSetupClient";
+  FirebaseMfaError,
+  RECAPTCHA_CONTAINER_ID,
+  confirmSmsEnrollment,
+  startSmsEnrollment,
+} from "@/lib/firebaseMfa";
+import type { MfaConfigStatus } from "@/lib/mfaSetupClient";
 import SecurityCard, { StatusPill } from "./SecurityCard";
 
 const E164 = /^\+[1-9]\d{1,14}$/;
 
 export default function SmsEnrollmentCard({
-  idToken,
   status,
   onChanged,
 }: {
-  idToken: string;
   status: MfaConfigStatus;
   onChanged: () => Promise<void> | void;
 }) {
   const [phase, setPhase] = useState<"idle" | "code-sent">("idle");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [code, setCode] = useState("");
+  const [verificationId, setVerificationId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   function errorMessage(requestError: unknown, fallback: string) {
-    return requestError instanceof MfaApiError
+    return requestError instanceof FirebaseMfaError
       ? requestError.message
       : fallback;
   }
@@ -53,14 +55,22 @@ export default function SmsEnrollmentCard({
       return;
     }
 
+    const user = auth.currentUser;
+
+    if (!user) {
+      setError("Sign in again before enrolling a phone number.");
+      return;
+    }
+
     setBusy(true);
     setError(null);
 
     try {
-      const message = await sendSmsCode(idToken, value);
+      const id = await startSmsEnrollment(auth, user, value);
 
+      setVerificationId(id);
       setPhase("code-sent");
-      setNotice(message);
+      setNotice(`Google sent a code to ${value}.`);
       setCode("");
     } catch (requestError) {
       setError(errorMessage(requestError, "Could not send the code."));
@@ -74,16 +84,24 @@ export default function SmsEnrollmentCard({
 
     if (busy) return;
 
+    const user = auth.currentUser;
+
+    if (!user) {
+      setError("Sign in again before enrolling a phone number.");
+      return;
+    }
+
     setBusy(true);
     setError(null);
 
     try {
-      const message = await confirmSmsCode(idToken, code.trim());
+      await confirmSmsEnrollment(user, verificationId, code.trim());
 
       setPhase("idle");
-      setNotice(message);
+      setNotice("SMS enabled. You will be asked for a code at every sign-in.");
       setCode("");
       setPhoneNumber("");
+      setVerificationId("");
       await onChanged();
     } catch (requestError) {
       setError(errorMessage(requestError, "Could not verify that code."));
@@ -95,7 +113,7 @@ export default function SmsEnrollmentCard({
   return (
     <SecurityCard
       title="SMS codes"
-      description="Receive a 6-digit code by message. Useful as a fallback when your authenticator is unavailable, but weaker than an app-based code."
+      description="Receive a 6-digit code by SMS at sign-in. Delivered and verified by Firebase Identity Platform, so this is a real second factor — but phone numbers can be taken over, so an authenticator app is still stronger."
       badge={
         <StatusPill
           enabled={status.sms.enabled}
@@ -107,6 +125,9 @@ export default function SmsEnrollmentCard({
         />
       }
     >
+      {/* Invisible reCAPTCHA renders here; it must exist before a ceremony. */}
+      <div id={RECAPTCHA_CONTAINER_ID} />
+
       {phase === "idle" ? (
         <form onSubmit={send} className="space-y-3">
           <label
@@ -176,6 +197,7 @@ export default function SmsEnrollmentCard({
               onClick={() => {
                 setPhase("idle");
                 setCode("");
+                setVerificationId("");
                 setError(null);
                 setNotice(null);
               }}

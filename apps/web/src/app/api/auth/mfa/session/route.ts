@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
 
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import {
@@ -67,6 +66,8 @@ interface CallerContext {
   uid: string;
   email?: string;
   profile: Record<string, unknown> | undefined;
+  /** True when Firebase already completed a second factor for this token. */
+  secondFactorVerified: boolean;
 }
 
 /**
@@ -158,7 +159,12 @@ async function resolveAdminCaller(
     );
   }
 
-  return { uid: decoded.uid, email: decoded.email, profile };
+  const secondFactorVerified = Boolean(
+    (decoded as { firebase?: { sign_in_second_factor?: string } }).firebase
+      ?.sign_in_second_factor
+  );
+
+  return { uid: decoded.uid, email: decoded.email, profile, secondFactorVerified };
 }
 
 /**
@@ -173,14 +179,16 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   if (caller instanceof NextResponse) return caller;
 
   const session = await getMfaSession(request);
-  const elevated = Boolean(session && session.uid === caller.uid);
+  const elevated = Boolean(
+    caller.secondFactorVerified || (session && session.uid === caller.uid)
+  );
   const methods = availableMfaMethods(caller.profile as never);
 
   return NextResponse.json(
     {
       success: true,
       elevated,
-      expiresAt: elevated ? session!.expiresAt : null,
+      expiresAt: session && session.uid === caller.uid ? session.expiresAt : null,
       methods,
       sessionTtlMs: MFA_SESSION_TTL_MS,
     },
@@ -336,7 +344,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const code = typeof body.code === "string" ? body.code.trim() : "";
   const method: MfaMethod | undefined =
-    body.method === "totp" || body.method === "backup" || body.method === "sms"
+    body.method === "totp" || body.method === "backup"
       ? body.method
       : undefined;
 
@@ -354,7 +362,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const verification = verifyMfaProof(caller.profile as never, {
     totp: method === "totp" ? code : undefined,
     backup: method === "backup" ? code : undefined,
-    sms: method === "sms" ? code : undefined,
   });
 
   if (!verification.ok) {
@@ -378,14 +385,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       },
       { status: 401, headers: NO_STORE }
     );
-  }
-
-  if (verification.consumeSmsChallenge) {
-    // Single-use: delete the pending SMS challenge that was just accepted.
-    await adminDb.collection("users").doc(caller.uid).update({
-      "mfa.sms.pendingCode": FieldValue.delete(),
-      "mfa.sms.pendingExpires": FieldValue.delete(),
-    });
   }
 
   return elevatedResponse(caller.uid, verification.method);

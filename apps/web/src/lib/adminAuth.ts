@@ -4,8 +4,7 @@ import {
   adminAuth,
   adminDb,
 } from "@/lib/firebaseAdmin";
-import { FieldValue } from "firebase-admin/firestore";
-import { verifyTotp, verifyBackupCode, hashSmsCode } from "@/lib/mfa";
+import { verifyTotp, verifyBackupCode } from "@/lib/mfa";
 import { getMfaSession } from "@/lib/mfaSession";
 import { getAccountBlock } from "@/lib/accountStatus";
 import { verifyAppCheckRequest } from "@/lib/appCheck";
@@ -31,8 +30,8 @@ export interface AdminUser {
  * MFA is mandatory for admin routes. Requires one of:
  * - TOTP code in X-MFA-TOTP header
  * - Backup code in X-MFA-Backup header
- * - SMS code in X-MFA-SMS header (must match a pending challenge issued
- *   via POST /api/auth/mfa/sms/setup, unexpired, single-use)
+ * - A verified Identity Platform second factor (SMS), proven by the
+ *   firebase.sign_in_second_factor claim on the ID token
  *
  * - A verified elevated MFA session cookie (issued by
  *   POST /api/auth/mfa/session after full challenge verification, including
@@ -203,15 +202,33 @@ export async function requireAdmin(
   const mfa = userData?.mfa || {};
   const hasTotp = mfa.totp?.enabled && mfa.totp?.secret;
   const hasWebAuthn = mfa.webauthn?.enabled && (mfa.webauthn.credentialIds?.length ?? 0) > 0;
-  const hasSms = mfa.sms?.enabled && mfa.sms?.phoneNumber;
-  const hasAnyMfa = hasTotp || hasWebAuthn || hasSms;
+  // Firebase (Identity Platform) second factors — SMS today — live on the
+  // Auth user, not in Firestore. A token that completed the challenge carries
+  // `firebase.sign_in_second_factor`, so it is proof in itself.
+  const secondFactorVerified = Boolean(
+    (decodedToken as { firebase?: { sign_in_second_factor?: string } }).firebase
+      ?.sign_in_second_factor
+  );
+
+  let hasAnyMfa = hasTotp || hasWebAuthn || secondFactorVerified;
+
+  if (!hasAnyMfa) {
+    // Nothing in Firestore: ask Auth whether a Firebase-managed factor exists,
+    // so an SMS-only admin is not told to start over.
+    try {
+      const authUser = await adminAuth.getUser(uid);
+      hasAnyMfa = (authUser.multiFactor?.enrolledFactors?.length ?? 0) > 0;
+    } catch {
+      // A failed lookup means no factor: fall through to MFA_SETUP_REQUIRED
+      // rather than granting access.
+    }
+  }
 
   // Check for MFA headers
   const totpCode = request.headers.get("x-mfa-totp");
   const backupCode = request.headers.get("x-mfa-backup");
-  const smsCode = request.headers.get("x-mfa-sms");
 
-  let mfaVerified = false;
+  let mfaVerified = secondFactorVerified;
 
   // TOTP verification
   if (totpCode && hasTotp) {
@@ -225,29 +242,6 @@ export async function requireAdmin(
     const index = verifyBackupCode(backupCode, mfa.totp.backupCodes);
     if (index !== -1) {
       mfaVerified = true;
-    }
-  }
-
-  // SMS verification — challenge-based: the code must match a pending
-  // challenge issued via /api/auth/mfa/sms/setup, still unexpired, and
-  // it is consumed on use (single-use, prevents replay).
-  if (!mfaVerified && smsCode && hasSms) {
-    const pendingCode = mfa.sms?.pendingCode;
-    const pendingExpires = mfa.sms?.pendingExpires;
-
-    if (typeof smsCode === "string" && /^\d{6}$/.test(smsCode)
-      && pendingCode && pendingExpires) {
-      const isExpired = Date.now() > pendingExpires;
-      const matches = hashSmsCode(smsCode) === pendingCode;
-
-      if (matches && !isExpired) {
-        // Consume the challenge so it cannot be reused.
-        await adminDb.collection("users").doc(uid).update({
-          "mfa.sms.pendingCode": FieldValue.delete(),
-          "mfa.sms.pendingExpires": FieldValue.delete(),
-        });
-        mfaVerified = true;
-      }
     }
   }
 
@@ -350,7 +344,7 @@ export function getAdminAuthError(
     return {
       status: 401,
       error:
-        "Multi-factor authentication required. Provide one of: X-MFA-TOTP, X-MFA-Backup, or X-MFA-SMS (a code issued via the SMS MFA setup flow).",
+        "Multi-factor authentication required. Provide a TOTP code, a backup code, or sign in again so Identity Platform completes your SMS second factor.",
     };
   }
 

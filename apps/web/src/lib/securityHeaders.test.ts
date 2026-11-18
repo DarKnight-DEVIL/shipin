@@ -225,6 +225,16 @@ describe('getProductionCSP', () => {
     expect(cspDirective(prodCsp(), 'style-src')).toContain('unsafe-inline');
   });
 
+  it('allows the reCAPTCHA assets the SMS second factor needs', () => {
+    const csp = getProductionCSP();
+
+    // Identity Platform web MFA renders an invisible reCAPTCHA, which loads
+    // from google.com/recaptcha and frames recaptcha.google.com. Without these
+    // the verifier never resolves, so enrollment and sign-in both hang.
+    expect(cspSources(csp, 'script-src')).toContain('https://www.google.com/recaptcha/');
+    expect(cspSources(csp, 'connect-src')).toContain('https://www.google.com/recaptcha/');
+    expect(cspSources(csp, 'frame-src')).toContain('https://recaptcha.google.com');
+  });
   it('allowlists the third-party script hosts the app loads', async () => {
     const { getProductionCSP: prodCsp } = await importWithEnv({
       isDevelopment: false,

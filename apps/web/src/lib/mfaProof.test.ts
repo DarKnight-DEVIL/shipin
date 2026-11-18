@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { describe, expect, it } from "vitest";
 
-import { generateBackupCodes, generateTotpSecret, hashBackupCode, hashSmsCode } from "./mfa";
+import { generateBackupCodes, generateTotpSecret, hashBackupCode } from "./mfa";
 import {
   availableMfaMethods,
   hasAnyMfaMethod,
@@ -63,15 +63,14 @@ describe("availableMfaMethods / hasAnyMfaMethod", () => {
     expect(hasAnyMfaMethod({})).toBe(false);
   });
 
-  it("lists TOTP, backup codes and SMS", () => {
+  it("lists TOTP and backup codes", () => {
     const profile: MfaProfile = {
       mfa: {
         totp: { enabled: true, secret: "SECRET", backupCodes: ["hash"] },
-        sms: { enabled: true, phoneNumber: "+15551234567", pendingCode: "hash", pendingExpires: Date.now() + 60000 },
       },
     };
 
-    expect(availableMfaMethods(profile)).toEqual(["totp", "backup", "sms"]);
+    expect(availableMfaMethods(profile)).toEqual(["totp", "backup"]);
   });
 
   it("offers WebAuthn when a credential with a public key is stored", () => {
@@ -117,7 +116,7 @@ describe("verifyMfaProof — TOTP", () => {
     const code = totpAt(secret, Date.now());
     const result = verifyMfaProof(totpProfile(secret, true), { totp: code });
 
-    expect(result).toEqual({ ok: true, method: "totp", consumeSmsChallenge: false });
+    expect(result).toEqual({ ok: true, method: "totp" });
   });
 
   it("accepts the previous step to tolerate clock drift", () => {
@@ -154,7 +153,6 @@ describe("verifyMfaProof — backup codes", () => {
     expect(verifyMfaProof(profile, { backup: plain })).toEqual({
       ok: true,
       method: "backup",
-      consumeSmsChallenge: false,
     });
   });
 
@@ -164,51 +162,6 @@ describe("verifyMfaProof — backup codes", () => {
     };
 
     expect(verifyMfaProof(profile, { backup: "CCCC-DDDD" }).ok).toBe(false);
-  });
-});
-
-describe("verifyMfaProof — SMS", () => {
-  const code = "123456";
-
-  function smsProfile(expiresInMs: number): MfaProfile {
-    return {
-      mfa: {
-        sms: {
-          enabled: true,
-          phoneNumber: "+15551234567",
-          pendingCode: hashSmsCode(code),
-          pendingExpires: Date.now() + expiresInMs,
-        },
-      },
-    };
-  }
-
-  it("accepts a matching, unexpired challenge and asks the caller to consume it", () => {
-    expect(verifyMfaProof(smsProfile(60_000), { sms: code })).toEqual({
-      ok: true,
-      method: "sms",
-      consumeSmsChallenge: true,
-    });
-  });
-
-  it("rejects an expired challenge", () => {
-    expect(verifyMfaProof(smsProfile(-1), { sms: code })).toEqual({
-      ok: false,
-      reason: "INVALID_CODE",
-    });
-  });
-
-  it("rejects a code that is not six digits", () => {
-    expect(verifyMfaProof(smsProfile(60_000), { sms: "12345" }).ok).toBe(false);
-    expect(verifyMfaProof(smsProfile(60_000), { sms: "abcdef" }).ok).toBe(false);
-  });
-
-  it("ignores an SMS code when SMS is disabled", () => {
-    const profile: MfaProfile = {
-      mfa: { totp: { enabled: true, secret: generateTotpSecret(), backupCodes: [] } },
-    };
-
-    expect(verifyMfaProof(profile, { sms: code }).ok).toBe(false);
   });
 });
 

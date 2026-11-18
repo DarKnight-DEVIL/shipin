@@ -162,6 +162,9 @@ describe('PATCH /api/admin/shipments/[shipmentId]', () => {
     const response = await PATCH(request(), context());
 
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toMatchObject({ error: 'offline' });
+    // The route logs the raw Firestore error but never returns it.
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'Unable to update shipment.',
+    });
   });
 });

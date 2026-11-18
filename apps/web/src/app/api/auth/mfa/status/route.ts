@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { adminDb } from "@/lib/firebaseAdmin";
+import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { readStoredCredentials, type WebAuthnRecord } from "@/lib/webauthn";
 import { withErrorHandler } from "@/utils/errors";
@@ -9,7 +9,6 @@ const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 type MfaShape = {
   totp?: { enabled?: boolean; secret?: string; backupCodes?: string[] };
-  sms?: { enabled?: boolean; phoneNumber?: string };
   webauthn?: WebAuthnRecord;
 };
 
@@ -51,8 +50,23 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
   const mfa = (snapshot.data()?.mfa ?? {}) as MfaShape;
   const totp = mfa.totp;
-  const sms = mfa.sms;
   const credentials = readStoredCredentials(mfa.webauthn);
+
+  // SMS is a Firebase Identity Platform factor, not a Firestore record:
+  // Google sends and verifies the code, so the enrolled phone lives on the
+  // Auth user. A failed lookup must not hide the Firestore-backed factors.
+  let smsPhoneNumber: string | null = null;
+
+  try {
+    const authUser = await adminAuth.getUser(auth.profile.uid);
+    const phoneFactor = authUser.multiFactor?.enrolledFactors?.find(
+      (factor) => factor.factorId === "phone"
+    );
+    smsPhoneNumber =
+      (phoneFactor as { phoneNumber?: string } | undefined)?.phoneNumber ?? null;
+  } catch {
+    smsPhoneNumber = null;
+  }
 
   return NextResponse.json(
     {
@@ -64,8 +78,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         pending: Boolean(totp?.secret && !totp?.enabled),
       },
       sms: {
-        enabled: Boolean(sms?.enabled && sms?.phoneNumber),
-        phoneNumber: maskPhoneNumber(sms?.phoneNumber),
+        enabled: smsPhoneNumber !== null,
+        phoneNumber: maskPhoneNumber(smsPhoneNumber),
       },
       backupCodes: Array.isArray(totp?.backupCodes)
         ? totp.backupCodes.length

@@ -121,24 +121,3 @@ export async function renderTotpQrDataUrl(otpauthUrl: string): Promise<string> {
     width: 336,
   });
 }
-
-/**
- * SMS MFA helpers.
- */
-
-/** SMS code validity window in seconds (5 minutes). */
-export const SMS_CODE_TTL_MS = 5 * 60 * 1000;
-
-/**
- * Generate a 6-digit SMS verification code.
- */
-export function generateSmsCode(): string {
-  return crypto.randomInt(100000, 1000000).toString();
-}
-
-/**
- * Hash an SMS code for storage.
- */
-export function hashSmsCode(code: string): string {
-  return crypto.createHash("sha256").update(code).digest("hex");
-}
