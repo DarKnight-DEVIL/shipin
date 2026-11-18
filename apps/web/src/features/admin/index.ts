@@ -16,14 +16,14 @@ export {
   getCustomersWithWallets,
   getRefundRequestDetails,
   type AdminCustomer,
-} from './services/customers';
+} from './services/customersClient';
 
 export {
   getAllRequests,
   matchesAdminRequestFilter,
   getAdminRequestPriority,
   getAdminRequestQueue,
-} from './services/requestQueue';
+} from './services/requestQueueClient';
 
 export { useAdminWallet } from './hooks/useAdminWallet';
 

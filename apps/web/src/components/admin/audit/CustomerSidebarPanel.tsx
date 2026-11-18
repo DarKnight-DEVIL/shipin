@@ -9,7 +9,7 @@
 
 import Image from "next/image";
 import { Search, User } from "lucide-react";
-import type { AdminCustomer } from "@/features/admin/services/customers";
+import type { AdminCustomer } from "@/features/admin/services/customersClient";
 import type { Request } from "@/types/request";
 
 interface CustomerSidebarPanelProps {

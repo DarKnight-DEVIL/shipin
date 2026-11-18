@@ -10,7 +10,7 @@ import {
   Clock, CreditCard, Package, RotateCcw, ShieldCheck, Wallet
 } from "lucide-react";
 import type { Request } from "@/types/request";
-import type { AdminCustomer } from "@/features/admin/services/customers";
+import type { AdminCustomer } from "@/features/admin/services/customersClient";
 import { AuditField, formatDate, statusLabel, statusClass } from "./AuditField";
 
 interface RequestDetailPanelProps {

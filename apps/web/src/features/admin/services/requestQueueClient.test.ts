@@ -13,7 +13,7 @@ import {
   getAdminRequestQueue,
   getAllRequests,
   matchesAdminRequestFilter,
-} from './requestQueue';
+} from './requestQueueClient';
 import type { Request } from '@/types/request';
 
 const request = (overrides: Record<string, unknown> = {}) =>

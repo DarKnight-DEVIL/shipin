@@ -17,13 +17,13 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 vi.mock('@/lib/customerApiClient', () => ({ customerApi: mocks.customerApi }));
-vi.mock('@/features/admin/services/customers', () => ({
+vi.mock('@/features/admin/services/customersClient', () => ({
   getCustomersWithWallets: mocks.getCustomersWithWallets,
   getRefundRequestDetails: mocks.getRefundRequestDetails,
 }));
 
 import { useAdminWallet } from './useAdminWallet';
-import type { AdminCustomer } from '@/features/admin/services/customers';
+import type { AdminCustomer } from '@/features/admin/services/customersClient';
 
 const customers = [
   { id: 'c1', displayName: 'Ada Lovelace', email: 'ada@example.com' },

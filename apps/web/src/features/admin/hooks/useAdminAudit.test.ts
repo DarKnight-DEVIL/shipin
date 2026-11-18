@@ -7,15 +7,15 @@ const mocks = vi.hoisted(() => ({
   getAllRequests: vi.fn(),
 }));
 
-vi.mock('@/features/admin/services/customers', () => ({
+vi.mock('@/features/admin/services/customersClient', () => ({
   getCustomersWithWallets: mocks.getCustomersWithWallets,
 }));
-vi.mock('@/features/admin/services/requestQueue', () => ({
+vi.mock('@/features/admin/services/requestQueueClient', () => ({
   getAllRequests: mocks.getAllRequests,
 }));
 
 import { useAdminAudit } from './useAdminAudit';
-import type { AdminCustomer } from '@/features/admin/services/customers';
+import type { AdminCustomer } from '@/features/admin/services/customersClient';
 import type { Request } from '@/types/request';
 
 const customers = [

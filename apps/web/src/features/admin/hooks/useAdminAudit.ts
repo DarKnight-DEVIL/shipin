@@ -10,8 +10,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { Request } from "@/types/request";
-import { type AdminCustomer, getCustomersWithWallets } from "@/features/admin/services/customers";
-import { getAllRequests } from "@/features/admin/services/requestQueue";
+import { type AdminCustomer, getCustomersWithWallets } from "@/features/admin/services/customersClient";
+import { getAllRequests } from "@/features/admin/services/requestQueueClient";
 
 export interface AdminAuditState {
   customers: AdminCustomer[];

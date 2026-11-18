@@ -5,7 +5,7 @@
 "use client";
 
 import { AlertCircle, CheckCircle2, Loader2, Plus } from "lucide-react";
-import type { AdminCustomer } from "@/features/admin/services/customers";
+import type { AdminCustomer } from "@/features/admin/services/customersClient";
 
 interface CreditFormPanelProps {
   selectedCustomer: AdminCustomer | null;

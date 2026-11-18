@@ -6,7 +6,7 @@ vi.mock('@/lib/customerApiClient', () => ({
   customerApi: (...args: unknown[]) => customerApiMock(...args),
 }));
 
-import { getCustomersWithWallets, getRefundRequestDetails } from './customers';
+import { getCustomersWithWallets, getRefundRequestDetails } from './customersClient';
 
 beforeEach(() => {
   customerApiMock.mockReset();

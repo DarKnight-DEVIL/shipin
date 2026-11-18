@@ -18,6 +18,14 @@ import type { NotificationPreferences } from '@/types/notificationPreferences';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '@/types/notificationPreferences';
 import { toShipINError } from '@/utils/errors';
 
+/**
+ * Browser-safe notification client.
+ *
+ * The write itself belongs to the Admin SDK (`./server.ts`, called by
+ * `POST /api/notifications`): the browser cannot hold service credentials.
+ * This wrapper exists so UI code does not hand-roll the fetch, and it adds
+ * nothing else — do not inline a second write path here.
+ */
 export async function createNotification(
   userId: string,
   requestId: string | null,

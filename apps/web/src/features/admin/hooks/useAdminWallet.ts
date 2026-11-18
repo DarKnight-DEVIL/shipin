@@ -12,7 +12,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { customerApi } from "@/lib/customerApiClient";
-import { getCustomersWithWallets, getRefundRequestDetails, type AdminCustomer } from "@/features/admin/services/customers";
+import { getCustomersWithWallets, getRefundRequestDetails, type AdminCustomer } from "@/features/admin/services/customersClient";
 
 export interface AdminWalletState {
   customers: AdminCustomer[];
