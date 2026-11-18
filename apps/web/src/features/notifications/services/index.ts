@@ -2,6 +2,7 @@ import {
   collection,
   query,
   where,
+  limit,
   getDocs,
   doc,
   orderBy,
@@ -113,6 +114,16 @@ export async function clearReadNotifications(userId: string): Promise<number> {
   }
 }
 
+/**
+ * Most recent notifications held live in the browser.
+ *
+ * The listener used to carry every notification the account had ever received,
+ * so a long-lived customer paid for their whole history on each snapshot. The
+ * feed and the unread badge only ever show the newest few, so the subscription
+ * is bounded; `useUnreadNotifications` therefore saturates at this number.
+ */
+export const NOTIFICATION_FEED_LIMIT = 30;
+
 export function subscribeToNotifications(
   userId: string,
   callback: (notifications: Notification[]) => void
@@ -120,7 +131,8 @@ export function subscribeToNotifications(
   const q = query(
     collection(db, 'notifications'),
     where('userId', '==', userId),
-    orderBy('createdAt', 'desc')
+    orderBy('createdAt', 'desc'),
+    limit(NOTIFICATION_FEED_LIMIT)
   );
   return onSnapshot(q, (snapshot) => {
     callback(

@@ -6,13 +6,17 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
+  orderBy,
   query,
   runTransaction,
   serverTimestamp,
+  startAfter,
   updateDoc,
   where,
   type DocumentData,
   type FirestoreDataConverter,
+  type QueryConstraint,
   type QueryDocumentSnapshot,
   type SnapshotOptions,
 } from "firebase/firestore";
@@ -155,17 +159,85 @@ export async function getShipmentRequests(
   return snapshot.docs.map((doc) => doc.data());
 }
 
-export async function getUserShipments(
-  userId: string
-) {
+/** Default page size for a customer's shipment list. */
+export const SHIPMENTS_PAGE_SIZE = 25;
+
+export interface ShipmentPageOptions {
+  pageSize?: number;
+  /** Cursor from the previous page's `nextPageAfter`. */
+  after?: QueryDocumentSnapshot | null;
+}
+
+export interface ShipmentPage {
+  shipments: Shipment[];
+  /** Pass to the next call as `after`; null once the last page is reached. */
+  nextPageAfter: QueryDocumentSnapshot | null;
+}
+
+/**
+ * One page of a customer's shipments, newest first.
+ *
+ * Unbounded `where('userId')` reads every document the customer ever shipped,
+ * which grows without limit. `orderBy('createdAt')` is safe because
+ * `createShipment` always writes that field.
+ */
+export async function getUserShipmentsPage(
+  userId: string,
+  options: ShipmentPageOptions = {}
+): Promise<ShipmentPage> {
+  const pageSize = options.pageSize ?? SHIPMENTS_PAGE_SIZE;
+
+  const constraints: QueryConstraint[] = [
+    where("userId", "==", userId),
+    orderBy("createdAt", "desc"),
+    limit(pageSize),
+  ];
+
+  if (options.after) constraints.push(startAfter(options.after));
+
   const q = query(
     collection(db, "shipments").withConverter(shipmentConverter),
-    where("userId", "==", userId)
+    ...constraints
   );
 
   const snapshot = await getDocs(q);
+  const last = snapshot.docs[snapshot.docs.length - 1] ?? null;
 
-  return snapshot.docs.map((doc) => doc.data());
+  return {
+    shipments: snapshot.docs.map((doc) => doc.data()),
+    // A short page means there is nothing left to fetch.
+    nextPageAfter: snapshot.docs.length === pageSize ? last : null,
+  };
+}
+
+/** First page of a customer's shipments. */
+export async function getUserShipments(
+  userId: string,
+  options: ShipmentPageOptions = {}
+): Promise<Shipment[]> {
+  const page = await getUserShipmentsPage(userId, options);
+
+  return page.shipments;
+}
+
+/**
+ * Every shipment for a customer, read page by page.
+ *
+ * For callers that genuinely need the whole set (consolidation picks any open
+ * shipment). It still never issues one unbounded query.
+ */
+export async function getAllUserShipments(userId: string): Promise<Shipment[]> {
+  const all: Shipment[] = [];
+  let after: QueryDocumentSnapshot | null = null;
+
+  do {
+    const page = await getUserShipmentsPage(userId, { after });
+
+    all.push(...page.shipments);
+    after = page.nextPageAfter;
+  } while (after);
+
+  return all;
 }
 
 export async function markShipmentShipped(

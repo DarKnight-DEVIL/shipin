@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   createShipment,
   addRequestToShipment,
-  getUserShipments,
+  getAllUserShipments,
 } from "@/features/shipments/services/shipments";
 
 import type { Request } from "@/types/request";
@@ -24,7 +24,7 @@ export default function ConsolidationPanel({ request }: Props) {
   useEffect(() => {
     async function load() {
       try {
-        const data = await getUserShipments(request.userId);
+        const data = await getAllUserShipments(request.userId);
         setShipments(data);
       } catch (e) {
         console.error(e);

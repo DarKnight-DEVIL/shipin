@@ -25,6 +25,9 @@ vi.mock('firebase/firestore', () => {
   doc: vi.fn((_db: unknown, col: string, id: string) => refWithConverter(`${col}/${id}`)),
   query: vi.fn((ref: unknown) => ({ ref })),
   where: vi.fn(() => ({})),
+  orderBy: vi.fn(() => ({})),
+  limit: vi.fn(() => ({})),
+  startAfter: vi.fn(() => ({})),
   addDoc: mocks.addDoc,
   getDoc: mocks.getDoc,
   getDocs: mocks.getDocs,
@@ -37,13 +40,20 @@ vi.mock('firebase/firestore', () => {
 });
 vi.mock('@/lib/firebaseDb', () => ({ db: {} }));
 
+// The module mock is asserted directly (limit/startAfter arguments).
+const firestore = await import('firebase/firestore');
+type QueryDocumentSnapshot = import('firebase/firestore').QueryDocumentSnapshot;
+
 import {
   addRequestToShipment,
   createShipment,
   finalizeShipment,
+  getAllUserShipments,
   getShipment,
   getShipmentRequests,
   getUserShipments,
+  getUserShipmentsPage,
+  SHIPMENTS_PAGE_SIZE,
   markShipmentDelivered,
   markShipmentShipped,
   removeRequestFromShipment,
@@ -164,6 +174,61 @@ describe('getUserShipments', () => {
     });
 
     await expect(getUserShipments('user-1')).resolves.toEqual([{ id: 'ship-1' }, { id: 'ship-2' }]);
+  });
+
+  it('asks Firestore for one bounded, newest-first page', async () => {
+    mocks.getDocs.mockResolvedValue({ docs: [] });
+
+    await getUserShipments('user-1');
+
+    const queryArgs = vi.mocked(firestore.query).mock.calls.at(-1) ?? [];
+    // The collection ref plus three constraints: user filter, order, limit.
+    expect(queryArgs).toHaveLength(4);
+    expect(firestore.limit).toHaveBeenLastCalledWith(SHIPMENTS_PAGE_SIZE);
+  });
+
+  it('returns a cursor only when the page is full', async () => {
+    const docs = Array.from({ length: SHIPMENTS_PAGE_SIZE }, (_unused, index) => ({
+      id: `ship-${index}`,
+      data: () => ({ id: `ship-${index}` }),
+    }));
+    mocks.getDocs.mockResolvedValue({ docs });
+
+    const page = await getUserShipmentsPage('user-1');
+
+    expect(page.shipments).toHaveLength(SHIPMENTS_PAGE_SIZE);
+    expect(page.nextPageAfter).toBe(docs[docs.length - 1]);
+
+    mocks.getDocs.mockResolvedValue({ docs: docs.slice(0, 1) });
+    await expect(getUserShipmentsPage('user-1')).resolves.toMatchObject({
+      nextPageAfter: null,
+    });
+  });
+
+  it('passes the cursor back to Firestore for the next page', async () => {
+    const cursor = { id: 'ship-25' } as unknown as QueryDocumentSnapshot;
+    mocks.getDocs.mockResolvedValue({ docs: [] });
+
+    await getUserShipmentsPage('user-1', { after: cursor });
+
+    expect(firestore.startAfter).toHaveBeenCalledWith(cursor);
+  });
+
+  it('walks every page for callers that need the whole set', async () => {
+    const firstPage = Array.from({ length: SHIPMENTS_PAGE_SIZE }, (_unused, index) => ({
+      id: `a-${index}`,
+      data: () => ({ id: `a-${index}` }),
+    }));
+    const secondPage = [{ id: 'b-1', data: () => ({ id: 'b-1' }) }];
+
+    mocks.getDocs
+      .mockResolvedValueOnce({ docs: firstPage })
+      .mockResolvedValueOnce({ docs: secondPage });
+
+    const all = await getAllUserShipments('user-1');
+
+    expect(all).toHaveLength(SHIPMENTS_PAGE_SIZE + 1);
+    expect(mocks.getDocs).toHaveBeenCalledTimes(2);
   });
 });
 

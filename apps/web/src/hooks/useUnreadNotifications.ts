@@ -3,6 +3,9 @@
  *
  * Call this inside any client component that needs the badge number. It manages the
  * Firestore onSnapshot lifecycle internally and returns `null` while unauthenticated.
+ *
+ * The subscription is bounded by `NOTIFICATION_FEED_LIMIT`, so the number is the
+ * unread count within the newest window and saturates at that limit.
  */
 import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";

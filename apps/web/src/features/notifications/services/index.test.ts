@@ -13,6 +13,7 @@ vi.mock('firebase/firestore', () => ({
   query: vi.fn((ref: unknown) => ({ ref })),
   where: vi.fn(() => ({})),
   orderBy: vi.fn(() => ({})),
+  limit: vi.fn(() => ({})),
   getDocs: mocks.getDocs,
   getDoc: mocks.getDoc,
   onSnapshot: mocks.onSnapshot,
@@ -28,6 +29,7 @@ import {
   getNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  NOTIFICATION_FEED_LIMIT,
   saveNotificationPreferences,
   subscribeToNotifications,
 } from './index';
@@ -149,6 +151,15 @@ describe('notification mutations', () => {
 });
 
 describe('subscribeToNotifications', () => {
+  it('bounds the realtime feed to the newest notifications', async () => {
+    mocks.onSnapshot.mockReturnValue(vi.fn());
+    const firestore = await import('firebase/firestore');
+
+    subscribeToNotifications('user-1', () => {});
+
+    expect(firestore.limit).toHaveBeenCalledWith(NOTIFICATION_FEED_LIMIT);
+  });
+
   it('delivers mapped notifications and returns the unsubscribe function', () => {
     const unsubscribe = vi.fn();
     let emit: (snapshot: unknown) => void = () => {};
