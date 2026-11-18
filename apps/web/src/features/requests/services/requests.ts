@@ -172,22 +172,6 @@ export async function getRequestById(requestId: string): Promise<Request | null>
   }
 }
 
-export async function updateRequestStatus(
-  requestId: string,
-  status: string,
-  extra?: Record<string, unknown>
-): Promise<void> {
-  try {
-    await updateDoc(doc(db, 'requests', requestId), {
-      status,
-      ...extra,
-      updatedAt: serverTimestamp(),
-    });
-  } catch (error) {
-    throw toShipINError(error);
-  }
-}
-
 export function subscribeToRequests(
   userId: string,
   callback: (requests: Request[]) => void,
@@ -231,56 +215,6 @@ export function subscribeToRequest(
     }
     callback({ id: snapshot.id, ...(snapshot.data() as Omit<Request, 'id'>) });
   }, onError);
-}
-
-/** Add a new request (convenience alias for createRequest). */
-export async function addRequest(data: CreateRequestData, userId: string): Promise<string> {
-  return createRequest(data, userId);
-}
-
-export async function rejectRequest(requestId: string, reason: string): Promise<void> {
-  try {
-    const requestRef = doc(db, 'requests', requestId);
-    const snapshot = await getDoc(requestRef);
-    const userId = snapshot.exists() ? snapshot.data()?.userId : null;
-    await updateDoc(requestRef, {
-      status: 'rejected',
-      rejectionReason: reason,
-      rejectedAt: serverTimestamp(),
-      [`statusHistory.rejected`]: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    if (userId) {
-      await addDoc(collection(db, 'notifications'), {
-        userId,
-        requestId,
-        title: 'Request Rejected',
-        message: `Your request has been rejected. Reason: ${reason}`,
-        type: 'rejection',
-        read: false,
-        createdAt: serverTimestamp(),
-      });
-    }
-  } catch (error) {
-    throw toShipINError(error);
-  }
-}
-
-export async function requestQuoteRegeneration(requestId: string): Promise<number> {
-  try {
-    const requestRef = doc(db, 'requests', requestId);
-    const current = await getDoc(requestRef);
-    const currentVersion = (current.data()?.quote?.version as number) ?? 0;
-    const newVersion = currentVersion + 1;
-    await updateDoc(requestRef, {
-      quote: { ...current.data()?.quote, version: newVersion, regeneratedCount: (current.data()?.quote?.regeneratedCount ?? 0) + 1, createdAt: serverTimestamp() },
-      quoteRegenerationRequested: false,
-      updatedAt: serverTimestamp(),
-    });
-    return newVersion;
-  } catch (error) {
-    throw toShipINError(error);
-  }
 }
 
 export async function addAdditionalItemRequest(

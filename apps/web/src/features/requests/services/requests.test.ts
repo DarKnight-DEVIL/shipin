@@ -31,18 +31,14 @@ vi.mock('@/lib/firebaseDb', () => ({ db: {} }));
 
 import {
   addAdditionalItemRequest,
-  addRequest,
   approveAdditionalItem,
   createRequest,
   getRequestById,
   getRequests,
   rejectAdditionalItem,
-  rejectRequest,
-  requestQuoteRegeneration,
   subscribeToRequest,
   subscribeToRequests,
   updateAdditionalItemStatus,
-  updateRequestStatus,
 } from './requests';
 
 const docSnapshot = (data?: Record<string, unknown>, id = 'req-1') => ({
@@ -109,12 +105,6 @@ describe('createRequest', () => {
     mocks.addDoc.mockRejectedValue(new Error('offline'));
 
     await expect(createRequest(createData as never, 'user-1')).rejects.toBeInstanceOf(Error);
-  });
-
-  it('exposes addRequest as an alias', async () => {
-    await addRequest(createData as never, 'user-2');
-
-    expect(mocks.addDoc.mock.calls[0][1]).toMatchObject({ userId: 'user-2' });
   });
 });
 
@@ -191,23 +181,6 @@ describe('getRequestById', () => {
   });
 });
 
-describe('updateRequestStatus', () => {
-  it('writes the status and any extra fields', async () => {
-    await updateRequestStatus('req-1', 'shipped', { trackingNumber: 'ABC' });
-
-    expect(mocks.updateDoc).toHaveBeenCalledWith(
-      { path: 'requests/req-1', id: 'req-1' },
-      { status: 'shipped', trackingNumber: 'ABC', updatedAt: '__SERVER_TS__' }
-    );
-  });
-
-  it('wraps write failures', async () => {
-    mocks.updateDoc.mockRejectedValue(new Error('offline'));
-
-    await expect(updateRequestStatus('req-1', 'paid')).rejects.toBeInstanceOf(Error);
-  });
-});
-
 describe('subscriptions', () => {
   function capture() {
     const unsubscribe = vi.fn();
@@ -261,66 +234,6 @@ describe('subscriptions', () => {
     subscribeToRequest('req-1', () => {}, onError);
 
     expect(emitError()).toBe(onError);
-  });
-});
-
-describe('rejectRequest', () => {
-  it('marks the request rejected and notifies the customer', async () => {
-    await rejectRequest('req-1', 'Prohibited item');
-
-    expect(mocks.updateDoc.mock.calls[0][1]).toMatchObject({
-      status: 'rejected',
-      rejectionReason: 'Prohibited item',
-      'statusHistory.rejected': '__SERVER_TS__',
-    });
-    expect(mocks.addDoc.mock.calls[0][1]).toMatchObject({
-      userId: 'user-1',
-      requestId: 'req-1',
-      type: 'rejection',
-      message: 'Your request has been rejected. Reason: Prohibited item',
-    });
-  });
-
-  it('skips the notification when the request has no owner', async () => {
-    mocks.getDoc.mockResolvedValue(docSnapshot(undefined));
-
-    await rejectRequest('req-1', 'reason');
-
-    expect(mocks.updateDoc).toHaveBeenCalled();
-    expect(mocks.addDoc).not.toHaveBeenCalled();
-  });
-
-  it('wraps failures', async () => {
-    mocks.updateDoc.mockRejectedValue(new Error('offline'));
-
-    await expect(rejectRequest('req-1', 'reason')).rejects.toBeInstanceOf(Error);
-  });
-});
-
-describe('requestQuoteRegeneration', () => {
-  it('bumps the quote version', async () => {
-    mocks.getDoc.mockResolvedValue(
-      docSnapshot({ quote: { version: 3, regeneratedCount: 1 } })
-    );
-
-    await expect(requestQuoteRegeneration('req-1')).resolves.toBe(4);
-
-    expect(mocks.updateDoc.mock.calls[0][1]).toMatchObject({
-      quote: { version: 4, regeneratedCount: 2 },
-      quoteRegenerationRequested: false,
-    });
-  });
-
-  it('starts at version one without an existing quote', async () => {
-    mocks.getDoc.mockResolvedValue(docSnapshot({}));
-
-    await expect(requestQuoteRegeneration('req-1')).resolves.toBe(1);
-  });
-
-  it('wraps failures', async () => {
-    mocks.getDoc.mockRejectedValue(new Error('offline'));
-
-    await expect(requestQuoteRegeneration('req-1')).rejects.toBeInstanceOf(Error);
   });
 });
 

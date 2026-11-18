@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { isAllowedOrigin, getCorsHeaders, getServerSideCorsHeaders } from './cors';
+import { isAllowedOrigin, getCorsHeaders } from './cors';
 
 const originalEnv = process.env.APP_ALLOWED_ORIGINS;
 const originalAppUrl = process.env.APP_URL;
@@ -245,23 +245,5 @@ describe('getCorsHeaders', () => {
     const headers = getCorsHeaders(null);
     expect(headers['Access-Control-Allow-Origin']).toBeUndefined();
     expect(headers['Access-Control-Allow-Credentials']).toBeUndefined();
-  });
-});
-
-describe('getServerSideCorsHeaders', () => {
-  it('includes CORS headers plus security headers', () => {
-    const headers = getServerSideCorsHeaders('https://shipin-psi.vercel.app');
-    expect(headers['Access-Control-Allow-Origin']).toBe('https://shipin-psi.vercel.app');
-    expect(headers['Referrer-Policy']).toBe('strict-origin-when-cross-origin');
-    expect(headers['X-Frame-Options']).toBe('DENY');
-    expect(headers['X-Content-Type-Options']).toBe('nosniff');
-    expect(headers['Permissions-Policy']).toContain('camera=()');
-    expect(headers['Permissions-Policy']).toContain('payment=(self)');
-  });
-
-  it('works without origin', () => {
-    const headers = getServerSideCorsHeaders(null);
-    expect(headers['Access-Control-Allow-Origin']).toBeUndefined();
-    expect(headers['X-Frame-Options']).toBe('DENY');
   });
 });

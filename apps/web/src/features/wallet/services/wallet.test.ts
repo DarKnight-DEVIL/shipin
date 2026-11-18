@@ -75,11 +75,8 @@ vi.mock('firebase/firestore', () => ({
 vi.mock('@/lib/firebaseDb', () => ({ db: {} }));
 
 import {
-  deductFromWallet,
-  depositToWallet,
   getWallet,
   getWalletTransactions,
-  refundToWallet,
 } from './wallet';
 
 const USER = 'user-1';
@@ -118,77 +115,6 @@ describe('getWallet', () => {
     mocks.getDoc.mockRejectedValueOnce(new Error('permission-denied'));
 
     await expect(getWallet(USER)).rejects.toMatchObject({ name: 'AuthorizationError' });
-  });
-});
-
-describe('depositToWallet', () => {
-  it('rejects non-positive amounts', async () => {
-    await expect(depositToWallet(USER, 0)).rejects.toThrow('Deposit amount must be positive.');
-    expect(mocks.updateDoc).not.toHaveBeenCalled();
-  });
-
-  it('increments the balance and records the transaction', async () => {
-    mocks.store.set(`wallets/${USER}`, { balance: 100, currency: 'USD' });
-
-    await depositToWallet(USER, 50, 'Top up');
-
-    expect(mocks.store.get(`wallets/${USER}`)).toMatchObject({ balance: 150 });
-    expect(mocks.added[0]).toMatchObject({
-      userId: USER,
-      type: 'deposit',
-      amount: 50,
-      balanceAfter: 150,
-      description: 'Top up',
-    });
-  });
-});
-
-describe('deductFromWallet', () => {
-  it('rejects non-positive amounts', async () => {
-    await expect(deductFromWallet(USER, -1)).rejects.toThrow(
-      'Deduction amount must be positive.'
-    );
-  });
-
-  it('refuses to overdraw', async () => {
-    mocks.store.set(`wallets/${USER}`, { balance: 10, currency: 'USD' });
-
-    await expect(deductFromWallet(USER, 25)).rejects.toThrow('Insufficient wallet balance.');
-    expect(mocks.store.get(`wallets/${USER}`)).toMatchObject({ balance: 10 });
-  });
-
-  it('decrements the balance and records a negative transaction', async () => {
-    mocks.store.set(`wallets/${USER}`, { balance: 100, currency: 'USD' });
-
-    await deductFromWallet(USER, 40, 'req-9');
-
-    expect(mocks.store.get(`wallets/${USER}`)).toMatchObject({ balance: 60 });
-    expect(mocks.added[0]).toMatchObject({
-      type: 'payment',
-      amount: -40,
-      balanceAfter: 60,
-      requestId: 'req-9',
-    });
-  });
-});
-
-describe('refundToWallet', () => {
-  it('rejects non-positive amounts', async () => {
-    await expect(refundToWallet(USER, 0)).rejects.toThrow('Refund amount must be positive.');
-  });
-
-  it('credits the balance and records a refund', async () => {
-    mocks.store.set(`wallets/${USER}`, { balance: 20, currency: 'USD' });
-
-    await refundToWallet(USER, 30, 'req-3');
-
-    expect(mocks.store.get(`wallets/${USER}`)).toMatchObject({ balance: 50 });
-    expect(mocks.added[0]).toMatchObject({
-      type: 'refund',
-      amount: 30,
-      balanceAfter: 50,
-      requestId: 'req-3',
-    });
   });
 });
 
