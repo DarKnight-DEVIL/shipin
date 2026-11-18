@@ -69,6 +69,10 @@ export type EnvConfig = {
 /**
  * The validated environment, resolved per group on access.
  *
+ * This is not the app's validator: `apps/web/src/config/env` is, and it is the
+ * one that runs at startup. This reader exists for packages that cannot import
+ * app code, and the two must keep naming the same variables.
+ *
  * Importing `@shipin/config` validates nothing, so `SITE_CONFIG.name` and unit
  * tests keep working without a full environment. Accessing a group reads and
  * checks only that group, and nothing is silently defaulted. Values are not
