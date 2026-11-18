@@ -28,9 +28,20 @@ Set these in your Vercel project settings → Environment Variables:
 | `SMTP_EMAIL` / `SMTP_PASSWORD` | Fallback | SMTP fallback |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Yes | Cloudflare R2 uploads |
 | `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | Optional | WhatsApp Business API |
-| `MFA_SESSION_SECRET` | Optional | Admin MFA session signing (min 32 chars) |
+| `MFA_SESSION_SECRET` | **Yes** | Signs admin MFA session cookies (min 32 chars). Production boot fails without it |
+| `BREACH_ALERT_WEBHOOK_URL` | Optional | Slack/incident webhook pinged for a critical data breach |
 | `UPSTASH_REDIS_REST_URL` | **Yes** | **Global rate limiting. The server refuses to start without it** |
 | `UPSTASH_REDIS_REST_TOKEN` | **Yes** | **Global rate limiting. The server refuses to start without it** |
+
+### Retention cleanup
+
+`executeRetentionCleanup()` deletes documents past their processing-register
+retention period, and defaults to a dry run. Schedule the handler with
+`?dryRun=false` only after reading one dry-run report: it skips anything under a
+legal/litigation/audit hold, anything whose owner has an open rights request,
+and any `users` document whose account is not closed. Deletions are batched
+(100 per collection per run) and the result lists every document with the
+reason it expired.
 
 ### Pre-deploy checks
 

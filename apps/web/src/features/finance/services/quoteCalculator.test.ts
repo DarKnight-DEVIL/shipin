@@ -1,41 +1,41 @@
 import { describe, it, expect } from 'vitest';
 import {
-  calculateServiceFeeFromConfig,
+  calculateServiceFee,
   requiresManualQuote,
   calculateInspectionFee,
   calculateHoldFee,
 } from '@/features/finance/services/calculateServiceFee';
 
 describe('quoteCalculator', () => {
-  describe('calculateServiceFeeFromConfig', () => {
+  describe('calculateServiceFee', () => {
     it('returns 0 for products total <= $10', () => {
-      expect(calculateServiceFeeFromConfig(undefined, 10)).toBe(0);
-      expect(calculateServiceFeeFromConfig(undefined, 5)).toBe(0);
-      expect(calculateServiceFeeFromConfig(undefined, 0)).toBe(0);
+      expect(calculateServiceFee(10).fee).toBe(0);
+      expect(calculateServiceFee(5).fee).toBe(0);
+      expect(calculateServiceFee(0).fee).toBe(0);
     });
 
     it('returns $5 for products total > $10 and <= $30', () => {
-      expect(calculateServiceFeeFromConfig(undefined, 15)).toBe(5);
-      expect(calculateServiceFeeFromConfig(undefined, 25)).toBe(5);
-      expect(calculateServiceFeeFromConfig(undefined, 30)).toBe(5);
+      expect(calculateServiceFee(15).fee).toBe(5);
+      expect(calculateServiceFee(25).fee).toBe(5);
+      expect(calculateServiceFee(30).fee).toBe(5);
     });
 
     it('returns 10% (min $10) for products total > $30 and <= $500', () => {
-      expect(calculateServiceFeeFromConfig(undefined, 31)).toBe(10); // min $10
-      expect(calculateServiceFeeFromConfig(undefined, 100)).toBe(10);
-      expect(calculateServiceFeeFromConfig(undefined, 200)).toBe(20); // 10%
-      expect(calculateServiceFeeFromConfig(undefined, 500)).toBe(50);
+      expect(calculateServiceFee(31).fee).toBe(10); // min $10
+      expect(calculateServiceFee(100).fee).toBe(10);
+      expect(calculateServiceFee(200).fee).toBe(20); // 10%
+      expect(calculateServiceFee(500).fee).toBe(50);
     });
 
     it('returns 0 for products total > $500 (manual quote)', () => {
-      expect(calculateServiceFeeFromConfig(undefined, 501)).toBe(0);
-      expect(calculateServiceFeeFromConfig(undefined, 1000)).toBe(0);
+      expect(calculateServiceFee(501).fee).toBe(0);
+      expect(calculateServiceFee(1000).fee).toBe(0);
     });
 
     it('handles invalid input gracefully', () => {
-      expect(calculateServiceFeeFromConfig(undefined, NaN)).toBe(0);
-      expect(calculateServiceFeeFromConfig(undefined, -10)).toBe(0);
-      expect(calculateServiceFeeFromConfig(undefined, Infinity)).toBe(0);
+      expect(calculateServiceFee(NaN).fee).toBe(0);
+      expect(calculateServiceFee(-10).fee).toBe(0);
+      expect(calculateServiceFee(Infinity).fee).toBe(0);
     });
   });
 

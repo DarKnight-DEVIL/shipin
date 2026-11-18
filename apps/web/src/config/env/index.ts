@@ -44,7 +44,7 @@ interface ServerEnv {
   WHATSAPP_ACCESS_TOKEN?: string;
   WHATSAPP_PHONE_NUMBER_ID?: string;
   WHATSAPP_API_VERSION?: string;
-  /** Optional signing key for admin MFA session cookies (min 32 chars). */
+  /** Signing key for admin MFA session cookies (min 32 chars). */
   MFA_SESSION_SECRET?: string;
   /**
    * India Post (CEPT) tracking credentials. Optional on purpose: until all
@@ -54,6 +54,8 @@ interface ServerEnv {
   INDIA_POST_CLIENT_ID?: string;
   INDIA_POST_CLIENT_SECRET?: string;
   CRON_SECRET?: string;
+  /** Slack/incident webhook for critical data breaches (optional). */
+  BREACH_ALERT_WEBHOOK_URL?: string;
   /**
    * `'true'` makes API routes reject requests without a valid App Check token.
    * Off by default so local development and CI need no Firebase project.
@@ -134,6 +136,9 @@ const REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
  */
 const PRODUCTION_REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
   'PAYPAL_WEBHOOK_ID',
+  // Admin MFA sessions cannot be signed without it, so a deploy missing this
+  // would 500 every admin request instead of failing at boot.
+  'MFA_SESSION_SECRET',
 ]);
 
 /**
@@ -207,7 +212,7 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
 export function validateProductionRequiredEnv(): void {
   if (!isProduction) return;
 
-  const required: string[] = [...REQUIRED_SERVER_ENV, 'PAYPAL_WEBHOOK_ID'];
+  const required: string[] = [...REQUIRED_SERVER_ENV, ...PRODUCTION_REQUIRED_SERVER_ENV];
 
   if (!isRateLimitStoreOptional()) {
     required.push(...RATE_LIMIT_STORE_SERVER_ENV);

@@ -31,8 +31,6 @@ import {
   getWarehouseInventory,
   removeRequestFromWarehouse,
   saveInspectionPhoto,
-  saveInspectionPhotos,
-  saveInspectionPhotosAlias,
   saveWarehouseInspection,
   saveWarehouseMeasurements,
   startStorageTimer,
@@ -120,13 +118,7 @@ describe('inspection photos', () => {
     );
   });
 
-  it('keeps the deprecated aliases pointing at the same function', async () => {
-    expect(saveInspectionPhotos).toBe(saveInspectionPhoto);
 
-    await saveInspectionPhotosAlias('req-1', { id: 'p2', url: 'https://img/p2.jpg' });
-
-    expect(mocks.updateDoc).toHaveBeenCalled();
-  });
 
   it('wraps failures', async () => {
     mocks.updateDoc.mockRejectedValue(new Error('offline'));

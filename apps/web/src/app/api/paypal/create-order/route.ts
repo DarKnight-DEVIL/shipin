@@ -6,13 +6,12 @@ import { requireAuthWithProfile } from "@/lib/auth";
 import { getPayPalAccessToken } from "@/lib/paypal";
 import { withErrorHandler } from "@/utils/errors";
 import { serverEnv } from "@/config/env";
+import { PAYPAL_FIXED_FEE, PAYPAL_PERCENTAGE } from "@/config/constants";
 import { fetchWithTimeout } from "@/lib/http";
 import type { AdditionalItemRequest } from "@/types/request";
 
 type PaymentType = "main" | "additional_item";
 
-const PAYPAL_PERCENTAGE = 0.044;
-const PAYPAL_FIXED_FEE = 0.30;
 
 /**
  * Safely converts a Firestore value into a number.

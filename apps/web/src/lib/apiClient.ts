@@ -8,6 +8,7 @@
  */
 
 import { clearAppCheckFailure, notifyAppCheckFailure } from "@/lib/appCheckFailure";
+import { HTTP_TIMEOUT_MS } from "@/config/constants";
 import { beginRetryNotice, endRetryNotice } from "@/lib/requestRetry";
 import { auth, getAppCheckToken } from "@/lib/firebase";
 
@@ -211,8 +212,13 @@ export async function apiFetch<T>(
     ? { "X-Firebase-AppCheck": appCheckToken }
     : {};
 
-  const send = () =>
-    fetch(path, {
+  // Without a deadline a stalled upstream leaves the tab waiting forever, and
+  // a serverless invocation billable for its whole duration.
+  const send = () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
+
+    return fetch(path, {
       method,
       headers: {
         Authorization: `Bearer ${idToken}`,
@@ -224,7 +230,9 @@ export async function apiFetch<T>(
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: "same-origin",
       cache: "no-store",
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer));
+  };
 
   const networkError = () =>
     createError(errorClass, "Could not reach the server.", "NETWORK_ERROR", 0);

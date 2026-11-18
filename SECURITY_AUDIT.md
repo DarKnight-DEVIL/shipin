@@ -50,6 +50,30 @@ All responses include:
 - Not verified locally: real SMS delivery and reCAPTCHA require a deployed
   origin and a Blaze project.
 
+### 4c. Compliance and Operations Follow-up
+
+- **Retention:** `executeRetentionCleanup()` now deletes through Firestore batches
+  instead of only logging intent. It is dry-run by default, refuses documents
+  under a hold or with an open rights request, and only removes `users` records
+  for closed accounts. Results are returned, not just printed.
+- **Parental consent:** OTPs are six CSPRNG digits stored as a salted scrypt hash
+  with a 10-minute expiry and a five-attempt limit. The code is emailed to the
+  parent address recorded on the request; a failed send deletes the pending
+  request instead of leaving an unusable one.
+- **MFA sessions:** signing requires `MFA_SESSION_SECRET` (min 32 chars). The old
+  derivation from the Firebase Admin private key is gone, and production startup
+  fails when the secret is missing.
+- **Breach escalation:** a critical breach is logged at error level and posted to
+  `BREACH_ALERT_WEBHOOK_URL` when configured; a failed page never fails the
+  breach record.
+- **Money constants:** PayPal percentage and fixed fee come from
+  `config/constants.ts` only; the duplicate config module and the inline copies
+  are gone. `check-money-globs.mjs` now also honours a `@money-path` marker.
+- **Transport:** the shared API client aborts requests after 15s instead of
+  waiting indefinitely.
+- **Webhooks:** PayPal deliveries are deduplicated by event id, so a provider
+  retry cannot process the same capture twice.
+
 ### 5. Input Validation (`src/lib/validation.ts`)
 Zod schemas for all untrusted inputs:
 - Email validation (RFC-compliant regex)

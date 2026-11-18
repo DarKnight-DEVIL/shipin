@@ -44,9 +44,9 @@ function emit(level: LogLevel, message: string, context?: Record<string, unknown
 
   const formatted = formatEntry(entry);
 
-  // Only console.error and console.warn are used (they are whitelisted by
-  // the no-console ESLint rule for this file). Errors go to stderr where
-  // container runtimes and log shippers collect them.
+  // error and warn go to stderr where container runtimes and log shippers
+  // collect them; info and debug stay on stdout so severity filters can tell
+  // them apart. This file switches the no-console rule off.
   if (level === "error") {
     console.error(formatted);
     return;
@@ -58,12 +58,11 @@ function emit(level: LogLevel, message: string, context?: Record<string, unknown
   if (level === "debug") {
     // Debug is suppressed in production.
     if (process.env.NODE_ENV !== "production") {
-      console.warn(formatted);
+      console.log(formatted);
     }
     return;
   }
-  // info
-  console.warn(formatted);
+  console.log(formatted);
 }
 
 export const logger = {

@@ -48,30 +48,21 @@ export interface MfaSession {
 /**
  * Signing key for session tokens.
  *
- * `MFA_SESSION_SECRET` is the preferred source. When it is absent we derive a
- * key from the Firebase Admin private key — which is a required secret in every
- * environment — so sessions work without extra configuration while never
- * relying on a hardcoded constant.
+ * Deliberately a dedicated secret: deriving it from the Firebase Admin private
+ * key would mean that key doubles as an MFA-forgery key, so a leak would be
+ * worse than losing API access. A missing secret is a configuration error and
+ * fails closed rather than falling back to anything.
  */
 function getSigningKey(): Buffer {
-  const explicit = serverEnv.MFA_SESSION_SECRET;
+  const secret = serverEnv.MFA_SESSION_SECRET;
 
-  if (explicit && explicit.length >= 32) {
-    return Buffer.from(explicit, "utf8");
-  }
-
-  const adminKey = serverEnv.FIREBASE_ADMIN_PRIVATE_KEY;
-
-  if (!adminKey) {
+  if (!secret || secret.length < 32) {
     throw new Error(
-      "MFA session signing key unavailable: set MFA_SESSION_SECRET (min 32 chars) or FIREBASE_ADMIN_PRIVATE_KEY."
+      "MFA_SESSION_SECRET is required (min 32 chars) to sign admin MFA sessions."
     );
   }
 
-  return crypto
-    .createHmac("sha256", Buffer.from(adminKey, "utf8"))
-    .update("shipin:mfa-session:v1")
-    .digest();
+  return Buffer.from(secret, "utf8");
 }
 
 function sign(payload: string): string {

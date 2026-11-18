@@ -6,6 +6,7 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 
 import { sendNotification } from "@/features/notifications/services/notificationService";
+import { WHATSAPP_TEMPLATES } from "@/features/notifications/templates";
 import type { NotificationCategory } from "@/features/notifications/services/notificationService";
 import { withErrorHandler } from "@/utils/errors";
 
@@ -100,7 +101,7 @@ export const POST = withErrorHandler(async (request: Request, context: RouteCont
           whatsapp: true,
         },
         whatsapp: {
-          templateName: "shipin_package_shipped",
+          templateName: WHATSAPP_TEMPLATES.packageShipped,
           languageCode: "en",
           components: [
             {

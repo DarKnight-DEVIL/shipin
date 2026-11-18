@@ -84,16 +84,3 @@ export function calculateHoldFee(
   }
   return services.shippingPreference === "hold" ? PRICING.shipping.hold.price : 0;
 }
-
-/**
- * Calculates the ShipIN service fee based on the products total.
- * Returns just the numeric fee (for backward compatibility).
- *
- * @deprecated Use calculateServiceFee() instead for full result details.
- */
-export function calculateServiceFeeFromConfig(
-  _services?: ServiceSelections,
-  productsTotal: number = 0
-): number {
-  return calculateServiceFee(productsTotal).fee;
-}

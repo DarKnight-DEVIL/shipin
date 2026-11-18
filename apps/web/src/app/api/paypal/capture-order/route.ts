@@ -4,6 +4,7 @@ import { FieldValue, type Timestamp } from "firebase-admin/firestore";
 import {
   sendNotification,
 } from "@/features/notifications/services/notificationService";
+import { WHATSAPP_TEMPLATES } from "@/features/notifications/templates";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { getPayPalAccessToken } from "@/lib/paypal";
 import { fetchWithTimeout } from "@/lib/http";
@@ -1150,8 +1151,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         },
 
         whatsapp: {
-          templateName:
-            "shipin_payment_received",
+          templateName: WHATSAPP_TEMPLATES.paymentReceived,
 
           languageCode: "en",
 

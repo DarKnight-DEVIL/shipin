@@ -11,7 +11,7 @@ import InvoicePreview from "@/components/invoice/InvoicePreview";
 import InvoicePDF from "@/components/invoice/InvoicePDF";
 
 import {
-  calculateServiceFeeFromConfig,
+  calculateServiceFee,
   calculateInspectionFee,
   calculateHoldFee,
   requiresManualQuote,
@@ -82,10 +82,7 @@ export default function QuotePanel({ request }: Props) {
    * in this calculation.
    */
 
-  const serviceFee = calculateServiceFeeFromConfig(
-    request.serviceSelections,
-    productsTotal
-  );
+  const serviceFee = calculateServiceFee(productsTotal).fee;
 
   const manualQuoteRequired =
     requiresManualQuote(productsTotal);

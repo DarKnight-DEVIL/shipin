@@ -7,6 +7,7 @@ import { serverEnv } from "@/config/env";
 import { apiRateLimiter, addRateLimitHeaders, isRateLimited } from "@/lib/rateLimiter";
 import { verifyPayPalWebhook } from "@/lib/paypal";
 import { sendNotification } from "@/features/notifications/services/notificationService";
+import { WHATSAPP_TEMPLATES } from "@/features/notifications/templates";
 
 // PayPal Webhook ID from the developer dashboard.
 // Should be set in environment variables: PAYPAL_WEBHOOK_ID
@@ -106,6 +107,21 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
+  // PayPal retries a delivery it could not confirm, so the same event id can
+  // arrive twice. The marker is written only after the handler succeeds: a
+  // failed attempt still returns 500 and is retried.
+  const eventId = typeof event.id === "string" ? event.id : "";
+  const eventRef = eventId
+    ? adminDb.collection("paypalWebhookEvents").doc(eventId)
+    : null;
+
+  if (eventRef) {
+    const seen = await eventRef.get();
+    if (seen.exists) {
+      return NextResponse.json({ received: true, success: true, duplicate: true });
+    }
+  }
+
   // Process the event
   try {
     switch (event.event_type) {
@@ -136,6 +152,13 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       { success: false, error: "Webhook processing failed.", code: "WEBHOOK_PROCESSING_ERROR" },
       { status: 500 }
     );
+  }
+
+  if (eventRef) {
+    await eventRef.set({
+      eventType: event.event_type ?? "unknown",
+      processedAt: FieldValue.serverTimestamp(),
+    });
   }
 
   // PayPal requires a 2xx to stop delivery; `received` is the provider contract.
@@ -282,7 +305,7 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
       category: "payment",
       channels: { inApp: true, email: true, whatsapp: true },
       whatsapp: {
-        templateName: "shipin_payment_received",
+        templateName: WHATSAPP_TEMPLATES.paymentReceived,
         languageCode: "en",
         components: [{ type: "body", parameters: [
           { type: "text", text: customerName },

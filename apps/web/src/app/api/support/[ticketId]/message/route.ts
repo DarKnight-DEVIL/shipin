@@ -8,6 +8,7 @@ import { requireAuthWithProfile } from "@/lib/auth";
 import {
   sendNotification,
 } from "@/features/notifications/services/notificationService";
+import { WHATSAPP_TEMPLATES } from "@/features/notifications/templates";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -280,8 +281,7 @@ export const POST = withErrorHandler(async (
             ? {
                 whatsapp: {
 
-                  templateName:
-                    "shipin_support_update",
+                  templateName: WHATSAPP_TEMPLATES.supportUpdate,
 
                   languageCode:
                     "en",

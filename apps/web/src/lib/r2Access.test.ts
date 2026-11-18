@@ -8,10 +8,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ collection: vi.fn() }));
+const mocks = vi.hoisted(() => ({ collection: vi.fn(), getAll: vi.fn() }));
 
 vi.mock('@/lib/firebaseAdmin', () => ({
-  adminDb: { collection: mocks.collection },
+  adminDb: { collection: mocks.collection, getAll: mocks.getAll },
 }));
 
 // `isolate: false` shares the module cache between test files, and the
@@ -28,16 +28,14 @@ const snap = (data: Record<string, unknown> | undefined) => ({
 
 /** `requests/{id}` and `users/{uid}` answer with the given documents. */
 function firestore(requests: Record<string, unknown> | undefined, users?: Record<string, unknown>) {
-  mocks.collection.mockImplementation((name: string) => ({
-    doc: () => ({
-      get: async () => (name === 'requests' ? snap(requests) : snap(users)),
-    }),
-  }));
+  mocks.collection.mockImplementation(() => ({ doc: () => ({}) }));
+  mocks.getAll.mockResolvedValue([snap(requests), snap(users)]);
 }
 
 beforeEach(async () => {
   vi.resetModules();
   mocks.collection.mockReset();
+  mocks.getAll.mockReset();
   ({ authorizeInspectionAccess, parseInspectionKey } = await import('./r2Access'));
 });
 

@@ -27,8 +27,11 @@ const config: PlaywrightTestConfig = {
 // (The production build in CI is managed by the workflow, not Playwright.)
 if (!isRemoteTarget && process.env.PLAYWRIGHT_MANAGE_WEBSERVER !== '0') {
   config.webServer = {
-    // CI builds first and then serves that build; local runs default to dev.
-    command: process.env.PLAYWRIGHT_WEBSERVER_COMMAND ?? 'npm run dev',
+    // Default to the production artefact: standalone output and prerendered
+    // routes differ from dev, and a dev-only pass hides those differences.
+    // Override with PLAYWRIGHT_WEBSERVER_COMMAND='npm run dev' for a quick loop.
+    command:
+      process.env.PLAYWRIGHT_WEBSERVER_COMMAND ?? 'npm run build && npm start',
     url: process.env.BASE_URL ?? 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,

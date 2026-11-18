@@ -42,7 +42,13 @@ export async function authorizeInspectionAccess(
     };
   }
 
-  const requestSnapshot = await adminDb.collection("requests").doc(requestId).get();
+  // One RPC for both documents: the owner check and the admin check need
+  // different collections, but nothing requires them to be separate trips.
+  const [requestSnapshot, profileSnapshot] = await adminDb.getAll(
+    adminDb.collection("requests").doc(requestId),
+    adminDb.collection("users").doc(uid)
+  );
+
   const ownerId = requestSnapshot.exists
     ? String(requestSnapshot.data()?.userId ?? "")
     : "";
@@ -51,7 +57,6 @@ export async function authorizeInspectionAccess(
     return null;
   }
 
-  const profileSnapshot = await adminDb.collection("users").doc(uid).get();
   const role = profileSnapshot.exists ? profileSnapshot.data()?.role : undefined;
 
   if (role === "admin") {

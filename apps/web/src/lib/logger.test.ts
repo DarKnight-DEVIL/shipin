@@ -8,15 +8,18 @@ import { logger, childLogger } from './logger';
 describe('logger', () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
     consoleWarnSpy.mockRestore();
+    consoleLogSpy.mockRestore();
     vi.unstubAllEnvs();
   });
 
@@ -61,9 +64,9 @@ describe('logger', () => {
   });
 
   describe('info', () => {
-    it('logs info message via warn (info level uses warn)', () => {
+    it('logs an info message on stdout', () => {
       logger.info('User logged in', { userId: 'user-123' });
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect(consoleLogSpy).toHaveBeenCalledWith(
         expect.stringContaining('[INFO] User logged in')
       );
     });
@@ -73,7 +76,7 @@ describe('logger', () => {
     it('logs debug message in development', () => {
       vi.stubEnv('NODE_ENV', 'development');
       logger.debug('Debug info', { detail: 'value' });
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect(consoleLogSpy).toHaveBeenCalledWith(
         expect.stringContaining('[DEBUG] Debug info')
       );
     });
@@ -81,7 +84,7 @@ describe('logger', () => {
     it('suppresses debug in production', () => {
       vi.stubEnv('NODE_ENV', 'production');
       logger.debug('Debug info', { detail: 'value' });
-      expect(consoleWarnSpy).not.toHaveBeenCalled();
+      expect(consoleLogSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -103,10 +106,10 @@ describe('logger', () => {
     it('merges child context with call context', () => {
       const child = childLogger({ base: 'value' });
       child.info('Test', { override: 'call' });
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect(consoleLogSpy).toHaveBeenCalledWith(
         expect.stringContaining('base')
       );
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect(consoleLogSpy).toHaveBeenCalledWith(
         expect.stringContaining('override')
       );
     });

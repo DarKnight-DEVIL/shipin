@@ -42,6 +42,9 @@ vi.mock('@/lib/firebaseAdmin', () => ({
             const data = mocks.docs[path];
             return { exists: data !== undefined, data: () => data };
           },
+          set: async (data: Record<string, unknown>) => {
+            mocks.docs[path] = data;
+          },
         };
       },
     }),
@@ -191,6 +194,27 @@ describe('POST /api/webhook', () => {
     await POST(request(captureEvent()));
 
     expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
+  it('skips a PayPal event id it has already processed', async () => {
+    mocks.docs['paypalWebhookEvents/EV-1'] = { eventType: 'PAYMENT.CAPTURE.COMPLETED' };
+
+    const response = await POST(request({ ...captureEvent(), id: 'EV-1' }));
+    const body = await response.json();
+
+    expect(body).toMatchObject({ received: true, duplicate: true });
+    expect(mocks.sendNotification).not.toHaveBeenCalled();
+  });
+
+  it('records a processed event id so a retry is skipped', async () => {
+    const response = await POST(
+      request({ event_type: 'PAYMENT.CAPTURE.REFUNDED', id: 'EV-2' })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.docs['paypalWebhookEvents/EV-2']).toMatchObject({
+      eventType: 'PAYMENT.CAPTURE.REFUNDED',
+    });
   });
 
   it('ignores a capture whose amount differs from the order', async () => {

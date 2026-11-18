@@ -93,19 +93,6 @@ export async function saveInspectionPhoto(
   }
 }
 
-/**
- * Add a single inspection photo to a request's warehouse record.
- * Alias kept for backward compatibility with older call sites.
- *
- * @deprecated Use saveInspectionPhoto instead.
- */
-export async function saveInspectionPhotosAlias(
-  requestId: string,
-  photo: { id: string; url: string; caption?: string }
-): Promise<void> {
-  return saveInspectionPhoto(requestId, photo);
-}
-
 export async function approveInternationalShipment(requestId: string): Promise<void> {
   try {
     await updateDoc(doc(db, 'requests', requestId), {
@@ -135,11 +122,6 @@ export async function startStorageTimer(requestId: string): Promise<void> {
     throw toShipINError(error);
   }
 }
-
-/**
- * @deprecated Use saveInspectionPhoto instead. Kept for backward compatibility.
- */
-export const saveInspectionPhotos = saveInspectionPhoto;
 
 export async function saveWarehouseMeasurements(
   requestId: string,
