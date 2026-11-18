@@ -45,25 +45,16 @@ function legacyRefund(
   data: RefundRequestData,
   requestId: string
 ): RefundRequestDetails {
-  // Prefer the new schema shape (data.refund) when available; fall back to
-  // the legacy refundRequest fields only when the new shape is absent.
-  const newSchema = data.refund;
+  // The caller returns `data.refund` itself when it is an object, so this
+  // function only ever sees the legacy shape (or no shape at all). It used to
+  // read `data.refund` first as well, which made that branch unreachable.
   const legacy = data.refundRequest;
 
   let preference: string;
   let totalRefundAmount: number;
   let originalWalletAmount: number;
 
-  if (newSchema && typeof newSchema === "object") {
-    preference = newSchema.preference ?? data.preference ?? "wallet";
-    totalRefundAmount = newSchema.totalRefundAmount ?? data.amount ?? 0;
-    originalWalletAmount =
-      newSchema.walletRefundAmount ??
-      legacy?.walletAmount ??
-      data.payment?.walletAmount ??
-      data.walletAmount ??
-      0;
-  } else if (legacy && typeof legacy === "object") {
+  if (legacy && typeof legacy === "object") {
     preference = legacy.preference ?? data.preference ?? "wallet";
     totalRefundAmount = legacy.amount ?? data.amount ?? 0;
     originalWalletAmount =

@@ -106,6 +106,101 @@ describe('getRefundRequestDetails', () => {
     await expect(getRefundRequestDetails('req-1')).rejects.toThrow('This refund does not contain a wallet refund amount.');
   });
 
+  it('falls back to top-level fields when the legacy block is partial', async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      data: { refundRequest: { amount: 60 }, preference: 'wallet', userId: 'u1', id: 'req-1' },
+    });
+
+    const result = await getRefundRequestDetails('req-1');
+    expect(result.preference).toBe('wallet');
+    expect(result.totalRefundAmount).toBe(60);
+    expect(result.walletRefundAmount).toBe(60);
+  });
+
+  it('defaults a legacy refund with no fields at all to wallet and zero', async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      data: { refundRequest: {}, userId: 'u1', id: 'req-1' },
+    });
+
+    await expect(getRefundRequestDetails('req-1')).rejects.toThrow(
+      'This refund does not contain a wallet refund amount.'
+    );
+  });
+
+  it('reads top-level fields when there is no nested block', async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      data: { preference: 'original_payment', amount: 40, walletAmount: 15, userId: 'u1', id: 'req-1' },
+    });
+
+    const result = await getRefundRequestDetails('req-1');
+    expect(result.totalRefundAmount).toBe(40);
+    expect(result.walletRefundAmount).toBe(15);
+  });
+
+  it('takes the wallet portion from the payment block', async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      data: { preference: 'original_sources', amount: 40, payment: { walletAmount: 15 }, userId: 'u1', id: 'req-1' },
+    });
+
+    await expect(getRefundRequestDetails('req-1')).resolves.toMatchObject({
+      totalRefundAmount: 40,
+      walletRefundAmount: 15,
+    });
+  });
+
+  it('treats a malformed nested block as absent and still reads the legacy fields', async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      data: { refundRequest: 'unexpected', amount: 25, userId: 'u1', id: 'req-1' },
+    });
+
+    const result = await getRefundRequestDetails('req-1');
+    expect(result.totalRefundAmount).toBe(25);
+    expect(result.walletRefundAmount).toBe(25);
+  });
+
+  it('falls back to the request id and an empty user when the payload omits them', async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      data: { refundRequest: { preference: 'wallet', amount: 10 } },
+    });
+
+    await expect(getRefundRequestDetails('req-42')).resolves.toMatchObject({
+      id: 'req-42',
+      userId: '',
+    });
+  });
+
+  it('uses the versioned refund payload even when the legacy block is present', async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      data: {
+        refund: { id: 'req-1', userId: 'u1', preference: 'wallet', totalRefundAmount: 5, walletRefundAmount: 5 },
+        refundRequest: { preference: 'original_sources', amount: 999 },
+      },
+    });
+
+    await expect(getRefundRequestDetails('req-1')).resolves.toMatchObject({
+      totalRefundAmount: 5,
+      walletRefundAmount: 5,
+    });
+  });
+
+  it('rejects a non-finite wallet amount', async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      data: { refund: { id: 'req-1', userId: 'u1', preference: 'wallet', totalRefundAmount: Number.NaN, walletRefundAmount: Number.NaN } },
+    });
+
+    await expect(getRefundRequestDetails('req-1')).rejects.toThrow(
+      'This refund does not contain a wallet refund amount.'
+    );
+  });
+
   it('rejects a missing request', async () => {
     customerApiMock.mockRejectedValue(new Error('offline'));
     await expect(getRefundRequestDetails('req-1')).rejects.toBeInstanceOf(Error);
