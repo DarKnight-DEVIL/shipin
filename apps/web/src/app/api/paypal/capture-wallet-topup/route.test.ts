@@ -162,6 +162,35 @@ describe('POST /api/paypal/capture-wallet-topup', () => {
     await expect(response.json()).resolves.toEqual({ success: false, error: 'Unable to process payment. Please try again.' });
   });
 
+  it('clears the pending flag when PayPal refuses the capture', async () => {
+    mocks.fetch.mockResolvedValue({ ok: false, status: 422, json: async () => ({ message: 'Declined' }) });
+
+    await POST(request(body));
+
+    // No money moved, so the order must not keep looking like an in-flight
+    // charge that needs reconciliation.
+    expect(mocks.topupSet).toHaveBeenCalledWith(
+      { capturePending: false },
+      { merge: true }
+    );
+  });
+
+  it('still reports the decline when clearing the flag fails', async () => {
+    mocks.topupSet.mockImplementation(async (data: { capturePending?: boolean }) => {
+      if (data.capturePending === false) throw new Error('firestore down');
+    });
+    mocks.fetch.mockResolvedValue({ ok: false, status: 422, json: async () => ({ message: 'Declined' }) });
+
+    const response = await POST(request(body));
+
+    // The customer still learns the charge was declined.
+    expect(response.status).toBe(422);
+    expect(console.error).toHaveBeenCalledWith(
+      'Could not clear the pending-capture flag:',
+      expect.any(Error)
+    );
+  });
+
   it('uses a safe fallback when PayPal provides no details', async () => {
     mocks.fetch.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
 

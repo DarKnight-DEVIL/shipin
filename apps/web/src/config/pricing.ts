@@ -65,10 +65,9 @@ export const PRICING = {
     },
   },
 
-  // Storage fees
-  storage: {
-    graceHours: 48,
-
-    extendedStoragePerDay: 3,
-  },
+  // Storage fees are not priced here: the free window depends on the shipping
+  // preference (auto 3 / approval 7 / hold 14 days) and the daily fine lives
+  // with the size tiers in
+  // `@/features/requests/services/warehousePolicy`. Keeping a second table here
+  // is what let a 48-hour grace period contradict the 14-day policy.
 } as const;

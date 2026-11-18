@@ -504,6 +504,26 @@ describe('POST /api/paypal/capture-order', () => {
     expect(mocks.orderUpdate).not.toHaveBeenCalled();
   });
 
+  it('hands the claim back when the captured amount does not match', async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: 'COMPLETED',
+        purchase_units: [
+          { payments: { captures: [{ id: 'cap-1', amount: { value: '1.00', currency_code: 'USD' } }] } },
+        ],
+      }),
+    });
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(400);
+    // Claim transaction, then the release: nothing was booked, so the order
+    // must be retryable without waiting out the lease.
+    expect(mocks.runTransaction).toHaveBeenCalledTimes(2);
+  });
+
   it('skips the transaction when another request completed the order', async () => {
     mocks.txGet.mockImplementation(async (ref: { __kind?: string }) => {
       if (ref.__kind === 'wallet') return snap({ balance: 50 });

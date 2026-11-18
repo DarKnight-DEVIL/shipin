@@ -222,6 +222,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
           paypalData
         );
 
+        // PayPal refused the capture, so no money moved: clear the in-flight
+        // flag instead of leaving the order looking like a charge that needs
+        // reconciliation. Only the already-captured branch below keeps it.
+        try {
+          await topupOrderRef.set({ capturePending: false }, { merge: true });
+        } catch (error) {
+          console.error("Could not clear the pending-capture flag:", error);
+        }
+
         return NextResponse.json(
           {
             success: false,

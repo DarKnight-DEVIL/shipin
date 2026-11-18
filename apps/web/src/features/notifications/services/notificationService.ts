@@ -231,35 +231,37 @@ export async function sendNotification({
        * An unregistered name means one of two things: a typo, or a template
        * that was never submitted for Meta approval. Either way Meta rejects
        * the send, so say so plainly instead of letting the notification vanish.
+       *
+       * Only WhatsApp is skipped: this used to `return`, which also silently
+       * dropped the email the customer had asked for.
        */
       console.error(
         `WhatsApp notification skipped: "${templateName}" is not a registered template. Add it to WHATSAPP_TEMPLATES and get it approved in Meta Business Manager before sending.`
       );
-      return;
-    }
+    } else {
+      try {
+        await sendWhatsAppTemplate({
+          to: preferences.whatsapp.phone,
 
-    try {
-      await sendWhatsAppTemplate({
-        to: preferences.whatsapp.phone,
+          templateName,
 
-        templateName,
+          languageCode:
+            whatsapp.languageCode ??
+            "en_US",
 
-        languageCode:
-          whatsapp.languageCode ??
-          "en_US",
-
-        components:
-          whatsapp.components ?? [],
-      });
-    } catch (error) {
-      /*
-       * WhatsApp failure must not fail
-       * the order/status operation.
-       */
-      console.error(
-        `WhatsApp notification failed for template "${templateName}" (check Meta approval and language code):`,
-        error
-      );
+          components:
+            whatsapp.components ?? [],
+        });
+      } catch (error) {
+        /*
+         * WhatsApp failure must not fail
+         * the order/status operation.
+         */
+        console.error(
+          `WhatsApp notification failed for template "${templateName}" (check Meta approval and language code):`,
+          error
+        );
+      }
     }
   }
 

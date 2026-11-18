@@ -248,6 +248,32 @@ describe('sendNotification — WhatsApp', () => {
     );
   });
 
+  it('still sends the email when the WhatsApp template is unknown', async () => {
+    mocks.getUser.mockResolvedValue(
+      user({
+        email: 'ada@example.com',
+        preferences: {
+          notifications: {
+            channels: { whatsapp: true, email: true },
+            whatsapp: { phone: '+919876543210', consentedAt: '2026-01-01T00:00:00.000Z' },
+          },
+        },
+      })
+    );
+
+    await sendNotification({
+      ...base,
+      channels: { whatsapp: true, email: true },
+      whatsapp: { templateName: 'typo_template' },
+    });
+
+    expect(mocks.sendWhatsAppTemplate).not.toHaveBeenCalled();
+    // The unregistered template skips WhatsApp only; the email still goes out.
+    expect(mocks.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'ada@example.com' })
+    );
+  });
+
   it('skips WhatsApp without consent', async () => {
     mocks.getUser.mockResolvedValue(
       user({
