@@ -14,6 +14,31 @@ jobs:
     # A hung request must not hold the job for the default six hours.
     timeout-minutes: 5
     steps:
+      # A missing secret made every run a no-op that looked healthy in the tab.
+      # Check the configuration first so the failure is visible and annotated.
+      - name: Verify required secrets
+        env:
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          missing=""
+
+          if [ -z "$PRODUCTION_URL" ]; then missing="$missing PRODUCTION_URL"; fi
+          if [ -z "$CRON_SECRET" ]; then missing="$missing CRON_SECRET"; fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. The hourly quote sweep cannot run. Configure them per DEPLOYMENT.md -> Cron alerting."
+            exit 1
+          fi
+
+          case "$PRODUCTION_URL" in
+            https://*) ;;
+            *)
+              echo "::error::PRODUCTION_URL must be an https:// URL (got a value without that scheme)."
+              exit 1
+              ;;
+          esac
+
       - name: Call Next.js Expire Quotes Endpoint
         id: cron
         run: |

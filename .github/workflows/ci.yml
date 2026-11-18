@@ -11,6 +11,13 @@ on:
     branches: [main, develop]
     types: [opened, synchronize, reopened]
 
+# A newer commit on the same ref makes the previous run's result moot, and
+# cancelling it stops paying for the E2E build. A push to main is left alone:
+# those runs are the record of what landed, so they are allowed to finish.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   NODE_VERSION: "24"
 
