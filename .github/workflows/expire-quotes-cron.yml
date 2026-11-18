@@ -50,4 +50,8 @@ jobs:
               -H 'Content-Type: application/json' \
               -d '{"text":"ShipIN: the hourly quote-expiry run failed."}' \
               "${{ secrets.ALERT_WEBHOOK_URL }}" || true
+          else
+            # No alert channel: make the gap a hard annotation on the run rather
+            # than a summary nobody opens. This is configuration, not a flake.
+            echo "::error::ALERT_WEBHOOK_URL is not set, so this failure reached nobody. Configure the repository secret (see DEPLOYMENT.md -> Cron alerting)."
           fi

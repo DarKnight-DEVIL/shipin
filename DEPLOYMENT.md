@@ -32,6 +32,30 @@ Set these in your Vercel project settings → Environment Variables:
 | `UPSTASH_REDIS_REST_URL` | **Yes** | **Global rate limiting. The server refuses to start without it** |
 | `UPSTASH_REDIS_REST_TOKEN` | **Yes** | **Global rate limiting. The server refuses to start without it** |
 
+### Pre-deploy checks
+
+These are deliberately not CI steps: each needs production credentials that CI
+does not hold. Run them before promoting a deploy.
+
+1. **App Check is actually on.** Production must set
+   `NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY` and `APP_CHECK_ENFORCEMENT=true`.
+   With enforcement off, `requireAdmin` skips the App Check check and the admin
+   API gate is inert; locally `/api/health` reports
+   `appCheck: { configured: false, enforced: false }`, which is expected. After
+   deploying, `/api/health` must report both as `true`. The production host also
+   has to be registered on the reCAPTCHA v3 key in Google Cloud Console, or the
+   client cannot mint a token and requests fail with `APP_CHECK_FAILED`.
+2. **Firebase authorized domains.** Google sign-in only works on hosts listed in
+   Firebase Auth. Run `npm run check:authorized-domains` with the production
+   `FIREBASE_ADMIN_PROJECT_ID` / `FIREBASE_ADMIN_CLIENT_EMAIL` /
+   `FIREBASE_ADMIN_PRIVATE_KEY` and confirm the canonical host appears. The
+   script mints a Google access token from that service account, which is why it
+   is a pre-deploy step rather than a workflow.
+3. **Cron alerting.** `ALERT_WEBHOOK_URL` is optional, but without it a failed
+   hourly quote-expiry run only writes a job summary. The workflow now also
+   emits an `::error::` annotation in that case, so configure the repository
+   secret if anyone is expected to react to a missed sweep.
+
 ### Domains and origins
 
 This app is reachable from more than one hostname, and origin handling is
@@ -269,4 +293,4 @@ npm run build
 
 ---
 
-*Last updated: P0/P1/P2 hardening complete*
+*Last updated: P0/P1/P2 hardening complete (audit gate, dead code, App Check and authorized-domain pre-deploy checks)*

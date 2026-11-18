@@ -8,8 +8,6 @@ import {
   getDevCSP,
   getProductionCSP,
   SECURITY_HEADERS,
-  getRobotsTag,
-  sanitizeCsp,
   createSecureCookieHeader,
 } from './securityHeaders';
 
@@ -75,20 +73,12 @@ describe('SECURITY_HEADERS', () => {
 
   it('declares the CSP reporting endpoint', () => {
     expect(SECURITY_HEADERS['Reporting-Endpoints']).toContain('/api/csp-report');
+    // Legacy reporting API: Safari and older Chromium ignore Reporting-Endpoints.
+    expect(SECURITY_HEADERS['Report-To']).toContain('/api/csp-report');
+    expect(SECURITY_HEADERS['Report-To']).toContain('"group":"csp-endpoint"');
     expect(SECURITY_HEADERS['Content-Security-Policy']).toContain(
       "report-to 'csp-endpoint'"
     );
-  });
-});
-
-describe('getRobotsTag', () => {
-  it('allows indexing for public pages', () => {
-    expect(getRobotsTag(true)).toBe('index, follow');
-  });
-
-  it('blocks indexing for app pages by default', () => {
-    expect(getRobotsTag()).toBe('noindex, nofollow');
-    expect(getRobotsTag(false)).toBe('noindex, nofollow');
   });
 });
 
@@ -182,6 +172,24 @@ describe('getProductionCSP', () => {
     expect(scriptSrc).not.toContain('strict-dynamic');
   });
 
+  it('names image hosts in production instead of allowing every https origin', async () => {
+    const { getProductionCSP: prodCsp } = await importWithEnv({
+      isDevelopment: false,
+      isProduction: true,
+    });
+
+    const sources = cspSources(prodCsp(), 'img-src');
+
+    expect(sources).not.toContain('https:');
+    expect(sources).toEqual(
+      expect.arrayContaining([
+        'https://*.r2.cloudflarestorage.com',
+        'https://lh3.googleusercontent.com',
+        'https://www.paypalobjects.com',
+      ])
+    );
+  });
+
   it('keeps unsafe-eval out of the production script-src', async () => {
     const { getProductionCSP: prodCsp } = await importWithEnv({
       isDevelopment: false,
@@ -253,25 +261,6 @@ describe('getProductionCSP', () => {
 
     expect(connectSrc).toContain('https://www.paypal.com');
     expect(connectSrc).toContain('https://www.sandbox.paypal.com');
-  });
-});
-
-describe('sanitizeCsp', () => {
-  it('strips characters that could break out of the header', () => {
-    expect(sanitizeCsp('a;b"c`d\\e')).toBe('abcde');
-  });
-
-  it('removes directive separators and quotes from a real policy', () => {
-    const sanitized = sanitizeCsp("default-src 'self'; script-src 'self';");
-
-    expect(sanitized).not.toContain(';');
-    expect(sanitized).toBe("default-src 'self' script-src 'self'");
-  });
-
-  it('leaves a policy without dangerous characters untouched', () => {
-    const policy = "default-src 'self'";
-
-    expect(sanitizeCsp(policy)).toBe(policy);
   });
 });
 

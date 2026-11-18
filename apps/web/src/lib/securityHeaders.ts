@@ -62,7 +62,7 @@ function emulatorConnectSources(): string {
  *   - `www.paypalobjects.com` — the PayPal SDK renders its logo from here on
  *     `/wallet/topup`, which the narrowed list missed
  */
-const DEV_IMAGE_SOURCES = [
+const IMAGE_SOURCES = [
   "'self'",
   "blob:",
   "data:",
@@ -106,7 +106,7 @@ export function getDevCSP(): string {
     "default-src 'self'; " +
     scriptSrc +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com https://cdn.spline.dev; " +
-    `img-src ${DEV_IMAGE_SOURCES}; ` +
+    `img-src ${IMAGE_SOURCES}; ` +
     "font-src 'self' https://fonts.gstatic.com https://cdn.spline.dev; " +
     "connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com " +
     // The PayPal SDK itself posts to its own origin (`/xoplatform/logger/...`),
@@ -185,11 +185,11 @@ export const SECURITY_HEADERS: Record<string, string> = {
    * permissive CSP from getDevCSP(). This is a fallback for requests that
    * bypass the proxy.
    */
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' blob: data: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com https://*.firebasestorage.app https://cdn.vercel-insights.com https://analytics.vercel.com wss://*.firebaseio.com wss://*.firebasedatabase.app; frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://accounts.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to 'csp-endpoint';",
+  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src ${IMAGE_SOURCES}; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com https://*.firebasestorage.app https://cdn.vercel-insights.com https://analytics.vercel.com wss://*.firebaseio.com wss://*.firebasedatabase.app; frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://accounts.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to 'csp-endpoint';`,
 
   /**
    * Discourages search engines from indexing the app.
-   * Public landing pages should override this with getRobotsTag("index").
+   * Public pages opt back in with INDEX_ROBOTS (see src/config/seo.ts).
    * Authenticated/app pages keep noindex to avoid leaking user data.
    */
   "X-Robots-Tag": "noindex, nofollow",
@@ -222,17 +222,16 @@ export const SECURITY_HEADERS: Record<string, string> = {
      * The endpoint is served at /api/csp-report.
      */
     "Reporting-Endpoints": "{\"csp-endpoint\":\"/api/csp-report\"}",
-};
 
-/**
- * Returns the appropriate robots tag for a given route type.
- *
- * - Public landing pages: "index, follow" (good for SEO)
- * - Authenticated/app pages: "noindex, nofollow" (prevents leaking user data)
- */
-export function getRobotsTag(isPublicPage: boolean = false): string {
-  return isPublicPage ? "index, follow" : "noindex, nofollow";
-}
+    /**
+     * Report-To: the older reporting API, still read by Safari and older
+     * Chromium. Modern browsers use Reporting-Endpoints above; both point at
+     * the same collector so a violation is not dropped just because the
+     * browser predates the newer header.
+     */
+    "Report-To":
+      "{\"group\":\"csp-endpoint\",\"max_age\":10886400,\"endpoints\":[{\"url\":\"/api/csp-report\"}]}",
+};
 
 /**
  * Content Security Policy for the production build.
@@ -264,7 +263,7 @@ export function getProductionCSP(): string {
     "default-src 'self'; " +
     scriptSrc +
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com https://cdn.spline.dev; ` +
-    "img-src 'self' blob: data: https:; " +
+    `img-src ${IMAGE_SOURCES}; ` +
     "font-src 'self' https://fonts.gstatic.com https://cdn.spline.dev; " +
     "connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com " +
     // The SDK reports to `www.paypal.com` / `www.sandbox.paypal.com`; see the
@@ -294,17 +293,6 @@ export function getProductionCSP(): string {
     "report-uri /api/csp-report; " +
     "upgrade-insecure-requests"
   );
-}
-
-/**
- * Sanitize a Content-Security-Policy value before use.
- *
- * The CSP parser is strict: any backslash/semicolon/quote injection could
- * weaken the policy. This is a paranoid guard, not a substitute for
- * building the policy from trusted configuration.
- */
-export function sanitizeCsp(policy: string): string {
-  return policy.replace(/[;`"\\]/g, "");
 }
 
 /**

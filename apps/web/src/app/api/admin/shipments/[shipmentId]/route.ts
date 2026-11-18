@@ -128,10 +128,9 @@ export const PATCH = withErrorHandler(async (request: NextRequest,
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to update shipment.",
+        // Raw Firestore messages leak collection paths and document ids, so
+        // the client gets a generic failure; the detail goes to the log above.
+        error: "Unable to update shipment.",
       },
       { status: 500 }
     );
