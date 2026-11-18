@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // isolate: false shares a module registry between files; without this a
 // cached real module would bypass the mock below.
@@ -15,6 +15,9 @@ const state = vi.hoisted(() => ({
 
 vi.mock("@/lib/redisRateLimiter", () => ({
   getSharedRedisClient: () => state.client,
+  // `resetNotificationRateLimit()` clears the store through the module it
+  // imported, so the replacement has to offer the same hook.
+  resetSharedRedisClientForTests: () => {},
 }));
 
 import {
@@ -37,6 +40,13 @@ function redis(config: { count?: number; fail?: boolean } = {}) {
 beforeEach(() => {
   state.client = null;
   resetNotificationRateLimit();
+});
+
+// `isolate: false` can leave this file's mocked modules cached for the next
+// file in the worker, and a fake client whose INCR says nothing would drop
+// every notification there. Hand the next file an unconfigured store.
+afterEach(() => {
+  state.client = null;
 });
 
 describe("allowNotification — in-process fallback", () => {

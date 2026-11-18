@@ -9,7 +9,10 @@
  * from flooding one inbox.
  */
 
-import { getSharedRedisClient } from "@/lib/redisRateLimiter";
+import {
+  getSharedRedisClient,
+  resetSharedRedisClientForTests,
+} from "@/lib/redisRateLimiter";
 
 export const NOTIFICATION_RATE_LIMIT = 10;
 export const NOTIFICATION_RATE_WINDOW_MS = 60 * 60 * 1000;
@@ -83,7 +86,15 @@ export async function allowNotification(
   return true;
 }
 
-/** Test hook: forget every in-process bucket. */
+/**
+ * Test hook: forget every in-process bucket and the shared store.
+ *
+ * The store is cleared through this module's own import rather than by the
+ * test importing `redisRateLimiter` directly: the suite runs with
+ * `isolate: false` and files that call `vi.resetModules()` can leave a second
+ * instance behind, so clearing that one would not touch the client used here.
+ */
 export function resetNotificationRateLimit(): void {
   localBuckets.clear();
+  resetSharedRedisClientForTests();
 }

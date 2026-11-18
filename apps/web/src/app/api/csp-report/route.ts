@@ -58,11 +58,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   });
 
   // Forward to Sentry in production so violations surface in alerts.
-  if (process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_SENTRY_DSN) {
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.NEXT_PUBLIC_SENTRY_DSN
+  ) {
     try {
-      // Lazy require avoids bundling Sentry into non-production bundles.
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const Sentry = require("@sentry/nextjs") as typeof import("@sentry/nextjs");
+      // A dynamic import keeps Sentry out of the module graph unless this
+      // branch runs. It also survives formatting: a `require()` had to sit on
+      // the same line as its `eslint-disable-next-line`, which Prettier moved.
+      const Sentry = await import("@sentry/nextjs");
       Sentry.captureMessage("CSP violation reported", {
         level: "warning",
         extra: { violatedDirective, blockedUri, report },
