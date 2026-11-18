@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   env: {} as Record<string, string | undefined>,
+  reads: [] as string[],
   send: vi.fn(),
   createTransport: vi.fn(),
   sendMail: vi.fn(),
@@ -16,7 +17,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/config/env", () => ({
-  readEnv: (key: string) => mocks.env[key],
+  readEnv: (key: string) => {
+    mocks.reads.push(key);
+    return mocks.env[key];
+  },
   serverEnv: {},
   clientEnv: {},
 }));
@@ -53,6 +57,7 @@ async function loadMailer() {
 
 beforeEach(() => {
   for (const key of Object.keys(mocks.env)) delete mocks.env[key];
+  mocks.reads.length = 0;
   mocks.send.mockReset();
   mocks.createTransport.mockReset();
   mocks.sendMail.mockReset();
@@ -216,5 +221,38 @@ describe("sendMail", () => {
         subject: "Quote ready",
       })
     );
+  });
+});
+
+describe("sendMail provider initialisation", () => {
+  it("reads the environment once even when only SMTP is configured", async () => {
+    mocks.env.SMTP_EMAIL = "team@shipin.app";
+    mocks.env.SMTP_PASSWORD = "app-password";
+
+    const { sendMail } = await loadMailer();
+
+    await sendMail(message);
+    await sendMail(message);
+
+    // Before the `initialized` flag, a mailer without a Resend key re-read every
+    // variable on every send, because the init block was gated on `resend`.
+    expect(mocks.reads.filter((key) => key === "RESEND_API_KEY")).toHaveLength(
+      1
+    );
+    expect(mocks.sendMail).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats the build placeholder as unconfigured, not as a key", async () => {
+    mocks.env.RESEND_API_KEY = "dummy_for_build";
+    mocks.env.SMTP_EMAIL = "team@shipin.app";
+    mocks.env.SMTP_PASSWORD = "app-password";
+
+    const { sendMail } = await loadMailer();
+
+    await expect(sendMail(message)).resolves.toEqual({
+      id: "smtp-message-id",
+      provider: "smtp",
+    });
+    expect(mocks.send).not.toHaveBeenCalled();
   });
 });

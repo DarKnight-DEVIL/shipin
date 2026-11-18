@@ -17,7 +17,10 @@ import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { logger } from "@/lib/logger";
 import { PERSONAL_DATA_CATEGORIES, PROCESSING_REGISTER } from "./dpdp";
 
-/** Firestore allows 500 writes per batch; one page per collection is 100. */
+/**
+ * Documents read and deleted per collection per sweep. Firestore caps a batch at
+ * 500 writes, so a page of 100 commits in one batch with room to spare.
+ */
 const PAGE_SIZE = 100;
 
 export interface RetentionDetail {

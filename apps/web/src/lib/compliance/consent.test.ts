@@ -19,7 +19,10 @@ import {
   getGrantedCategories,
   hasValidConsent,
   withdrawConsent,
+  isConsentCategory,
+  type ConsentCategory,
 } from "./consent";
+import { PERSONAL_DATA_CATEGORIES } from "./dpdp";
 
 // Runs before this file's imports are evaluated, so the subjects below bind to
 // the stubs declared in this file.
@@ -427,6 +430,66 @@ describe("compliance consent audit fallbacks", () => {
     expect(logs.add).toHaveBeenCalledWith(
       expect.objectContaining({ granted: false, method: "withdrawn" })
     );
+  });
+});
+
+describe("consent category validation", () => {
+  it("accepts every declared category and nothing else", () => {
+    for (const value of Object.values(PERSONAL_DATA_CATEGORIES)) {
+      expect(isConsentCategory(value)).toBe(true);
+    }
+
+    expect(isConsentCategory("marketting")).toBe(false);
+    expect(isConsentCategory("marketing ")).toBe(false);
+    expect(isConsentCategory("")).toBe(false);
+    expect(isConsentCategory(undefined)).toBe(false);
+  });
+
+  it("logConsent refuses an unknown category before it writes", async () => {
+    const logs = fakeCollection([]);
+    mocks.adminDb.collection.mockImplementation(() => logs);
+
+    // A request body is untyped JSON, so the cast is what the route would hand
+    // over before validation existed.
+    await expect(
+      logConsent({
+        userId: "u-1",
+        category: "marketting" as ConsentCategory,
+        granted: true,
+        version: "1",
+        method: "explicit",
+      })
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+
+    expect(logs.add).not.toHaveBeenCalled();
+  });
+
+  it("updateUserConsent refuses a category that would write a nested field", async () => {
+    const consents = fakeCollection([]);
+    mocks.adminDb.collection.mockImplementation(() => consents);
+
+    await expect(
+      updateUserConsent({
+        userId: "u-1",
+        category: "account.email" as ConsentCategory,
+        granted: true,
+        version: "1",
+        method: "explicit",
+      })
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+
+    expect(consents.add).not.toHaveBeenCalled();
+  });
+
+  it("withdrawConsent refuses an unknown category", async () => {
+    const logs = fakeCollection([]);
+    mocks.adminDb.collection.mockImplementation(() => logs);
+
+    await expect(
+      withdrawConsent("u-1", "nope" as ConsentCategory, "1")
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+
+    expect(logs.add).not.toHaveBeenCalled();
   });
 });
 // ---------------------------------------------------------------------------

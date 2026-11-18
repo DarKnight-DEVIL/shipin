@@ -18,12 +18,23 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth", () => ({ requireAuthWithProfile: mocks.auth }));
-vi.mock("@/lib/compliance/consent", () => ({
-  getUserConsentState: mocks.getUserConsentState,
-  getConsentLog: mocks.getConsentLog,
-  getGrantedCategories: mocks.getGrantedCategories,
-  updateUserConsent: mocks.updateUserConsent,
-}));
+vi.mock("@/lib/compliance/consent", async () => {
+  // The vocabulary comes from the real register, so the mock cannot drift from
+  // the categories the route actually accepts.
+  const { PERSONAL_DATA_CATEGORIES } = await vi.importActual<
+    typeof import("@/lib/compliance/dpdp")
+  >("@/lib/compliance/dpdp");
+  const categories = new Set<string>(Object.values(PERSONAL_DATA_CATEGORIES));
+
+  return {
+    getUserConsentState: mocks.getUserConsentState,
+    getConsentLog: mocks.getConsentLog,
+    getGrantedCategories: mocks.getGrantedCategories,
+    updateUserConsent: mocks.updateUserConsent,
+    isConsentCategory: (value: unknown) =>
+      typeof value === "string" && categories.has(value),
+  };
+});
 
 import { GET, POST } from "./route";
 
@@ -108,6 +119,10 @@ describe("POST /api/user/consent", () => {
 
   it.each([
     [{ granted: true, version: "v2" }, "Category is required."],
+    [
+      { category: "marketting", granted: true, version: "v2" },
+      "Unknown consent category.",
+    ],
     [
       { category: "marketing", granted: "yes", version: "v2" },
       "Granted must be boolean.",

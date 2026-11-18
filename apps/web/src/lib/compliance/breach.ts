@@ -30,6 +30,12 @@ export interface BreachRecord {
 
 /**
  * Record a personal data breach (DPDP Sec 9 - 72 hours to Board)
+ *
+ * Authorization is the caller's job: this module has no request to inspect, and
+ * re-checking a role here would only duplicate the route guard. The one caller,
+ * `/api/compliance/breach`, runs `requireAdmin` first, so anything new that
+ * records a breach must be admin/DPO-gated the same way. Writes are unauthenticated
+ * by the Admin SDK, which is why the guard cannot live below this line.
  */
 export async function recordBreach(params: {
   severity: "low" | "medium" | "high" | "critical";

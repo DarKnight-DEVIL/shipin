@@ -6,11 +6,44 @@
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
+import { createShipINError } from "@/utils/errors";
 import { PERSONAL_DATA_CATEGORIES } from "./dpdp";
+
+export type ConsentCategory =
+  (typeof PERSONAL_DATA_CATEGORIES)[keyof typeof PERSONAL_DATA_CATEGORIES];
+
+const CONSENT_CATEGORIES: ReadonlySet<string> = new Set(
+  Object.values(PERSONAL_DATA_CATEGORIES)
+);
+
+/** Narrow an untrusted value to a category that can carry consent. */
+export function isConsentCategory(value: unknown): value is ConsentCategory {
+  return typeof value === "string" && CONSENT_CATEGORIES.has(value);
+}
+
+/**
+ * Refuse an unknown category before anything is written.
+ *
+ * A consent record is evidence: a typo, a retired category or a crafted value
+ * would record consent for something nobody agreed to, and `updateUserConsent`
+ * uses the category as a Firestore field path, where a dot or a slash writes
+ * somewhere else entirely.
+ */
+function assertConsentCategory(
+  category: string
+): asserts category is ConsentCategory {
+  if (!isConsentCategory(category)) {
+    throw createShipINError(
+      `Unknown consent category: ${JSON.stringify(category)}`,
+      "VALIDATION_ERROR",
+      400
+    );
+  }
+}
 
 export interface ConsentLogEntry {
   userId: string;
-  category: (typeof PERSONAL_DATA_CATEGORIES)[keyof typeof PERSONAL_DATA_CATEGORIES];
+  category: ConsentCategory;
   granted: boolean;
   version: string;
   method: "explicit" | "implied" | "withdrawn";
@@ -33,13 +66,15 @@ export interface ConsentState {
  */
 export async function logConsent(params: {
   userId: string;
-  category: string;
+  category: ConsentCategory;
   granted: boolean;
   version: string;
   ip?: string;
   userAgent?: string;
   method: "explicit" | "implied" | "withdrawn";
 }): Promise<void> {
+  assertConsentCategory(params.category);
+
   await adminDb.collection("consentLogs").add({
     userId: params.userId,
     category: params.category,
@@ -89,13 +124,15 @@ export async function getUserConsentState(
  */
 export async function updateUserConsent(params: {
   userId: string;
-  category: string;
+  category: ConsentCategory;
   granted: boolean;
   version: string;
   method: "explicit" | "withdrawn";
   ip?: string;
   userAgent?: string;
 }): Promise<void> {
+  assertConsentCategory(params.category);
+
   // Log the consent change
   await adminDb.collection("consentLogs").add({
     userId: params.userId,
@@ -187,7 +224,7 @@ export async function getGrantedCategories(userId: string): Promise<string[]> {
  */
 export async function withdrawConsent(
   userId: string,
-  category: string,
+  category: ConsentCategory,
   version: string,
   ip?: string,
   userAgent?: string

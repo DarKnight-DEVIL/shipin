@@ -137,3 +137,67 @@ describe("sendWhatsAppTemplate", () => {
     );
   });
 });
+
+describe("sendWhatsAppTemplate retries", () => {
+  it("retries a transient failure and returns the eventual success", async () => {
+    mocks.fetchWithTimeout
+      .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ messages: [{ id: "wamid.2" }] }),
+      });
+
+    await expect(sendWhatsAppTemplate(baseParams)).resolves.toEqual({
+      messages: [{ id: "wamid.2" }],
+    });
+    expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a dropped connection", async () => {
+    mocks.fetchWithTimeout
+      .mockRejectedValueOnce(new Error("socket hang up"))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ messages: [{ id: "wamid.3" }] }),
+      });
+
+    await expect(sendWhatsAppTemplate(baseParams)).resolves.toEqual({
+      messages: [{ id: "wamid.3" }],
+    });
+    expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a rejected template", async () => {
+    mocks.fetchWithTimeout.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: { message: "Invalid template" } }),
+    });
+
+    await expect(sendWhatsAppTemplate(baseParams)).rejects.toMatchObject({
+      message: "Invalid template",
+    });
+    expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up after three attempts and keeps the last status", async () => {
+    mocks.fetchWithTimeout.mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+    });
+
+    await expect(sendWhatsAppTemplate(baseParams)).rejects.toMatchObject({
+      message: "Failed to send WhatsApp message.",
+      code: "EXTERNAL_SERVICE_ERROR",
+      status: 502,
+    });
+    expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(3);
+    expect(mocks.logError).toHaveBeenCalledWith("WhatsApp API error", {
+      status: 500,
+      message: undefined,
+    });
+  });
+});

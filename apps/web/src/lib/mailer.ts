@@ -15,6 +15,13 @@ const mailerLog = childLogger({ service: "mailer" });
 
 // Primary: Resend (modern email API, no SMTP limits)
 let resend: Resend | null = null;
+/** Whether the environment has already been read, with or without a Resend key. */
+let initialized = false;
+/**
+ * Placeholder used by builds and CI, compared exactly: a real key is compared
+ * against this string, never searched for it.
+ */
+const BUILD_PLACEHOLDER = "dummy_for_build";
 let smtpEmail: string | undefined;
 let smtpPassword: string | undefined;
 /** Empty means "use SMTP_SERVICE, or Gmail", the historical behaviour. */
@@ -38,8 +45,12 @@ export async function sendMail({
   text,
   from,
 }: SendMailOptions) {
-  // Lazy-load env vars on first send (bypasses build-time static analysis)
-  if (!resend) {
+  // Lazy-load env vars on first send (bypasses build-time static analysis).
+  // Gated on `initialized` rather than on `resend`: with SMTP only, `resend`
+  // stays null and the env would otherwise be re-read on every send.
+  if (!initialized) {
+    initialized = true;
+
     // Allow Gmail SMTP-only during build/CI with dummy env (won't actually send)
     const envResendKey = readEnv("RESEND_API_KEY");
     const envSmtpEmail = readEnv("SMTP_EMAIL");
@@ -63,7 +74,7 @@ export async function sendMail({
     const parsedPort = Number.parseInt(envSmtpPort ?? "", 10);
     smtpPort = Number.isFinite(parsedPort) ? parsedPort : undefined;
 
-    if (envResendKey && envResendKey !== "dummy_for_build") {
+    if (envResendKey && envResendKey !== BUILD_PLACEHOLDER) {
       resend = new Resend(envResendKey);
     }
   }
@@ -105,7 +116,7 @@ export async function sendMail({
   }
 
   // Fallback to SMTP (only if we have email + password)
-  if (smtpPassword && smtpPassword !== "dummy_for_build") {
+  if (smtpPassword && smtpPassword !== BUILD_PLACEHOLDER) {
     const timeoutOptions = {
       auth: { user: smtpEmail, pass: smtpPassword },
       connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,

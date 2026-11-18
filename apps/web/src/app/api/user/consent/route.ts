@@ -7,6 +7,7 @@ import {
   updateUserConsent,
   getConsentLog,
   getGrantedCategories,
+  isConsentCategory,
 } from "@/lib/compliance/consent";
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
@@ -51,6 +52,19 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       {
         success: false,
         error: "Category is required.",
+        code: "VALIDATION_ERROR",
+      },
+      { status: 400 }
+    );
+  }
+
+  // A category is a fixed vocabulary, not free text: anything else would record
+  // consent for a category that does not exist.
+  if (!isConsentCategory(category)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Unknown consent category.",
         code: "VALIDATION_ERROR",
       },
       { status: 400 }
