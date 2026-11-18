@@ -36,8 +36,8 @@ export default function ServiceSummary({
           </div>
 
           <span className="font-semibold text-white">
-            {inspectionService.price === 0
-              ? "FREE"
+            {"priceLabel" in inspectionService
+              ? inspectionService.priceLabel
               : `+$${inspectionService.price}`}
           </span>
         </div>

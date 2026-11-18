@@ -57,14 +57,19 @@ export function verifyTotp(secret: string, code: string, window: number = 1): bo
 /**
  * Generate backup codes.
  *
+ * 8 random bytes per code (64 bits), not 4: a 32-bit code space is small enough
+ * to brute-force against an online endpoint.
+ *
  * @param count - Number of backup codes to generate
  * @returns Array of backup codes (plain text, to be shown once)
  */
 export function generateBackupCodes(count: number = BACKUP_CODE_COUNT): string[] {
   const codes: string[] = [];
   for (let i = 0; i < count; i++) {
-    const code = crypto.randomBytes(4).toString("hex").toUpperCase();
-    codes.push(`${code.slice(0, 4)}-${code.slice(4, 8)}`);
+    const code = crypto.randomBytes(8).toString("hex").toUpperCase();
+    codes.push(
+      `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}-${code.slice(12, 16)}`
+    );
   }
   return codes;
 }

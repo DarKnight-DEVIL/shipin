@@ -57,8 +57,16 @@ function stripEnvValueQuotes(value: string): string {
   return trimmed;
 }
 
+/**
+ * A base64-encoded RSA/EC PEM is well over a kilobyte. The character-class
+ * check alone also matches short opaque values such as "abc123", so anything
+ * this short is left alone instead of being handed to the decoder.
+ */
+const MIN_BASE64_KEY_LENGTH = 100;
+
 function decodeIfBase64(value: string): string {
   if (value.includes(PEM_BEGIN)) return value;
+  if (value.length < MIN_BASE64_KEY_LENGTH) return value;
   // Standard or URL-safe base64, with or without padding.
   if (!/^[A-Za-z0-9+/=_-]+$/.test(value)) return value;
 

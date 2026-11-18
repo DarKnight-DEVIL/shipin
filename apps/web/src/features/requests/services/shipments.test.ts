@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({ get: vi.fn(), update: vi.fn() }));
 vi.mock('server-only', () => ({}));
 vi.mock('firebase-admin/firestore', () => ({
   FieldValue: { serverTimestamp: () => '__SERVER_TS__' },
+  Timestamp: {
+    fromDate: (date: Date) => ({ __timestamp: date.toISOString() }),
+  },
 }));
 vi.mock('@/lib/firebaseAdmin', () => ({
   adminDb: {
@@ -37,9 +40,12 @@ describe('saveShipmentDetails', () => {
         internalTrackingId: 'SHP-2026-000001',
         carrier: 'DHL',
         trackingNumber: 'ABC123',
-        estimatedDelivery: new Date('2026-04-10T00:00:00Z'),
+        // Firestore hands these back as Timestamps, so that is what we write.
+        estimatedDelivery: {
+          __timestamp: '2026-04-10T00:00:00.000Z',
+        },
         trackingUrl: 'https://dhl.example/track',
-        createdAt,
+        createdAt: { __timestamp: '2026-04-01T00:00:00.000Z' },
       },
       updatedAt: '__SERVER_TS__',
     });

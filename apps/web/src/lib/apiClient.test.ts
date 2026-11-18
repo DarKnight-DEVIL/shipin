@@ -54,6 +54,7 @@ vi.mock('@/lib/appCheckFailure', () => ({
 // to, so a static import can silently inherit another file's auth stub.
 let apiFetch: typeof import('./apiClient').apiFetch;
 let ApiError: typeof import('./apiClient').ApiError;
+let resetApiCircuit: typeof import('./apiClient').resetApiCircuit;
 
 const signIn = () => {
   state.currentUser = {
@@ -75,7 +76,9 @@ const fetchMock = vi.fn();
 
 beforeEach(async () => {
   vi.resetModules();
-  ({ apiFetch, ApiError } = await import('./apiClient'));
+  ({ apiFetch, ApiError, resetApiCircuit } = await import('./apiClient'));
+  // Breaker state is module-level; a case that opens it would silence the next.
+  resetApiCircuit();
   state.currentUser = null;
   state.appCheckToken = null;
   // Reset the forced value too: a test that leaves a fresh token behind makes
@@ -600,7 +603,7 @@ describe('transient GET retry', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('waits 300ms before the retry', async () => {
+  it('waits the base delay plus jitter before the retry', async () => {
     vi.useFakeTimers();
     try {
       signIn();
@@ -615,7 +618,8 @@ describe('transient GET retry', () => {
       await vi.advanceTimersByTimeAsync(299);
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
-      await vi.advanceTimersByTimeAsync(1);
+      // Jitter adds up to 150ms, so 299 + 151 covers every possible delay.
+      await vi.advanceTimersByTimeAsync(151);
       await expect(pending).resolves.toEqual({ success: true });
       expect(fetchMock).toHaveBeenCalledTimes(2);
     } finally {
@@ -640,7 +644,7 @@ describe('transient GET retry', () => {
       await vi.advanceTimersByTimeAsync(999);
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(151);
       await expect(pending).resolves.toEqual({ success: true });
       expect(fetchMock).toHaveBeenCalledTimes(2);
     } finally {
@@ -675,7 +679,7 @@ describe('transient GET retry', () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
-      await vi.advanceTimersByTimeAsync(300);
+      await vi.advanceTimersByTimeAsync(450);
       await expect(pending).resolves.toEqual({ success: true });
       expect(fetchMock).toHaveBeenCalledTimes(2);
     } finally {
@@ -690,6 +694,52 @@ describe('transient GET retry', () => {
     await expect(apiFetch('/api/requests')).rejects.toMatchObject({
       status: 503,
       message: 'Request failed (503).',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops retrying once the circuit opens', async () => {
+    signIn();
+    fetchMock.mockResolvedValue(new Response('', { status: 503 }));
+
+    // Three consecutive transient failures open the breaker.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await expect(apiFetch('/api/requests')).rejects.toMatchObject({
+        status: 503,
+      });
+    }
+
+    fetchMock.mockClear();
+
+    // The request still goes out; only the doomed retry is skipped.
+    await expect(apiFetch('/api/requests')).rejects.toMatchObject({
+      status: 503,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the circuit again after a healthy response', async () => {
+    signIn();
+    fetchMock.mockResolvedValue(new Response('', { status: 503 }));
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await expect(apiFetch('/api/requests')).rejects.toMatchObject({
+        status: 503,
+      });
+    }
+
+    fetchMock.mockResolvedValue(jsonResponse({ success: true }));
+    await expect(apiFetch('/api/requests')).resolves.toEqual({
+      success: true,
+    });
+
+    fetchMock.mockClear();
+    fetchMock
+      .mockResolvedValueOnce(new Response('', { status: 503 }))
+      .mockResolvedValueOnce(jsonResponse({ success: true }));
+
+    await expect(apiFetch('/api/requests')).resolves.toEqual({
+      success: true,
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });

@@ -93,6 +93,47 @@ const RETRY_DELAY_MS = 300;
 /** Cap so an upstream `Retry-After: 300` cannot stall the page for minutes. */
 const MAX_RETRY_DELAY_MS = 2000;
 
+/** Spread retries out so every tab does not hit a recovering upstream at once. */
+const RETRY_JITTER_MS = 150;
+
+/**
+ * Circuit breaker for retries.
+ *
+ * The retry exists for a transient blip. An upstream that fails continuously
+ * turns every page into a retry storm that keeps the failing service down, so
+ * after a few consecutive transient failures the client stops retrying for a
+ * cooldown and returns the error immediately. The first request always goes out.
+ */
+const CIRCUIT_FAILURE_THRESHOLD = 3;
+const CIRCUIT_COOLDOWN_MS = 30_000;
+
+let consecutiveTransientFailures = 0;
+let circuitOpenUntil = 0;
+
+/** Test hook: forget breaker state between cases. */
+export function resetApiCircuit(): void {
+  consecutiveTransientFailures = 0;
+  circuitOpenUntil = 0;
+}
+
+function circuitAllowsRetry(now: number = Date.now()): boolean {
+  return now >= circuitOpenUntil;
+}
+
+function noteTransientFailure(now: number = Date.now()): void {
+  consecutiveTransientFailures += 1;
+
+  if (consecutiveTransientFailures >= CIRCUIT_FAILURE_THRESHOLD) {
+    circuitOpenUntil = now + CIRCUIT_COOLDOWN_MS;
+    consecutiveTransientFailures = 0;
+  }
+}
+
+function noteHealthyResponse(): void {
+  consecutiveTransientFailures = 0;
+  circuitOpenUntil = 0;
+}
+
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -110,6 +151,10 @@ function retryDelay(response: Response): number {
   if (!Number.isFinite(seconds) || seconds < 0) return RETRY_DELAY_MS;
 
   return Math.min(seconds * 1000, MAX_RETRY_DELAY_MS);
+}
+
+function jittered(ms: number): number {
+  return ms + Math.random() * RETRY_JITTER_MS;
 }
 
 interface ProfileRepairUser {
@@ -250,10 +295,16 @@ export async function apiFetch<T>(
   } catch {
     if (!isIdempotent) throw networkError();
 
+    noteTransientFailure();
+
+    // A store that has been failing continuously gets no retry: the caller sees
+    // the error at once instead of another doomed round trip.
+    if (!circuitAllowsRetry()) throw networkError();
+
     // Published so the page can say it is retrying: the backoff is invisible
     // otherwise, and a slow one reads as a frozen screen.
     beginRetryNotice();
-    await wait(RETRY_DELAY_MS);
+    await wait(jittered(RETRY_DELAY_MS));
     try {
       response = await send();
     } catch {
@@ -268,17 +319,24 @@ export async function apiFetch<T>(
   // One retry, then stop: a second transient failure means the caller should
   // see the error rather than wait through a longer backoff.
   if (isIdempotent && RETRYABLE_STATUSES.has(response.status)) {
-    beginRetryNotice();
-    await wait(retryDelay(response));
-    try {
-      response = await send();
-    } catch {
-      throw networkError();
-    } finally {
-      endRetryNotice();
+    noteTransientFailure();
+
+    // Breaker open: fall through to the normal error path below.
+    if (circuitAllowsRetry()) {
+      beginRetryNotice();
+      await wait(jittered(retryDelay(response)));
+      try {
+        response = await send();
+      } catch {
+        throw networkError();
+      } finally {
+        endRetryNotice();
+      }
+      payload = await readPayload(response);
     }
-    payload = await readPayload(response);
   }
+
+  if (response.ok) noteHealthyResponse();
 
   // One recovery attempt, then one retry. Deliberately not a loop: the same
   // error coming back means the recovery did not take effect, and the caller

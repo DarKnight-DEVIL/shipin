@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Admin MFA session cookies moved to version 2, which invalidates existing elevated sessions: administrators must complete the MFA challenge once after this deploy. The bump rejects tokens whose claims no longer match the current session format.
+
 ### Added
 - Bundle size analyzer integrated via `@next/bundle-analyzer` (`npm run analyze`)
 - Playwright E2E smoke tests (`playwright-test/tests/smoke.spec.ts`) covering page loads, API health, security headers, auth redirects, and login page rendering

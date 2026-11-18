@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// isolate: false shares a module registry between files; without this a
+// cached real module would bypass the mock below.
+vi.hoisted(() => {
+  vi.resetModules();
+});
+
 const state = vi.hoisted(() => ({
   client: null as null | { incr: ReturnType<typeof vi.fn>; expire: ReturnType<typeof vi.fn> },
 }));

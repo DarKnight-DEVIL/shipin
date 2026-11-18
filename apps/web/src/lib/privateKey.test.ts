@@ -87,6 +87,13 @@ describe('normalizePrivateKey', () => {
     expect(normalizePrivateKey(`"\"${doubleEscaped}\""`)).toBe(canonical);
   });
 
+  it('leaves a short base64-shaped value alone instead of decoding it', () => {
+    // Matches the base64 character class, but a PEM body is never this short.
+    expect(normalizePrivateKey('abcdef0123456789abcdef')).toBe(
+      'abcdef0123456789abcdef',
+    );
+  });
+
   it('leaves a value that is not a key alone', () => {
     // The suite's own fixture value: base64-shaped, but not a PEM.
     expect(normalizePrivateKey('test-key')).toBe('test-key');

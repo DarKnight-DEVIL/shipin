@@ -82,13 +82,20 @@ describe('backup codes', () => {
     expect(generateBackupCodes(1)).toHaveLength(1);
   });
 
+  it('has 64 bits of entropy per code', () => {
+    for (const code of generateBackupCodes(20)) {
+      // 16 hex characters = 8 bytes.
+      expect(code.replace(/-/g, '')).toHaveLength(16);
+    }
+  });
+
   it('generates 10 codes by default', () => {
     expect(generateBackupCodes()).toHaveLength(10);
   });
 
-  it('formats codes as XXXX-XXXX uppercase hex', () => {
+  it('formats codes as four groups of four uppercase hex characters', () => {
     for (const code of generateBackupCodes(5)) {
-      expect(code).toMatch(/^[A-F0-9]{4}-[A-F0-9]{4}$/);
+      expect(code).toMatch(/^[A-F0-9]{4}(-[A-F0-9]{4}){3}$/);
     }
   });
 

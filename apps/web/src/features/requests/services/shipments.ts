@@ -3,6 +3,7 @@ import "server-only";
 import { adminDb } from '@/lib/firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { NotFoundError } from '@/utils/errors';
+import { Timestamp } from 'firebase-admin/firestore';
 
 interface ShipmentDetails {
   internalTrackingId: string;
@@ -33,9 +34,14 @@ export async function saveShipmentDetails(
       internalTrackingId: details.internalTrackingId,
       carrier: details.carrier,
       trackingNumber: details.trackingNumber,
-      estimatedDelivery: details.estimatedDelivery ?? null,
+      // Firestore returns read-back values as Timestamps, and the Request type
+      // says Timestamp, so write Timestamps rather than Dates: a Date here
+      // reads back as a different type than the one callers were promised.
+      estimatedDelivery: details.estimatedDelivery
+        ? Timestamp.fromDate(details.estimatedDelivery)
+        : null,
       trackingUrl: details.trackingUrl ?? '',
-      createdAt: details.createdAt,
+      createdAt: Timestamp.fromDate(details.createdAt),
     },
     updatedAt: FieldValue.serverTimestamp(),
   });

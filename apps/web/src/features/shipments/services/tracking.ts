@@ -28,14 +28,18 @@ export async function generateTrackingId() {
 
       current++;
 
-      transaction.set(
-        counterRef,
-        {
-          value: current,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      const counter = {
+        value: current,
+        updatedAt: serverTimestamp(),
+      };
+
+      // set+merge reads like an upsert but is an update for an existing
+      // document; say which one it is.
+      if (snapshot.exists()) {
+        transaction.update(counterRef, counter);
+      } else {
+        transaction.set(counterRef, counter);
+      }
 
       return `SHP-${new Date().getFullYear()}-${String(
         current

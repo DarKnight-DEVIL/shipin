@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => {
   const transaction = {
     get: vi.fn(),
     set: vi.fn(),
+    update: vi.fn(),
   };
   return {
     transaction,
@@ -30,6 +31,7 @@ import { generateTrackingId } from './tracking';
 beforeEach(() => {
   mocks.transaction.get.mockReset();
   mocks.transaction.set.mockReset();
+  mocks.transaction.update.mockReset();
 });
 
 afterEach(() => {
@@ -67,7 +69,7 @@ describe('generateTrackingId', () => {
     await expect(generateTrackingId()).resolves.toBe('SHP-2026-000001');
   });
 
-  it('merges the new counter with a server timestamp', async () => {
+  it('creates the counter with a server timestamp', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-01T00:00:00Z'));
     mocks.transaction.get.mockResolvedValue({ exists: () => false });
@@ -76,8 +78,24 @@ describe('generateTrackingId', () => {
 
     expect(mocks.transaction.set).toHaveBeenCalledWith(
       { id: 'tracking' },
-      { value: 1, updatedAt: '__SERVER_TS__' },
-      { merge: true }
+      { value: 1, updatedAt: '__SERVER_TS__' }
     );
+  });
+
+  it('updates an existing counter instead of merging a set', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-01T00:00:00Z'));
+    mocks.transaction.get.mockResolvedValue({
+      exists: () => true,
+      data: () => ({ value: 4 }),
+    });
+
+    await generateTrackingId();
+
+    expect(mocks.transaction.update).toHaveBeenCalledWith(
+      { id: 'tracking' },
+      { value: 5, updatedAt: '__SERVER_TS__' }
+    );
+    expect(mocks.transaction.set).not.toHaveBeenCalled();
   });
 });

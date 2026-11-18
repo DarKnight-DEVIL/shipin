@@ -9,6 +9,8 @@ import {
   getDoc,
 } from 'firebase/firestore';
 
+export { WHATSAPP_COUNTRIES } from "./whatsappCountries";
+
 import { db } from "@/lib/firebaseDb";
 import { customerApi } from '@/lib/customerApiClient';
 import type { Notification } from '@/types/notification';

@@ -15,6 +15,8 @@ export const PRICING = {
       name: "No Inspection",
       description: "Package will not be opened before shipping.",
       price: 0,
+      /** Rendered instead of a price; a zero here means "nothing added". */
+      priceLabel: "Free",
     },
 
     standard: {
@@ -23,6 +25,8 @@ export const PRICING = {
       description:
         "Verify correct item and check for visible damage.",
       price: 0,
+      /** Included in the service, not a zero-dollar add-on. */
+      priceLabel: "Included",
     },
 
     detailed: {
