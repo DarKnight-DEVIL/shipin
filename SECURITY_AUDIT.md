@@ -33,6 +33,23 @@ All responses include:
 - Token caching to reduce repeated verification calls
 - Safe `extractAuth` helper that parses Authorization headers
 
+### 4b. Second Factors (Firebase Identity Platform SMS)
+
+- SMS moved from an app-managed, WhatsApp-delivered OTP to a Firebase-managed
+  second factor. Google sends and verifies the code; the app stores no SMS
+  secret, hashed code, or attempt counter.
+- `requireAdmin` and `GET /api/auth/mfa/session` trust only a verified ID token
+  carrying `firebase.sign_in_second_factor`; the removed `X-MFA-SMS` header and
+  `/api/auth/mfa/sms/*` routes no longer exist.
+- Enrolment and sign-in challenges run entirely in the client SDK, which owns the
+  reCAPTCHA verifier; there is no server route that can send a code.
+- Admin MFA reset clears Firebase-enrolled factors through `adminAuth.updateUser`
+  in addition to the Firestore fields, so support cannot leave an account locked
+  behind a factor Firestore does not show.
+- TOTP, backup codes and WebAuthn remain app-managed and are unchanged.
+- Not verified locally: real SMS delivery and reCAPTCHA require a deployed
+  origin and a Blaze project.
+
 ### 5. Input Validation (`src/lib/validation.ts`)
 Zod schemas for all untrusted inputs:
 - Email validation (RFC-compliant regex)

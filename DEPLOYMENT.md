@@ -170,6 +170,45 @@ Two adjacent settings are separate from this list:
   `APP_CHECK_ENFORCEMENT=true`, a preview host must be added there too, or the
   client cannot mint a token and requests fail with `APP_CHECK_FAILED`.
 
+### SMS MFA (Identity Platform)
+
+SMS second factors are issued and verified by Firebase Identity Platform, not
+by this app. The server trusts the `firebase.sign_in_second_factor` claim on a
+verified ID token, so no SMS secret, hashed code, or delivery provider lives in
+this codebase.
+
+Setup, once per Firebase project:
+
+1. Upgrade the project to Identity Platform (Firebase console → Authentication
+   → Identity Platform → Upgrade). Identity Platform requires the Blaze
+   (pay-as-you-go) plan.
+2. Authentication → Sign-in method → Phone: enable it.
+3. Authentication → Settings → SMS region policy: the default denies every
+   region. Allow only the countries you actually deliver to.
+4. Authentication → Settings → Authorized domains: list every origin that serves
+   the app, including preview domains that should be able to enrol or sign in
+   with SMS.
+5. Accounts using SMS need a verified email; the app already requires one for
+   admins.
+
+What to expect operationally:
+
+- Google sends the message, so delivery failures show up as Firebase errors
+  (`auth/quota-exceeded`, `auth/too-many-requests`), not in app logs.
+- The invisible reCAPTCHA is rendered by the SDK. The CSP already allows
+  `https://www.google.com/recaptcha/`, `https://recaptcha.google.com` and
+  `https://www.gstatic.com`; keep them if the CSP is edited.
+- Default quotas are 10 SMS per phone number per hour and 50 enrolment starts
+  per minute per IP. Message pricing applies after the first 10 messages per day
+  per project; check the Firebase pricing page before launch.
+- Authentication → Phone numbers for testing registers fake numbers for QA
+  without sending real SMS or spending quota.
+- `POST /api/admin/users/[uid]/mfa/reset` clears Firebase factors as well as the
+  Firestore ones, so a locked-out admin can re-enrol.
+
+Local development can exercise the UI and the server-side 401/403 paths, but a
+real end-to-end SMS sign-in has to be verified on a deployed origin.
+
 ### Enabling Global Rate Limiting (Upstash Redis)
 
 1. **Create an Upstash Redis database**:
