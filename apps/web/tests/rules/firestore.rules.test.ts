@@ -25,6 +25,14 @@ const CUSTOMER = 'customer-1';
 const OTHER_CUSTOMER = 'customer-2';
 const NEW_CUSTOMER = 'customer-3';
 const ADMIN = 'admin-1';
+/**
+ * A uid whose ID token still carries the admin custom claim after being
+ * demoted. The rules must ignore it: `users/{uid}.role` is the only source of
+ * truth for admin access.
+ */
+const STALE_CLAIM_CUSTOMER = 'customer-stale';
+/** A promoted admin whose token carries no custom claim at all. */
+const ROLE_ONLY_ADMIN = 'admin-role-only';
 
 /* -------------------------------------------------------------------------- */
 /* Emulator plumbing                                                          */
@@ -40,6 +48,7 @@ function base64url(value: object): string {
  */
 function tokenFor(uid: string): string {
   const now = Math.floor(Date.now() / 1000);
+  const isAdmin = uid === ADMIN || uid === STALE_CLAIM_CUSTOMER;
   return [
     base64url({ alg: 'none', typ: 'JWT' }),
     base64url({
@@ -51,7 +60,13 @@ function tokenFor(uid: string): string {
       iat: now,
       exp: now + 3600,
       firebase: { identities: {}, sign_in_provider: 'custom' },
+      // Custom claims the rules read: `isAdmin()` checks `token.admin`. This
+      // belongs in the payload — the emulator rejected a token whose claim sat
+      // in the signature slot (400 "invalid jwt").
+      ...(isAdmin ? { admin: true } : {}),
     }),
+    // `alg: none` carries an empty signature and nothing else. The token must be
+    // exactly three segments; a fourth made the emulator reject it.
     '',
   ].join('.');
 }
@@ -369,6 +384,88 @@ describe('requests', () => {
 /* -------------------------------------------------------------------------- */
 /* wallets                                                                     */
 /* -------------------------------------------------------------------------- */
+
+/* -------------------------------------------------------------------------- */
+/* admin identity                                                              */
+/* -------------------------------------------------------------------------- */
+
+describe('admin identity', () => {
+  it('is decided by users/{uid}.role, with no custom claim on the token', async () => {
+    await seed(`users/${ROLE_ONLY_ADMIN}`, { role: 'admin' });
+    await seed('requests/req-role', { userId: CUSTOMER, status: 'review' });
+
+    await expectAllowed(
+      update({ uid: ROLE_ONLY_ADMIN }, 'requests/req-role', { status: 'quoted' })
+    );
+  });
+
+  it('revokes admin access the moment the role is demoted', async () => {
+    await seed(`users/${STALE_CLAIM_CUSTOMER}`, { role: 'customer' });
+    await seed('requests/req-demoted', { userId: CUSTOMER, status: 'review' });
+
+    // The token still carries `admin: true`; the profile says customer.
+    await expectDenied(
+      update({ uid: STALE_CLAIM_CUSTOMER }, 'requests/req-demoted', { status: 'quoted' })
+    );
+  });
+
+  it('does not fall back to the claim when the profile is missing', async () => {
+    await seed('requests/req-no-profile', { userId: CUSTOMER, status: 'review' });
+
+    await expectDenied(
+      update({ uid: STALE_CLAIM_CUSTOMER }, 'requests/req-no-profile', { status: 'quoted' })
+    );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* shipments                                                                   */
+/* -------------------------------------------------------------------------- */
+
+describe('shipments', () => {
+  it('lets a customer read the shipment they own', async () => {
+    await seed('shipments/ship-1', { userId: CUSTOMER, requestIds: [], status: 'building' });
+
+    await expectAllowed(read(customer(), 'shipments/ship-1'));
+  });
+
+  it('blocks reading another customer shipment', async () => {
+    await seed('shipments/ship-2', { userId: OTHER_CUSTOMER, requestIds: [], status: 'building' });
+
+    await expectDenied(read(customer(), 'shipments/ship-2'));
+  });
+
+  it('blocks anonymous reads', async () => {
+    await seed('shipments/ship-3', { userId: CUSTOMER, requestIds: [], status: 'building' });
+
+    await expectDenied(read(anonymous, 'shipments/ship-3'));
+  });
+
+  it('lets an admin read any shipment', async () => {
+    await seed('shipments/ship-4', { userId: CUSTOMER, requestIds: [], status: 'building' });
+
+    await expectAllowed(read({ uid: ADMIN }, 'shipments/ship-4'));
+  });
+
+  it('blocks every customer write', async () => {
+    await expectDenied(
+      create(customer(), 'shipments/ship-new', {
+        userId: CUSTOMER,
+        requestIds: [],
+        status: 'building',
+      })
+    );
+
+    await seed('shipments/ship-5', { userId: CUSTOMER, requestIds: [], status: 'building' });
+    await expectDenied(update(customer(), 'shipments/ship-5', { status: 'shipped' }));
+  });
+
+  it('lets an admin update a shipment', async () => {
+    await seed('shipments/ship-6', { userId: CUSTOMER, requestIds: [], status: 'building' });
+
+    await expectAllowed(update({ uid: ADMIN }, 'shipments/ship-6', { status: 'ready' }));
+  });
+});
 
 describe('wallets', () => {
   it('allows the owner to self-provision an empty wallet', async () => {

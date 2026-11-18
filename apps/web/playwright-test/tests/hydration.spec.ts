@@ -239,7 +239,11 @@ test.describe('Production hydration', () => {
     });
 
     await page.getByRole('link', { name: 'Sign in' }).first().click();
-    await expect(page).toHaveURL(/\/login/);
+    // 20s, not the 5s default: the dev server compiles `/login` on the first
+    // request for it, which under a parallel full-suite run outlasts 5s. The
+    // probe below is what proves the navigation was client-side, so a longer
+    // wait does not weaken this test.
+    await expect(page).toHaveURL(/\/login/, { timeout: 20_000 });
 
     const survived = await page.evaluate(
       () => (window as { __shipinHydrationProbe?: string }).__shipinHydrationProbe === 'kept'

@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import { INDEX_ROBOTS } from '@/config/seo';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
+  robots: INDEX_ROBOTS,
   title: 'Terms of Service',
   description: 'Read the Terms of Service for using ShipIN international shipping forwarding platform.',
 };

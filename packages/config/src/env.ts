@@ -14,42 +14,62 @@ export function getRequiredEnv(key: string): string {
   return value;
 }
 
-export const ENV = {
-  NODE_ENV: getEnv('NODE_ENV', 'development'),
-  APP_URL: getRequiredEnv('NEXT_PUBLIC_APP_URL'),
-  FIREBASE: {
-    API_KEY: getRequiredEnv('NEXT_PUBLIC_FIREBASE_API_KEY'),
-    AUTH_DOMAIN: getRequiredEnv('NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'),
-    PROJECT_ID: getRequiredEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID'),
-    STORAGE_BUCKET: getRequiredEnv('NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'),
-    MESSAGING_SENDER_ID: getRequiredEnv('NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
-    APP_ID: getRequiredEnv('NEXT_PUBLIC_FIREBASE_APP_ID'),
-  },
-  PAYPAL: {
-    CLIENT_ID: getRequiredEnv('NEXT_PUBLIC_PAYPAL_CLIENT_ID'),
-    SECRET: getRequiredEnv('PAYPAL_CLIENT_SECRET'),
-    ENV: getEnv('PAYPAL_ENV', 'sandbox') as 'sandbox' | 'live',
-  },
-  RESEND_API_KEY: getEnv('RESEND_API_KEY'),
-  SMTP: {
-    EMAIL: getEnv('SMTP_EMAIL'),
-    PASSWORD: getEnv('SMTP_PASSWORD'),
-  },
-  R2: {
-    ACCOUNT_ID: getRequiredEnv('R2_ACCOUNT_ID'),
-    ACCESS_KEY_ID: getRequiredEnv('R2_ACCESS_KEY_ID'),
-    SECRET_ACCESS_KEY: getRequiredEnv('R2_SECRET_ACCESS_KEY'),
-    BUCKET_NAME: getRequiredEnv('R2_BUCKET_NAME'),
-  },
-  UPSTASH: {
-    REDIS_REST_URL: getEnv('UPSTASH_REDIS_REST_URL'),
-    REDIS_REST_TOKEN: getEnv('UPSTASH_REDIS_REST_TOKEN'),
-  },
-  SENTRY: {
-    DSN: getEnv('NEXT_PUBLIC_SENTRY_DSN'),
-    SERVER_DSN: getEnv('SENTRY_DSN'),
-    AUTH_TOKEN: getEnv('SENTRY_AUTH_TOKEN'),
-  },
-} as const;
+function readEnvConfig() {
+  return {
 
-export type EnvConfig = typeof ENV;
+    NODE_ENV: getEnv('NODE_ENV', 'development'),
+    APP_URL: getRequiredEnv('NEXT_PUBLIC_APP_URL'),
+    FIREBASE: {
+      API_KEY: getRequiredEnv('NEXT_PUBLIC_FIREBASE_API_KEY'),
+      AUTH_DOMAIN: getRequiredEnv('NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'),
+      PROJECT_ID: getRequiredEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID'),
+      STORAGE_BUCKET: getRequiredEnv('NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'),
+      MESSAGING_SENDER_ID: getRequiredEnv('NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
+      APP_ID: getRequiredEnv('NEXT_PUBLIC_FIREBASE_APP_ID'),
+    },
+    PAYPAL: {
+      CLIENT_ID: getRequiredEnv('NEXT_PUBLIC_PAYPAL_CLIENT_ID'),
+      SECRET: getRequiredEnv('PAYPAL_CLIENT_SECRET'),
+      ENV: getEnv('PAYPAL_ENV', 'sandbox') as 'sandbox' | 'live',
+    },
+    RESEND_API_KEY: getEnv('RESEND_API_KEY'),
+    SMTP: {
+      EMAIL: getEnv('SMTP_EMAIL'),
+      PASSWORD: getEnv('SMTP_PASSWORD'),
+    },
+    R2: {
+      ACCOUNT_ID: getRequiredEnv('R2_ACCOUNT_ID'),
+      ACCESS_KEY_ID: getRequiredEnv('R2_ACCESS_KEY_ID'),
+      SECRET_ACCESS_KEY: getRequiredEnv('R2_SECRET_ACCESS_KEY'),
+      BUCKET_NAME: getRequiredEnv('R2_BUCKET_NAME'),
+    },
+    UPSTASH: {
+      REDIS_REST_URL: getEnv('UPSTASH_REDIS_REST_URL'),
+      REDIS_REST_TOKEN: getEnv('UPSTASH_REDIS_REST_TOKEN'),
+    },
+    SENTRY: {
+      DSN: getEnv('NEXT_PUBLIC_SENTRY_DSN'),
+      SERVER_DSN: getEnv('SENTRY_DSN'),
+      AUTH_TOKEN: getEnv('SENTRY_AUTH_TOKEN'),
+    },
+  } as const;
+}
+/**
+ * The validated environment, resolved on first access.
+ *
+ * It used to be a const object, which meant importing anything from
+ * `@shipin/config` validated every variable in the list — including
+ * `NEXT_PUBLIC_APP_URL`, Firebase keys and the R2 secret — even when the caller
+ * only wanted `SITE_CONFIG.name`. That made the package unimportable in unit
+ * tests and turned a missing variable into an import-time crash with no usable
+ * stack. Accessing a group still throws for its missing variables; nothing is
+ * silently defaulted.
+ */
+export const ENV = new Proxy({} as EnvConfig, {
+  get(_target, property) {
+    return readEnvConfig()[property as keyof EnvConfig];
+  },
+});
+
+
+export type EnvConfig = ReturnType<typeof readEnvConfig>;

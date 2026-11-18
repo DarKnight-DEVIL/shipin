@@ -36,8 +36,6 @@ import {
   createRequest,
   getRequestById,
   getRequests,
-  markRequestPaid,
-  recordPayment,
   rejectAdditionalItem,
   rejectRequest,
   requestQuoteRegeneration,
@@ -323,90 +321,6 @@ describe('requestQuoteRegeneration', () => {
     mocks.getDoc.mockRejectedValue(new Error('offline'));
 
     await expect(requestQuoteRegeneration('req-1')).rejects.toBeInstanceOf(Error);
-  });
-});
-
-describe('recordPayment', () => {
-  const payment = { provider: 'paypal' as const, amount: 100, orderId: 'ORDER-1' };
-
-  it('marks the request paid when the total is covered', async () => {
-    mocks.getDoc.mockResolvedValue(
-      docSnapshot({ quote: { breakdown: { grandTotal: 100 } } })
-    );
-
-    await recordPayment('req-1', payment);
-
-    expect(mocks.updateDoc.mock.calls[0][1]).toMatchObject({
-      payment: { provider: 'paypal', orderId: 'ORDER-1', captureId: null, amountPaid: 100 },
-      status: 'paid',
-    });
-  });
-
-  it('adds to an existing part payment and keeps it awaiting payment', async () => {
-    mocks.getDoc.mockResolvedValue(
-      docSnapshot({
-        quote: { breakdown: { grandTotal: 150 } },
-        payment: { amountPaid: 50 },
-      })
-    );
-
-    await recordPayment('req-1', payment);
-
-    expect(mocks.updateDoc.mock.calls[0][1]).toMatchObject({
-      payment: { amountPaid: 150 },
-      status: 'paid',
-    });
-  });
-
-  it('stays awaiting payment when the remainder is still owed', async () => {
-    mocks.getDoc.mockResolvedValue(
-      docSnapshot({ quote: { breakdown: { grandTotal: 300 } } })
-    );
-
-    await recordPayment('req-1', payment);
-
-    expect(mocks.updateDoc.mock.calls[0][1].status).toBe('awaiting_payment');
-  });
-
-  it('rejects a missing request', async () => {
-    mocks.getDoc.mockResolvedValue(docSnapshot(undefined));
-
-    await expect(recordPayment('req-1', payment)).rejects.toThrow('Request not found');
-  });
-});
-
-describe('markRequestPaid', () => {
-  const payment = { provider: 'wallet' as const, amount: 100, orderId: 'w-1', captureId: 'c-1' };
-
-  it('records the payment and notifies the customer', async () => {
-    mocks.getDoc.mockResolvedValue(
-      docSnapshot({ userId: 'user-1', quote: { breakdown: { grandTotal: 100 } } })
-    );
-
-    await markRequestPaid('req-1', payment);
-
-    expect(mocks.updateDoc.mock.calls[0][1]).toMatchObject({
-      payment: { provider: 'wallet', captureId: 'c-1', amountPaid: 100 },
-      status: 'paid',
-    });
-    expect(mocks.addDoc.mock.calls[0][1]).toMatchObject({
-      title: 'Payment Received',
-      type: 'payment',
-    });
-  });
-
-  it('skips the notification without an owner', async () => {
-    mocks.getDoc.mockResolvedValue(docSnapshot({ quote: { breakdown: { grandTotal: 100 } } }));
-
-    await markRequestPaid('req-1', payment);
-
-    expect(mocks.addDoc).not.toHaveBeenCalled();
-  });
-
-  it('rejects a missing request', async () => {
-    mocks.getDoc.mockResolvedValue(docSnapshot(undefined));
-
-    await expect(markRequestPaid('req-1', payment)).rejects.toThrow('Request not found');
   });
 });
 

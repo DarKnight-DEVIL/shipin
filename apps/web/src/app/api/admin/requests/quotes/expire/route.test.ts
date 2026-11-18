@@ -39,11 +39,26 @@ const future = new Date(Date.now() + 3_600_000).toISOString();
 /** Mirrors SWEEP_LIMIT in the route. */
 const SWEEP_LIMIT = 200;
 
-const request = (authorization?: string) =>
+/**
+ * The endpoint accepts only signed cron requests: a timestamp header plus an
+ * HMAC over `${timestamp}|${body}`. There is no bare `Bearer` path, so every
+ * authenticated test signs its request the way the scheduled workflow does.
+ */
+const signCronRequest = (timestamp: string, body = '', secret = CRON_SECRET) =>
+  crypto.createHmac('sha256', secret).update(`${timestamp}|${body}`).digest('hex');
+
+const signedCronRequest = (secret: string = CRON_SECRET, timestamp = String(Date.now())) =>
   new NextRequest('http://localhost/api/admin/requests/quotes/expire', {
     method: 'POST',
-    headers: authorization ? { authorization } : {},
+    headers: {
+      'x-cron-timestamp': timestamp,
+      'x-cron-signature': signCronRequest(timestamp, '', secret),
+    },
   });
+
+/** A request carrying no cron credentials at all. */
+const bareRequest = () =>
+  new NextRequest('http://localhost/api/admin/requests/quotes/expire', { method: 'POST' });
 
 type QuoteDoc = ReturnType<typeof quoteDoc>;
 
@@ -118,16 +133,16 @@ afterEach(() => {
 });
 
 describe('POST /api/admin/requests/quotes/expire — authentication', () => {
-  it('rejects a request with no bearer token', async () => {
-    const response = await POST(request());
+  it('rejects a request with no cron credentials', async () => {
+    const response = await POST(bareRequest());
 
     expect(response.status).toBe(401);
     expect((await response.json()).code).toBe('UNAUTHORIZED');
     expect(mocks.collection).not.toHaveBeenCalled();
   });
 
-  it('rejects a wrong token', async () => {
-    const response = await POST(request('Bearer not-the-secret'));
+  it('rejects a signature made with a different secret', async () => {
+    const response = await POST(signedCronRequest('not-the-secret'));
 
     expect(response.status).toBe(401);
     expect(mocks.collection).not.toHaveBeenCalled();
@@ -137,7 +152,7 @@ describe('POST /api/admin/requests/quotes/expire — authentication', () => {
     vi.unstubAllEnvs();
     delete process.env.CRON_SECRET;
 
-    const response = await POST(request('Bearer undefined'));
+    const response = await POST(signedCronRequest('undefined'));
 
     // When CRON_SECRET is missing, the endpoint returns 500 (config error)
     // rather than 401 (unauthorized), because the deployment cannot start
@@ -152,7 +167,7 @@ describe('POST /api/admin/requests/quotes/expire — query shape', () => {
   it('selects only unexpired quotes past their deadline, oldest first', async () => {
     mockRequestQuery([]);
 
-    await POST(request(`Bearer ${CRON_SECRET}`));
+    await POST(signedCronRequest());
 
     // An equality filter on the flag we mutate (so processed rows leave the
     // result set) plus a range on the deadline. This is what makes the sweep
@@ -172,7 +187,7 @@ describe('POST /api/admin/requests/quotes/expire — query shape', () => {
       )
     );
 
-    const body = await (await POST(request(`Bearer ${CRON_SECRET}`))).json();
+    const body = await (await POST(signedCronRequest())).json();
 
     expect(queryCalls.reads).toBe(1);
     expect(body).toMatchObject({ scanned: SWEEP_LIMIT, expired: SWEEP_LIMIT });
@@ -181,7 +196,7 @@ describe('POST /api/admin/requests/quotes/expire — query shape', () => {
   it('reads nothing when no quote has expired', async () => {
     mockRequestQuery([]);
 
-    const body = await (await POST(request(`Bearer ${CRON_SECRET}`))).json();
+    const body = await (await POST(signedCronRequest())).json();
 
     expect(body).toMatchObject({ scanned: 0, expired: 0 });
     expect(queryCalls.reads).toBe(1);
@@ -199,7 +214,7 @@ describe('POST /api/admin/requests/quotes/expire — sweep', () => {
     ];
     mockRequestQuery(docs);
 
-    const response = await POST(request(`Bearer ${CRON_SECRET}`));
+    const response = await POST(signedCronRequest());
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -217,7 +232,7 @@ describe('POST /api/admin/requests/quotes/expire — sweep', () => {
   it('notifies the customer for each expired quote', async () => {
     mockRequestQuery([quoteDoc('r1', { userId: 'u1', quote: { expiresAt: past } })]);
 
-    await POST(request(`Bearer ${CRON_SECRET}`));
+    await POST(signedCronRequest());
 
     expect(mocks.createNotification).toHaveBeenCalledWith(
       'u1',
@@ -233,7 +248,7 @@ describe('POST /api/admin/requests/quotes/expire — sweep', () => {
     mockRequestQuery(docs);
     mocks.createNotification.mockRejectedValue(new Error('resend down'));
 
-    const response = await POST(request(`Bearer ${CRON_SECRET}`));
+    const response = await POST(signedCronRequest());
     const body = await response.json();
 
     expect(body.expired).toBe(1);
@@ -248,7 +263,7 @@ describe('POST /api/admin/requests/quotes/expire — sweep', () => {
   it('does not cache the sweep response', async () => {
     mockRequestQuery([]);
 
-    const response = await POST(request(`Bearer ${CRON_SECRET}`));
+    const response = await POST(signedCronRequest());
 
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
@@ -341,13 +356,18 @@ describe('POST /api/admin/requests/quotes/expire — signed cron request', () =>
     expect(response.status).toBe(401);
   });
 
-  it('still falls back to the legacy bearer secret', async () => {
+  it('accepts a fresh timestamp with a valid HMAC signature', async () => {
+    const timestamp = String(Date.now());
     mockRequestQuery([]);
 
     const response = await POST(
-      signedRequest({ authorization: `Bearer ${CRON_SECRET}` })
+      signedRequest({
+        'x-cron-timestamp': timestamp,
+        'x-cron-signature': sign(timestamp),
+      })
     );
 
     expect(response.status).toBe(200);
+    expect((await response.json()).success).toBe(true);
   });
 });

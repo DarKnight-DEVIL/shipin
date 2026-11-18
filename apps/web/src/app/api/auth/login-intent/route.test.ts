@@ -62,7 +62,7 @@ describe('POST /api/auth/login-intent', () => {
     });
     mockIsRateLimited.mockReturnValue(false);
 
-    const request = createMockRequest({ 'cf-connecting-ip': '1.2.3.4' });
+    const request = createMockRequest({ 'x-vercel-forwarded-for': '1.2.3.4' });
     const response = await POST(request);
 
     expect(response.status).toBe(200);
@@ -80,7 +80,7 @@ describe('POST /api/auth/login-intent', () => {
     });
     mockIsRateLimited.mockReturnValue(true);
 
-    const request = createMockRequest({ 'cf-connecting-ip': '1.2.3.4' });
+    const request = createMockRequest({ 'x-vercel-forwarded-for': '1.2.3.4' });
     const response = await POST(request);
 
     expect(response.status).toBe(429);
@@ -99,7 +99,7 @@ describe('POST /api/auth/login-intent', () => {
     });
     mockIsRateLimited.mockReturnValue(false);
 
-    const request = createMockRequest({ 'cf-connecting-ip': '1.2.3.4' });
+    const request = createMockRequest({ 'x-vercel-forwarded-for': '1.2.3.4' });
     const response = await POST(request);
 
     expect(response.headers.get('X-RateLimit-Limit')).toBe('5');

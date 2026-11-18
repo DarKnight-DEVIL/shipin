@@ -32,7 +32,10 @@ vi.mock('firebase-admin/firestore', async importOriginal => {
 });
 
 import { up, name } from './002-normalize-quote-expiry.js';
-import { parseQuoteExpiry } from '../../src/features/requests/services/quoteExpiry.js';
+import {
+  isQuoteExpired,
+  parseQuoteExpiry,
+} from '../../src/features/requests/services/quoteExpiry.ts';
 
 const PAST = Date.now() - 60_000; // 1 min ago
 const FUTURE = Date.now() + 3_600_000; // 1 hour from now;
@@ -63,13 +66,19 @@ describe('Migration 002: normalize-quote-expiry', () => {
 
     it('reads a JSON-serialized Timestamp {seconds, nanoseconds}', () => {
       // This is the shape a Timestamp goes through when serialized to JSON.
+      // Seconds are whole, so the millisecond remainder of PAST is dropped.
       const serialized = { seconds: Math.floor(PAST / 1000), nanoseconds: 0 };
-      expect(parseQuoteExpiry(serialized)).toBe(PAST);
+      expect(parseQuoteExpiry(serialized)).toBe(Math.floor(PAST / 1000) * 1000);
     });
 
     it('reads a JSON-serialized Timestamp with _prefix', () => {
       const serialized = { _seconds: Math.floor(PAST / 1000), _nanoseconds: 0 };
-      expect(parseQuoteExpiry(serialized)).toBe(PAST);
+      expect(parseQuoteExpiry(serialized)).toBe(Math.floor(PAST / 1000) * 1000);
+    });
+
+    it('keeps sub-second precision from nanoseconds', () => {
+      const serialized = { seconds: Math.floor(PAST / 1000), nanoseconds: 250_000_000 };
+      expect(parseQuoteExpiry(serialized)).toBe(Math.floor(PAST / 1000) * 1000 + 250);
     });
 
     it('returns null for undefined / null', () => {
@@ -91,13 +100,12 @@ describe('Migration 002: normalize-quote-expiry', () => {
       expect(parseQuoteExpiry([])).toBeNull();
     });
 
-    it('is used by isQuoteExpired correctly', () => {
-      // A quote expired 1 min ago should be expired
-      expect(isQuoteExpired(new mocks.FakeTimestamp(PAST - 1) as never)).toBe(true);
-      // A quote expired now should be expired
-      expect(isQuoteExpired(new mocks.FakeTimestamp(PAST))).toBe(true);
-      // A quote 1 min in the future should NOT be expired
-      expect(isQuoteExpired(new mocks.FakeTimestamp(FUTURE))).toBe(false);
+    it('agrees with isQuoteExpired on the same values', () => {
+      // The sweep decides with isQuoteExpired, the backfill with
+      // parseQuoteExpiry; both must read an expiry the same way.
+      expect(isQuoteExpired(new Date(PAST - 1))).toBe(true);
+      expect(isQuoteExpired(new Date(PAST))).toBe(true);
+      expect(isQuoteExpired(new Date(FUTURE))).toBe(false);
     });
   });
 

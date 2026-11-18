@@ -128,7 +128,10 @@ export function ensureFirebaseApp(): { app: FirebaseApp; auth: Auth } {
     // account; with it they sign in against the Auth emulator, whose tokens the
     // Admin SDK also accepts (FIREBASE_AUTH_EMULATOR_HOST). Browser-only: the
     // emulator connection has no meaning in a server render.
-    const authEmulatorHost = clientEnv.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST.trim();
+    // Optional, and `undefined` at runtime when the build set no value: the
+    // bundler leaves a runtime `process.env` read for it instead of inlining
+    // the `''` default from `clientEnv`. See the same guard in `./firebaseDb`.
+    const authEmulatorHost = clientEnv.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST?.trim() ?? "";
     if (authEmulatorHost && typeof window !== "undefined") {
       connectAuthEmulator(_auth, `http://${authEmulatorHost}`, {
         disableWarnings: true,

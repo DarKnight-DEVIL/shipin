@@ -2,8 +2,10 @@
  * ShipIN request proxy (Next.js 16 file convention, formerly "middleware"): rate limits, security headers, CORS, and cookie security.
  *
  * Limits come from the shared Redis limiter when UPSTASH_REDIS_REST_* is set, so
- * they hold across serverless instances; without it production fails closed
- * (dev/test fall back to an in-memory limiter).
+ * they hold across serverless instances. A production build without a store
+ * refuses to start (validateProductionRequiredEnv), and a configured store that
+ * becomes unreachable at runtime falls open with /api/health reporting
+ * `degraded` — an outage must not lock everyone out.
  */
 import { NextResponse, type NextRequest } from "next/server";
 import {
@@ -16,21 +18,13 @@ import {
 import { SECURITY_HEADERS, getProductionCSP, getDevCSP } from "@/lib/securityHeaders";
 import { getCorsHeaders, isAllowedOrigin } from "@/lib/cors";
 import { classifyRoute } from "@/config/routeAuth";
+import { isIndexableRoute } from "@/config/seo";
 
 // The classification table lives in `@/config/routeAuth` so the Node-only
 // startup validator (src/config/routeClassification.ts) can enumerate every
 // route under src/app/api and compare it against the same table this bundle
 // enforces per request. An unclassified route answers 500 here at runtime, so
 // that validator throws at boot instead of shipping the gap.
-
-/**
- * Routes that bypass middleware entirely.
- *
- * `/api/webhook` needs its raw body for signature verification and is already
- * authenticated by the provider's signature, so it must not be rate limited
- * (a 429 would make the provider retry or drop the event).
- */
-const BYPASS_PATHS = ["/api/webhook"];
 
 /**
  * Sign-in entry points.
@@ -52,10 +46,6 @@ function isAuthEntryPath(pathname: string): boolean {
 
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
-  if (BYPASS_PATHS.some((path) => pathname.startsWith(path))) {
-    return NextResponse.next();
-  }
 
   const isApi = pathname.startsWith("/api/");
   const limiter = isApi
@@ -178,10 +168,11 @@ export default async function proxy(request: NextRequest) {
     response.headers.set("X-Debug-Mode", "disabled");
   }
 
-  // Public landing + track pages should be indexable by search engines.
-  // Authenticated/app pages keep the default noindex from SECURITY_HEADERS.
-  const PUBLIC_ROUTES = ["/", "/track"];
-  if (PUBLIC_ROUTES.includes(pathname)) {
+  // Only public marketing/legal pages are indexable; every signed-in page
+  // keeps the default noindex from SECURITY_HEADERS. The list lives in
+  // config/seo.ts so the sitemap cannot advertise a URL this header marks
+  // noindex (the mismatch Search Console reports as "Excluded by noindex tag").
+  if (isIndexableRoute(pathname)) {
     response.headers.set("X-Robots-Tag", "index, follow");
   }
 
@@ -189,6 +180,11 @@ export default async function proxy(request: NextRequest) {
 }
 
 export const config = {
+  // `/api/webhook` is excluded: signature verification needs the raw body and
+  // the provider signature is its authentication. The proxy never sees it,
+  // so this route meters itself (`apiRateLimiter`, plus a cheap signature-
+  // header gate) before it spends a PayPal verification call — see
+  // src/app/api/webhook/route.ts.
   matcher: [
     "/((?!api/webhook|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],

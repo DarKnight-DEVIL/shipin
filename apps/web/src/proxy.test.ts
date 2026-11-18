@@ -24,9 +24,9 @@ type LimitResult = {
 };
 
 const state = vi.hoisted(() => ({
-  web: { record: vi.fn() },
-  api: { record: vi.fn() },
-  authEntry: { record: vi.fn() },
+  web: { record: vi.fn().mockResolvedValue({ ok: true, limit: 10, remaining: 9, reset: 0 }) },
+  api: { record: vi.fn().mockResolvedValue({ ok: true, limit: 10, remaining: 9, reset: 0 }) },
+  authEntry: { record: vi.fn().mockResolvedValue({ ok: true, limit: 30, remaining: 29, reset: 0 }) },
 }));
 
 vi.mock('@/lib/rateLimiter', () => ({
@@ -45,6 +45,8 @@ vi.mock('@/lib/securityHeaders', () => ({
   SECURITY_HEADERS: {
     'Content-Security-Policy': 'default-src self',
     'X-Content-Type-Options': 'nosniff',
+    // Mirrors the real map: the proxy only overrides it for indexable routes.
+    'X-Robots-Tag': 'noindex, nofollow',
   },
   getProductionCSP: () => 'default-src self',
   getDevCSP: () => "default-src self 'unsafe-eval'",
@@ -205,11 +207,29 @@ describe('proxy: infrastructure failures fall through', () => {
 });
 
 describe('proxy: unrelated behaviour still holds', () => {
-  it('lets the webhook bypass everything', async () => {
-    const response = await proxy(requestFor('/api/webhook'));
+  it('marks public marketing and legal pages indexable', async () => {
+    for (const route of ['/', '/track', '/privacy-policy', '/terms']) {
+      const response = await proxy(requestFor(route));
 
-    expect(state.api.record).not.toHaveBeenCalled();
-    expect(response.status).toBe(200);
+      expect(response.headers.get('X-Robots-Tag'), route).toBe('index, follow');
+    }
+  });
+
+  it('keeps signed-in pages and the login route out of the index', async () => {
+    for (const route of [
+      '/login',
+      '/requests',
+      '/wallet',
+      '/addresses',
+      '/settings',
+      '/notifications',
+      '/support',
+      '/dashboard',
+    ]) {
+      const response = await proxy(requestFor(route));
+
+      expect(response.headers.get('X-Robots-Tag'), route).toBe('noindex, nofollow');
+    }
   });
 
   it('rate limits ordinary pages through the web limiter', async () => {

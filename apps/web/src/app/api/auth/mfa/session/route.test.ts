@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
   verifyIdToken: vi.fn(),
+  verifyAppCheckRequest: vi.fn(),
   getUser: vi.fn(),
   update: vi.fn(),
   availableMfaMethods: vi.fn(),
@@ -27,6 +28,9 @@ vi.mock('@/lib/firebaseAdmin', () => ({
       doc: () => ({ get: mocks.getUser, update: mocks.update }),
     }),
   },
+}));
+vi.mock('@/lib/appCheck', () => ({
+  verifyAppCheckRequest: mocks.verifyAppCheckRequest,
 }));
 vi.mock('@/lib/mfaProof', () => ({
   availableMfaMethods: mocks.availableMfaMethods,
@@ -77,7 +81,10 @@ const adminProfile = {
 const limit = { allowed: true };
 
 beforeEach(() => {
-  mocks.verifyIdToken.mockReset().mockResolvedValue({ uid: 'admin-1', email: 'a@x.com' });
+  mocks.verifyIdToken
+    .mockReset()
+    .mockResolvedValue({ uid: 'admin-1', email: 'a@x.com', email_verified: true });
+  mocks.verifyAppCheckRequest.mockReset().mockResolvedValue('not-enforced');
   mocks.getUser.mockReset().mockResolvedValue({ exists: true, data: () => adminProfile });
   mocks.update.mockReset().mockResolvedValue(undefined);
   mocks.availableMfaMethods.mockReset().mockReturnValue(['totp']);
@@ -174,6 +181,29 @@ describe('GET /api/auth/mfa/session', () => {
 });
 
 describe('POST /api/auth/mfa/session', () => {
+  it('refuses to mint an elevated session without a valid App Check token', async () => {
+    mocks.verifyAppCheckRequest.mockResolvedValue('missing');
+
+    const response = await POST(authRequest({ method: 'totp', code: '123456' }));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ code: 'APP_CHECK_FAILED' })
+    );
+    expect(mocks.verifyIdToken).not.toHaveBeenCalled();
+  });
+
+  it('refuses an administrator whose email is not verified', async () => {
+    mocks.verifyIdToken.mockResolvedValue({ uid: 'admin-1', email_verified: false });
+
+    const response = await POST(authRequest({ method: 'totp', code: '123456' }));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ code: 'EMAIL_VERIFICATION_REQUIRED' })
+    );
+  });
+
   it('rate limits verification attempts', async () => {
     mocks.isRateLimited.mockReturnValue(true);
 

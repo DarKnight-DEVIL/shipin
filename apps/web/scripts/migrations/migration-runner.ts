@@ -19,9 +19,10 @@
 
 import { getApps, initializeApp, cert, type App } from "firebase-admin/app";
 import { getFirestore, type Firestore, FieldValue, Timestamp } from "firebase-admin/firestore";
-import { fileURLToPath } from "node:url";
-import { dirname, join, readdirSync } from "node:path";
-import { normalizePrivateKey } from "../../src/lib/privateKey.js";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
+import { readdirSync } from "node:fs";
+import { normalizePrivateKey } from "../../src/lib/privateKey.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -66,7 +67,7 @@ function getAdminApp(): App {
 
 async function getMigrationModule(name: string): Promise<Migration> {
   const filePath = join(MIGRATIONS_DIR, `${name}.ts`);
-  const mod = await import(filePath);
+  const mod = await import(pathToFileURL(filePath).href);
   if (!mod.name || !mod.up) {
     throw new Error(`Migration ${name} must export 'name' and 'up' function`);
   }
@@ -75,7 +76,15 @@ async function getMigrationModule(name: string): Promise<Migration> {
 
 async function listMigrations(): Promise<string[]> {
   const files = readdirSync(MIGRATIONS_DIR)
-    .filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts"))
+    .filter(
+      (f) =>
+        f.endsWith(".ts") &&
+        !f.endsWith(".d.ts") &&
+        // The suite next to 002 and this runner both match `*.ts`; listing
+        // them as migrations invites `npm run migrate -- <test>`.
+        !f.endsWith(".test.ts") &&
+        f !== "migration-runner.ts"
+    )
     .map((f) => f.slice(0, -3))
     .sort();
   return files;

@@ -5,6 +5,12 @@
  * (no auth) and exposes only non-sensitive operational state — never
  * credentials or customer data.
  *
+ * That includes client addresses. The limiter error counters are keyed by IP so
+ * an operator can find an abusive client in the logs, but this route reports
+ * them only as aggregate counts and a last-failure timestamp: it is
+ * unauthenticated, so a per-address row here would publish a partial list of
+ * live user IPs to anyone who asks.
+ *
  * Status semantics:
  *   healthy    200 — a shared rate-limit store is configured (production)
  *                    and no limiter errors occurred in the last window.
@@ -84,6 +90,13 @@ export async function GET() {
       recentErrors: recent.reduce((sum, entry) => sum + entry.errors, 0),
       affectedClients: recent.length,
       totalErrors: all.reduce((sum, entry) => sum + entry.errors, 0),
+      // When the most recent failure happened, or null if none did. This is as
+      // much per-client detail as a public probe may carry: the rows behind it
+      // are keyed by client address, and those addresses are customer data.
+      lastErrorAt:
+        recent.length > 0
+          ? new Date(Math.max(...recent.map((entry) => entry.lastErrorAt))).toISOString()
+          : null,
     };
   });
 
@@ -118,28 +131,17 @@ export async function GET() {
         windowMs: "5m",
         errors: redisErrors,
         totalRecentErrors: redisErrors.reduce((sum, e) => sum + e.recentErrors, 0),
+        ...(isProduction && hasRecentErrors
+          ? {
+              warning:
+                "The shared rate-limit store is failing; rate limits are not being enforced reliably. Per-client detail stays in the server logs.",
+            }
+          : {}),
       },
       ...(missingSharedStore
         ? {
             warning:
               "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are not set in production; rate limits are per-instance.",
-          }
-        : {}),
-      ...(isProduction && hasRecentErrors
-        ? {
-            redisErrorDetails: redisErrors.flatMap((e) =>
-              e.recentErrors > 0
-                ? limiters
-                    .find((l) => l.name === e.name)!
-                    .limiter.getErrorCounts(cutoff)
-                    .map((err) => ({
-                      limiter: e.name,
-                      ip: err.ip,
-                      count: err.errors,
-                      lastErrorAt: new Date(err.lastErrorAt).toISOString(),
-                    }))
-                : []
-            ),
           }
         : {}),
     },

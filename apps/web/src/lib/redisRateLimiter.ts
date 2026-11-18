@@ -31,6 +31,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
 import { serverEnv, isProduction } from "@/config/env";
+import { getClientIp } from "@/lib/clientIp";
 
 export interface RateLimitResult {
   ok: boolean;
@@ -202,10 +203,9 @@ export function createSharedRateLimiter(
 
   return {
     async record(request: Request): Promise<RateLimitResult> {
-      const ip =
-        request.headers.get("cf-connecting-ip")?.trim() ||
-        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-        "127.0.0.1";
+      // One derivation, shared with the in-memory limiter and the consent
+      // audit log; see `clientIp.ts` for which headers are trusted and why.
+      const ip = getClientIp(request) ?? "127.0.0.1";
 
       const limiter = getRatelimitInstance(name, maxRequests, windowMs);
       if (!limiter) {

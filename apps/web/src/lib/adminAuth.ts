@@ -8,6 +8,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { verifyTotp, verifyBackupCode, hashSmsCode } from "@/lib/mfa";
 import { getMfaSession } from "@/lib/mfaSession";
 import { getAccountBlock } from "@/lib/accountStatus";
+import { verifyAppCheckRequest } from "@/lib/appCheck";
 
 export interface AdminUser {
   uid: string;
@@ -44,6 +45,23 @@ export interface AdminUser {
 export async function requireAdmin(
   request: Request
 ): Promise<AdminUser> {
+  /*
+   * ========================================
+   * APP CHECK
+   * ========================================
+   * Checked before the ID token, exactly like the customer gate in
+   * `lib/auth.ts`: with enforcement on, a stolen admin bearer token replayed by
+   * a script that cannot mint an App Check token is rejected here, before it
+   * costs a token verification. Off by default, so tests and local runs are
+   * unaffected.
+   */
+
+  const appCheck = await verifyAppCheckRequest(request);
+
+  if (appCheck === "missing" || appCheck === "invalid") {
+    throw new Error("APP_CHECK_FAILED");
+  }
+
   /*
    * ========================================
    * GET AUTHORIZATION HEADER
@@ -102,6 +120,18 @@ export async function requireAdmin(
     throw new Error(
       "INVALID_AUTHENTICATION"
     );
+  }
+
+  /*
+   * ========================================
+   * VERIFIED EMAIL
+   * ========================================
+   * Customer routes already refuse unverified addresses; the administrator gate
+   * did not, so an unverified account with the role could use the console.
+   */
+
+  if (decodedToken.email_verified !== true) {
+    throw new Error("EMAIL_VERIFICATION_REQUIRED");
   }
 
   const uid =
@@ -338,6 +368,20 @@ export function getAdminAuthError(
       status: 403,
       error:
         "This account is no longer allowed to access the administrator console.",
+    };
+  }
+
+  if (message === "APP_CHECK_FAILED") {
+    return {
+      status: 401,
+      error: "App verification failed. Reload the page and try again.",
+    };
+  }
+
+  if (message === "EMAIL_VERIFICATION_REQUIRED") {
+    return {
+      status: 403,
+      error: "Please verify your email address before accessing this resource.",
     };
   }
 

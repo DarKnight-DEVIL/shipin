@@ -157,6 +157,14 @@ export function isRateLimitStoreOptional(): boolean {
   return process.env[RATE_LIMIT_STORE_OPTIONAL_ENV] === '1';
 }
 
+/** Set to exactly "1" to allow production boot without an MFA denylist store (E2E only). */
+export const MFA_DENYLIST_OPTIONAL_ENV = 'MFA_DENYLIST_OPTIONAL';
+
+/** Any other value, including "true", keeps the store required. */
+export function isMfaDenylistOptional(): boolean {
+  return process.env[MFA_DENYLIST_OPTIONAL_ENV] === '1';
+}
+
 /** Server-only vars that fall back to a default when unset. */
 const DEFAULT_SERVER_ENV: Record<string, string> = {
   NODE_ENV: 'development',

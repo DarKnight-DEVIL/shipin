@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { siteConfig } from '@/config/site';
+import { INDEX_ROBOTS } from '@/config/seo';
 
 /**
  * Landing page metadata.
@@ -47,17 +48,7 @@ export const metadata: Metadata = {
     images: [siteConfig.ogImage],
     creator: siteConfig.twitterHandle,
   },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
-      'max-video-preview': -1,
-    },
-  },
+  robots: INDEX_ROBOTS,
 };
 
 import LandingShell from './_landing/LandingShell';

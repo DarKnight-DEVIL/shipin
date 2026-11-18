@@ -24,8 +24,19 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == userId;
     }
 
+    // Admin identity is the profile document, not a Firebase custom claim.
+    //
+    // This used to read `request.auth.token.admin`, and nothing in this
+    // repository ever granted that claim: the app's own gate checks
+    // `users/{uid}.role`, so a promoted administrator could use /api/admin/**
+    // and still be denied every browser-side read or write by these rules.
+    // Reading the profile keeps one source of truth, needs no token refresh, and
+    // makes a demotion take effect immediately instead of when the ID token
+    // expires. `get()` inside rules is a privileged read, so the users/{uid}
+    // read rule below does not apply to it.
     function isAdmin() {
       return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
@@ -81,6 +92,19 @@ service cloud.firestore {
       // Customers cannot update a request from the browser at all: no status,
       // no quote, no payment record. Admin console writes keep working.
       allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // --------------------------------------------------------------- shipments
+    // Consolidating and shipping a package is admin work; a customer only reads
+    // the shipment they own (the /shipment/[id] page).
+    //
+    // There was no block here at all, so the default deny made every client read
+    // of `shipments` fail: the customer shipment page rendered empty and the
+    // admin consolidation panel could not list a customer's shipments.
+    match /shipments/{shipmentId} {
+      allow read: if isAdmin() || isSelf(resource.data.userId);
+      allow create, update: if isAdmin();
       allow delete: if false;
     }
 
@@ -144,11 +168,12 @@ service cloud.firestore {
     // collection fell through to the default deny, and that listener failed
     // with permission-denied on every signed-in page.
     //
-    // Created from the browser by the admin request flows (`rejectRequest`,
-    // `recordPayment` in features/requests/services): a customer notifies
-    // themselves, an admin notifies the customer whose request changed. `read`
-    // must arrive false so a create cannot land pre-read, and nothing is
-    // updatable from the client — marking read goes through /api/notifications.
+    // Created from the browser by the admin request flows (`rejectRequest`
+    // and the other request flows in features/requests/services): a customer
+    // notifies themselves, an admin notifies the customer whose request
+    // changed. `read` must arrive false so a create cannot land pre-read, and
+    // nothing is updatable from the client — marking read goes through
+    // /api/notifications.
     match /notifications/{notificationId} {
       allow read: if isSelf(resource.data.userId);
 

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { siteConfig } from '@/config/site';
+import { INDEX_ROBOTS } from '@/config/seo';
 
 /**
  * Tracking search page metadata.
@@ -7,6 +8,7 @@ import { siteConfig } from '@/config/site';
 
 export const metadata: Metadata = {
   title: 'Track Your Shipment',
+  robots: INDEX_ROBOTS,
   description:
     'Track your ShipIN shipment by entering your tracking ID. Get live updates on dispatch, transit, customs, and delivery status.',
   openGraph: {

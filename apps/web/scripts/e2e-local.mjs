@@ -112,7 +112,11 @@ const env = {
   NODE_ENV: "production",
   CI: "1",
   BASE_URL: "http://localhost:3000",
-  PLAYWRIGHT_WEBSERVER_COMMAND: "npm run start -- -p 3000",
+  // `npm start` runs the traced standalone server, the same entrypoint the
+  // Docker image runs. It reads the port from the environment instead of
+  // parsing `-p` the way `next start` does.
+  PORT: "3000",
+  PLAYWRIGHT_WEBSERVER_COMMAND: "npm start",
   FIRESTORE_EMULATOR_HOST: FIRESTORE_EMULATOR,
   // Also baked into the browser bundle, so the client SDK talks to the
   // emulators instead of the project in .env.local.

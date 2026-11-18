@@ -11,6 +11,8 @@ jobs:
   trigger-expire-quotes:
     name: Trigger Quote Expiry Check
     runs-on: ubuntu-latest
+    # A hung request must not hold the job for the default six hours.
+    timeout-minutes: 5
     steps:
       - name: Call Next.js Expire Quotes Endpoint
         id: cron
@@ -20,8 +22,32 @@ jobs:
           SIGNATURE=$(echo -n "${TIMESTAMP}|${PAYLOAD}" | openssl dgst -sha256 -hmac "${{ secrets.CRON_SECRET }}" | sed "s/^.* //")
           echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
           echo "signature=$SIGNATURE" >> $GITHUB_OUTPUT
+          # Only the timestamp and its HMAC are sent: the route rejects any
+          # request without a valid signature, so the raw secret never travels.
           curl --fail-with-body -sS -X POST \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "x-cron-timestamp: $TIMESTAMP" \
             -H "x-cron-signature: $SIGNATURE" \
             "${{ secrets.PRODUCTION_URL }}/api/admin/requests/quotes/expire"
+
+      # GitHub schedules are best-effort: a run can be delayed or skipped under
+      # load, and nothing retries it. Say so in the summary, and push to an
+      # optional webhook so a silent failure does not look like "no quotes ever
+      # expire". Unset ALERT_WEBHOOK_URL, the step only writes the summary.
+      - name: Report a failed run
+        if: failure()
+        run: |
+          {
+            echo "### Quote expiry run failed"
+            echo ""
+            echo "The hourly sweep did not complete, so quotes due since the last"
+            echo "successful run are still un-expired. Scheduled runs can also be"
+            echo "delayed or skipped by GitHub — check the run history before"
+            echo "assuming the endpoint itself is broken."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "${{ secrets.ALERT_WEBHOOK_URL }}" ]; then
+            curl --fail-with-body -sS -X POST \
+              -H 'Content-Type: application/json' \
+              -d '{"text":"ShipIN: the hourly quote-expiry run failed."}' \
+              "${{ secrets.ALERT_WEBHOOK_URL }}" || true
+          fi

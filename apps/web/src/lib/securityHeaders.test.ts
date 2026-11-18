@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 import {
   getDevCSP,
+  getProductionCSP,
   SECURITY_HEADERS,
   getRobotsTag,
   sanitizeCsp,
@@ -35,6 +36,11 @@ function cspDirective(csp: string, name: string): string {
     .find((part) => part === name || part.startsWith(`${name} `));
 
   return match ?? '';
+}
+
+/** Returns the sources of a directive — everything after the directive name. */
+function cspSources(csp: string, name: string): string[] {
+  return cspDirective(csp, name).split(/\s+/).slice(1);
 }
 
 describe('SECURITY_HEADERS', () => {
@@ -102,6 +108,61 @@ describe('getDevCSP', () => {
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain('report-uri /api/csp-report');
   });
+
+  it('names image hosts instead of allowing every https origin', () => {
+    const sources = cspSources(getDevCSP(), 'img-src');
+
+    // A bare `https:` let any host on the internet serve an image, and an image
+    // request sends the page URL along in `Referer`.
+    expect(sources).not.toContain('https:');
+    expect(sources).toEqual(
+      expect.arrayContaining([
+        "'self'",
+        'blob:',
+        'data:',
+        'https://*.r2.cloudflarestorage.com', // presigned packing photos
+        'https://lh3.googleusercontent.com', // Google avatars
+        'https://www.paypalobjects.com', // the PayPal SDK's logo on /wallet/topup
+      ])
+    );
+  });
+
+  it('names connect hosts instead of allowing every https/wss origin', () => {
+    const sources = cspSources(getDevCSP(), 'connect-src');
+
+    expect(sources).not.toContain('https:');
+    expect(sources).not.toContain('wss:');
+    expect(sources).toEqual(
+      expect.arrayContaining([
+        'https://prod.spline.design', // the hero's .splinecode fetch
+        'wss://*.firebasedatabase.app', // Firebase sockets
+      ])
+    );
+  });
+
+  it('emits well-formed source tokens', () => {
+    // The header is hand-concatenated, so a missing space silently glues two
+    // sources into one meaningless token that the browser then drops.
+    const source = /^('self'|'none'|'unsafe-inline'|'unsafe-eval'|'wasm-unsafe-eval'|blob:|data:|https:\/\/\S+|wss?:\/\/\S+|http:\/\/\S+)$/;
+
+    for (const directive of ['img-src', 'connect-src']) {
+      const sources = cspSources(getDevCSP(), directive);
+
+      expect(sources.length).toBeGreaterThan(0);
+      for (const candidate of sources) {
+        expect(candidate, `${directive} source: ${candidate}`).toMatch(source);
+      }
+    }
+  });
+
+  it('keeps the local HMR socket reachable', () => {
+    const sources = cspSources(getDevCSP(), 'connect-src');
+
+    // Turbopack's fast-refresh channel is a loopback WebSocket; `'self'` only
+    // covers http(s), and the dev port is chosen at runtime.
+    expect(sources).toContain('ws://localhost:*');
+    expect(sources).toContain('ws://127.0.0.1:*');
+  });
 });
 
 describe('getProductionCSP', () => {
@@ -166,6 +227,32 @@ describe('getProductionCSP', () => {
 
     expect(scriptSrc).toContain('https://js.paypal.com');
     expect(scriptSrc).toContain('https://apis.google.com');
+  });
+
+  it('allowlists the hero scene fetch in connect-src', async () => {
+    const { getProductionCSP: prodCsp } = await importWithEnv({
+      isDevelopment: false,
+      isProduction: true,
+    });
+
+    // `SplineHero` fetches `https://prod.spline.design/...splinecode`, and a
+    // fetch is `connect-src`, not `script-src`. Dev allowed the host while
+    // production did not, so the hero canvas stayed empty after a deploy.
+    expect(cspSources(prodCsp(), 'connect-src')).toContain('https://prod.spline.design');
+  });
+
+  it('allowlists the PayPal SDK origins in connect-src', async () => {
+    const { getProductionCSP: prodCsp } = await importWithEnv({
+      isDevelopment: false,
+      isProduction: true,
+    });
+
+    // The SDK posts telemetry to its own origin (`/xoplatform/logger/...`), so
+    // the `api-m` hosts alone left it reporting CSP refusals on every render.
+    const connectSrc = cspSources(prodCsp(), 'connect-src');
+
+    expect(connectSrc).toContain('https://www.paypal.com');
+    expect(connectSrc).toContain('https://www.sandbox.paypal.com');
   });
 });
 
@@ -246,5 +333,19 @@ describe('createSecureCookieHeader', () => {
     });
 
     expect(header).toBe('test=value');
+  });
+});
+
+describe('CSP source lists', () => {
+  it('never repeats a source inside one directive', () => {
+    // getDevCSP listed https://www.gstatic.com twice in script-src. Nothing
+    // breaks, but it hides a real duplicate when one is added later.
+    for (const csp of [getDevCSP(), getProductionCSP()]) {
+      for (const directive of csp.split(';').map((part) => part.trim()).filter(Boolean)) {
+        const [name, ...sources] = directive.split(/\s+/);
+
+        expect(new Set(sources).size, `${name}: ${directive}`).toBe(sources.length);
+      }
+    }
   });
 });

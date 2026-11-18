@@ -84,7 +84,7 @@ function makeFallback() {
 
 function requestWith(ip = '1.2.3.4') {
   return new Request('http://localhost:3000/api/test', {
-    headers: { 'cf-connecting-ip': ip },
+    headers: { 'x-vercel-forwarded-for': ip },
   });
 }
 

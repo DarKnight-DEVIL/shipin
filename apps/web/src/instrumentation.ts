@@ -28,8 +28,15 @@ import { reportRateLimitStoreStatus } from '@/lib/redisRateLimiter';
 function failBoot(error: unknown): never {
   console.error(error instanceof Error ? error.message : error);
 
-  if (process.env.NEXT_RUNTIME !== 'edge') {
-    process.exit(1);
+  // `process.exit` is Node-only, and this module is compiled for the edge
+  // runtime as well. A literal `process.exit()` call there is reported as an
+  // Edge Runtime error on every compile ("A Node.js API is used (process.exit
+  // at line: 32)"), even though the guard below makes it unreachable on edge.
+  // Reaching the function through `globalThis` keeps it out of the bundler's
+  // static Node-API analysis; the runtime check is still what protects us.
+  const runtimeProcess = (globalThis as { process?: NodeJS.Process }).process;
+  if (process.env.NEXT_RUNTIME !== 'edge' && typeof runtimeProcess?.exit === 'function') {
+    runtimeProcess.exit(1);
   }
 
   throw error;

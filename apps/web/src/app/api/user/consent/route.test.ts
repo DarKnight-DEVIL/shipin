@@ -143,9 +143,28 @@ describe('POST /api/user/consent', () => {
       granted: true,
       version: 'v2',
       method: 'explicit',
-      ip: '203.0.113.5',
+      // The rightmost hop is the one the nearest proxy appended; the leftmost
+      // can be typed by the client, so it is not an audit record.
+      ip: '10.0.0.1',
       userAgent: 'Mozilla/5.0',
     });
+  });
+
+  it('ignores a spoofed forwarded address when the platform supplies one', async () => {
+    await POST(
+      request({
+        body: valid,
+        headers: {
+          'x-vercel-forwarded-for': '198.51.100.9',
+          'x-forwarded-for': '1.2.3.4',
+          'cf-connecting-ip': '8.8.8.8',
+        },
+      })
+    );
+
+    expect(mocks.updateUserConsent).toHaveBeenCalledWith(
+      expect.objectContaining({ ip: '198.51.100.9' })
+    );
   });
 
   it('defaults unknown metadata and the method', async () => {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withErrorHandler } from '@/utils/errors';
 import { requireAuthWithProfile } from '@/lib/auth';
+import { getClientIp } from '@/lib/clientIp';
 import { 
   getUserConsentState, 
   updateUserConsent, 
@@ -72,9 +73,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    || request.headers.get('x-real-ip')
-    || 'unknown';
+  const clientIp = getClientIp(request) ?? 'unknown';
   const userAgent = request.headers.get('user-agent') || 'unknown';
 
   await updateUserConsent({

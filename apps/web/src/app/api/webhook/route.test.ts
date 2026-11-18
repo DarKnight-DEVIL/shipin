@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const mocks = vi.hoisted(() => ({
   env: { PAYPAL_WEBHOOK_ID: 'WH-1' as string | undefined },
   verifyPayPalWebhook: vi.fn(),
+  recordRateLimit: vi.fn(),
   sendNotification: vi.fn(),
   docs: {} as Record<string, Record<string, unknown> | undefined>,
   txGet: vi.fn(),
@@ -13,6 +14,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/config/env', () => ({ serverEnv: mocks.env }));
 vi.mock('@/lib/paypal', () => ({ verifyPayPalWebhook: mocks.verifyPayPalWebhook }));
+vi.mock('@/lib/rateLimiter', () => ({
+  apiRateLimiter: { record: mocks.recordRateLimit },
+  isRateLimited: (result: { ok: boolean }) => !result.ok,
+  addRateLimitHeaders: (headers: Headers) => {
+    headers.set('X-RateLimit-Limit', '30');
+  },
+}));
 vi.mock('@/features/notifications/services/notificationService', () => ({
   sendNotification: mocks.sendNotification,
 }));
@@ -54,9 +62,18 @@ const captureEvent = (overrides: Record<string, unknown> = {}) => ({
   },
 });
 
-const request = (body: unknown) =>
+const PAYPAL_HEADERS = {
+  'paypal-transmission-id': 'tx-1',
+  'paypal-transmission-sig': 'sig',
+  'paypal-transmission-time': '2026-01-01T00:00:00Z',
+  'paypal-cert-url': 'https://api.paypal.com/cert',
+  'paypal-auth-algo': 'SHA256withRSA',
+};
+
+const request = (body: unknown, headers: Record<string, string> = PAYPAL_HEADERS) =>
   new NextRequest('http://localhost/api/webhook', {
     method: 'POST',
+    headers,
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });
 
@@ -76,6 +93,12 @@ beforeEach(() => {
   mocks.env.PAYPAL_WEBHOOK_ID = 'WH-1';
   mocks.docs = {};
   mocks.verifyPayPalWebhook.mockReset().mockResolvedValue(true);
+  mocks.recordRateLimit.mockReset().mockResolvedValue({
+    ok: true,
+    limit: 30,
+    remaining: 29,
+    reset: Date.now() + 60_000,
+  });
   mocks.sendNotification.mockReset().mockResolvedValue(undefined);
   mocks.txGet.mockReset();
   mocks.txUpdate.mockReset();
@@ -212,13 +235,14 @@ describe('POST /api/webhook', () => {
 
     await POST(request(captureEvent()));
 
+    // Wallet starts at 50, applies 20, so new balance is 30
     expect(mocks.txUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'wallets/user-1' }),
-      { balance: { __increment: -20 }, updatedAt: '__SERVER_TS__' }
+      { balance: 30, updatedAt: '__SERVER_TS__' }
     );
     expect(mocks.txSet).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'walletTransactions/generated' }),
-      expect.objectContaining({ amount: -20, type: 'payment' })
+      expect.objectContaining({ amount: -20, type: 'payment', balanceAfter: 30 })
     );
   });
 
@@ -291,5 +315,43 @@ describe('POST /api/webhook', () => {
       'Webhook notification failed:',
       expect.any(Error)
     );
+  });
+
+  it('rejects a flood with 429 before spending a PayPal verification call', async () => {
+    mocks.recordRateLimit.mockResolvedValue({
+      ok: false,
+      limit: 30,
+      remaining: 0,
+      reset: Date.now() + 60_000,
+    });
+
+    const response = await POST(request(captureEvent()));
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get('X-RateLimit-Limit')).toBe('30');
+    expect(mocks.verifyPayPalWebhook).not.toHaveBeenCalled();
+  });
+
+  it('fails open when the limiter store is unavailable', async () => {
+    mocks.recordRateLimit.mockResolvedValue({
+      ok: false,
+      unavailable: true,
+      limit: 30,
+      remaining: 0,
+      reset: Date.now() + 60_000,
+    });
+
+    const response = await POST(request(captureEvent()));
+
+    expect(response.status).not.toBe(429);
+    expect(mocks.verifyPayPalWebhook).toHaveBeenCalled();
+  });
+
+  it('rejects a delivery without PayPal signature headers before verification', async () => {
+    const response = await POST(request(captureEvent(), {}));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: 'INVALID_SIGNATURE' });
+    expect(mocks.verifyPayPalWebhook).not.toHaveBeenCalled();
   });
 });

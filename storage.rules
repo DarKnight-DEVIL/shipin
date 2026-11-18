@@ -1,28 +1,9 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /inspection/{requestId}/{allPaths=**} {
-      // Only authenticated users can read their own inspection photos
-      allow read: if request.auth != null &&
-        request.auth.uid == requestId;
-      // Only admin can write inspection photos
-      allow write: if request.auth != null &&
-        get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-
-    match /warehouse/{requestId}/{allPaths=**} {
-      // Admin-only access for warehouse documents
-      allow read, write: if request.auth != null &&
-        get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-
-    match /user-uploads/{userId}/{allPaths=**} {
-      // Users can read/write their own uploads
-      allow read, write: if request.auth != null &&
-        request.auth.uid == userId;
-    }
-
-    // Deny all other access
+    // All other access is denied — the app uses Cloudflare R2 for object storage,
+    // not Firebase Storage. These rules are vestigial and were never updated
+    // when the stack was switched to R2.
     match /{allPaths=**} {
       allow read, write: if false;
     }

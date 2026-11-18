@@ -31,6 +31,9 @@ vi.mock("@/config/env", () => ({
   get isProduction() {
     return h.isProduction;
   },
+  get isMfaDenylistOptional() {
+    return h.env.url !== '' && h.env.token !== '';
+  },
 }));
 
 /**

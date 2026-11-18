@@ -112,7 +112,9 @@ describe('register', () => {
       if (previousRuntime === undefined) delete process.env.NEXT_RUNTIME;
       else process.env.NEXT_RUNTIME = previousRuntime;
     }
-  });
+    // This branch awaits the real `sentry.edge.config`, so it is already ~2s
+    // alone and crossed the 5s default once coverage instrumentation was on.
+  }, 15_000);
 
   it('fails the boot when an API route is unclassified', async () => {
     const exit = vi

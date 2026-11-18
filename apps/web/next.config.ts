@@ -2,12 +2,22 @@ import type { NextConfig } from 'next';
 import withBundleAnalyzer from '@next/bundle-analyzer';
 
 import { initSentryConfig } from './sentry.config';
+import { STANDALONE_OUTPUT_EXCLUDES } from './standalone-output-excludes.mjs';
 
 const ANALYZE = process.env.ANALYZE === 'true';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  // The tracer follows filesystem reads in server code, so local run artefacts
+  // end up in the standalone tree (coverage/ alone is 13 MB) and from there in
+  // anything built out of it. Keys are route globs and '*' matches every route.
+  // The separate `instrumentation` trace — the one that walks src/app/api — is
+  // not part of that per-route pass, so scripts/prepare-standalone.mjs prunes
+  // the same STANDALONE_ARTEFACTS list from the tree it serves.
+  outputFileTracingExcludes: {
+    '*': [...STANDALONE_OUTPUT_EXCLUDES],
+  },
   productionBrowserSourceMaps: false,
   poweredByHeader: false,
   // Workspace packages ship TypeScript sources rather than a build output, so

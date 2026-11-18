@@ -42,8 +42,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  // Authorization: timestamp + HMAC (new) OR Bearer <cron-secret> (legacy).
-  // Accept either scheme for backward compatibility.
+  // Authorization: timestamp + HMAC (new).
+  // Reject a timestamp outside the replay window (5 min behind, 1 min ahead
+  // to absorb clock skew between GitHub Actions and the deployment).
   let isAuthValid = false;
 
   if (timestampHeader && signatureHeader) {
@@ -71,11 +72,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         isAuthValid = true;
       }
     }
-  }
-
-  // Legacy Bearer token only (no timestamp/HMAC).
-  if (!isAuthValid && request.headers.get('authorization') === `Bearer ${cronSecret}`) {
-    isAuthValid = true;
   }
 
   if (!isAuthValid) {

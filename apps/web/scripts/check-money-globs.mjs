@@ -55,6 +55,10 @@ function collectFiles(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
       if (SKIP_DIRS.has(entry.name)) continue;
+      // `coverage.exclude` in vitest.config.ts drops fixture trees, so those
+      // files are never measured and cannot carry a coverage floor. Scanning
+      // them here only flagged test data that no glob is meant to cover.
+      if (entry.name === "__fixtures__") continue;
       files.push(...collectFiles(path.join(dir, entry.name)));
       continue;
     }

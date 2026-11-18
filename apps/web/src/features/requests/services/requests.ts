@@ -283,55 +283,6 @@ export async function requestQuoteRegeneration(requestId: string): Promise<numbe
   }
 }
 
-export async function recordPayment(
-  requestId: string,
-  paymentData: { provider: 'paypal' | 'wallet'; amount: number; orderId: string; captureId?: string }
-): Promise<void> {
-  try {
-    const requestRef = doc(db, 'requests', requestId);
-    const snapshot = await getDoc(requestRef);
-    if (!snapshot.exists()) throw new Error('Request not found');
-    const request = snapshot.data();
-    const previousPaid = request.payment?.amountPaid ?? 0;
-    const grandTotal = request.quote?.breakdown?.grandTotal ?? 0;
-    const totalPaid = previousPaid + paymentData.amount;
-    const isFullyPaid = totalPaid >= grandTotal - 0.01;
-    await updateDoc(requestRef, {
-      payment: { provider: paymentData.provider, orderId: paymentData.orderId, captureId: paymentData.captureId ?? null, amountPaid: totalPaid, paidAt: serverTimestamp() },
-      status: isFullyPaid ? 'paid' : 'awaiting_payment',
-      updatedAt: serverTimestamp(),
-    });
-  } catch (error) {
-    throw toShipINError(error);
-  }
-}
-
-export async function markRequestPaid(
-  requestId: string,
-  paymentData: { provider: 'paypal' | 'wallet'; amount: number; orderId: string; captureId?: string }
-): Promise<void> {
-  try {
-    const requestRef = doc(db, 'requests', requestId);
-    const snapshot = await getDoc(requestRef);
-    if (!snapshot.exists()) throw new Error('Request not found');
-    const userId = snapshot.data()?.userId;
-    const previousPaid = snapshot.data()?.payment?.amountPaid ?? 0;
-    const grandTotal = snapshot.data()?.quote?.breakdown?.grandTotal ?? 0;
-    const totalPaid = previousPaid + paymentData.amount;
-    const isFullyPaid = totalPaid >= grandTotal - 0.01;
-    await updateDoc(requestRef, {
-      payment: { provider: paymentData.provider, orderId: paymentData.orderId, captureId: paymentData.captureId ?? null, amountPaid: totalPaid, paidAt: serverTimestamp() },
-      status: isFullyPaid ? 'paid' : 'awaiting_payment',
-      updatedAt: serverTimestamp(),
-    });
-    if (userId) {
-      await addDoc(collection(db, 'notifications'), { userId, requestId, title: 'Payment Received', message: 'Your payment has been successfully recorded.', type: 'payment', read: false, createdAt: serverTimestamp() });
-    }
-  } catch (error) {
-    throw toShipINError(error);
-  }
-}
-
 export async function addAdditionalItemRequest(
   requestId: string,
   item: { name: string; url: string; quantity: number }

@@ -10,6 +10,7 @@
 
 import { createSharedRateLimiter } from "./redisRateLimiter";
 import type { RateLimitResult } from "./redisRateLimiter";
+import { getClientIp } from "./clientIp";
 
 export interface RateLimitPolicy {
   maxRequests: number;
@@ -32,20 +33,11 @@ export class InMemoryRateLimiter {
     this.policy = policy;
   }
 
-  private getClientIp(request: Request): string {
-    // Only trust headers set by your hosting proxy. Do NOT trust
-    // X-Real-Ip or any other header that a client can set directly —
-    // doing so allows IP spoofing and rate-limit bypass.
-    const cfIp = request.headers.get("cf-connecting-ip")?.trim();
-    if (cfIp) return cfIp;
-
-    const forwarded = request.headers.get("x-forwarded-for");
-    if (forwarded) {
-      const first = forwarded.split(",")[0]?.trim();
-      if (first) return first;
-    }
-
-    return "127.0.0.1";
+  private resolveClientIp(request: Request): string {
+    // See clientIp.ts: only headers the deployment platform sanitises are
+    // trusted, so a client cannot mint a fresh bucket per request. Without one
+    // every caller shares the loopback bucket rather than escaping the limit.
+    return getClientIp(request) ?? "127.0.0.1";
   }
 
   private prune(now: number): void {
@@ -71,7 +63,7 @@ export class InMemoryRateLimiter {
     }
 
     this.prune(now);
-    const ip = this.getClientIp(request);
+    const ip = this.resolveClientIp(request);
     const history = (this.store[ip] ??= []).filter(
       (entry) => now - entry.timestamp < this.policy.windowMs
     );

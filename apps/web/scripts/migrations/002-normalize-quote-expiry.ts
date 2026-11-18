@@ -42,7 +42,7 @@ import {
   type Firestore,
   type QueryDocumentSnapshot,
 } from "firebase-admin/firestore";
-import { parseQuoteExpiry } from "../../src/features/requests/services/quoteExpiry.js";
+import { parseQuoteExpiry } from "../../src/features/requests/services/quoteExpiry.ts";
 
 export const name = "002-normalize-quote-expiry";
 

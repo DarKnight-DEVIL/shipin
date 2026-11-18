@@ -19,10 +19,17 @@ test.describe('SEO files', () => {
     const body = await response.text();
     expect(body).toContain('<?xml');
     expect(body).toContain('<urlset');
-    expect(body).toContain('https://shipin.co/');
-    expect(body).toContain('/login');
-    expect(body).toContain('/track');
-    expect(body).toContain('/privacy-policy');
-    expect(body).toContain('/terms');
+    // Public, indexable pages only. The origin comes from NEXT_PUBLIC_APP_URL,
+    // which the E2E runner points at the local server.
+    const base = new URL(response.url()).origin;
+    for (const route of ['/', '/track', '/privacy-policy', '/terms']) {
+      expect(body).toContain(`<loc>${base}${route}</loc>`);
+    }
+
+    // The proxy sends X-Robots-Tag: noindex for these, so listing them here was
+    // what Search Console reported as "Excluded by noindex tag".
+    for (const privateRoute of ['/login', '/requests', '/wallet', '/settings', '/support']) {
+      expect(body).not.toContain(privateRoute);
+    }
   });
 });

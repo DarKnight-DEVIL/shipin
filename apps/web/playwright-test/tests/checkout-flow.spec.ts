@@ -24,7 +24,6 @@ test.describe('checkout — anonymous callers are rejected', () => {
   const steps = [
     '/api/paypal/create-order',
     '/api/paypal/capture-order',
-    '/api/paypal/complete-payment',
     '/api/payment/complete-wallet',
   ];
 

@@ -10,6 +10,7 @@ import { Toaster } from 'sonner';
 import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { siteConfig } from '@/config/site';
+import { NOINDEX_ROBOTS } from '@/config/seo';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -39,17 +40,9 @@ export const metadata: Metadata = {
   authors: [{ name: 'ShipIN' }],
   creator: 'ShipIN',
   publisher: 'ShipIN',
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      'max-video-preview': -1,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
-    },
-  },
+  // Private by default: a page must opt in with INDEX_ROBOTS, which keeps the
+  // meta tag in step with the proxy's X-Robots-Tag instead of contradicting it.
+  robots: NOINDEX_ROBOTS,
   openGraph: {
     type: 'website',
     locale: 'en_US',

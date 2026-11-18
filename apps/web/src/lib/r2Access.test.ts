@@ -14,7 +14,12 @@ vi.mock('@/lib/firebaseAdmin', () => ({
   adminDb: { collection: mocks.collection },
 }));
 
-import { authorizeInspectionAccess, parseInspectionKey } from './r2Access';
+// `isolate: false` shares the module cache between test files, and the
+// `r2/view` suite mocks `@/lib/firebaseAdmin` with only `adminAuth`. Importing
+// the subject lazily, after a module reset, keeps these tests independent of
+// file order: without it this file could receive that mock instead of its own.
+let authorizeInspectionAccess: typeof import('./r2Access')['authorizeInspectionAccess'];
+let parseInspectionKey: typeof import('./r2Access')['parseInspectionKey'];
 
 const snap = (data: Record<string, unknown> | undefined) => ({
   exists: data !== undefined,
@@ -30,8 +35,10 @@ function firestore(requests: Record<string, unknown> | undefined, users?: Record
   }));
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules();
   mocks.collection.mockReset();
+  ({ authorizeInspectionAccess, parseInspectionKey } = await import('./r2Access'));
 });
 
 describe('parseInspectionKey', () => {

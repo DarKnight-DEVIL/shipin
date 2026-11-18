@@ -108,4 +108,39 @@ describe('firebaseDb', () => {
       8080
     );
   });
+
+  it('initializes when the optional emulator hosts are undefined', async () => {
+    // A build without these variables leaves a runtime `process.env` read in
+    // the client bundle, which yields `undefined` in the browser instead of the
+    // `''` default in `clientEnv`. An unguarded `.trim()` on that value threw
+    // during hydration on every Firestore-backed page: a real browser run of
+    // `/requests`, `/settings` and `/support` failed this way.
+    vi.resetModules();
+    vi.doMock('@/config/env', () => ({
+      clientEnv: {
+        NODE_ENV: 'test',
+        NEXT_PUBLIC_FIREBASE_API_KEY: 'test-key',
+        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: 'test.firebaseapp.com',
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: 'shipin-e2e',
+        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: 'test-bucket',
+        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '123456',
+        NEXT_PUBLIC_FIREBASE_APP_ID: '1:123456:web:abcdef',
+        NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY: '',
+        NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG: '',
+        NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: undefined as unknown as string,
+        NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST: undefined as unknown as string,
+      },
+      serverEnv: {},
+      isProduction: false,
+      isDevelopment: true,
+      isTest: true,
+    }));
+
+    const { ensureFirebaseApp } = await import('./firebase');
+    const { getFirebaseDb } = await import('./firebaseDb');
+
+    expect(() => ensureFirebaseApp()).not.toThrow();
+    expect(() => getFirebaseDb()).not.toThrow();
+    expect(mocks.connectFirestoreEmulator).not.toHaveBeenCalled();
+  });
 });

@@ -4,12 +4,29 @@ import { withErrorHandler } from "@/utils/errors";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { serverEnv } from "@/config/env";
+import { apiRateLimiter, addRateLimitHeaders, isRateLimited } from "@/lib/rateLimiter";
 import { verifyPayPalWebhook } from "@/lib/paypal";
 import { sendNotification } from "@/features/notifications/services/notificationService";
 
 // PayPal Webhook ID from the developer dashboard.
 // Should be set in environment variables: PAYPAL_WEBHOOK_ID
 const PAYPAL_WEBHOOK_ID = serverEnv.PAYPAL_WEBHOOK_ID;
+
+/**
+ * Headers PayPal signs every delivery with.
+ *
+ * A body without them cannot pass `verifyPayPalWebhook`, which forwards these
+ * values straight to PayPal's verify endpoint. Checking their presence costs
+ * nothing locally and keeps an unauthenticated flood from buying an OAuth
+ * token plus a verification call per request.
+ */
+const PAYPAL_SIGNATURE_HEADERS = [
+  "paypal-transmission-id",
+  "paypal-transmission-sig",
+  "paypal-transmission-time",
+  "paypal-cert-url",
+  "paypal-auth-algo",
+] as const;
 
 /**
  * POST /api/webhook
@@ -22,11 +39,46 @@ const PAYPAL_WEBHOOK_ID = serverEnv.PAYPAL_WEBHOOK_ID;
  * (See proxy.ts matcher config.)
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
+  // The proxy matcher excludes this path so signature verification sees the
+  // raw body — which also means the global API limiter never sees it. Meter
+  // it here, before any external call: an unauthenticated flood would
+  // otherwise spend a PayPal OAuth token and a verify-webhook-signature call
+  // on every request. Fail open on `unavailable` so a limiter outage cannot
+  // drop payment confirmations, exactly like the proxy does.
+  const limit = await apiRateLimiter.record(request);
+
+  if (isRateLimited(limit) && !limit.unavailable) {
+    const response = NextResponse.json(
+      {
+        success: false,
+        error: "Too many requests, please try again later.",
+        code: "RATE_LIMIT_ERROR",
+      },
+      { status: 429 }
+    );
+    addRateLimitHeaders(response.headers, limit);
+    return response;
+  }
+
   if (!PAYPAL_WEBHOOK_ID) {
     console.error("PAYPAL_WEBHOOK_ID is not configured");
     return NextResponse.json(
       { success: false, error: "Webhook not configured.", code: "CONFIGURATION_ERROR" },
       { status: 500 }
+    );
+  }
+
+  // Cheap gate first: without PayPal's signature headers the verification
+  // call below cannot succeed, so reject the request before spending it.
+  const missingSignatureHeader = PAYPAL_SIGNATURE_HEADERS.find(
+    (name) => !request.headers.get(name)
+  );
+
+  if (missingSignatureHeader) {
+    console.warn("PayPal webhook missing signature header:", missingSignatureHeader);
+    return NextResponse.json(
+      { success: false, error: "Invalid webhook signature.", code: "INVALID_SIGNATURE" },
+      { status: 400 }
     );
   }
 
@@ -197,8 +249,10 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
       const walletRef = adminDb.collection("wallets").doc(requestData.userId);
       const walletSnapshot = await transaction.get(walletRef);
       if (walletSnapshot.exists) {
+        const currentBalance = walletSnapshot.data()?.balance ?? 0;
+        const newBalance = currentBalance - walletApplied;
         transaction.update(walletRef, {
-          balance: FieldValue.increment(-walletApplied),
+          balance: newBalance,
           updatedAt: FieldValue.serverTimestamp(),
         });
         const walletTransactionRef = adminDb.collection("walletTransactions").doc();
@@ -206,7 +260,7 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
           userId: requestData.userId,
           type: "payment",
           amount: -walletApplied,
-          balanceAfter: FieldValue.increment(-walletApplied),
+          balanceAfter: newBalance,
           requestId,
           description: "Request Payment",
           createdAt: FieldValue.serverTimestamp(),

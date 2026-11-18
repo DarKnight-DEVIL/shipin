@@ -5,10 +5,13 @@
  * response headers. All values are conservative and production-ready.
  *
  * Content Security Policy (CSP):
- *   - Default to 'self' and forbid inline scripts/styles (no unsafe-inline,
- *     no eval-based script execution).
- *   - Allow Next.js/React build-time inline scripts only when necessary.
- *   - Restrict image sources, fonts, frames, and connect targets.
+ *   - Default to 'self'; no 'unsafe-eval' in either environment.
+ *   - 'unsafe-inline' IS allowed for scripts and styles. Every route is
+ *     statically prerendered, so Next.js writes the hydration bootstrap into
+ *     the HTML at build time and a per-request nonce could never match it — the
+ *     comment on getProductionCSP below has the full reasoning.
+ *   - Restrict image sources, fonts, frames, and connect targets. Production
+ *     names image hosts instead of carrying a blanket `https:`.
  *   - CSP violation reports are sent to /api/csp-report via report-to.
  *
  * NOTE: If your app legitimately uses inline scripts or third-party
@@ -40,25 +43,88 @@ function emulatorConnectSources(): string {
 }
 
 /**
+ * Hosts the development policy may load images from.
+ *
+ * This list replaces a bare `https:`, which let *any* HTTPS host serve an
+ * image — and an image request carries the page URL in `Referer`, so the
+ * blanket was also an outbound channel to anywhere. Every entry is a host the
+ * app really renders:
+ *
+ *   - `*.r2.cloudflarestorage.com` — presigned packing/inspection photos
+ *     (`src/lib/r2.ts` builds the endpoint from `R2_ACCOUNT_ID`, so this is the
+ *     only shape those URLs take)
+ *   - `*.firebasestorage.app`, `firebasestorage.googleapis.com` — avatars and
+ *     uploads that pass through Firebase Storage
+ *   - `lh3.googleusercontent.com` — Google profile photos, the only
+ *     `next/image` remotePattern in `next.config.ts`
+ *   - `*.spline.design`, `cdn.spline.dev`, `www.gstatic.com` — landing-page 3D
+ *     scene assets
+ *   - `www.paypalobjects.com` — the PayPal SDK renders its logo from here on
+ *     `/wallet/topup`, which the narrowed list missed
+ */
+const DEV_IMAGE_SOURCES = [
+  "'self'",
+  "blob:",
+  "data:",
+  "https://*.r2.cloudflarestorage.com",
+  "https://*.firebasestorage.app",
+  "https://firebasestorage.googleapis.com",
+  "https://lh3.googleusercontent.com",
+  "https://*.spline.design",
+  "https://cdn.spline.dev",
+  "https://www.gstatic.com",
+  "https://www.paypalobjects.com",
+].join(" ");
+
+/**
+ * Local sockets for the dev server's own HMR channel.
+ *
+ * Turbopack keeps its HMR channel on a WebSocket at the dev server origin, and
+ * `'self'` only covers http(s) sources. The port is wildcarded because it is
+ * chosen at runtime (`PORT`, or 3001 when 3000 is taken); the host is not, so
+ * this stays a loopback-only allowance. Serving dev to another device over a
+ * LAN IP is the one case it does not cover — fast refresh goes quiet there, but
+ * the app still loads, which is a better trade than `ws:` anywhere.
+ */
+const DEV_HMR_SOCKETS =
+  "ws://localhost:* ws://127.0.0.1:* wss://localhost:* wss://127.0.0.1:*";
+
+/**
  * Development CSP: allows inline scripts and styles for Turbopack/Next.js dev server.
  * This is less secure but necessary for development hot-reloading.
+ *
+ * Only the two allowances dev genuinely needs over production are wider here:
+ * `'unsafe-eval'`/`'wasm-unsafe-eval'` for the dev bundle, and loopback HMR
+ * sockets. `img-src` and `connect-src` otherwise name explicit hosts instead of
+ * carrying a blanket `https:`/`wss:`.
  */
 export function getDevCSP(): string {
-  const base = "'self' https://www.gstatic.com https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com";
+  const base = "'self' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com";
   const scriptSrc = `script-src ${base} 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; `;
 
   return (
     "default-src 'self'; " +
     scriptSrc +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com https://cdn.spline.dev; " +
-    "img-src 'self' blob: data: https:; " +
+    `img-src ${DEV_IMAGE_SOURCES}; ` +
     "font-src 'self' https://fonts.gstatic.com https://cdn.spline.dev; " +
     "connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com " +
+    // The PayPal SDK itself posts to its own origin (`/xoplatform/logger/...`),
+    // not just the `api-m` hosts. Without these the SDK logs CSP refusals on
+    // every render of the top-up button.
+    "https://www.paypal.com https://www.sandbox.paypal.com " +
     "https://graph.facebook.com https://www.google.com https://www.googletagmanager.com " +
     "https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com " +
-    "https://*.firebasestorage.app https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com https://va.vercel-scripts.com" +
+    "https://*.firebasestorage.app https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com https://va.vercel-scripts.com " +
+    // The landing hero pulls its `.splinecode` scene from here
+    // (`SplineHero.tsx`), and that fetch is `connect-src`, not `script-src`.
+    "https://prod.spline.design " +
+    // Firebase Realtime Database sockets, then the dev-only transports: HMR on
+    // loopback and the local emulator origins.
+    "wss://*.firebaseio.com wss://*.firebasedatabase.app " +
+    DEV_HMR_SOCKETS +
     emulatorConnectSources() +
-    " wss: https:; " +
+    "; " +
     "worker-src 'self' blob: https://cdn.spline.dev; " +
     "media-src 'self'; " +
     "frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://spline.dev https://cdn.spline.dev https://accounts.google.com https://apis.google.com https://www.google.com https://*.firebaseapp.com; " +
@@ -201,9 +267,16 @@ export function getProductionCSP(): string {
     "img-src 'self' blob: data: https:; " +
     "font-src 'self' https://fonts.gstatic.com https://cdn.spline.dev; " +
     "connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com " +
+    // The SDK reports to `www.paypal.com` / `www.sandbox.paypal.com`; see the
+    // production policy below for the same pair.
+    "https://www.paypal.com https://www.sandbox.paypal.com " +
     "https://graph.facebook.com https://www.google.com https://www.googletagmanager.com " +
     "https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com " +
     "https://*.firebasestorage.app https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com " +
+    // The landing hero fetches its `.splinecode` scene from here
+    // (`SplineHero.tsx`), and that fetch is governed by `connect-src`. Dev had
+    // this host but production did not, so the hero only ever loaded in dev.
+    "https://prod.spline.design " +
     // Narrowed from a blanket `wss: https:`: every host the app actually
     // talks to is already listed above, so the wildcard only widened the
     // exfiltration surface. Firebase Realtime Database sockets stay allowed.

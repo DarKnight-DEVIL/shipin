@@ -45,7 +45,6 @@ export {
   addRequest,
   rejectRequest,
   requestQuoteRegeneration,
-  recordPayment,
   approveAdditionalItem,
   rejectAdditionalItem,
   updateAdditionalItemStatus,

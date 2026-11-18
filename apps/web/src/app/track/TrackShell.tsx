@@ -50,6 +50,10 @@ export default function TrackShell() {
           </label>
 
           <input
+            // A stable name, so the field is addressable by autofill, screen
+            // readers and the E2E suite (`input[name="trackingId"]`).
+            name="trackingId"
+            autoComplete="off"
             value={trackingId}
             onChange={(e) =>
               setTrackingId(

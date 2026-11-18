@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   users: new Map<string, Record<string, unknown>>(),
   updates: [] as { uid: string; data: Record<string, unknown> }[],
   verifyIdToken: vi.fn(),
+  verifyAppCheckRequest: vi.fn(),
   verifyTotp: vi.fn(),
   verifyBackupCode: vi.fn(),
   hashSmsCode: vi.fn(),
@@ -32,6 +33,10 @@ vi.mock('@/lib/firebaseAdmin', () => ({
       }),
     }),
   },
+}));
+
+vi.mock('@/lib/appCheck', () => ({
+  verifyAppCheckRequest: mocks.verifyAppCheckRequest,
 }));
 
 vi.mock('firebase-admin/firestore', () => ({
@@ -81,12 +86,18 @@ beforeEach(async () => {
   mocks.users.clear();
   mocks.updates.length = 0;
   mocks.verifyIdToken.mockReset();
+  mocks.verifyAppCheckRequest.mockReset();
+  mocks.verifyAppCheckRequest.mockResolvedValue('not-enforced');
   mocks.verifyTotp.mockReset();
   mocks.verifyBackupCode.mockReset();
   mocks.hashSmsCode.mockReset();
   mocks.getMfaSession.mockReset();
   mocks.getMfaSession.mockReturnValue(null);
-  mocks.verifyIdToken.mockResolvedValue({ uid: UID, email: 'token@shipin.app' });
+  mocks.verifyIdToken.mockResolvedValue({
+    uid: UID,
+    email: 'token@shipin.app',
+    email_verified: true,
+  });
   mocks.users.set(UID, adminUser());
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -125,7 +136,7 @@ describe('requireAdmin — authentication', () => {
 
 describe('requireAdmin — profile and role', () => {
   it('requires an existing profile', async () => {
-    mocks.verifyIdToken.mockResolvedValue({ uid: 'missing-user' });
+    mocks.verifyIdToken.mockResolvedValue({ uid: 'missing-user', email_verified: true });
 
     await expect(requireAdmin(bearer())).rejects.toThrow('USER_PROFILE_NOT_FOUND');
   });
@@ -317,7 +328,7 @@ describe('requireAdmin — MFA enforcement', () => {
   });
 
   it('falls back to the stored profile for identity fields', async () => {
-    mocks.verifyIdToken.mockResolvedValue({ uid: UID });
+    mocks.verifyIdToken.mockResolvedValue({ uid: UID, email_verified: true });
     mocks.users.set(UID, adminUser({ displayName: 'Stored Admin' }));
     mocks.verifyTotp.mockReturnValue(true);
 
@@ -330,6 +341,38 @@ describe('requireAdmin — MFA enforcement', () => {
   });
 });
 
+describe('requireAdmin — App Check and verified email', () => {
+  it('rejects a request without an App Check token when enforcement is on', async () => {
+    mocks.verifyAppCheckRequest.mockResolvedValue('missing');
+
+    await expect(requireAdmin(bearer())).rejects.toThrow('APP_CHECK_FAILED');
+
+    // The gate runs before token verification, so an unverified client never
+    // costs a Firebase lookup.
+    expect(mocks.verifyIdToken).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid App Check token', async () => {
+    mocks.verifyAppCheckRequest.mockResolvedValue('invalid');
+
+    await expect(requireAdmin(bearer())).rejects.toThrow('APP_CHECK_FAILED');
+  });
+
+  it('rejects an administrator whose email is not verified', async () => {
+    mocks.verifyIdToken.mockResolvedValue({ uid: UID, email_verified: false });
+
+    await expect(requireAdmin(bearer())).rejects.toThrow('EMAIL_VERIFICATION_REQUIRED');
+  });
+
+  it('accepts a verified administrator once App Check and MFA pass', async () => {
+    mocks.verifyTotp.mockReturnValue(true);
+
+    await expect(
+      requireAdmin(bearer({ 'x-mfa-totp': '123456' }))
+    ).resolves.toMatchObject({ uid: UID, mfaVerified: true });
+  });
+});
+
 describe('getAdminAuthError', () => {
   it.each([
     ['AUTHENTICATION_REQUIRED', 401, 'Authentication required.'],
@@ -337,6 +380,8 @@ describe('getAdminAuthError', () => {
     ['USER_PROFILE_NOT_FOUND', 403, 'User profile not found.'],
     ['ADMIN_ACCESS_REQUIRED', 403, 'Administrator access required.'],
     ['MFA_REQUIRED', 401, 'Multi-factor authentication required.'],
+    ['APP_CHECK_FAILED', 401, 'App verification failed.'],
+    ['EMAIL_VERIFICATION_REQUIRED', 403, 'verify your email'],
     ['MFA_SETUP_REQUIRED', 403, 'Multi-factor authentication is required'],
     ['ACCOUNT_DISABLED', 403, 'no longer allowed'],
     ['ACCOUNT_SUSPENDED', 403, 'no longer allowed'],

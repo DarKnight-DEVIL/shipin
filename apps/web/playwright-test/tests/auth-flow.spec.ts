@@ -18,8 +18,10 @@ test.describe("Authenticated user journeys", () => {
   });
 
   test("login page loads and shows authentication options", async ({ page }) => {
-    // Verify login form elements are present
-    await expect(page.locator("h1, h2")).toContainText(["Sign in", "Login", "Sign in to ShipIN"]);
+    // One locator, one expectation. `toContainText([...])` needs one element per
+    // string, so an array of acceptable labels can never match a single <h1> —
+    // it failed against a page whose heading read exactly "Sign in".
+    await expect(page.locator("h1").first()).toContainText(/sign in/i);
 
     // Check for email/password fields or Google sign-in button
     const hasEmailInput = await page
@@ -32,21 +34,17 @@ test.describe("Authenticated user journeys", () => {
     expect(hasEmailInput + hasGoogleButton).toBeGreaterThan(0);
   });
 
-  test("protected dashboard redirects to login when unauthenticated", async ({
+  test("the signed-out dashboard renders without customer data", async ({
     page,
   }) => {
+    // The platform shell is prerendered and renders signed out on purpose;
+    // `smoke.spec.ts` pins the same rule. Data is the real boundary — every
+    // customer API rejects an anonymous request — so this test previously
+    // asserted a /login redirect the app never performed.
     await page.goto("/dashboard");
 
-    // Should redirect to login or verify-email
-    await page.waitForURL(
-      (url) =>
-        url.toString().includes("/login") || url.toString().includes("/verify-email")
-    );
-
-    const finalUrl = page.url();
-    expect(
-      finalUrl.includes("/login") || finalUrl.includes("/verify-email")
-    ).toBe(true);
+    await expect(page.getByText("No requests yet")).toBeVisible({ timeout: 20_000 });
+    expect(new URL(page.url()).pathname).toBe("/dashboard");
   });
 
   test("tracking page is accessible without auth", async ({ page }) => {
@@ -69,13 +67,17 @@ test.describe("Authenticated user journeys", () => {
 });
 
 test.describe("Support flow (requires auth)", () => {
-  test("support page redirects to login when unauthenticated", async ({
-    page,
-  }) => {
+  test("support page asks a signed-out visitor to sign in", async ({ page }) => {
+    // Same rule as the dashboard: no redirect, an in-page sign-in prompt, and
+    // no ticket data (the support APIs are token-protected).
     await page.goto("/support");
-    await page.waitForURL(
-      (url) =>
-        url.toString().includes("/login") || url.toString().includes("/verify-email")
-    );
+
+    // The page shows a skeleton until `onAuthStateChanged` fires, which is
+    // immediate against the real SDK but competes with the dev server's
+    // on-demand route compiles when the whole suite runs in parallel.
+    await expect(page.getByText("Sign in to open support")).toBeVisible({
+      timeout: 45_000,
+    });
+    expect(new URL(page.url()).pathname).toBe("/support");
   });
 });

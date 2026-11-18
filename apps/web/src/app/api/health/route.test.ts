@@ -195,7 +195,7 @@ describe('GET /api/health', () => {
     expect(body.appCheck.status).toBe('enforced');
   });
 
-  it('reports degraded and exposes error details when Redis is failing', async () => {
+  it('reports degraded counters when Redis is failing', async () => {
     state.isProduction = true;
     state.url = 'https://t.upstash.io';
     state.token = 'tok';
@@ -207,8 +207,33 @@ describe('GET /api/health', () => {
     expect(response.status).toBe(200);
     expect(body.status).toBe('degraded');
     expect(body.rateLimits.totalRecentErrors).toBe(3);
-    expect(body.redisErrorDetails).toEqual([
-      expect.objectContaining({ limiter: 'api', ip: '203.0.113.5', count: 3 }),
-    ]);
+    expect(body.rateLimits.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'api',
+          recentErrors: 3,
+          affectedClients: 1,
+          lastErrorAt: expect.any(String),
+        }),
+      ])
+    );
+    expect(body.rateLimits.warning).toEqual(expect.stringContaining('not being enforced'));
+  });
+
+  it('never publishes the client addresses behind a limiter error', async () => {
+    // The probe is unauthenticated: a per-address row here would hand out a
+    // list of live user IPs. The limiter mock returns `203.0.113.5`, so any
+    // surface that still carries the address shows up as a literal match.
+    state.isProduction = true;
+    state.url = 'https://t.upstash.io';
+    state.token = 'tok';
+    state.errors.api = 3;
+    state.errors.web = 1;
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(JSON.stringify(body)).not.toContain('203.0.113.5');
+    expect(body.redisErrorDetails).toBeUndefined();
   });
 });

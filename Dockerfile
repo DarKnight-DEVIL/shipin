@@ -47,4 +47,6 @@ ENV HOSTNAME="0.0.0.0"
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
+# Same entrypoint as `npm start` in apps/web; its `prestart` hook performs the
+# public/ and .next/static copies that the COPYs above provide here.
 CMD ["node", "apps/web/server.js"]

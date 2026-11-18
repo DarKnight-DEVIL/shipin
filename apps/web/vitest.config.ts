@@ -27,7 +27,9 @@ export default defineConfig({
     environment: 'node',
     isolate: false,
     setupFiles: ['./vitest.setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}'],
+    // `scripts/**` carries the migration suite; without it the only test for
+    // the quote-expiry backfill never ran.
+    include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.{ts,tsx}'],
     // ---------------------------------------------------------------------------
     // Coverage thresholds.
     // ---------------------------------------------------------------------------

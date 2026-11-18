@@ -9,8 +9,8 @@
  * with no build-time signal. The login page can only apologise for it. This
  * reads the same list the console shows and says so before anyone tries.
  *
- * Scope: only the canonical domain (`NEXT_PUBLIC_APP_URL`, else `siteConfig.url`)
- * is checked. Preview hosts are per-branch and are added by hand; see
+ * Scope: only the canonical domain (`NEXT_PUBLIC_APP_URL`, else
+ * `SITE_URL_FALLBACK`) is checked. Preview hosts are per-branch and are added by hand; see
  * DEPLOYMENT.md → "Firebase Auth on preview deployments".
  *
  * Exit codes:
@@ -48,13 +48,15 @@ function resolveCanonicalHost() {
 
   if (configured) return new URL(configured).hostname;
 
-  // `siteConfig` lives in TypeScript, so the value is read rather than imported:
-  // a single `url: 'https://...'` literal is the whole shape needed here.
-  const siteFile = path.join(ROOT, "src/config/site.ts");
-  const url = /url:\s*['"]([^'"]+)['"]/.exec(readFileSync(siteFile, "utf8"))?.[1];
+  // `@shipin/config` is TypeScript, so the fallback constant is read rather
+  // than imported: one `SITE_URL_FALLBACK = 'https://...'` line is the whole
+  // shape needed here.
+  const configFile = path.join(ROOT, "../../packages/config/src/site.ts");
+  const url = /SITE_URL_FALLBACK\s*=\s*['"]([^'"]+)['"]/
+    .exec(readFileSync(configFile, "utf8"))?.[1];
 
   if (!url) {
-    note("could not read the canonical URL from src/config/site.ts; set NEXT_PUBLIC_APP_URL.");
+    note("could not read the canonical URL from packages/config/src/site.ts; set NEXT_PUBLIC_APP_URL.");
     return null;
   }
 

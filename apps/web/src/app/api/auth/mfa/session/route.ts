@@ -22,6 +22,7 @@ import {
   revokeMfaSession,
 } from "@/lib/mfaSession";
 import { addRateLimitHeaders, isRateLimited, loginRateLimiter } from "@/lib/rateLimiter";
+import { verifyAppCheckRequest } from "@/lib/appCheck";
 import { withErrorHandler } from "@/utils/errors";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
@@ -90,6 +91,21 @@ async function resolveAdminCaller(
 
   const token = authorization.slice("Bearer ".length).trim();
 
+  // This route mints the elevated admin session, so it is the one MFA endpoint
+  // that does not go through `requireAuthWithProfile` and therefore has to run
+  // the App Check gate itself.
+  const appCheck = await verifyAppCheckRequest(request);
+  if (appCheck === "missing" || appCheck === "invalid") {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "App verification failed. Reload the page and try again.",
+        code: "APP_CHECK_FAILED",
+      },
+      { status: 401, headers: NO_STORE }
+    );
+  }
+
   let decoded;
 
   try {
@@ -102,6 +118,17 @@ async function resolveAdminCaller(
         code: "INVALID_AUTHENTICATION",
       },
       { status: 401, headers: NO_STORE }
+    );
+  }
+
+  if (decoded.email_verified !== true) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Please verify your email address before accessing this resource.",
+        code: "EMAIL_VERIFICATION_REQUIRED",
+      },
+      { status: 403, headers: NO_STORE }
     );
   }
 
@@ -378,6 +405,18 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
  * request.
  */
 export const DELETE = withErrorHandler(async (request: NextRequest) => {
+  const appCheck = await verifyAppCheckRequest(request);
+  if (appCheck === "missing" || appCheck === "invalid") {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "App verification failed. Reload the page and try again.",
+        code: "APP_CHECK_FAILED",
+      },
+      { status: 401, headers: NO_STORE }
+    );
+  }
+
   const authorization = request.headers.get("authorization");
 
   if (!authorization?.startsWith("Bearer ")) {

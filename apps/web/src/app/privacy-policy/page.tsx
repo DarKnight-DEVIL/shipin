@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import { INDEX_ROBOTS } from '@/config/seo';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
+  robots: INDEX_ROBOTS,
   title: 'Privacy Policy',
   description: 'Learn how ShipIN collects, uses, and protects your personal information.',
 };

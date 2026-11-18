@@ -470,7 +470,7 @@ jobs:
         run: |
           npx --yes firebase-tools@15.36.0 --config firebase.json \
             emulators:exec --only firestore --project shipin-e2e \
-            "npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/hydration.spec.ts apps/web/playwright-test/tests/smoke.spec.ts"
+            "npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/smoke.spec.ts apps/web/playwright-test/tests/hydration.spec.ts apps/web/playwright-test/tests/sitemap-check.spec.ts apps/web/playwright-test/tests/checkout-flow.spec.ts apps/web/playwright-test/tests/wallet-topup.spec.ts apps/web/playwright-test/tests/admin-refund-local.spec.ts"
         env:
           # The server started here validates the same startup variables the
           # build did; without them Playwright times out waiting for it.
@@ -478,10 +478,11 @@ jobs:
           CI: "1"
           BASE_URL: "http://localhost:3000"
           # Playwright runs this from the config's directory (apps/web).
-          # `-p 3000` is required: with `output: "standalone"`, a bare
-          # `next start` binds an arbitrary port and the health check waits on
-          # 3000 until it times out.
-          PLAYWRIGHT_WEBSERVER_COMMAND: "npm run start -- -p 3000"
+          # `npm start` serves the traced standalone build — the same entrypoint
+          # the Docker image runs — and that server takes its port from PORT, not
+          # from an argument, so the health check below waits on the right one.
+          PORT: "3000"
+          PLAYWRIGHT_WEBSERVER_COMMAND: "npm start"
           # This job has no Upstash store, and a production build refuses to
           # boot without one (a real deployment must not serve traffic with
           # rate limiting silently off). The E2E suite is the documented

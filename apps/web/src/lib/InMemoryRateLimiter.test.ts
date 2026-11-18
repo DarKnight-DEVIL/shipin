@@ -28,7 +28,7 @@ describe('InMemoryRateLimiter', () => {
   });
 
   it('allows requests under the limit', async () => {
-    const req = createRequest({ 'cf-connecting-ip': '1.2.3.4' });
+    const req = createRequest({ 'x-vercel-forwarded-for': '1.2.3.4' });
     for (let i = 0; i < 5; i++) {
       const result = await limiter.record(req);
       expect(result.ok).toBe(true);
@@ -38,7 +38,7 @@ describe('InMemoryRateLimiter', () => {
   });
 
   it('rejects the 6th request from the same IP', async () => {
-    const req = createRequest({ 'cf-connecting-ip': '1.2.3.4' });
+    const req = createRequest({ 'x-vercel-forwarded-for': '1.2.3.4' });
     for (let i = 0; i < 5; i++) await limiter.record(req);
     const result = await limiter.record(req);
     expect(result.ok).toBe(false);
@@ -46,15 +46,15 @@ describe('InMemoryRateLimiter', () => {
   });
 
   it('tracks different IPs independently', async () => {
-    const req1 = createRequest({ 'cf-connecting-ip': '1.2.3.4' });
-    const req2 = createRequest({ 'cf-connecting-ip': '5.6.7.8' });
+    const req1 = createRequest({ 'x-vercel-forwarded-for': '1.2.3.4' });
+    const req2 = createRequest({ 'x-vercel-forwarded-for': '5.6.7.8' });
     for (let i = 0; i < 5; i++) await limiter.record(req1);
     const result = await limiter.record(req2);
     expect(result.ok).toBe(true);
     expect(result.remaining).toBe(4);
   });
 
-  it('falls back to x-forwarded-for when cf-connecting-ip is missing', async () => {
+  it('falls back to the forwarded chain when no platform header is present', async () => {
     const req = createRequest({ 'x-forwarded-for': '203.0.113.195, 70.41.3.18' });
     const result = await limiter.record(req);
     expect(result.ok).toBe(true);
@@ -66,14 +66,28 @@ describe('InMemoryRateLimiter', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('ignores client-controlled x-real-ip so limits cannot be bypassed', async () => {
-    const spoofed = createRequest({ 'x-real-ip': '9.9.9.9' });
+  it('ignores cf-connecting-ip, which the platform does not set', async () => {
+    const spoofed = createRequest({ 'cf-connecting-ip': '9.9.9.9' });
     for (let i = 0; i < 5; i++) await limiter.record(spoofed);
 
-    // The spoofed header must not create a fresh bucket.
+    // The spoofed header must not create a fresh bucket...
     expect((await limiter.record(spoofed)).ok).toBe(false);
-    // Nor may a different spoofed value buy another bucket.
-    expect((await limiter.record(createRequest({ 'x-real-ip': '8.8.8.8' }))).ok).toBe(false);
+    // ...nor may a different spoofed value buy another bucket.
+    expect((await limiter.record(createRequest({ 'cf-connecting-ip': '8.8.8.8' }))).ok).toBe(false);
+  });
+
+  it('keys on the platform address even when the client sends its own', async () => {
+    const spoofed = createRequest({
+      'x-vercel-forwarded-for': '203.0.113.7',
+      'x-forwarded-for': '9.9.9.9',
+      'cf-connecting-ip': '8.8.8.8',
+    });
+    for (let i = 0; i < 5; i++) await limiter.record(spoofed);
+
+    // The same platform address, with no client headers, is the same bucket.
+    expect(
+      (await limiter.record(createRequest({ 'x-vercel-forwarded-for': '203.0.113.7' }))).ok
+    ).toBe(false);
   });
 
   it('skips routes listed in skipRoutes', async () => {
@@ -83,7 +97,7 @@ describe('InMemoryRateLimiter', () => {
       message: 'Test',
       skipRoutes: ['/api/health'],
     });
-    const req = createRequest({ 'cf-connecting-ip': '1.2.3.4' }, 'http://example.com/api/health');
+    const req = createRequest({ 'x-vercel-forwarded-for': '1.2.3.4' }, 'http://example.com/api/health');
     const result = await skipLimiter.record(req);
     expect(result.ok).toBe(true);
     expect(result.remaining).toBe(1);
@@ -93,7 +107,7 @@ describe('InMemoryRateLimiter', () => {
     vi.useFakeTimers();
     try {
       const windowLimiter = new InMemoryRateLimiter({ maxRequests: 1, windowMs: 1000, message: 'Test' });
-      const req = createRequest({ 'cf-connecting-ip': '1.2.3.4' });
+      const req = createRequest({ 'x-vercel-forwarded-for': '1.2.3.4' });
       await windowLimiter.record(req);
       expect((await windowLimiter.record(req)).ok).toBe(false);
       await vi.advanceTimersByTimeAsync(1100);
