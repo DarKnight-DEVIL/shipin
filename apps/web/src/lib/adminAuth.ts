@@ -9,6 +9,9 @@ import { getMfaSession } from "@/lib/mfaSession";
 import { getAccountBlock } from "@/lib/accountStatus";
 import { verifyAppCheckRequest } from "@/lib/appCheck";
 
+/** A syntactically valid base32 secret that no administrator has enrolled. */
+const TIMING_DECOY_TOTP_SECRET = "JBSWY3DPEHPK3PXP";
+
 export interface AdminUser {
   uid: string;
   email?: string;
@@ -230,10 +233,19 @@ export async function requireAdmin(
 
   let mfaVerified = secondFactorVerified;
 
-  // TOTP verification
-  if (totpCode && hasTotp) {
-    if (verifyTotp(mfa.totp.secret, totpCode, 1)) {
+  // TOTP verification.
+  //
+  // The verification runs whenever a code is supplied, against a decoy secret
+  // when TOTP is not enrolled: otherwise the response time itself tells an
+  // attacker whether an administrator has TOTP configured. The decoy secret can
+  // never grant access — the result is only honoured when hasTotp is true.
+  if (totpCode) {
+    const secret = hasTotp ? mfa.totp.secret : TIMING_DECOY_TOTP_SECRET;
+
+    if (hasTotp && verifyTotp(secret, totpCode, 1)) {
       mfaVerified = true;
+    } else {
+      verifyTotp(secret, totpCode, 1);
     }
   }
 

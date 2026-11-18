@@ -53,6 +53,30 @@ describe('getCustomersWithWallets', () => {
 });
 
 describe('getRefundRequestDetails', () => {
+  it('uses the versioned refund payload when the server sends one', async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      data: {
+        schemaVersion: 2,
+        refund: {
+          id: 'req-1',
+          userId: 'u1',
+          preference: 'wallet',
+          totalRefundAmount: 80,
+          walletRefundAmount: 80,
+        },
+      },
+    });
+
+    await expect(getRefundRequestDetails('req-1')).resolves.toEqual({
+      id: 'req-1',
+      userId: 'u1',
+      preference: 'wallet',
+      totalRefundAmount: 80,
+      walletRefundAmount: 80,
+    });
+  });
+
   it('refunds the whole amount to the wallet when that is the preference', async () => {
     customerApiMock.mockResolvedValue({ success: true, data: { userId: 'u1', refundRequest: { preference: 'wallet', amount: 80 }, id: 'req-1' } });
     const result = await getRefundRequestDetails('req-1');

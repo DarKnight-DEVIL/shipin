@@ -93,6 +93,35 @@ export interface WebAuthnRecord {
  * Both come from APP_URL (not the request Host header) so a forged Host cannot
  * change which origin an assertion is checked against.
  */
+/**
+ * Domains shared by unrelated tenants.
+ *
+ * An RP ID is a registrable domain, and a passkey registered for
+ * `something.vercel.app` is scoped to `vercel.app` — any other project on that
+ * hosting could then ask for a credential for the same RP ID. The app must be
+ * served from a domain it owns.
+ */
+const SHARED_HOSTING_SUFFIXES = [
+  "vercel.app",
+  "netlify.app",
+  "web.app",
+  "firebaseapp.com",
+  "pages.dev",
+  "workers.dev",
+  "github.io",
+  "herokuapp.com",
+  "onrender.com",
+  "fly.dev",
+] as const;
+
+export function isSharedHostingDomain(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+
+  return SHARED_HOSTING_SUFFIXES.some(
+    (suffix) => host === suffix || host.endsWith(`.${suffix}`)
+  );
+}
+
 export function getWebAuthnConfig(): {
   origin: string;
   rpID: string;
@@ -100,6 +129,12 @@ export function getWebAuthnConfig(): {
 } {
   const origin = resolveAppOrigin(serverEnv.APP_URL);
   const rpID = new URL(origin).hostname;
+
+  if (isSharedHostingDomain(rpID)) {
+    throw new Error(
+      `APP_URL points at the shared hosting domain "${rpID}". WebAuthn would register passkeys for the whole hosting provider, so point APP_URL at a domain ShipIN owns.`
+    );
+  }
 
   return { origin, rpID, rpName: WEBAUTHN_RP_NAME };
 }

@@ -171,6 +171,28 @@ describe('validateProductionRequiredEnv', () => {
   });
 });
 
+describe('APP_URL shape', () => {
+  it('rejects a value that is not an absolute URL', async () => {
+    setEverythingButStore();
+    vi.stubEnv(STORE_URL, 'https://redis.example');
+    vi.stubEnv(STORE_TOKEN, 'token');
+    vi.stubEnv('APP_URL', 'foo');
+    const { validateProductionRequiredEnv } = await loadEnvModule();
+
+    expect(() => validateProductionRequiredEnv()).toThrow(/APP_URL must be an absolute/);
+  });
+
+  it('accepts an https origin', async () => {
+    setEverythingButStore();
+    vi.stubEnv(STORE_URL, 'https://redis.example');
+    vi.stubEnv(STORE_TOKEN, 'token');
+    vi.stubEnv('APP_URL', 'https://shipin.app');
+    const { validateProductionRequiredEnv } = await loadEnvModule();
+
+    expect(() => validateProductionRequiredEnv()).not.toThrow();
+  });
+});
+
 describe('isRateLimitStoreOptional', () => {
   it('is false by default', async () => {
     const { isRateLimitStoreOptional } = await loadEnvModule();

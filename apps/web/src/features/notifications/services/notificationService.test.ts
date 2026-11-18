@@ -21,6 +21,7 @@ vi.mock('@/lib/whatsapp', () => ({ sendWhatsAppTemplate: mocks.sendWhatsAppTempl
 vi.mock('@/lib/mailer', () => ({ sendMail: mocks.sendMail }));
 
 import { sendNotification } from './notificationService';
+import { resetNotificationRateLimit } from '@/lib/notificationRateLimit';
 
 const base = {
   userId: 'user-1',
@@ -42,6 +43,7 @@ function user(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  resetNotificationRateLimit();
   mocks.getUser.mockReset().mockResolvedValue(user());
   mocks.addNotification.mockReset().mockResolvedValue({ id: 'n-1' });
   mocks.sendWhatsAppTemplate.mockReset().mockResolvedValue(undefined);
@@ -51,6 +53,25 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe('sendNotification — rate limit', () => {
+  it('drops the notification once the hourly budget is spent', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    for (let index = 0; index < 10; index += 1) {
+      await sendNotification({ ...base, channels: { inApp: true } });
+    }
+
+    expect(mocks.addNotification).toHaveBeenCalledTimes(10);
+
+    await sendNotification({ ...base, channels: { inApp: true } });
+
+    expect(mocks.addNotification).toHaveBeenCalledTimes(10);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('rate limit reached')
+    );
+  });
 });
 
 describe('sendNotification — category opt-out', () => {

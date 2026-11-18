@@ -130,7 +130,11 @@ export default function WarehousePanel({ request }: Props) {
         value &&
         shippingPreference === "approval"
       ) {
-        await startStorageTimer(request.id);
+        await startStorageTimer(request.id, {
+          shippingPreference,
+          storageType:
+            (request.warehouse as { storageType?: string } | undefined)?.storageType ?? null,
+        });
       }
 
       /*

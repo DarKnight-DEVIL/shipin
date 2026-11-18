@@ -23,6 +23,10 @@ export interface RefundRequestDetails {
 }
 
 interface RefundRequestData {
+  /** Present from REFUND_SCHEMA_VERSION 2 onwards. */
+  schemaVersion?: number;
+  refund?: RefundRequestDetails;
+  /** Legacy raw request document, still accepted from an older server. */
   refundRequest?: {
     preference?: string;
     amount?: number;
@@ -34,6 +38,28 @@ interface RefundRequestData {
   payment?: { walletAmount?: number };
   id?: string;
   userId?: string;
+}
+
+/** The pre-v2 shape, resolved in one place instead of at every read site. */
+function legacyRefund(data: RefundRequestData, requestId: string): RefundRequestDetails {
+  const preference = (data.refundRequest?.preference ?? data.preference ?? "wallet") as string;
+  const totalRefundAmount = Number(data.refundRequest?.amount ?? data.amount ?? 0);
+  const originalWalletAmount = Number(
+    data.refundRequest?.walletAmount ?? data.payment?.walletAmount ?? data.walletAmount ?? 0
+  );
+
+  return {
+    id: String(data.id ?? requestId),
+    userId: String(data.userId ?? ""),
+    preference,
+    totalRefundAmount,
+    walletRefundAmount:
+      preference === "wallet"
+        ? totalRefundAmount
+        : ["original_sources", "original_payment"].includes(preference)
+          ? originalWalletAmount
+          : 0,
+  };
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -70,34 +96,16 @@ export async function getRefundRequestDetails(
   try {
     const data = await fetchRefundData(requestId);
 
-    const preference =
-      (data.refundRequest?.preference ?? data.preference ?? "wallet") as string;
-    const totalRefundAmount = Number(data.refundRequest?.amount ?? data.amount ?? 0);
-    const originalWalletAmount = Number(
-      (data.refundRequest?.walletAmount ??
-        data.payment?.walletAmount ??
-        data.walletAmount ??
-        0) as number
-    );
+    const details =
+      data.refund && typeof data.refund === "object"
+        ? data.refund
+        : legacyRefund(data, requestId);
 
-    const walletRefundAmount =
-      preference === "wallet"
-        ? totalRefundAmount
-        : ["original_sources", "original_payment"].includes(preference)
-          ? originalWalletAmount
-          : 0;
-
-    if (!Number.isFinite(walletRefundAmount) || walletRefundAmount <= 0) {
+    if (!Number.isFinite(details.walletRefundAmount) || details.walletRefundAmount <= 0) {
       throw new Error("This refund does not contain a wallet refund amount.");
     }
 
-    return {
-      id: String(data.id ?? requestId),
-      userId: String(data.userId ?? ""),
-      preference,
-      totalRefundAmount,
-      walletRefundAmount,
-    };
+    return details;
   } catch (error) {
     throw toShipINError(error);
   }

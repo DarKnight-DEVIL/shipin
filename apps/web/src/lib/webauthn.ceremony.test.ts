@@ -43,6 +43,7 @@ let buildAuthenticationOptions: typeof import('./webauthn').buildAuthenticationO
 let buildRegistrationOptions: typeof import('./webauthn').buildRegistrationOptions;
 let verifyAssertion: typeof import('./webauthn').verifyAssertion;
 let verifyRegistration: typeof import('./webauthn').verifyRegistration;
+let getWebAuthnConfig: typeof import('./webauthn').getWebAuthnConfig;
 
 const CREDENTIAL: StoredWebAuthnCredential = {
   credentialID: 'cred-1',
@@ -62,6 +63,7 @@ beforeEach(async () => {
     buildRegistrationOptions,
     verifyAssertion,
     verifyRegistration,
+    getWebAuthnConfig,
   } = await import('./webauthn'));
   mocks.state.production = false;
   mocks.state.appUrl = 'http://localhost:3000';
@@ -175,12 +177,23 @@ describe('verifyRegistration', () => {
     ]);
 
     mocks.state.production = true;
-    mocks.state.appUrl = 'https://shipin-psi.vercel.app';
+    mocks.state.appUrl = 'https://shipin.app';
     await verifyRegistration({ response, expectedChallenge: 'c' });
     expect(mocks.verifyRegistrationResponse.mock.calls[1][0]).toMatchObject({
-      expectedOrigin: ['https://shipin-psi.vercel.app'],
-      expectedRPID: 'shipin-psi.vercel.app',
+      expectedOrigin: ['https://shipin.app'],
+      expectedRPID: 'shipin.app',
     });
+  });
+
+  it('refuses to use a shared hosting domain as the relying party', async () => {
+    mocks.state.production = true;
+    mocks.state.appUrl = 'https://shipin-psi.vercel.app';
+
+    // A passkey scoped to vercel.app belongs to every project on that host.
+    expect(() => getWebAuthnConfig()).toThrow(/shared hosting domain/);
+    await expect(
+      verifyRegistration({ response, expectedChallenge: 'c' })
+    ).rejects.toThrow(/shared hosting domain/);
   });
 });
 

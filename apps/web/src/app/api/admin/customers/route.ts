@@ -14,6 +14,9 @@ export interface AdminCustomer {
   walletBalance: number;
 }
 
+/** Bumped when the refund payload changes shape. */
+export const REFUND_SCHEMA_VERSION = 2;
+
 export interface RefundRequestDetails {
   id: string;
   userId: string;
@@ -51,15 +54,29 @@ async function handleGetCustomers(request: NextRequest): Promise<NextResponse> {
         data.walletAmount ??
         0
     );
-    const _walletRefundAmount =
+    const walletRefundAmount =
       preference === "wallet"
         ? totalRefundAmount
         : ["original_sources", "original_payment"].includes(preference)
           ? originalWalletAmount
           : 0;
 
+    /*
+     * One normalized shape, versioned. The client used to walk six different
+     * paths in the raw request document, so a change in that document silently
+     * produced a wrong refund; the interesting numbers are resolved once, here,
+     * and the client reads only this.
+     */
+    const refund: RefundRequestDetails = {
+      id: docSnap.id,
+      userId: String(data.userId ?? ""),
+      preference,
+      totalRefundAmount,
+      walletRefundAmount,
+    };
+
     return NextResponse.json(
-      { success: true, data: { id: docSnap.id, ...data } satisfies Record<string, unknown> },
+      { success: true, data: { schemaVersion: REFUND_SCHEMA_VERSION, refund } },
       { status: 200, headers: NO_STORE }
     );
   }

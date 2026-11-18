@@ -3,6 +3,7 @@ import "server-only";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { isKnownWhatsAppTemplate } from "@/features/notifications/templates";
+import { allowNotification } from "@/lib/notificationRateLimit";
 import { sendMail } from "@/lib/mailer";
 
 import {
@@ -153,6 +154,21 @@ export async function sendNotification({
       category
     ]
   ) {
+    return;
+  }
+
+  /*
+   * PER-USER RATE LIMIT
+   *
+   * A tracking sync touching every open parcel can emit hundreds of events for
+   * one customer in a minute. Beyond the hourly budget the notification is
+   * dropped rather than queued: the events are already visible in the app, and
+   * the limit exists to protect the customer from the flood.
+   */
+  if (!(await allowNotification(userId))) {
+    console.warn(
+      `Notification rate limit reached for user ${userId}; dropping "${type}".`
+    );
     return;
   }
 

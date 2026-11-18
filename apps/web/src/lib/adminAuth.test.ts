@@ -160,6 +160,24 @@ describe('requireAdmin — profile and role', () => {
     await expect(requireAdmin(bearer({ 'x-mfa-totp': '123456' }))).rejects.toThrow(code);
   });
 
+  it('verifies a supplied TOTP code even when none is enrolled', async () => {
+    mocks.users.set(
+      UID,
+      adminUser({
+        mfa: {
+          totp: { enabled: false },
+          webauthn: { enabled: true, credentialIds: ['cred-1'] },
+        },
+      })
+    );
+
+    await expect(requireAdmin(bearer({ 'x-mfa-totp': '123456' }))).rejects.toThrow('MFA_REQUIRED');
+
+    // The work happens either way, so response time does not reveal whether
+    // this administrator has TOTP enrolled.
+    expect(mocks.verifyTotp).toHaveBeenCalledTimes(1);
+  });
+
   it('checks account state before MFA so a banned admin never reaches a factor', async () => {
     mocks.users.set(UID, adminUser({ banned: true }));
 

@@ -1,13 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import {
-  EmailAuthProvider,
-  reauthenticateWithCredential,
-  updatePassword,
-} from "firebase/auth";
 
-import { auth } from "@/lib/firebase";
+import { customerApi } from "@/lib/customerApiClient";
+import { validatePassword } from "@/lib/passwordPolicy";
 
 export function usePasswordSettings(hasPasswordProvider: boolean) {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -28,15 +24,19 @@ export function usePasswordSettings(hasPasswordProvider: boolean) {
     setError("");
     setMessage("");
 
-    if (!currentPassword) {
+    if (hasPasswordProvider && !currentPassword) {
       setError("Enter your current password.");
       return;
     }
-    if (newPassword.length < 6) {
-      setError("New password must be at least 6 characters.");
+    // Local check for instant feedback; POST /api/user/password enforces the
+    // same policy server-side, so this is not the boundary.
+    const policy = validatePassword(newPassword);
+
+    if (!policy.valid) {
+      setError(policy.errors[0]);
       return;
     }
-    if (currentPassword === newPassword) {
+    if (hasPasswordProvider && currentPassword === newPassword) {
       setError("New password must be different.");
       return;
     }
@@ -45,22 +45,15 @@ export function usePasswordSettings(hasPasswordProvider: boolean) {
       return;
     }
 
-    const user = auth.currentUser;
-    if (!user?.email) {
-      setError("No authenticated user found.");
-      return;
-    }
-
     try {
       setChanging(true);
-      if (hasPasswordProvider) {
-        const credential = EmailAuthProvider.credential(
-          user.email,
-          currentPassword
-        );
-        await reauthenticateWithCredential(user, credential);
-      }
-      await updatePassword(user, newPassword);
+      await customerApi<{ success: boolean }>("/api/user/password", {
+        method: "POST",
+        body: {
+          currentPassword: hasPasswordProvider ? currentPassword : undefined,
+          newPassword,
+        },
+      });
       setMessage("Password updated.");
       resetFields();
     } catch (caught) {

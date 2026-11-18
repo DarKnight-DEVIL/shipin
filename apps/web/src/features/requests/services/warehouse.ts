@@ -14,6 +14,9 @@ import { db } from "@/lib/firebaseDb";
 import { toShipINError } from '@/utils/errors';
 import { createNotification } from '@/features/notifications/services';
 import type { Request } from '@/types/request';
+import { getStorageParams } from './warehousePolicy';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function getWarehouseInventory(): Promise<Request[]> {
   try {
@@ -105,14 +108,26 @@ export async function approveInternationalShipment(requestId: string): Promise<v
   }
 }
 
-export async function startStorageTimer(requestId: string): Promise<void> {
+export async function startStorageTimer(
+  requestId: string,
+  options: { shippingPreference?: string; storageType?: string | null } = {}
+): Promise<void> {
   try {
-    const now = serverTimestamp();
+    const startedAt = Date.now();
+    const { dailyFine, freeStorageDays } = getStorageParams(
+      options.shippingPreference ?? 'approval',
+      options.storageType ?? null
+    );
+
     await updateDoc(doc(db, 'requests', requestId), {
       storage: {
-        startedAt: now,
-        freeUntil: now, // Will be set properly on server
-        dailyFine: 3,
+        startedAt,
+        // The grace window has to be written here: this path writes the whole
+        // storage object, so leaving freeUntil at "now" started billing the
+        // customer on day zero.
+        freeUntil: startedAt + freeStorageDays * DAY_MS,
+        freeStorageDays,
+        dailyFine,
         accumulatedFine: 0,
         active: true,
       },

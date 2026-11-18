@@ -227,8 +227,36 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
  * plus the rate-limit store vars. Previously only PAYPAL_WEBHOOK_ID was validated,
  * leaving Firebase Admin, PayPal credentials, SMTP, and R2 to fail lazily at runtime.
  */
+/**
+ * APP_URL drives WebAuthn's relying-party origin and the CORS allowlist, both of
+ * which fail in confusing ways when it is not an absolute URL ("foo" parses as a
+ * relative path and later throws inside the WebAuthn library). Check the shape
+ * while the error can still name the variable.
+ */
+function assertAppUrlShape(): void {
+  const raw = process.env.APP_URL?.trim();
+
+  // Absence is reported by the missing-variable check, with its own message.
+  if (!raw) return;
+
+  let parsed: URL | null = null;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    parsed = null;
+  }
+
+  if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+    throw new Error(
+      `[ShipIN] FATAL: APP_URL must be an absolute http(s) URL (for example https://shipin.app); got "${raw}".`
+    );
+  }
+}
+
 export function validateProductionRequiredEnv(): void {
   if (!isProduction) return;
+
+  assertAppUrlShape();
 
   const required: string[] = [...REQUIRED_SERVER_ENV, ...PRODUCTION_REQUIRED_SERVER_ENV];
 

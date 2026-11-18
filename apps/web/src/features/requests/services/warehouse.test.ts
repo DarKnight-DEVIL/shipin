@@ -140,12 +140,22 @@ describe('warehouse status helpers', () => {
     );
   });
 
-  it('starts the storage timer', async () => {
-    await startStorageTimer('req-1');
+  it('starts the storage timer with a real grace window', async () => {
+    const before = Date.now();
 
-    expect(mocks.updateDoc.mock.calls[0][1]).toMatchObject({
-      storage: { dailyFine: 3, accumulatedFine: 0, active: true },
-    });
+    await startStorageTimer('req-1', { shippingPreference: 'hold' });
+
+    const update = mocks.updateDoc.mock.calls[0][1] as {
+      storage: { startedAt: number; freeUntil: number; freeStorageDays: number };
+    };
+
+    expect(update.storage.freeStorageDays).toBe(14);
+    // freeUntil used to equal startedAt, so storage started billing on day zero.
+    expect(update.storage.freeUntil).toBeGreaterThan(update.storage.startedAt);
+    expect(update.storage.freeUntil).toBe(
+      update.storage.startedAt + 14 * 24 * 60 * 60 * 1000
+    );
+    expect(update.storage.startedAt).toBeGreaterThanOrEqual(before);
   });
 
   it('saves measurements without condition', async () => {

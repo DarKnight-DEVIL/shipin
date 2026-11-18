@@ -161,6 +161,16 @@ function getRedis(): Redis | null {
   return redis;
 }
 
+/**
+ * The shared Redis client, or null when no store is configured.
+ *
+ * Exported for the few callers that need a counter rather than a sliding
+ * window (the notification rate limit); Ratelimit instances stay private.
+ */
+export function getSharedRedisClient(): Redis | null {
+  return getRedis();
+}
+
 // Cache of created Ratelimit instances per limiter name to avoid
 // creating a new instance on every request (which wastes CPU and
 // may hit Upstash connection limits).

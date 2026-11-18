@@ -19,15 +19,30 @@
  * The deployment's own origin is deliberately NOT hard-coded: it is read from
  * APP_URL / NEXT_PUBLIC_APP_URL at runtime, so moving the app to a new domain
  * is a configuration change rather than a code change. The Firebase Hosting
- * aliases stay here because they belong to the Firebase project itself, and
- * APP_ALLOWED_ORIGINS remains the escape hatch for anything else.
+ * aliases are derived from the Firebase project id for the same reason — a
+ * hard-coded project id goes stale the day the project is renamed. Local
+ * development is fixed because it is, by definition, local.
  */
 const DEFAULT_ALLOWED_ORIGINS = [
-  "https://shipin-9576a.web.app", // Firebase Hosting (default domain)
-  "https://shipin-9576a.firebaseapp.com", // Firebase Hosting (alternate domain)
   "http://localhost:3000", // Local development
   "http://127.0.0.1:3000", // Local development (loopback alias)
 ];
+
+/**
+ * Firebase Hosting serves every project at <project>.web.app and
+ * <project>.firebaseapp.com; both are accepted so the aliases keep working
+ * after a rename.
+ */
+function firebaseHostingOrigins(): string[] {
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim();
+
+  if (!projectId) return [];
+
+  return [
+    `https://${projectId}.web.app`,
+    `https://${projectId}.firebaseapp.com`,
+  ];
+}
 
 /**
  * Parse a comma-separated origin list from the environment.
@@ -105,6 +120,7 @@ function allowedOrigins(): string[] {
   return Array.from(
     new Set([
       ...DEFAULT_ALLOWED_ORIGINS,
+      ...firebaseHostingOrigins(),
       ...appOrigins(),
       ...vercelDeploymentOrigins(),
       ...parseOriginList(process.env.APP_ALLOWED_ORIGINS),

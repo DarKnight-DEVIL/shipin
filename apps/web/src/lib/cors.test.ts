@@ -4,6 +4,7 @@ import { isAllowedOrigin, getCorsHeaders } from './cors';
 const originalEnv = process.env.APP_ALLOWED_ORIGINS;
 const originalAppUrl = process.env.APP_URL;
 const originalPublicAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+const originalFirebaseProjectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
 const originalVercelEnv = {
   VERCEL_URL: process.env.VERCEL_URL,
   VERCEL_BRANCH_URL: process.env.VERCEL_BRANCH_URL,
@@ -23,6 +24,7 @@ function restoreEnv(key: string, value: string | undefined) {
 // hard-coded `shipin-psi.vercel.app` entry.
 beforeEach(() => {
   process.env.APP_URL = 'https://shipin-psi.vercel.app';
+  process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID = 'shipin-9576a';
   delete process.env.NEXT_PUBLIC_APP_URL;
 });
 
@@ -30,6 +32,7 @@ afterEach(() => {
   restoreEnv('APP_ALLOWED_ORIGINS', originalEnv);
   restoreEnv('APP_URL', originalAppUrl);
   restoreEnv('NEXT_PUBLIC_APP_URL', originalPublicAppUrl);
+  restoreEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID', originalFirebaseProjectId);
   for (const [key, value] of Object.entries(originalVercelEnv)) {
     restoreEnv(key, value);
   }

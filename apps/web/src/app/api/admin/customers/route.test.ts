@@ -136,9 +136,14 @@ describe('GET /api/admin/customers — refund details', () => {
 
     expect(response.status).toBe(200);
     expect(body.data).toMatchObject({
-      id: 'req-1',
-      userId: 'user-1',
-      refundRequest: { preference: 'wallet', amount: 30 },
+      schemaVersion: 2,
+      refund: {
+        id: 'req-1',
+        userId: 'user-1',
+        preference: 'wallet',
+        totalRefundAmount: 30,
+        walletRefundAmount: 30,
+      },
     });
   });
 
@@ -159,7 +164,15 @@ describe('GET /api/admin/customers — refund details', () => {
 
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({
-        data: { id: 'req-2', payment: { walletAmount: 12 } },
+        data: {
+          schemaVersion: 2,
+          refund: {
+            id: 'req-2',
+            preference,
+            totalRefundAmount: 30,
+            walletRefundAmount: 12,
+          },
+        },
       });
     }
   );
@@ -175,7 +188,10 @@ describe('GET /api/admin/customers — refund details', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      data: { id: 'req-3', preference: 'cheque', amount: 5 },
+      data: {
+        schemaVersion: 2,
+        refund: { id: 'req-3', preference: 'cheque', totalRefundAmount: 5 },
+      },
     });
   });
 });
