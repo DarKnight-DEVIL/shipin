@@ -169,6 +169,13 @@ export const SECURITY_HEADERS: Record<string, string> = {
 
   /**
    * XSS filter in legacy browsers.
+   *
+   * `0` disables the reflected-XSS auditor on purpose: OWASP and every major
+   * browser vendor recommend it, because the auditor itself could be steered
+   * into injecting script into a page (and it was removed from modern
+   * Chromium/Edge/Safari entirely). Leaving the header out is not the safer
+   * choice — old IE/Edge then enable the auditor by default. Real XSS defence
+   * here is the CSP above plus output encoding, not this header.
    */
   "X-XSS-Protection": "0",
 
@@ -186,6 +193,17 @@ export const SECURITY_HEADERS: Record<string, string> = {
    * bypass the proxy.
    */
   "Content-Security-Policy": `default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src ${IMAGE_SOURCES}; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com https://*.firebasestorage.app https://cdn.vercel-insights.com https://analytics.vercel.com wss://*.firebaseio.com wss://*.firebasedatabase.app; frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://accounts.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to 'csp-endpoint';`,
+
+  /**
+   * Client Hints are deliberately not requested here.
+   *
+   * `Sec-Ch-Ua` / `Sec-Ch-Ua-Mobile` are REQUEST headers the browser sends;
+   * a server cannot set them on its own responses. It can only opt in to
+   * additional hints with `Accept-CH`, which asks for MORE fingerprinting
+   * material from every visitor — the opposite of the privacy concern. The
+   * browser already sends its default hints on the requests Firebase and
+   * PayPal see, so nothing is missing here.
+   */
 
   /**
    * Discourages search engines from indexing the app.
