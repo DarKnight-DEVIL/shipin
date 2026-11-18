@@ -73,6 +73,8 @@ export const COVERAGE_GLOB_THRESHOLDS = {
   "src/app/api/admin/wallet/**": PAYMENT_COVERAGE,
   "src/app/api/admin/requests/*/*refund*/**": PAYMENT_COVERAGE,
   "src/lib/paypal.ts": PAYMENT_COVERAGE,
+  // The capture claim, PayPal capture/create calls and both settlement steps.
+  "src/lib/paypal/**": PAYMENT_COVERAGE,
   "src/features/wallet/**": PAYMENT_COVERAGE,
   "src/features/finance/**": PAYMENT_COVERAGE,
   "src/features/payment/**": PAYMENT_COVERAGE,

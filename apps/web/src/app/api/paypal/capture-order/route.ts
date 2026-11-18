@@ -1,96 +1,43 @@
-import { NextRequest, NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebaseAdmin";
-import {
-  FieldValue,
-  type DocumentReference,
-  type Timestamp,
-} from "firebase-admin/firestore";
-import { sendNotification } from "@/features/notifications/services/notificationService";
-import { WHATSAPP_TEMPLATES } from "@/features/notifications/templates";
-import { requireAuthWithProfile } from "@/lib/auth";
-import { getPayPalAccessToken } from "@/lib/paypal";
-import { fetchWithTimeout } from "@/lib/http";
-import { withErrorHandler } from "@/utils/errors";
-import type { AdditionalItemRequest } from "@/types/request";
-
 /**
- * The additional-item array while it is being written: `paidAt` may hold a
- * server-side sentinel until Firestore resolves it.
- */
-type _AdditionalItemWrite = Omit<AdditionalItemRequest, "paidAt"> & {
-  paidAt?: Timestamp | FieldValue;
-};
-
-type PaymentType = "main" | "additional_item";
-
-function toNumber(value: unknown): number {
-  const number = Number(value);
-
-  return Number.isFinite(number) ? number : 0;
-}
-
-/**
- * How long one attempt may hold the capture claim before another may take it
- * over. Long enough for a slow PayPal call, short enough that a crashed
- * instance does not leave the order stuck.
- */
-const CAPTURE_CLAIM_LEASE_MS = 2 * 60 * 1000;
-
-/**
- * Claim the right to call PayPal's capture endpoint for this order.
+ * `POST /api/paypal/capture-order` — turn a PayPal approval into a paid request.
  *
- * The status check before the call was a read-then-act race: two concurrent
- * retries both saw "created" and both asked PayPal to capture. The claim is a
- * transaction, so exactly one attempt wins; a completed order is reported as
- * such, and a live claim from another attempt is reported as busy.
+ * The handler is the sequence, not the arithmetic: authenticate, validate the
+ * body, prove this caller owns this payment, claim the capture, ask PayPal, then
+ * settle. Each step lives in `@/lib/paypal` so it can be tested without a
+ * request; this file decides the order and turns failures into responses.
+ *
+ * The order matters and must not be rearranged:
+ *
+ * 1. Ownership before anything is captured — a valid order ID for someone
+ *    else's request must not become a payment.
+ * 2. Idempotency before the claim — an already-paid order answers without
+ *    touching PayPal.
+ * 3. The claim before the capture call — two concurrent retries must not both
+ *    ask PayPal to capture.
+ * 4. Settlement after PayPal confirms — money only moves on a verified capture.
+ * 5. The claim is released on every path that did not settle, so a failed
+ *    attempt can be retried.
  */
-async function claimCapture(
-  paymentOrderRef: DocumentReference
-): Promise<"claimed" | "completed" | "busy"> {
-  return adminDb.runTransaction(async (transaction) => {
-    const snapshot = await transaction.get(paymentOrderRef);
-    const data = snapshot.data() ?? {};
 
-    if (data.status === "completed") return "completed";
+import { NextRequest, NextResponse } from "next/server";
 
-    const claimedAt = toNumber(data.captureClaimedAt);
-    if (
-      data.status === "capturing" &&
-      claimedAt > 0 &&
-      Date.now() - claimedAt < CAPTURE_CLAIM_LEASE_MS
-    ) {
-      return "busy";
-    }
+import { sendNotification } from "@/features/notifications/services/notificationService";
+import { requireAuthWithProfile } from "@/lib/auth";
+import { adminDb } from "@/lib/firebaseAdmin";
+import { claimCapture, releaseCaptureClaim } from "@/lib/paypal/captureClaim";
+import { capturePayPalPayment } from "@/lib/paypal/capturePayPalPayment";
+import { buildPaymentReceivedNotification } from "@/lib/paypal/paymentReceivedNotification";
+import { settleAdditionalItemPayment } from "@/lib/paypal/settleAdditionalItemPayment";
+import { settleMainPayment } from "@/lib/paypal/settleMainPayment";
+import { roundMoney, sameCents, toNumber } from "@/lib/paypal/amounts";
+import type { PaymentFailure, PaymentType } from "@/lib/paypal/types";
+import { withErrorHandler } from "@/utils/errors";
 
-    transaction.update(paymentOrderRef, {
-      status: "capturing",
-      captureClaimedAt: Date.now(),
-    });
-
-    return "claimed";
-  });
-}
-
-/**
- * Hand the claim back after a failed attempt so a retry is not blocked by the
- * lease. Best effort: a failure here only delays the next attempt.
- */
-async function releaseCaptureClaim(
-  paymentOrderRef: DocumentReference
-): Promise<void> {
-  try {
-    await adminDb.runTransaction(async (transaction) => {
-      const snapshot = await transaction.get(paymentOrderRef);
-      if (snapshot.data()?.status !== "capturing") return;
-      transaction.update(paymentOrderRef, {
-        status: "created",
-        captureClaimedAt: null,
-      });
-    });
-  } catch (error) {
-    console.error("Could not release the PayPal capture claim:", error);
-  }
-}
+const fail = (failure: PaymentFailure) =>
+  NextResponse.json(
+    { success: false, error: failure.error },
+    { status: failure.status }
+  );
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
   // --- 1. Authenticate the caller ---
@@ -122,78 +69,49 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       additionalItemRequestId?: string;
     } = body as Record<string, unknown>;
 
-    /*
-     * ========================================
-     * VALIDATION
-     * ========================================
-     */
-
+    // --- 2. Validate the body ---
     if (!requestId) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Request ID is required.",
-        },
+        { success: false, error: "Request ID is required." },
         { status: 400 }
       );
     }
 
     if (!orderID) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "PayPal Order ID is required.",
-        },
+        { success: false, error: "PayPal Order ID is required." },
         { status: 400 }
       );
     }
 
     if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "A valid PayPal payment amount is required.",
-        },
+        { success: false, error: "A valid PayPal payment amount is required." },
         { status: 400 }
       );
     }
 
     if (paymentType !== "main" && paymentType !== "additional_item") {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Invalid payment type.",
-        },
+        { success: false, error: "Invalid payment type." },
         { status: 400 }
       );
     }
 
     if (paymentType === "additional_item" && !additionalItemRequestId) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Additional item request ID is required.",
-        },
+        { success: false, error: "Additional item request ID is required." },
         { status: 400 }
       );
     }
 
-    /*
-     * ========================================
-     * GET REQUEST
-     * ========================================
-     */
-
+    // --- 3. Load the request ---
     const requestRef = adminDb.collection("requests").doc(requestId);
-
     const requestSnapshot = await requestRef.get();
 
     if (!requestSnapshot.exists) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Request not found.",
-        },
+        { success: false, error: "Request not found." },
         { status: 404 }
       );
     }
@@ -202,20 +120,12 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
     if (!requestData) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Request data not found.",
-        },
+        { success: false, error: "Request data not found." },
         { status: 404 }
       );
     }
 
-    /*
-     * ========================================
-     * GET STORED PAYPAL PAYMENT ORDER
-     * ========================================
-     */
-
+    // --- 4. Load the payment order ShipIN stored for this PayPal order ---
     const paymentOrderRef = adminDb
       .collection("paypalPaymentOrders")
       .doc(orderID);
@@ -244,12 +154,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       );
     }
 
-    /*
-     * ========================================
-     * VERIFY PAYMENT ORDER
-     * ========================================
-     */
-
+    // --- 5. The order must be for this request, this payment type, this item ---
     if (paymentOrder.requestId !== requestId) {
       console.error("PayPal request ownership mismatch:", {
         storedRequestId: paymentOrder.requestId,
@@ -276,11 +181,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       );
     }
 
-    const storedAdditionalItemId = paymentOrder.additionalItemRequestId || null;
-
-    const requestedAdditionalItemId = additionalItemRequestId || null;
-
-    if (storedAdditionalItemId !== requestedAdditionalItemId) {
+    if (
+      (paymentOrder.additionalItemRequestId || null) !==
+      (additionalItemRequestId || null)
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -290,14 +194,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       );
     }
 
-    /*
-     * ========================================
-     * VERIFY REQUEST OWNER
-     * ========================================
-     */
-
+    // --- 6. …and for this caller ---
     const requestUserId = requestData.userId;
-
     const paymentOrderUserId = paymentOrder.userId;
 
     if (
@@ -323,12 +221,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       );
     }
 
-    /*
-     * ========================================
-     * IDEMPOTENCY CHECK
-     * ========================================
-     */
-
+    // --- 7. Idempotency: a completed order is a success, not a second charge ---
     if (paymentOrder.status === "completed") {
       return NextResponse.json({
         success: true,
@@ -338,23 +231,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       });
     }
 
-    /*
-     * ========================================
-     * VERIFY CLIENT AMOUNT
-     * ========================================
-     */
-
-    const expectedPayPalAmount = Number(
-      toNumber(paymentOrder.paypalAmount).toFixed(2)
+    // --- 8. What the browser paid must be what ShipIN stored ---
+    const expectedPayPalAmount = roundMoney(
+      toNumber(paymentOrder.paypalAmount)
     );
 
-    const clientAmount = Number(amount.toFixed(2));
-
-    if (
-      Math.round(clientAmount * 100) !== Math.round(expectedPayPalAmount * 100)
-    ) {
+    if (!sameCents(roundMoney(amount), expectedPayPalAmount)) {
       console.error("Client PayPal amount mismatch:", {
-        clientAmount,
+        clientAmount: roundMoney(amount),
         expectedPayPalAmount,
         requestId,
         orderID,
@@ -369,12 +253,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       );
     }
 
-    /*
-     * ========================================
-     * CLAIM THE CAPTURE
-     * ========================================
-     */
-
+    // --- 9. One attempt at a time ---
     const claim = await claimCapture(paymentOrderRef);
 
     if (claim === "completed") {
@@ -401,638 +280,90 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     let captureSettled = false;
 
     try {
-      /*
-       * ========================================
-       * CAPTURE PAYPAL
-       * ========================================
-       */
+      // --- 10. Capture at PayPal ---
+      const captured = await capturePayPalPayment({
+        orderID,
+        requestId,
+        expectedPayPalAmount,
+      });
 
-      const accessToken = await getPayPalAccessToken();
+      if (!captured.ok) return fail(captured);
 
-      const baseUrl =
-        process.env.PAYPAL_API_URL || "https://api-m.sandbox.paypal.com";
+      const { captureId, capturedAmount, capturedCurrency } = captured;
 
-      const paypalResponse = await fetchWithTimeout(
-        `${baseUrl}/v2/checkout/orders/${orderID}/capture`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      const paypalData = await paypalResponse.json();
-
-      if (!paypalResponse.ok) {
-        console.error("PayPal capture error:", paypalData);
-
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Unable to process payment. Please try again.",
-          },
-          {
-            status: paypalResponse.status,
-          }
-        );
-      }
-
-      /*
-       * ========================================
-       * VERIFY PAYPAL STATUS
-       * ========================================
-       */
-
-      if (paypalData.status !== "COMPLETED") {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "PayPal payment was not completed.",
-          },
-          { status: 400 }
-        );
-      }
-
-      /*
-       * ========================================
-       * GET CAPTURE
-       * ========================================
-       */
-
-      const capture = paypalData?.purchase_units?.[0]?.payments?.captures?.[0];
-
-      if (!capture) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "PayPal capture details were not found.",
-          },
-          { status: 400 }
-        );
-      }
-
-      const captureId = capture.id;
-
-      if (!captureId) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "PayPal capture ID was not found.",
-          },
-          { status: 400 }
-        );
-      }
-
-      const capturedAmount = Number(capture.amount?.value);
-
-      const capturedCurrency = capture.amount?.currency_code;
-
-      if (!Number.isFinite(capturedAmount) || capturedAmount <= 0) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Invalid PayPal capture amount.",
-          },
-          { status: 400 }
-        );
-      }
-
-      if (capturedCurrency !== "USD") {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Unexpected PayPal payment currency.",
-          },
-          { status: 400 }
-        );
-      }
-
-      /*
-       * ========================================
-       * VERIFY CAPTURE AMOUNT
-       * ========================================
-       */
-
-      if (
-        Math.round(capturedAmount * 100) !==
-        Math.round(expectedPayPalAmount * 100)
-      ) {
-        console.error("PayPal capture amount mismatch:", {
-          expectedPayPalAmount,
-          capturedAmount,
-          orderID,
-          requestId,
-        });
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Captured payment amount does not match the expected PayPal payment.",
-          },
-          { status: 400 }
-        );
-      }
-
-      /*
-       * ========================================
-       * ADDITIONAL ITEM PAYMENT
-       * ========================================
-       */
-
+      // --- 11. Settle the payment this order was for ---
       if (paymentType === "additional_item") {
-        const additionalItems = requestData.additionalItemRequests || [];
-
-        const additionalItemIndex = additionalItems.findIndex(
-          (item: AdditionalItemRequest) => item.id === additionalItemRequestId
-        );
-
-        if (additionalItemIndex === -1) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: "Additional item request could not be found.",
-            },
-            { status: 404 }
-          );
-        }
-
-        const additionalItem = additionalItems[additionalItemIndex];
-
-        if (additionalItem.status !== "awaiting_payment") {
-          return NextResponse.json(
-            {
-              success: false,
-              error: "This additional item is not awaiting payment.",
-            },
-            { status: 400 }
-          );
-        }
-
-        const storedBaseAmount = Number(
-          toNumber(paymentOrder.baseAmount).toFixed(2)
-        );
-
-        const additionalItemTotal = Number(
-          toNumber(additionalItem.totalDue).toFixed(2)
-        );
-
-        if (
-          Math.round(storedBaseAmount * 100) !==
-          Math.round(additionalItemTotal * 100)
-        ) {
-          console.error("Additional item base amount mismatch:", {
-            storedBaseAmount,
-            additionalItemTotal,
-            orderID,
-          });
-
-          return NextResponse.json(
-            {
-              success: false,
-              error:
-                "The additional item payment amount could not be verified.",
-            },
-            { status: 400 }
-          );
-        }
-
-        /*
-         * Mark additional item paid.
-         */
-
-        additionalItems[additionalItemIndex] = {
-          ...additionalItem,
-
-          status: "paid",
-
-          amountPaid: capturedAmount,
-
-          paidAt: new Date(),
-        };
-
-        /*
-         * Payment history.
-         */
-
-        const additionalPayment = {
-          id: captureId,
-
-          additionalItemRequestId,
-
-          provider: "paypal",
-
-          paymentMethod: "paypal",
-
-          orderId: orderID,
-
+        const settlement = await settleAdditionalItemPayment({
+          requestRef,
+          paymentOrderRef,
+          requestData,
+          paymentOrder,
+          // Step 2 guarantees an id when the payment type is an add-on.
+          additionalItemRequestId: additionalItemRequestId as string,
+          orderID,
           captureId,
-
-          amount: capturedAmount,
-
-          currency: capturedCurrency,
-
-          status: "completed",
-
-          paidAt: new Date().toISOString(),
-        };
-
-        /*
-         * Update request.
-         */
-
-        await requestRef.update({
-          additionalItemRequests: additionalItems,
-
-          items: FieldValue.arrayUnion({
-            name: additionalItem.item?.name,
-
-            url: additionalItem.item?.url || "",
-
-            quantity: additionalItem.item?.quantity,
-
-            unitPrice: additionalItem.unitPrice,
-
-            subtotal: additionalItem.subtotal,
-          }),
-
-          additionalPayments: FieldValue.arrayUnion(additionalPayment),
-
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-
-        /*
-         * Mark PayPal payment order
-         * as completed.
-         */
-
-        await paymentOrderRef.update({
-          status: "completed",
-
-          captureId,
-
           capturedAmount,
-
           capturedCurrency,
-
-          completedAt: FieldValue.serverTimestamp(),
         });
+
+        if (!settlement.ok) return fail(settlement);
 
         captureSettled = true;
 
         return NextResponse.json({
           success: true,
-
           paymentType: "additional_item",
-
           additionalItemRequestId,
-
           captureId,
-
           amountPaid: capturedAmount,
-
           paymentMethod: "paypal",
         });
       }
 
-      /*
-       * ========================================
-       * MAIN PAYMENT
-       * ========================================
-       */
-
-      const walletApplied = Number(
-        toNumber(paymentOrder.walletApplied).toFixed(2)
-      );
-
-      const totalRequired = Number(
-        toNumber(paymentOrder.totalRequired).toFixed(2)
-      );
-
-      const baseAmount = Number(toNumber(paymentOrder.baseAmount).toFixed(2));
-
-      if (baseAmount <= 0 || totalRequired <= 0) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "The stored payment calculation is invalid.",
-          },
-          { status: 400 }
-        );
-      }
-
-      /*
-       * Verify:
-       *
-       * Total required
-       * - Wallet applied
-       * = PayPal amount
-       */
-
-      const calculatedPayPalAmount = Number(
-        (totalRequired - walletApplied).toFixed(2)
-      );
-
-      if (Math.abs(calculatedPayPalAmount - expectedPayPalAmount) > 0.01) {
-        console.error("Stored payment calculation mismatch:", {
-          baseAmount,
-          totalRequired,
-          walletApplied,
-          calculatedPayPalAmount,
-          expectedPayPalAmount,
-          orderID,
-        });
-
-        return NextResponse.json(
-          {
-            success: false,
-            error: "The stored payment calculation could not be verified.",
-          },
-          { status: 400 }
-        );
-      }
-
-      /*
-       * ========================================
-       * DETERMINE PAYMENT METHOD
-       * ========================================
-       *
-       * IMPORTANT:
-       * This is calculated server-side.
-       * We do NOT trust the browser.
-       */
-
-      let paymentMethod: "paypal" | "wallet_and_paypal";
-
-      if (walletApplied > 0) {
-        paymentMethod = "wallet_and_paypal";
-      } else {
-        paymentMethod = "paypal";
-      }
-
-      /*
-       * ========================================
-       * WALLET + PAYMENT TRANSACTION
-       * ========================================
-       */
-
-      const walletRef = adminDb.collection("wallets").doc(paymentOrder.userId);
-
-      /*
-       * Use a unique wallet transaction
-       * document based on the PayPal
-       * capture ID.
-       */
-
-      const walletTransactionRef = adminDb
-        .collection("walletTransactions")
-        .doc(`paypal_${captureId}`);
-
-      await adminDb.runTransaction(async (transaction) => {
-        /*
-         * READS FIRST
-         */
-
-        const walletSnapshot = await transaction.get(walletRef);
-
-        const paymentOrderSnapshot = await transaction.get(paymentOrderRef);
-
-        const _requestSnapshot = await transaction.get(requestRef);
-
-        /*
-         * Re-check payment order.
-         */
-
-        const currentPaymentOrder = paymentOrderSnapshot.data();
-
-        if (!currentPaymentOrder) {
-          throw new Error("PayPal payment order could not be found.");
-        }
-
-        /*
-         * Another request may have
-         * completed this payment.
-         */
-
-        if (currentPaymentOrder.status === "completed") {
-          return;
-        }
-
-        /*
-         * Verify ownership again.
-         */
-
-        if (currentPaymentOrder.userId !== paymentOrder.userId) {
-          throw new Error("Payment ownership verification failed.");
-        }
-
-        /*
-         * Current wallet balance.
-         */
-
-        const currentBalance = walletSnapshot.exists
-          ? Math.max(0, toNumber(walletSnapshot.data()?.balance))
-          : 0;
-
-        /*
-         * Wallet cannot become negative.
-         */
-
-        if (walletApplied > currentBalance + 0.01) {
-          throw new Error(
-            "Insufficient wallet balance to complete this payment."
-          );
-        }
-
-        /*
-         * New balance.
-         */
-
-        const newBalance = Number((currentBalance - walletApplied).toFixed(2));
-
-        /*
-         * ====================================
-         * WALLET DEDUCTION
-         * ====================================
-         */
-
-        if (walletApplied > 0) {
-          transaction.set(
-            walletRef,
-            {
-              balance: newBalance,
-
-              currency: walletSnapshot.exists
-                ? walletSnapshot.data()?.currency || "USD"
-                : "USD",
-
-              updatedAt: FieldValue.serverTimestamp(),
-            },
-            {
-              merge: true,
-            }
-          );
-
-          transaction.set(walletTransactionRef, {
-            userId: paymentOrder.userId,
-
-            type: "payment",
-
-            amount: -walletApplied,
-
-            balanceAfter: newBalance,
-
-            requestId,
-
-            description: "Request Payment",
-
-            createdAt: FieldValue.serverTimestamp(),
-          });
-        }
-
-        /*
-         * ====================================
-         * MARK REQUEST PAID
-         * ====================================
-         */
-
-        transaction.update(requestRef, {
-          status: "paid",
-
-          payment: {
-            provider: paymentMethod,
-
-            paymentMethod,
-
-            orderId: orderID,
-
-            captureId,
-
-            amount: totalRequired,
-
-            amountPaid: totalRequired,
-
-            paypalAmount: capturedAmount,
-
-            walletAmount: walletApplied,
-
-            quoteAmount: baseAmount,
-
-            currency: capturedCurrency,
-
-            status: "completed",
-
-            paidAt: FieldValue.serverTimestamp(),
-          },
-
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-
-        /*
-         * ====================================
-         * MARK PAYPAL ORDER COMPLETE
-         * ====================================
-         */
-
-        transaction.update(paymentOrderRef, {
-          status: "completed",
-
-          captureId,
-
-          capturedAmount,
-
-          capturedCurrency,
-
-          completedAt: FieldValue.serverTimestamp(),
-        });
+      const settlement = await settleMainPayment({
+        requestRef,
+        paymentOrderRef,
+        paymentOrder,
+        requestId,
+        orderID,
+        captureId,
+        capturedAmount,
+        capturedCurrency,
+        expectedPayPalAmount,
       });
+
+      if (!settlement.ok) return fail(settlement);
 
       captureSettled = true;
 
-      /*
-       * ========================================
-       * PAYMENT NOTIFICATION
-       * ========================================
-       */
-
+      // --- 12. Tell the customer; a failed notification must not undo the payment ---
       try {
-        const userId = requestData.userId;
-
-        const customerName =
-          requestData.customerName ||
-          requestData.shippingAddress?.firstName ||
-          "Customer";
-
-        await sendNotification({
-          userId,
-
-          requestId,
-
-          title: "Payment Received",
-
-          message: "We’ve received your payment successfully.",
-
-          type: "payment",
-
-          category: "payment",
-
-          channels: {
-            inApp: true,
-            email: true,
-            whatsapp: true,
-          },
-
-          whatsapp: {
-            templateName: WHATSAPP_TEMPLATES.paymentReceived,
-
-            languageCode: "en",
-
-            components: [
-              {
-                type: "body",
-
-                parameters: [
-                  {
-                    type: "text",
-                    text: customerName,
-                  },
-                  {
-                    type: "text",
-                    text: requestId,
-                  },
-                ],
-              },
-            ],
-          },
-        });
+        await sendNotification(
+          buildPaymentReceivedNotification({
+            userId: requestData.userId,
+            requestId,
+            customerName:
+              requestData.customerName ||
+              requestData.shippingAddress?.firstName ||
+              "Customer",
+          })
+        );
       } catch (error) {
         console.error("Payment notification failed:", error);
       }
 
-      /*
-       * ========================================
-       * SUCCESS
-       * ========================================
-       */
-
       return NextResponse.json({
         success: true,
-
         paymentType: "main",
-
         captureId,
-
-        paymentMethod,
-
+        paymentMethod: settlement.paymentMethod,
         paypalAmount: capturedAmount,
-
-        walletAmount: walletApplied,
-
-        totalAmount: totalRequired,
+        walletAmount: settlement.walletApplied,
+        totalAmount: settlement.totalRequired,
       });
     } finally {
+      // Every path that did not settle hands the claim back, so the customer can
+      // press "pay" again instead of waiting out the lease.
       if (!captureSettled) {
         await releaseCaptureClaim(paymentOrderRef);
       }
@@ -1041,11 +372,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     console.error("PayPal capture order route error:", error);
 
     return NextResponse.json(
-      {
-        success: false,
-
-        error: "Internal server error",
-      },
+      { success: false, error: "Internal server error" },
       { status: 500 }
     );
   }

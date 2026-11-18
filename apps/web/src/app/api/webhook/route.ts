@@ -11,7 +11,7 @@ import {
 } from "@/lib/rateLimiter";
 import { verifyPayPalWebhook } from "@/lib/paypal";
 import { sendNotification } from "@/features/notifications/services/notificationService";
-import { WHATSAPP_TEMPLATES } from "@/features/notifications/templates";
+import { buildPaymentReceivedNotification } from "@/lib/paypal/paymentReceivedNotification";
 
 // PayPal Webhook ID from the developer dashboard.
 // Should be set in environment variables: PAYPAL_WEBHOOK_ID
@@ -330,30 +330,13 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
 
   // Send notification (outside transaction)
   try {
-    const userId = paymentOrder.userId;
-    const customerName = paymentOrder.customerName || requestId;
-    await sendNotification({
-      userId,
-      requestId,
-      title: "Payment Received",
-      message: "We've received your payment successfully.",
-      type: "payment",
-      category: "payment",
-      channels: { inApp: true, email: true, whatsapp: true },
-      whatsapp: {
-        templateName: WHATSAPP_TEMPLATES.paymentReceived,
-        languageCode: "en",
-        components: [
-          {
-            type: "body",
-            parameters: [
-              { type: "text", text: customerName },
-              { type: "text", text: requestId },
-            ],
-          },
-        ],
-      },
-    });
+    await sendNotification(
+      buildPaymentReceivedNotification({
+        userId: paymentOrder.userId,
+        requestId,
+        customerName: paymentOrder.customerName || requestId,
+      })
+    );
   } catch (error) {
     console.error("Webhook notification failed:", error);
   }
