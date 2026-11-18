@@ -7,18 +7,18 @@
  * is that half of the contract.
  *
  * The store is Redis when a shared store is configured (a single round trip,
- * and the same answer from every instance), with `idempotencyKeys/{sha256(...)}`
- * in Firestore as the durable copy and as the fallback when Redis is absent or
- * erroring. Keys are scoped per user, so one customer cannot replay another's
- * response by guessing a key, and per route (`scope`), so the same key on two
- * endpoints cannot collide.
+ * and the same answer from every instance), and Redis is the only store: the
+ * record carries its own `expiresAt` and a TTL on the key, so there is no
+ * second copy to keep in sync. Keys are scoped per user, so one customer
+ * cannot replay another's response by guessing a key, and per route (`scope`),
+ * so the same key on two endpoints cannot collide.
  *
  * Failure policy is deliberately fail-open *for the write*: if the store is
- * unreachable, the request proceeds. Every route that uses this also has a
- * stronger guarantee in its own transaction (wallet payment refuses a request
- * that is already paid), so the idempotency record improves the response the
- * client sees — it is not the only thing standing between a retry and a double
- * charge.
+ * unreachable, the request proceeds and no record is kept. Every route that
+ * uses this also has a stronger guarantee in its own transaction (wallet
+ * payment refuses a request that is already paid), so the idempotency record
+ * improves the response the client sees — it is not the only thing standing
+ * between a retry and a double charge.
  */
 
 import "server-only";
@@ -27,7 +27,6 @@ import crypto from "crypto";
 
 import { Redis } from "@upstash/redis";
 
-import { adminDb } from "@/lib/firebaseAdmin";
 import { serverEnv } from "@/config/env";
 
 export const IDEMPOTENCY_HEADER = "idempotency-key";
@@ -35,7 +34,6 @@ export const IDEMPOTENCY_HEADER = "idempotency-key";
 /** How long a completed response can be replayed. */
 export const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
-const COLLECTION = "idempotencyKeys";
 const REDIS_PREFIX = "shipin:idempotency:";
 
 let redisClient: Redis | null | undefined;
@@ -56,18 +54,18 @@ function getRedis(): Redis | null {
     }
   }
 
-  redisClient = valid && token ? new Redis({ url: url as string, token }) : null;
+  redisClient =
+    valid && token ? new Redis({ url: url as string, token }) : null;
   return redisClient;
 }
 
 function redisKey(uid: string, scope: string, key: string): string {
   return `${REDIS_PREFIX}${documentId(uid, scope, key)}`;
 }
-
 export interface IdempotentResponse {
   status: number;
   body: unknown;
-  /** Set when reading from the shared store; absent on the Firestore copy. */
+  /** Set when reading from the shared store; absent on a freshly built record. */
   expiresAt?: number;
 }
 
@@ -111,9 +109,13 @@ export async function readIdempotentResponse({
 
   if (redis) {
     try {
-      const stored = await redis.get<IdempotentResponse | string>(redisKey(uid, scope, key));
+      const stored = await redis.get<IdempotentResponse | string>(
+        redisKey(uid, scope, key),
+      );
       const parsed =
-        typeof stored === "string" ? (JSON.parse(stored) as IdempotentResponse) : stored;
+        typeof stored === "string"
+          ? (JSON.parse(stored) as IdempotentResponse)
+          : stored;
 
       if (
         parsed &&
@@ -125,33 +127,15 @@ export async function readIdempotentResponse({
       }
       if (parsed) return null;
     } catch (error) {
-      // Fall through to Firestore: a Redis blip must not disable replay.
+      // A read failure only costs this request its replay: the route's own
+      // transaction still refuses a duplicate write.
       console.error("[idempotency] Could not read the shared store:", error);
     }
   }
 
-  try {
-    const snapshot = await adminDb
-      .collection(COLLECTION)
-      .doc(documentId(uid, scope, key))
-      .get();
-
-    if (!snapshot.exists) return null;
-
-    const data = snapshot.data() as
-      | { status?: unknown; body?: unknown; expiresAt?: unknown }
-      | undefined;
-
-    const expiresAt = Number(data?.expiresAt);
-
-    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
-    if (typeof data?.status !== "number") return null;
-
-    return { status: data.status, body: data.body };
-  } catch (error) {
-    console.error("[idempotency] Could not read the stored response:", error);
-    return null;
-  }
+  // No fallback store: with Redis unconfigured or unreachable there is no
+  // record to replay, so the caller proceeds without one.
+  return null;
 }
 
 /**
@@ -168,7 +152,7 @@ export async function rememberIdempotentResponse(
     scope: string;
     key: string;
   },
-  response: IdempotentResponse
+  response: IdempotentResponse,
 ): Promise<void> {
   const record = {
     uid,
@@ -186,16 +170,10 @@ export async function rememberIdempotentResponse(
         ex: Math.floor(IDEMPOTENCY_TTL_MS / 1000),
       });
     } catch (error) {
-      console.error("[idempotency] Could not store the response in the shared store:", error);
+      console.error(
+        "[idempotency] Could not store the response in the shared store:",
+        error,
+      );
     }
-  }
-
-  try {
-    await adminDb
-      .collection(COLLECTION)
-      .doc(documentId(uid, scope, key))
-      .set(record);
-  } catch (error) {
-    console.error("[idempotency] Could not store the response:", error);
   }
 }

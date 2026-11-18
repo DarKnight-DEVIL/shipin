@@ -467,6 +467,34 @@ describe('shipments', () => {
   });
 });
 
+/* -------------------------------------------------------------------------- */
+/* counters                                                                        */
+/* -------------------------------------------------------------------------- */
+
+describe('counters', () => {
+  it('blocks a customer creating a counter from the browser', async () => {
+    await expectDenied(
+      create(customer(), 'counters/tracking', { value: 1 })
+    );
+  });
+
+  it('blocks a customer reading another customer counter', async () => {
+    await seed('counters/tracking', { value: 5 });
+
+    await expectDenied(read(customer(), 'counters/tracking'));
+  });
+
+  it('lets an admin read a counter', async () => {
+    await seed('counters/tracking', { value: 5 });
+
+    await expectAllowed(read({ uid: ADMIN }, 'counters/tracking'));
+  });
+
+  it('blocks anonymous reads of counters', async () => {
+    await expectDenied(read(anonymous, 'counters/tracking'));
+  });
+});
+
 describe('wallets', () => {
   it('allows the owner to self-provision an empty wallet', async () => {
     await expectAllowed(create(customer(), `wallets/${CUSTOMER}`, { balance: 0, currency: 'USD' }));

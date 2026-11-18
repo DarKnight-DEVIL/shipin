@@ -108,6 +108,17 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // -------------------------------------------------------------- counters
+    // Tracking counter is administered by the Admin SDK; clients must never
+    // write to it. The admin UI generates tracking IDs through /api/admin/requests
+    // which bypasses these rules, but the browser-side generateTrackingId() function
+    // must be blocked from writing counters/tracking to avoid permission-denied errors.
+    match /counters/{counterId} {
+      allow read: if isAdmin();
+      allow write: if false;
+      allow create: if false;
+    }
+
     // ----------------------------------------------------------------- wallet
     // Balance is only ever moved by Admin SDK transactions
     // (features/wallet/services/walletPayment.ts, admin/wallet/credit).

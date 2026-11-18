@@ -87,7 +87,7 @@ export const POST = withErrorHandler(async (request: NextRequest,
 
     if (status === "warehouse_received") {
       updates.status = "ready_for_international_shipping";
-      updates.storage = FieldValue.serverTimestamp();
+      updates.storage = { startedAt: FieldValue.serverTimestamp() };
     }
 
     await requestRef.update(updates);

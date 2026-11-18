@@ -16,6 +16,30 @@ interface RouteContext {
   }>;
 }
 
+/**
+ * Mint the next ShipIN tracking ID.
+ *
+ * Runs here rather than in the admin panel so the counter is written by the
+ * Admin SDK: `counters/{id}` is closed to clients, and a missing ID must not
+ * depend on the browser having generated one.
+ */
+async function generateTrackingId(): Promise<string> {
+  const counterRef = adminDb.collection("counters").doc("tracking");
+
+  return adminDb.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(counterRef);
+    const next = (snapshot.data()?.value ?? 0) + 1;
+
+    transaction.set(
+      counterRef,
+      { value: next, updatedAt: FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+
+    return `SHP-${new Date().getFullYear()}-${String(next).padStart(6, "0")}`;
+  });
+}
+
 export const POST = withErrorHandler(async (request: Request, context: RouteContext) => {
   try {
     await requireAdmin(request);
@@ -40,11 +64,11 @@ export const POST = withErrorHandler(async (request: Request, context: RouteCont
     createdAt,
   } = body;
 
-  if (!requestId || !internalTrackingId || !carrier || !trackingNumber) {
+  if (!requestId || !carrier || !trackingNumber) {
     return NextResponse.json(
       {
         success: false,
-        error: "Request ID, tracking ID, carrier, and tracking number are required.",
+        error: "Request ID, carrier, and tracking number are required.",
       },
       { status: 400 }
     );
@@ -70,9 +94,12 @@ export const POST = withErrorHandler(async (request: Request, context: RouteCont
     throw new Error("Unable to read request data.");
   }
 
+  // Keep the ID an edit already recorded; mint one only for a first shipment.
+  const trackingId = internalTrackingId || (await generateTrackingId());
+
   await requestRef.update({
     tracking: {
-      internalTrackingId,
+      internalTrackingId: trackingId,
       carrier,
       trackingNumber: trackingNumber.trim(),
       estimatedDelivery: estimatedDelivery ?? null,
@@ -120,5 +147,5 @@ export const POST = withErrorHandler(async (request: Request, context: RouteCont
     }
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, trackingId });
 });

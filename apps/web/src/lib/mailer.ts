@@ -4,7 +4,11 @@ import { Resend } from "resend";
 import nodemailer from "nodemailer";
 import { readEnv } from "@/config/env";
 
-import { SMTP_CONNECTION_TIMEOUT_MS, SMTP_GREETING_TIMEOUT_MS, SMTP_SOCKET_TIMEOUT_MS } from "@/config/constants";
+import {
+  SMTP_CONNECTION_TIMEOUT_MS,
+  SMTP_GREETING_TIMEOUT_MS,
+  SMTP_SOCKET_TIMEOUT_MS,
+} from "@/config/constants";
 import { childLogger } from "@/lib/logger";
 
 const mailerLog = childLogger({ service: "mailer" });
@@ -37,13 +41,13 @@ export async function sendMail({
   // Lazy-load env vars on first send (bypasses build-time static analysis)
   if (!resend) {
     // Allow Gmail SMTP-only during build/CI with dummy env (won't actually send)
-    const envResendKey = readEnv('RESEND_API_KEY');
-    const envSmtpEmail = readEnv('SMTP_EMAIL');
-    const envSmtpPassword = readEnv('SMTP_PASSWORD');
-    const envSmtpHost = readEnv('SMTP_HOST');
-    const envSmtpPort = readEnv('SMTP_PORT');
-    const envSmtpSecure = readEnv('SMTP_SECURE');
-    const envSmtpService = readEnv('SMTP_SERVICE');
+    const envResendKey = readEnv("RESEND_API_KEY");
+    const envSmtpEmail = readEnv("SMTP_EMAIL");
+    const envSmtpPassword = readEnv("SMTP_PASSWORD");
+    const envSmtpHost = readEnv("SMTP_HOST");
+    const envSmtpPort = readEnv("SMTP_PORT");
+    const envSmtpSecure = readEnv("SMTP_SECURE");
+    const envSmtpService = readEnv("SMTP_SERVICE");
 
     // SMTP credentials are needed for the fallback path even when Resend is
     // configured, so they are always captured.
@@ -54,12 +58,12 @@ export async function sendMail({
     // relay). Unset keeps the old Gmail service shortcut.
     smtpHost = envSmtpHost;
     smtpService = envSmtpService;
-    smtpSecure = envSmtpSecure === 'true';
+    smtpSecure = envSmtpSecure === "true";
 
-    const parsedPort = Number.parseInt(envSmtpPort ?? '', 10);
+    const parsedPort = Number.parseInt(envSmtpPort ?? "", 10);
     smtpPort = Number.isFinite(parsedPort) ? parsedPort : undefined;
 
-    if (envResendKey && envResendKey !== 'dummy_for_build') {
+    if (envResendKey && envResendKey !== "dummy_for_build") {
       resend = new Resend(envResendKey);
     }
   }
@@ -70,6 +74,9 @@ export async function sendMail({
   }
 
   const fromAddress = from ?? `"ShipIN" <${smtpEmail}>`;
+
+  // Track whether Resend was the configured primary path.
+  const resendWasConfigured = !!resend;
 
   // Try Resend first (only if configured)
   if (resend) {
@@ -89,13 +96,16 @@ export async function sendMail({
       return { id: data?.id, provider: "resend" };
     } catch (resendError) {
       mailerLog.error("Resend failed, falling back to SMTP", {
-        error: resendError instanceof Error ? resendError.message : String(resendError),
+        error:
+          resendError instanceof Error
+            ? resendError.message
+            : String(resendError),
       });
     }
   }
 
   // Fallback to SMTP (only if we have email + password)
-  if (smtpPassword && smtpPassword !== 'dummy_for_build') {
+  if (smtpPassword && smtpPassword !== "dummy_for_build") {
     const timeoutOptions = {
       auth: { user: smtpEmail, pass: smtpPassword },
       connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
@@ -112,9 +122,9 @@ export async function sendMail({
             ...timeoutOptions,
           }
         : {
-            service: smtpService || 'gmail',
+            service: smtpService || "gmail",
             ...timeoutOptions,
-          }
+          },
     );
     const info = await smtpTransporter.sendMail({
       from: fromAddress,
@@ -125,7 +135,16 @@ export async function sendMail({
     });
 
     return { id: info.messageId, provider: "smtp" };
+  } else if (resendWasConfigured) {
+    // Resend was configured as the primary path, but it failed and SMTP
+    // credentials are not available for fallback. Provide a clear message.
+    throw new Error(
+      "Resend API call failed and SMTP fallback is not configured. " +
+        "Please check Resend credentials or set SMTP_EMAIL and SMTP_PASSWORD for fallback.",
+    );
   } else {
-    throw new Error("Email sending not configured (RESEND_API_KEY or SMTP_EMAIL+PASSWORD required)");
+    throw new Error(
+      "Email sending not configured (RESEND_API_KEY or SMTP_EMAIL+PASSWORD required)",
+    );
   }
 }

@@ -102,7 +102,7 @@ describe('POST /api/admin/requests/[requestId]/approve-international', () => {
       'warehouse.approvedAt': '__SERVER_TS__',
       updatedAt: '__SERVER_TS__',
       status: 'ready_for_international_shipping',
-      storage: '__SERVER_TS__',
+      storage: { startedAt: '__SERVER_TS__' },
     });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ success: true });

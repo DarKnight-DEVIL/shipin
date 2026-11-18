@@ -107,11 +107,11 @@ describe("allowNotification — shared store", () => {
     await expect(allowNotification("user-1")).resolves.toBe(false);
   });
 
-  it("falls back to the local bucket when the store fails", async () => {
+  it("falls closed when the store fails, keeping the rate limit global", async () => {
     state.client = redis({ fail: true });
 
     for (let index = 0; index < NOTIFICATION_RATE_LIMIT; index += 1) {
-      await expect(allowNotification("user-1")).resolves.toBe(true);
+      await expect(allowNotification("user-1")).resolves.toBe(false);
     }
 
     await expect(allowNotification("user-1")).resolves.toBe(false);

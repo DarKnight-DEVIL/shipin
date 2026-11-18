@@ -14,7 +14,6 @@ import Section from "@/components/ui/Section";
 import ActionButton from "@/components/ui/ActionButton";
 
 import { adminApi } from "@/lib/adminApiClient";
-import { generateTrackingId } from "@/features/shipments/services/tracking";
 import { generateShippingLabel } from "@/lib/pdf/shippingLabel";
 
 interface Props {
@@ -196,13 +195,10 @@ export default function ShipmentPanel({ request }: Props) {
        * Keep existing ShipIN tracking ID.
        *
        * Never generate another ID when
-       * editing shipment details.
+       * editing shipment details: the route mints one when the request has
+       * none, because `counters/{id}` is closed to clients.
        */
-      let internalTrackingId = request.tracking?.internalTrackingId;
-
-      if (!internalTrackingId) {
-        internalTrackingId = await generateTrackingId();
-      }
+      const internalTrackingId = request.tracking?.internalTrackingId;
 
       /*
        * Preserve original shipment
@@ -232,6 +228,9 @@ export default function ShipmentPanel({ request }: Props) {
         throw new Error(data.error || "Failed to save shipment.");
       }
 
+      const savedTrackingId: string | undefined =
+        data.trackingId ?? internalTrackingId;
+
       /*
        * Only move to shipped after
        * valid shipment information
@@ -242,7 +241,7 @@ export default function ShipmentPanel({ request }: Props) {
       }
 
       toast.success("Shipment saved successfully.", {
-        description: `ShipIN Tracking ID: ${internalTrackingId}`,
+        description: `ShipIN Tracking ID: ${savedTrackingId}`,
       });
     } catch (error) {
       console.error("Error saving shipment:", error);

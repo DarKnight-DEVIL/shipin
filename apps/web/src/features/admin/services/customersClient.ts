@@ -41,12 +41,41 @@ interface RefundRequestData {
 }
 
 /** The pre-v2 shape, resolved in one place instead of at every read site. */
-function legacyRefund(data: RefundRequestData, requestId: string): RefundRequestDetails {
-  const preference = (data.refundRequest?.preference ?? data.preference ?? "wallet") as string;
-  const totalRefundAmount = Number(data.refundRequest?.amount ?? data.amount ?? 0);
-  const originalWalletAmount = Number(
-    data.refundRequest?.walletAmount ?? data.payment?.walletAmount ?? data.walletAmount ?? 0
-  );
+function legacyRefund(
+  data: RefundRequestData,
+  requestId: string,
+): RefundRequestDetails {
+  // Prefer the new schema shape (data.refund) when available; fall back to
+  // the legacy refundRequest fields only when the new shape is absent.
+  const newSchema = data.refund;
+  const legacy = data.refundRequest;
+
+  let preference: string;
+  let totalRefundAmount: number;
+  let originalWalletAmount: number;
+
+  if (newSchema && typeof newSchema === "object") {
+    preference = newSchema.preference ?? data.preference ?? "wallet";
+    totalRefundAmount = newSchema.totalRefundAmount ?? data.amount ?? 0;
+    originalWalletAmount =
+      newSchema.walletRefundAmount ??
+      legacy?.walletAmount ??
+      data.payment?.walletAmount ??
+      data.walletAmount ??
+      0;
+  } else if (legacy && typeof legacy === "object") {
+    preference = legacy.preference ?? data.preference ?? "wallet";
+    totalRefundAmount = legacy.amount ?? data.amount ?? 0;
+    originalWalletAmount =
+      legacy.walletAmount ??
+      data.payment?.walletAmount ??
+      data.walletAmount ??
+      0;
+  } else {
+    preference = data.preference ?? "wallet";
+    totalRefundAmount = data.amount ?? 0;
+    originalWalletAmount = data.payment?.walletAmount ?? data.walletAmount ?? 0;
+  }
 
   return {
     id: String(data.id ?? requestId),
@@ -65,18 +94,20 @@ function legacyRefund(data: RefundRequestData, requestId: string): RefundRequest
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 async function fetchCustomers(): Promise<AdminCustomer[]> {
-  const result = await customerApi<{ success: boolean; customers: AdminCustomer[] }>(
-    "/api/admin/customers",
-    { method: "GET" }
-  );
+  const result = await customerApi<{
+    success: boolean;
+    customers: AdminCustomer[];
+  }>("/api/admin/customers", { method: "GET" });
   return result.customers;
 }
 
 async function fetchRefundData(requestId: string): Promise<RefundRequestData> {
-  const result = await customerApi<{ success: boolean; data: RefundRequestData }>(
-    `/api/admin/customers?requestId=${encodeURIComponent(requestId)}`,
-    { method: "GET" }
-  );
+  const result = await customerApi<{
+    success: boolean;
+    data: RefundRequestData;
+  }>(`/api/admin/customers?requestId=${encodeURIComponent(requestId)}`, {
+    method: "GET",
+  });
   return result.data;
 }
 
@@ -91,7 +122,7 @@ export async function getCustomersWithWallets(): Promise<AdminCustomer[]> {
 }
 
 export async function getRefundRequestDetails(
-  requestId: string
+  requestId: string,
 ): Promise<RefundRequestDetails> {
   try {
     const data = await fetchRefundData(requestId);
@@ -101,7 +132,10 @@ export async function getRefundRequestDetails(
         ? data.refund
         : legacyRefund(data, requestId);
 
-    if (!Number.isFinite(details.walletRefundAmount) || details.walletRefundAmount <= 0) {
+    if (
+      !Number.isFinite(details.walletRefundAmount) ||
+      details.walletRefundAmount <= 0
+    ) {
       throw new Error("This refund does not contain a wallet refund amount.");
     }
 

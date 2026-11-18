@@ -32,12 +32,14 @@ function pruneLocal(now: number): void {
 /**
  * Record an attempt and report whether it is within the limit.
  *
- * Fails open on a store error: dropping a legitimate "your parcel shipped"
- * message is worse than an extra notification during an outage.
+ * Fails closed on a store error: the shared counter is what keeps the limit
+ * global, so an unavailable store means the limit cannot be enforced. Dropping
+ * a notification during an outage is preferable to bursting past the cap on
+ * every instance.
  */
 export async function allowNotification(
   userId: string,
-  now: number = Date.now()
+  now: number = Date.now(),
 ): Promise<boolean> {
   const client = getSharedRedisClient();
 
@@ -47,17 +49,25 @@ export async function allowNotification(
       const count = await client.incr(key);
 
       if (count === 1) {
-        await client.expire(key, Math.floor(NOTIFICATION_RATE_WINDOW_MS / 1000));
+        await client.expire(
+          key,
+          Math.floor(NOTIFICATION_RATE_WINDOW_MS / 1000),
+        );
       }
 
       return count <= NOTIFICATION_RATE_LIMIT;
     } catch {
-      // Fall through to the in-process bucket.
+      // Redis failure: fail closed so the rate limit remains global,
+      // not per-instance. Dropping a notification during an outage is
+      // preferable to silently exceeding the limit across instances.
+      return false;
     }
   }
 
   const cutoff = now - NOTIFICATION_RATE_WINDOW_MS;
-  const recent = (localBuckets.get(userId) ?? []).filter((stamp) => stamp > cutoff);
+  const recent = (localBuckets.get(userId) ?? []).filter(
+    (stamp) => stamp > cutoff,
+  );
 
   if (recent.length >= NOTIFICATION_RATE_LIMIT) {
     localBuckets.set(userId, recent);

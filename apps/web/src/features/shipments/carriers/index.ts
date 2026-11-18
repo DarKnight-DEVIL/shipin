@@ -1,4 +1,5 @@
 import { serverEnv } from "@/config/env";
+import { childLogger } from "@/lib/logger";
 
 import { createIndiaPostProvider } from "./indiaPostProvider";
 import { createPlaceholderProvider } from "./placeholderProvider";
@@ -22,9 +23,8 @@ function warnPlaceholderInUse(missing: string[]): void {
   if (warnedAboutPlaceholder) return;
   warnedAboutPlaceholder = true;
 
-  console.warn(
-    `[tracking] India Post is not configured (missing: ${missing.join(", ")}); ` +
-      "customer tracking is serving the placeholder feed, not carrier data."
+  childLogger({ service: "tracking" }).warn(
+    `India Post is not configured (missing: ${missing.join(", ")}); customer tracking is serving the placeholder feed, not carrier data.`,
   );
 }
 
@@ -51,11 +51,15 @@ export function getTrackingProvider(): TrackingProvider {
 export function isIndiaPostConfigured(): boolean {
   return Boolean(
     serverEnv.INDIA_POST_TRACKING_URL &&
-      serverEnv.INDIA_POST_CLIENT_ID &&
-      serverEnv.INDIA_POST_CLIENT_SECRET
+    serverEnv.INDIA_POST_CLIENT_ID &&
+    serverEnv.INDIA_POST_CLIENT_SECRET,
   );
 }
 
 export * from "./types";
-export { createIndiaPostProvider, mapIndiaPostResponse, normalizeCarrierStatus } from "./indiaPostProvider";
+export {
+  createIndiaPostProvider,
+  mapIndiaPostResponse,
+  normalizeCarrierStatus,
+} from "./indiaPostProvider";
 export { createPlaceholderProvider } from "./placeholderProvider";

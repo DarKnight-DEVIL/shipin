@@ -15,6 +15,12 @@ vi.mock('@/lib/adminAuth', () => ({
 vi.mock('@/lib/firebaseAdmin', () => ({
   adminDb: {
     collection: vi.fn(() => ({ doc: vi.fn(() => ({ get: mocks.get, update: mocks.update })) })),
+    runTransaction: vi.fn(async (work: (tx: unknown) => Promise<string>) =>
+      work({
+        get: vi.fn(async () => ({ exists: false, data: () => undefined })),
+        set: vi.fn(),
+      })
+    ),
   },
 }));
 vi.mock('firebase-admin/firestore', () => ({
@@ -109,7 +115,23 @@ describe('POST /api/admin/requests/[requestId]/shipment', () => {
       },
       updatedAt: '__SERVER_TS__',
     });
-    await expect(response.json()).resolves.toEqual({ success: true });
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      trackingId: 'SHP-2026-000001',
+    });
+  });
+
+  it('mints a tracking ID when the request does not supply one', async () => {
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ status: 'paid' }) });
+
+    const response = await call({ carrier: 'DHL', trackingNumber: 'ABC123' });
+
+    expect(mocks.update.mock.calls[0][0].tracking).toMatchObject({
+      internalTrackingId: 'SHP-2026-000001',
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      trackingId: 'SHP-2026-000001',
+    });
   });
 
   it('defaults optional tracking fields', async () => {
