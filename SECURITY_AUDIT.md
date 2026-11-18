@@ -73,7 +73,7 @@ Zod schemas for all untrusted inputs:
 ## Remaining Items
 - ~~Create `firestore.rules` and `storage.rules` for Firebase Security Rules~~ ✅ Done
 - ~~Upgrade Next.js from 16.3.8 to 16.4.3 (audit reports critical RCE vulnerabilities)~~ ✅ Already current (16.4.6)
-- Run `npm audit fix` for moderate/vulnerable packages ✅ Done — `npm audit` reports 0 vulnerabilities
+- Dependency audit is a real gate: `npm run audit:gate` (CI `security-audit` job) runs `npm audit --omit=dev` at high/critical and fails on anything not on the dated allowlist in `scripts/audit-gate.mjs`. The full `npm audit` currently reports **21 high, 0 critical**, all reached through build/test tooling (`vite`, `vitest`, `@sentry/nextjs` → `@rollup/plugin-commonjs`, `tinyglobby`/`fdir`, `micromatch` via `eslint-config-next`). The only production-view advisory is `GHSA-fc5q-39xc-vjpf` in `picomatch`, and `4.0.7` is the latest published release, so `npm audit fix` has nothing to install
 - Some customer-facing request routes may need auth (quote, refund, etc.) — see P1 below
 - Add CSP nonce support if inline scripts are used — **not possible in the current build**: all routes are statically prerendered, so the inline hydration bootstrap exists before any request and no per-request nonce can match it. `'unsafe-inline'` therefore stays in `script-src`/`style-src`; `getCSPWithNonce` remains in git history for the day the app moves to dynamic rendering
 - Enable Redis-backed rate limiting in production by setting `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`. **Current behaviour:** both are required in production and `validateProductionRequiredEnv()` (called from `src/instrumentation.ts`) throws at startup when they are missing, naming both variables and explaining that the deployment would otherwise run with per-instance limits and fail open — so a misconfigured deploy cannot serve traffic with rate limiting silently off. When they are configured, limits are global across serverless regions. If the configured store becomes *unreachable at runtime*, requests are still served (the limiter falls open — an outage must not lock everyone out of signing in) and `/api/health` reports `degraded` so the gap stays visible. The only way to boot a production build without a store is the explicit `RATE_LIMIT_STORE_OPTIONAL=1` opt-out, which exists for the local/CI E2E suite (`scripts/e2e-local.mjs` and the `e2e` CI job) that runs a production build against a throwaway database; nothing else sets it, and `true`/`yes`/any other value still fails the check.
@@ -81,7 +81,7 @@ Zod schemas for all untrusted inputs:
 ## Recommendations
 1. **✅ DONE**: CSP is now applied in the request proxy for all non-excluded routes — production uses `getProductionCSP()`: no `'unsafe-eval'`, a narrowed `connect-src`, explicit script/style/frame host allowlists, and the non-nonce lockdown directives (`object-src`, `base-uri`, `form-action`, `frame-ancestors`). `'unsafe-inline'` is still required for `script-src`/`style-src` — see Remaining Items
 2. **✅ DONE**: Rate limiting is now enforced at the proxy layer across all web/API routes
-3. **✅ DONE**: `npm audit fix` removed 11 vulnerable transitive dependencies; `npm audit` now reports 0 vulnerabilities
+3. **✅ DONE**: dependency audit is enforced, not advisory — `npm run audit:gate` fails on any high/critical production advisory outside the dated allowlist (see Remaining Items for the current counts and the one unresolved advisory)
 4. **P0**: Deploy with `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` to enable global Redis-backed rate limiting on Vercel
 5. **✅ DONE**: Added 75 new unit tests covering payment fee math, money precision, support message validation, MFA status shaping, and axe-core contract
 6. **✅ DONE**: Bundle analyzer integrated (`@next/bundle-analyzer`) — run `npm run analyze` to inspect bundle composition
@@ -140,6 +140,8 @@ Fixes applied after the original report, with the tests that now lock them in:
 | Observability | Sentry configs existed but nothing initialised them | Server/edge/client init via instrumentation, `onRequestError`, build wrapper gated on DSN + auth token |
 | Dead workflow | `expire-quotes-cron.yml` was UTF-16, which GitHub cannot parse — the hourly job never ran | Re-encoded UTF-8/LF, and `npm run check:workflows` (CI) rejects BOMs, NUL bytes and invalid UTF-8 |
 | Runtimes | Docker image pinned Node 22 while `.nvmrc` and CI used 24 | Dockerfile on `node:24-alpine`; `engines` >=22.12 documents the floor CI still tests |
+| Dependency audit | CI ran `npm audit --audit-level=moderate`, which is red on 21 highs with no fix available — an unpassable gate | `scripts/audit-gate.mjs` gates the production view at high/critical with a dated, reasoned allowlist and fails once an entry expires (`npm run audit:gate`) |
+| Dead money writers | Client-side wallet and request writers that `firestore.rules` denies were still exported, and feature barrels re-exported `server-only` modules | Writers, their tests and the mixed barrels removed; feature services are imported directly (`features/README.md`) |
 
 ---
-*Last updated: hardening pass on route classification, erasure, wallet capture, R2 access, Firestore rules, Sentry and workflow encoding.*
+*Last updated: hardening pass on route classification, erasure, wallet capture, R2 access, Firestore rules, Sentry, workflow encoding, the CI audit gate and dead-code removal.*

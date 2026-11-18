@@ -216,8 +216,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run npm audit
-        run: npm audit --audit-level=moderate
+      - name: Run npm audit (production dependencies, high/critical)
+        # Build/test tooling is excluded, and the one remaining advisory that
+        # has no fixed release is allowlisted with a dated expiry in
+        # scripts/audit-gate.mjs. Everything else fails the job.
+        run: npm run audit:gate
 
       - name: Report unpinned dependencies
         # Advisory only. The manifest intentionally uses caret ranges, so a
