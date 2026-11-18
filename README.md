@@ -44,7 +44,7 @@ packages/
 
 ## Prerequisites
 
-- Node.js 20 or newer (CI runs on 20; development on 22+ is supported)
+- Node.js 24 (`.nvmrc`); CI matrix: Node 22, 24; engines: >=22.12
 - A Firebase project with Auth and Firestore enabled
 - PayPal REST credentials (sandbox or live)
 - Upstash Redis database — **required in production** (see Security)
@@ -53,7 +53,7 @@ packages/
 
 ```bash
 npm ci
-cp .env.example .env.local   # if present, then fill in the values below
+cp apps/web/.env.example apps/web/.env.local   # then fill in the values below
 npm run dev
 ```
 
@@ -93,7 +93,7 @@ Never commit `.env*` files that contain real credentials.
 | --- | --- |
 | `npm run dev` | Development server |
 | `npm run build` | Production build |
-| `npm start` | Serve the production build |
+| `npm start` | Serve the production build (traced standalone `server.js`, the same entrypoint the Docker image runs) |
 | `npm run lint` | ESLint |
 | `npm test` | Unit/route tests (Vitest) |
 | `npm run test:watch` | Vitest in watch mode |
@@ -146,12 +146,13 @@ Quality bar for changes: `npx tsc --noEmit`, `npm run lint` (0 errors), `npm tes
 - **Environment validation** fails fast in production for missing server secrets; client
   `NEXT_PUBLIC_*` values are validated at runtime so a partial build environment cannot break
   prerendering.
-- **CI** runs lint, typecheck, build, tests with coverage, `npm audit`, TruffleHog secret scanning,
-  Playwright smoke tests and an axe accessibility job.
+- **CI** runs lint, typecheck, build, tests with coverage and per-file thresholds, the shuffled
+  order check, `npm audit`, TruffleHog secret scanning, bundle budgets, the Firestore rules suite,
+  Playwright E2E (local money-path contracts plus staging flows) and an axe accessibility job.
 
 ## Deployment
 
 Deployed on Vercel. Set every server variable above in the project environment (plus
 `UPSTASH_REDIS_REST_URL`/`TOKEN` and `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT` if Sentry
 source maps should be uploaded during the build). Build with `npm run build`, then start with
-`npm start`.
+`npm start` — it runs the traced standalone server the Docker image also runs, and takes its port from `PORT`.

@@ -8,11 +8,11 @@ This report documents the security hardening applied to the ShipIN website to ad
 ### 1. Rate Limiting
 - Per-IP request caps: 100 req/min (web), 30 req/min (API), 10 req/min (strict)
 - Proxy-based enforcement via `src/proxy.ts` (Next.js 16 renamed the `middleware` file convention to `proxy`)
-- In-memory store; for global limits, use Redis or edge/CDN rate limiting
+- Redis-backed (Upstash) sliding windows, shared across serverless instances; the in-memory implementation is only the development/test fallback. Production boot requires `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` — see Remaining Items
 
 ### 2. Security Headers
 All responses include:
-- **Content-Security-Policy**: Strict policy blocking inline scripts, allowing trusted sources (PayPal, Google, Vercel analytics)
+- **Content-Security-Policy**: Served by `src/proxy.ts` from `getProductionCSP()` — explicit host allowlists for the third-party SDKs actually loaded (PayPal, Google, Vercel analytics, Spline; `img-src` deliberately stays `https:` because R2 photo URLs are presigned per request), `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`, and violation reporting to `/api/csp-report`. `'unsafe-eval'` is **not** allowed. `'unsafe-inline'` **is** still allowed in `script-src` and `style-src`: every route is statically prerendered, so Next.js writes its hydration bootstrap inline at build time and a per-request nonce can never match it
 - **X-Frame-Options**: DENY (clickjacking protection)
 - **Strict-Transport-Security**: max-age=31536000; includeSubDomains; preload
 - **X-Content-Type-Options**: nosniff (MIME sniffing prevention)
@@ -24,7 +24,7 @@ All responses include:
 ### 3. CORS Configuration
 - Origin allowlist enforcement (production domains only)
 - Credentials support for cookie/XHR auth flows
-- Public API routes whitelisted for broader access
+- No public-route allowlist: every API route is same-origin and authenticated, so the origin check is the only CORS decision
 
 ### 4. Authentication Layer (`src/lib/auth.ts`)
 - `requireAuth`: Verifies Firebase ID token for any authenticated user
@@ -72,16 +72,16 @@ Zod schemas for all untrusted inputs:
 
 ## Remaining Items
 - ~~Create `firestore.rules` and `storage.rules` for Firebase Security Rules~~ ✅ Done
-- ~~Upgrade Next.js from 16.3.8 to 16.4.3 (audit reports critical RCE vulnerabilities)~~ ✅ Already at 16.4.3
-- Run `npm audit fix` for moderate/vulnerable packages ✅ Done (removed 11 deps, remaining are dev-only)
+- ~~Upgrade Next.js from 16.3.8 to 16.4.3 (audit reports critical RCE vulnerabilities)~~ ✅ Already current (16.4.6)
+- Run `npm audit fix` for moderate/vulnerable packages ✅ Done — `npm audit` reports 0 vulnerabilities
 - Some customer-facing request routes may need auth (quote, refund, etc.) — see P1 below
-- Add CSP nonce support if inline scripts are used — **CSP now applied in the request proxy** ✅ Done
+- Add CSP nonce support if inline scripts are used — **not possible in the current build**: all routes are statically prerendered, so the inline hydration bootstrap exists before any request and no per-request nonce can match it. `'unsafe-inline'` therefore stays in `script-src`/`style-src`; `getCSPWithNonce` remains in git history for the day the app moves to dynamic rendering
 - Enable Redis-backed rate limiting in production by setting `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`. **Current behaviour:** both are required in production and `validateProductionRequiredEnv()` (called from `src/instrumentation.ts`) throws at startup when they are missing, naming both variables and explaining that the deployment would otherwise run with per-instance limits and fail open — so a misconfigured deploy cannot serve traffic with rate limiting silently off. When they are configured, limits are global across serverless regions. If the configured store becomes *unreachable at runtime*, requests are still served (the limiter falls open — an outage must not lock everyone out of signing in) and `/api/health` reports `degraded` so the gap stays visible. The only way to boot a production build without a store is the explicit `RATE_LIMIT_STORE_OPTIONAL=1` opt-out, which exists for the local/CI E2E suite (`scripts/e2e-local.mjs` and the `e2e` CI job) that runs a production build against a throwaway database; nothing else sets it, and `true`/`yes`/any other value still fails the check.
 
 ## Recommendations
-1. **✅ DONE**: CSP is now applied in the request proxy for all non-excluded routes — production uses strict policy (no unsafe-inline/eval)
+1. **✅ DONE**: CSP is now applied in the request proxy for all non-excluded routes — production uses `getProductionCSP()`: no `'unsafe-eval'`, a narrowed `connect-src`, explicit script/style/frame host allowlists, and the non-nonce lockdown directives (`object-src`, `base-uri`, `form-action`, `frame-ancestors`). `'unsafe-inline'` is still required for `script-src`/`style-src` — see Remaining Items
 2. **✅ DONE**: Rate limiting is now enforced at the proxy layer across all web/API routes
-3. **✅ DONE**: `npm audit fix` removed 11 vulnerable transitive dependencies; no critical/high remain
+3. **✅ DONE**: `npm audit fix` removed 11 vulnerable transitive dependencies; `npm audit` now reports 0 vulnerabilities
 4. **P0**: Deploy with `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` to enable global Redis-backed rate limiting on Vercel
 5. **✅ DONE**: Added 75 new unit tests covering payment fee math, money precision, support message validation, MFA status shaping, and axe-core contract
 6. **✅ DONE**: Bundle analyzer integrated (`@next/bundle-analyzer`) — run `npm run analyze` to inspect bundle composition
@@ -101,15 +101,15 @@ Zod schemas for all untrusted inputs:
 
 ## Files Modified
 - `src/proxy.ts` — **Updated**: applies the full `SECURITY_HEADERS` map (CSP, HSTS, Permissions-Policy) + rate limiting for all web/API routes via the request proxy
-- `src/lib/securityHeaders.ts` — **Updated**: tightened production CSP from permissive (`unsafe-inline`, `unsafe-eval`) to strict policy with explicit allowlisted domains
+- `src/lib/securityHeaders.ts` — **Updated**: production CSP drops `'unsafe-eval'`, narrows `connect-src` from a blanket `wss: https:` to the Firebase socket hosts plus named API origins, allowlists the third-party script/style/frame hosts explicitly, and adds the non-nonce lockdown directives. `'unsafe-inline'` remains in `script-src`/`style-src` because prerendered pages ship their hydration bootstrap inline (pinned by `securityHeaders.test.ts`)
 - `src/lib/csrf.ts` — **Fixed**: replaced forbidden `require()` calls with proper ES module imports
 - `src/hooks/useSupport.ts` — **Fixed**: added eslint-disable for legitimate early-return setState pattern
 - `src/hooks/useCustomerSupport.ts` — **Fixed**: added eslint-disable for legitimate state-sync in effect
 - `next.config.ts` — **Updated**: added `@next/bundle-analyzer` integration (enabled via `ANALYZE=true`)
-- `tsconfig.json` — **Updated**: excluded `playwright.config.ts` from type-checking (not part of app bundle)
+- `tsconfig.json` — **Updated**: type-checks the app, the shared packages and `playwright.config.ts` (an earlier revision excluded the Playwright config; that exclusion was removed)
 - `eslint.config.mjs` — **Updated**: added accessibility rules (`jsx-a11y/*`) on top of next's built-in a11y integration
-- `package.json` — Added scripts: `analyze`, `test:e2e`, `test:e2e:ui`; pinned Node >= 20 via `engines` field
-- `.nvmrc` — **New**: pinned Node.js v20.18.0 for consistent local/CI environments
+- `package.json` — Added scripts: `analyze`, `test:e2e`, `test:e2e:ui`; `engines` requires Node >= 22.12
+- `.nvmrc` — **New**: pinned Node.js v24 for consistent local/CI environments
 - `SECURITY_AUDIT.md` — Updated status and recommendations
 - `.github/workflows/ci.yml` — Enhanced: test coverage reporting, multi-Node matrix (18/20/22), E2E Playwright job
 - `playwright.config.ts` — **New**: Playwright config with Chromium project and webServer auto-start

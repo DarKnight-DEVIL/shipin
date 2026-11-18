@@ -39,7 +39,8 @@ explicit rather than wildcarded:
 
 | Host | Role |
 |------|------|
-| `https://shipin-psi.vercel.app` | **Canonical** — use for `NEXT_PUBLIC_APP_URL`, `APP_URL`, links and passkeys |
+| `https://shipin-psi.vercel.app` | **Canonical** — use for `NEXT_PUBLIC_APP_URL`, `APP_URL`, links and passkeys. Also the code fallback (`SITE_URL_FALLBACK`) when the variable is unset |
+| `https://shipin.co` | Intended long-term domain, but it answers **410 Gone** today. Do not make it canonical, and do not use it as a fallback, until hosting is live |
 | `https://shipin-9576a.web.app` | Firebase Hosting alias (secondary, API access only) |
 | `https://shipin-9576a.firebaseapp.com` | Firebase Hosting alias (secondary, API access only) |
 | `http://localhost:3000`, `http://127.0.0.1:3000` | Local development |
@@ -192,10 +193,20 @@ This opens an interactive treemap. Look for:
 
 ### E2E Test Coverage
 
-| Test File | Coverage |
-|-----------|----------|
-| `smoke.spec.ts` | Public pages, API health, security headers, auth redirects |
-| `auth-flow.spec.ts` | Login page, protected route redirects, support flow redirects |
+`apps/web/scripts/e2e-local.mjs` (`npm run test:e2e:local`) is the reference local spec set,
+and the CI `e2e` job runs the same files, so a documented suite cannot rot unexecuted.
+
+| Test File | Coverage | Runs |
+|-----------|----------|------|
+| `smoke.spec.ts` | Public pages, API health, security headers, auth redirects | local + CI |
+| `hydration.spec.ts` | The production build actually hydrates | local + CI |
+| `sitemap-check.spec.ts` | `robots.txt` and `sitemap.xml` | local + CI |
+| `checkout-flow.spec.ts` | PayPal order routes: anonymous 401, validation 400 | local + CI |
+| `wallet-topup.spec.ts` | Wallet top-up routes: anonymous 401, bad amount 400, unknown id 404 | local + CI |
+| `admin-refund-local.spec.ts` | Refund authorization on the emulators: 401 / 403 / 404, no money moved | local + CI |
+| `signed-in-smoke.spec.ts` | Signed-in admin area and dashboard reads | `test:e2e:signed-in` + CI staging |
+| `admin-refund.spec.ts` | Full refund chain, real PayPal sandbox | CI staging only |
+| `auth-flow.spec.ts` | Public auth pages | Manual only — its 45s wait exceeds Playwright's 30s default timeout, so it is not wired into a runner yet |
 
 ### Integration Test Coverage
 

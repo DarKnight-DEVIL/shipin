@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Playwright E2E smoke tests (`playwright-test/tests/smoke.spec.ts`) covering page loads, API health, security headers, auth redirects, and login page rendering
 - ESLint accessibility rules (alt text, anchor content, ARIA props, heading content, click event requirements)
 - Startup warning when production runs without Upstash Redis rate limiting (`warnOnMissingRateLimitStore`)
-- Node version pinning: `.nvmrc` set to v20.18.0, `engines` field added to `package.json`
+- Node version pinning: `.nvmrc` set to v24, `engines` field updated to >=22.12
 - Payment fee math unit tests validating PayPal processing fee calculation and money precision behavior
 - Support route validation tests covering sender role enforcement, message trimming, and authorization checks
 - MFA status shaping tests covering credential filtering, TOTP enabled/pending detection, backup code counting, and phone number masking
@@ -31,8 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `middleware.ts` (now `src/proxy.ts` after the Next.js 16 rename) applies the full `SECURITY_HEADERS` map (CSP, HSTS, Permissions-Policy) and proxy-level rate limiting on every request
-- Production CSP tightened: removed `'unsafe-inline'` and `'unsafe-eval'` from script/style directives; replaced with explicit domain allowlists
-- CI pipeline enhanced: added multi-Node matrix testing (18, 20, 22), coverage reporting, and dedicated E2E job
+- Production CSP tightened: `'unsafe-eval'` dropped, `connect-src` narrowed from a blanket `wss: https:` to the Firebase socket hosts plus named API origins, and the third-party script/style/frame hosts allowlisted explicitly. `'unsafe-inline'` remains in `script-src` and `style-src`: every route is statically prerendered, so Next.js inlines its hydration bootstrap at build time and a per-request nonce can never match it (see `getProductionCSP` in `apps/web/src/lib/securityHeaders.ts`)
+- CI pipeline enhanced: multi-Node matrix testing (22, 24), coverage reporting, and dedicated E2E job
 - Support message route now validates message is non-empty string after trim (rejects whitespace-only messages)
 
 ### Fixed
