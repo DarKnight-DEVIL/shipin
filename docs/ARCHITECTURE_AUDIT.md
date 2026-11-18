@@ -2,6 +2,11 @@
 
 Date: 2026-11-09 (Phase 4 — Codebase Cleanup)
 
+This is a point-in-time record, not current guidance — `ARCHITECTURE.md` is the
+live description. Paths are relative to `apps/web/`, and the line and test
+counts in it have since moved; the corrections below are marked where the
+original numbers would mislead.
+
 ## Summary
 
 This pass focused on completing the architectural cleanup initiated in Phase 3, with emphasis on:
@@ -29,7 +34,7 @@ This pass focused on completing the architectural cleanup initiated in Phase 3, 
 
 ### 3. Duplicate types consolidated
 
-- `AdminCustomer` interface is now exported from `src/features/admin/services/customers.ts`
+- `AdminCustomer` interface now lives in `src/features/admin/services/customersClient.ts` (the file this pass names, `customers.ts`, no longer exists; the admin components import the client module)
 - Removed duplicate `Customer` / `CustomerWithWallet` interfaces from `admin/wallet/page.tsx`
 - Admin pages should import `{ AdminCustomer }` instead of defining local copies
 - Standardized naming: `AdminCustomer` (was `Customer`, `CustomerRecord`, `CustomerWithWallet`)
@@ -47,19 +52,25 @@ This pass focused on completing the architectural cleanup initiated in Phase 3, 
 
 ## Remaining debt
 
-### 1. Large page components
+### 1. Large page components — mostly resolved
 
-These pages still mix data loading, business rules, and presentation:
+These pages were since split: sections and panels live under
+`components/<domain>/` (e.g. `components/admin/wallet/*Panel.tsx`,
+`components/settings/*Section.tsx`) with their data hooks in
+`features/<domain>/hooks`, so the page is a composition root. Sizes as of
+2026-11-18:
 
-- `src/app/(platform)/settings/page.tsx` (~1,000 lines)
-- `src/app/(platform)/dashboard/page.tsx` (~780 lines)
-- `src/app/admin/requests/[id]/page.tsx`
-- `src/app/(platform)/requests/new/page.tsx`
-- `src/app/admin/wallet/page.tsx` (~945 lines)
-- `src/app/admin/audit/page.tsx` (~851 lines)
+- `src/app/(platform)/settings/page.tsx` — 135 lines (was ~1,000)
+- `src/app/(platform)/dashboard/page.tsx` — 313 lines (was ~780)
+- `src/app/admin/requests/[requestId]/page.tsx` — 164 lines; the route segment
+  is `[requestId]`, not `[id]` as written above
+- `src/app/admin/wallet/page.tsx` — 90 lines (was ~945)
+- `src/app/admin/audit/page.tsx` — 59 lines (was ~851)
 
-Recommended: extract each workflow into `features/<domain>/hooks` and
-`components/<domain>/` panels. Keep pages as composition roots.
+Still open:
+
+- `src/app/(platform)/requests/new/page.tsx` — 583 lines, still mixes the
+  multi-step form state with presentation.
 
 ### 2. Direct Firestore reads in pages — resolved
 
@@ -76,13 +87,23 @@ Recommended: extract each workflow into `features/<domain>/hooks` and
 - `src/app/admin/audit/page.tsx:154` — `formatDate` parameter typed as `unknown`
 - `src/app/admin/wallet/page.tsx:335` — `current` parameter typed via `AdminCustomer`
 
-### 4. ESLint debt
+### 4. ESLint debt — resolved
 
-- Repo-wide `npm run lint`: pre-existing errors and warnings, mostly
-  `no-explicit-any` in untouched files.
+- `npm run lint` is clean; the `no-explicit-any` findings this pass left behind
+  have been fixed.
+
+### 5. Documents carry no `schemaVersion`
+
+Tracked, not fixed. No Firestore document is versioned, so a breaking shape
+change still needs the manual four-step procedure (additive write, backfill,
+dual read, cleanup). `docs/OPERATIONS.md` → *Status: runner exists, documents
+are not yet versioned* is the procedure and the current state; the migration
+runner below `apps/web/scripts/migrations/` exists, `npm run migrate` wraps it.
 
 ## Verification
 
 - TypeScript: `npx tsc --noEmit` passes with no errors.
-- Vitest: 10 files, 95 tests passed.
+- Vitest: 10 files, 95 tests passed on the audit date. The suite is now 227
+  files / 2,405 tests across the workspace (212 files / 2,315 tests in
+  `apps/web`, plus the `packages/*` suites).
 - No runtime flow was exercised against Firebase or PayPal.
