@@ -171,6 +171,19 @@ export function getSharedRedisClient(): Redis | null {
   return getRedis();
 }
 
+/**
+ * Test hook: forget the cached client and Ratelimit instances.
+ *
+ * The suite runs with `isolate: false`, so a module file that mocks the store
+ * leaves this singleton populated for every later file in the worker. A file
+ * that wants "no shared store configured" has to say so rather than inheriting
+ * whichever fake client ran before it.
+ */
+export function resetSharedRedisClientForTests(): void {
+  redis = null;
+  ratelimitInstances.clear();
+}
+
 // Cache of created Ratelimit instances per limiter name to avoid
 // creating a new instance on every request (which wastes CPU and
 // may hit Upstash connection limits).

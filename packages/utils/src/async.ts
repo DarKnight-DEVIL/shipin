@@ -1,5 +1,5 @@
 export const sleep = (ms: number): Promise<void> =>
-  new Promise(resolve => setTimeout(resolve, ms));
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 export const retry = async <T>(
   fn: () => Promise<T>,
@@ -19,7 +19,7 @@ export const retry = async <T>(
 export const timeout = <T>(
   promise: Promise<T>,
   ms: number,
-  errorMessage = 'Operation timed out'
+  errorMessage = "Operation timed out"
 ): Promise<T> => {
   return Promise.race([
     promise,
@@ -29,30 +29,49 @@ export const timeout = <T>(
   ]);
 };
 
+/**
+ * Run `tasks` with at most `concurrency` in flight, returning results in the
+ * order the tasks were given rather than the order they finished.
+ *
+ * The previous version tried to find the settled promise with
+ * `p === Promise.resolve(p).then(() => {})`, which creates a *new* promise and
+ * is therefore never true: the lookup returned -1 and `splice(-1, 1)` dropped
+ * whichever promise happened to be last in the array. A pending task could be
+ * dropped from the tracked set, so `Promise.all` at the end no longer waited
+ * for it and its result went missing from the returned array. Fixed slots of
+ * workers avoid both problems: a worker claims the next index, so nothing is
+ * double-counted, and the index is where the result is stored.
+ *
+ * A rejected task rejects the whole call once the in-flight tasks settle; the
+ * tasks that had not started are not run.
+ */
 export const parallel = async <T>(
   tasks: Array<() => Promise<T>>,
   concurrency = 3
 ): Promise<T[]> => {
-  const results: T[] = [];
-  const executing: Promise<void>[] = [];
-
-  for (const task of tasks) {
-    const promise = task().then(result => {
-      results.push(result);
-    });
-
-    executing.push(promise);
-
-    if (executing.length >= concurrency) {
-      await Promise.race(executing);
-      const completed = executing.findIndex(p =>
-        p === Promise.resolve(p).then(() => {})
-      );
-      if (completed >= 0) executing.splice(completed, 1);
-    }
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new RangeError(
+      `parallel() needs a concurrency of at least 1, got ${concurrency}`
+    );
   }
 
-  await Promise.all(executing);
+  const results = new Array<T>(tasks.length);
+  let nextIndex = 0;
+
+  const worker = async (): Promise<void> => {
+    while (nextIndex < tasks.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await tasks[index]();
+    }
+  };
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, tasks.length) },
+    worker
+  );
+  await Promise.all(workers);
+
   return results;
 };
 

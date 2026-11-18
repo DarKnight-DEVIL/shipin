@@ -22,6 +22,7 @@ vi.mock('@/lib/mailer', () => ({ sendMail: mocks.sendMail }));
 
 import { sendNotification } from './notificationService';
 import { resetNotificationRateLimit } from '@/lib/notificationRateLimit';
+import { resetSharedRedisClientForTests } from '@/lib/redisRateLimiter';
 
 const base = {
   userId: 'user-1',
@@ -43,6 +44,11 @@ function user(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  // These cases exercise the in-process bucket. Without this, a fake client
+  // cached by an earlier file in the same worker (the suite runs with
+  // `isolate: false`) would be used, and a failing INCR now fails closed, so
+  // every send would be dropped.
+  resetSharedRedisClientForTests();
   resetNotificationRateLimit();
   mocks.getUser.mockReset().mockResolvedValue(user());
   mocks.addNotification.mockReset().mockResolvedValue({ id: 'n-1' });

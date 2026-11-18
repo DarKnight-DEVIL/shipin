@@ -8,6 +8,14 @@
  * configured.
  */
 
+import {
+  API_RATE_LIMIT,
+  LOGIN_RATE_LIMIT,
+  RATE_LIMIT_WINDOW_MS,
+  STRICT_RATE_LIMIT,
+  WEB_RATE_LIMIT,
+} from "@/config/constants";
+
 import { createSharedRateLimiter } from "./redisRateLimiter";
 import type { RateLimitResult } from "./redisRateLimiter";
 import { getClientIp } from "./clientIp";
@@ -96,32 +104,37 @@ export class InMemoryRateLimiter {
   }
 }
 
+// Every budget comes from `@/config/constants`, which documents itself as the
+// one place limits live. The literals here used to repeat those numbers, so a
+// change in the constants left the real limiter enforcing the old value.
 const DEFAULT_POLICY: RateLimitPolicy = {
-  maxRequests: 100,
-  windowMs: 60_000,
+  maxRequests: WEB_RATE_LIMIT,
+  windowMs: RATE_LIMIT_WINDOW_MS,
   message: "Too many requests, please try again later.",
 };
 
 // In-memory instances (used as fallback when Redis is not configured)
 const webLimiterMemory = new InMemoryRateLimiter(DEFAULT_POLICY);
 const apiLimiterMemory = new InMemoryRateLimiter({
-  maxRequests: 30,
-  windowMs: 60_000,
+  maxRequests: API_RATE_LIMIT,
+  windowMs: RATE_LIMIT_WINDOW_MS,
   message: "Too many requests, please try again later.",
 });
 const strictLimiterMemory = new InMemoryRateLimiter({
-  maxRequests: 10,
-  windowMs: 60_000,
+  maxRequests: STRICT_RATE_LIMIT,
+  windowMs: RATE_LIMIT_WINDOW_MS,
   message: "Too many requests, please try again later.",
 });
 const loginLimiterMemory = new InMemoryRateLimiter({
-  maxRequests: 5,
-  windowMs: 60_000,
+  maxRequests: LOGIN_RATE_LIMIT,
+  windowMs: RATE_LIMIT_WINDOW_MS,
   message: "Too many sign-in attempts, please wait a moment and try again.",
 });
 const authEntryLimiterMemory = new InMemoryRateLimiter({
-  maxRequests: 30,
-  windowMs: 60_000,
+  // The entry pages share the API budget: generous for a person retrying a
+  // sign-in, tight enough to meter a scripted flood.
+  maxRequests: API_RATE_LIMIT,
+  windowMs: RATE_LIMIT_WINDOW_MS,
   message: "Too many requests, please try again later.",
 });
 
@@ -135,15 +148,15 @@ export const webRateLimiter = createSharedRateLimiter(
 
 export const apiRateLimiter = createSharedRateLimiter(
   "api",
-  30,
-  60_000,
+  API_RATE_LIMIT,
+  RATE_LIMIT_WINDOW_MS,
   apiLimiterMemory
 );
 
 export const strictRateLimiter = createSharedRateLimiter(
   "strict",
-  10,
-  60_000,
+  STRICT_RATE_LIMIT,
+  RATE_LIMIT_WINDOW_MS,
   strictLimiterMemory
 );
 
@@ -157,8 +170,8 @@ export const strictRateLimiter = createSharedRateLimiter(
  */
 export const loginRateLimiter = createSharedRateLimiter(
   "login",
-  5,
-  60_000,
+  LOGIN_RATE_LIMIT,
+  RATE_LIMIT_WINDOW_MS,
   loginLimiterMemory
 );
 
@@ -174,8 +187,8 @@ export const loginRateLimiter = createSharedRateLimiter(
  */
 export const authEntryRateLimiter = createSharedRateLimiter(
   "auth-entry",
-  30,
-  60_000,
+  API_RATE_LIMIT,
+  RATE_LIMIT_WINDOW_MS,
   authEntryLimiterMemory
 );
 
