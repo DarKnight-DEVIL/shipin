@@ -6,9 +6,9 @@
  * observability setup.
  */
 
-import { validateProductionRequiredEnv } from '@/config/env';
-import { reportAppCheckStatus } from '@/lib/appCheck';
-import { reportRateLimitStoreStatus } from '@/lib/redisRateLimiter';
+import { validateProductionRequiredEnv } from "@/config/env";
+import { reportAppCheckStatus } from "@/lib/appCheck";
+import { reportRateLimitStoreStatus } from "@/lib/redisRateLimiter";
 
 /**
  * Register is called once when the Next.js server starts.
@@ -35,7 +35,10 @@ function failBoot(error: unknown): never {
   // Reaching the function through `globalThis` keeps it out of the bundler's
   // static Node-API analysis; the runtime check is still what protects us.
   const runtimeProcess = (globalThis as { process?: NodeJS.Process }).process;
-  if (process.env.NEXT_RUNTIME !== 'edge' && typeof runtimeProcess?.exit === 'function') {
+  if (
+    process.env.NEXT_RUNTIME !== "edge" &&
+    typeof runtimeProcess?.exit === "function"
+  ) {
     runtimeProcess.exit(1);
   }
 
@@ -46,10 +49,10 @@ export async function register() {
   // Error reporting first, so a crash later in this hook is captured. Each
   // runtime imports only its own config; the SDK is disabled without a DSN, so
   // this is a no-op in development and in CI.
-  if (process.env.NEXT_RUNTIME === 'nodejs') {
-    await import('../sentry.server.config');
-  } else if (process.env.NEXT_RUNTIME === 'edge') {
-    await import('../sentry.edge.config');
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    await import("../sentry.server.config");
+  } else if (process.env.NEXT_RUNTIME === "edge") {
+    await import("../sentry.edge.config");
   }
 
   // Validate production-required env vars (PAYPAL_WEBHOOK_ID and the shared
@@ -72,18 +75,22 @@ export async function register() {
   // so a route missing from the table is a broken endpoint, not a warning:
   // throw (and exit below) rather than serving it.
   //
-  // The enumerator reads the source tree, so it is imported dynamically and
-  // only on a Node runtime — the edge bundle cannot import `node:fs`.
-  if (process.env.NEXT_RUNTIME !== 'edge') {
+  // Imported dynamically and only on a Node runtime: the edge build has no use
+  // for a startup check that ends in `process.exit`. The route list itself is a
+  // generated static array, so nothing here touches the filesystem.
+  if (process.env.NEXT_RUNTIME !== "edge") {
     try {
-      const { assertAllRoutesClassified } = await import('@/config/routeClassification');
+      const { assertAllRoutesClassified } =
+        await import("@/config/routeClassification");
       const report = assertAllRoutesClassified();
 
       if (report.skipped) {
         // Expected for a deployed bundle that ships compiled output without src/.
         // routeClassification.test.ts enforces the same invariant in CI, so this
         // is a notice rather than a degraded state.
-        console.warn(`[instrumentation] route classification check skipped: ${report.skipped}`);
+        console.warn(
+          `[instrumentation] route classification check skipped: ${report.skipped}`
+        );
       }
     } catch (error) {
       // Same reasoning as the env check above: a throw alone leaves Next serving
@@ -108,10 +115,10 @@ export async function register() {
  * bundle do not pay for the SDK import.
  */
 export async function onRequestError(
-  ...args: Parameters<typeof import('@sentry/nextjs').captureRequestError>
+  ...args: Parameters<typeof import("@sentry/nextjs").captureRequestError>
 ) {
   try {
-    const { captureRequestError } = await import('@sentry/nextjs');
+    const { captureRequestError } = await import("@sentry/nextjs");
     captureRequestError(...args);
   } catch {
     // Error reporting must never break the error path.

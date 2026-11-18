@@ -14,6 +14,7 @@
     "typecheck": "turbo run typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "gen:api-routes": "npm run gen:api-routes --workspace=@shipin/web",
     "test": "turbo run test",
     "test:watch": "npm run test:watch --workspace=@shipin/web",
     "test:coverage": "npm run test:coverage --workspace=@shipin/web",

@@ -156,7 +156,7 @@ src/
 ### API Auth Classification (required for every route)
 
 - `src/config/routeAuth.ts` holds the path table (`public` / `customer` / `admin`). The proxy only checks that a Bearer token is present for customer/admin routes; each handler does the real verification.
-- `src/config/routeClassification.ts` enumerates `src/app/api/**/route.ts` and throws for anything unclassified. `src/instrumentation.ts` calls it at boot (exit 1 on failure) and `routeClassification.test.ts` runs the same walk in CI. Adding a route without a classification fails the build, not just a request.
+- `src/config/routeClassification.ts` throws for anything unclassified. The route list is `src/config/apiRoutes.generated.ts`, produced by `npm run gen:api-routes` — the walk lives in `scripts/lib/api-routes.mjs` so the server bundle never touches `node:fs`. `src/instrumentation.ts` calls it at boot (exit 1 on failure), and the tests re-walk the tree and fail when the manifest is stale. Adding a route without a classification fails the build, not just a request.
 - Anonymous endpoints must be listed explicitly: `/api/auth/login-intent`, `/api/auth/password-leak-check`, `/api/csp-report` are `public` even though their prefixes are not.
 
 ### Startup Checks (`src/instrumentation.ts`)
