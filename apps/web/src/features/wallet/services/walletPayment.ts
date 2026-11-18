@@ -13,15 +13,30 @@ export interface WalletPaymentResult {
   transactionId: string;
 }
 
+export type WalletPaymentErrorCode =
+  | "REQUEST_NOT_FOUND"
+  | "UNAUTHORIZED_REQUEST"
+  | "ALREADY_PAID"
+  | "WALLET_NOT_FOUND"
+  | "INSUFFICIENT_BALANCE";
+
 export interface WalletPaymentError {
-  code:
-    | "REQUEST_NOT_FOUND"
-    | "UNAUTHORIZED_REQUEST"
-    | "ALREADY_PAID"
-    | "WALLET_NOT_FOUND"
-    | "INSUFFICIENT_BALANCE";
+  code: WalletPaymentErrorCode;
   message: string;
   status: number;
+}
+
+/**
+ * A known wallet-payment refusal.
+ *
+ * Carries the code as a field so the HTTP mapping never depends on an error
+ * message: a wrapped or reworded message used to fall through to a 500.
+ */
+export class WalletPaymentFailure extends Error {
+  constructor(public readonly code: WalletPaymentErrorCode) {
+    super(code);
+    this.name = "WalletPaymentFailure";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -56,32 +71,32 @@ export async function processWalletPayment(
       async (transaction) => {
         const requestSnapshot = await transaction.get(requestRef);
         if (!requestSnapshot.exists) {
-          throw new Error("REQUEST_NOT_FOUND");
+          throw new WalletPaymentFailure("REQUEST_NOT_FOUND");
         }
 
         const request = requestSnapshot.data();
 
         // Ownership check: the caller must own this request.
         if (request?.userId !== userId) {
-          throw new Error("UNAUTHORIZED_REQUEST");
+          throw new WalletPaymentFailure("UNAUTHORIZED_REQUEST");
         }
 
         // Prevent duplicate payment.
         if (request?.status === "paid") {
-          throw new Error("ALREADY_PAID");
+          throw new WalletPaymentFailure("ALREADY_PAID");
         }
 
         // Get wallet.
         const walletSnapshot = await transaction.get(walletRef);
         if (!walletSnapshot.exists) {
-          throw new Error("WALLET_NOT_FOUND");
+          throw new WalletPaymentFailure("WALLET_NOT_FOUND");
         }
 
         const wallet = walletSnapshot.data();
         const currentBalance = wallet?.balance ?? 0;
 
         if (currentBalance < amount) {
-          throw new Error("INSUFFICIENT_BALANCE");
+          throw new WalletPaymentFailure("INSUFFICIENT_BALANCE");
         }
 
         const newBalance = currentBalance - amount;
@@ -132,6 +147,8 @@ export async function processWalletPayment(
 
     return result;
   } catch (error) {
+    // A known refusal keeps its code; anything else is wrapped as internal.
+    if (error instanceof WalletPaymentFailure) throw error;
     throw toShipINError(error);
   }
 }
@@ -142,9 +159,9 @@ export async function processWalletPayment(
 export function walletPaymentErrorResponse(
   error: unknown
 ): { code: string; message: string; status: number } | null {
-  if (!(error instanceof Error)) return null;
+  if (!(error instanceof WalletPaymentFailure)) return null;
 
-  switch (error.message) {
+  switch (error.code) {
     case "REQUEST_NOT_FOUND":
       return { code: "REQUEST_NOT_FOUND", message: "Request not found.", status: 404 };
     case "UNAUTHORIZED_REQUEST":

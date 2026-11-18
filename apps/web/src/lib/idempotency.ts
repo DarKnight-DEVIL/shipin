@@ -6,10 +6,12 @@
  * the first attempt's result instead of performing the write again. This module
  * is that half of the contract.
  *
- * The store is `idempotencyKeys/{sha256(uid:scope:key)}`, holding the response
- * status and body. Keys are scoped per user, so one customer cannot replay
- * another's response by guessing a key, and per route (`scope`), so the same
- * key on two endpoints cannot collide.
+ * The store is Redis when a shared store is configured (a single round trip,
+ * and the same answer from every instance), with `idempotencyKeys/{sha256(...)}`
+ * in Firestore as the durable copy and as the fallback when Redis is absent or
+ * erroring. Keys are scoped per user, so one customer cannot replay another's
+ * response by guessing a key, and per route (`scope`), so the same key on two
+ * endpoints cannot collide.
  *
  * Failure policy is deliberately fail-open *for the write*: if the store is
  * unreachable, the request proceeds. Every route that uses this also has a
@@ -23,7 +25,10 @@ import "server-only";
 
 import crypto from "crypto";
 
+import { Redis } from "@upstash/redis";
+
 import { adminDb } from "@/lib/firebaseAdmin";
+import { serverEnv } from "@/config/env";
 
 export const IDEMPOTENCY_HEADER = "idempotency-key";
 
@@ -31,10 +36,39 @@ export const IDEMPOTENCY_HEADER = "idempotency-key";
 export const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
 const COLLECTION = "idempotencyKeys";
+const REDIS_PREFIX = "shipin:idempotency:";
+
+let redisClient: Redis | null | undefined;
+
+/** The shared store, or null when it is not configured. */
+function getRedis(): Redis | null {
+  if (redisClient !== undefined) return redisClient;
+
+  const url = serverEnv.UPSTASH_REDIS_REST_URL;
+  const token = serverEnv.UPSTASH_REDIS_REST_TOKEN;
+
+  let valid = false;
+  if (url) {
+    try {
+      valid = new URL(url).protocol === "https:";
+    } catch {
+      valid = false;
+    }
+  }
+
+  redisClient = valid && token ? new Redis({ url: url as string, token }) : null;
+  return redisClient;
+}
+
+function redisKey(uid: string, scope: string, key: string): string {
+  return `${REDIS_PREFIX}${documentId(uid, scope, key)}`;
+}
 
 export interface IdempotentResponse {
   status: number;
   body: unknown;
+  /** Set when reading from the shared store; absent on the Firestore copy. */
+  expiresAt?: number;
 }
 
 /**
@@ -73,6 +107,29 @@ export async function readIdempotentResponse({
   scope: string;
   key: string;
 }): Promise<IdempotentResponse | null> {
+  const redis = getRedis();
+
+  if (redis) {
+    try {
+      const stored = await redis.get<IdempotentResponse | string>(redisKey(uid, scope, key));
+      const parsed =
+        typeof stored === "string" ? (JSON.parse(stored) as IdempotentResponse) : stored;
+
+      if (
+        parsed &&
+        typeof parsed.status === "number" &&
+        typeof parsed.expiresAt === "number" &&
+        parsed.expiresAt > Date.now()
+      ) {
+        return { status: parsed.status, body: parsed.body };
+      }
+      if (parsed) return null;
+    } catch (error) {
+      // Fall through to Firestore: a Redis blip must not disable replay.
+      console.error("[idempotency] Could not read the shared store:", error);
+    }
+  }
+
   try {
     const snapshot = await adminDb
       .collection(COLLECTION)
@@ -113,18 +170,31 @@ export async function rememberIdempotentResponse(
   },
   response: IdempotentResponse
 ): Promise<void> {
+  const record = {
+    uid,
+    scope,
+    status: response.status,
+    body: response.body,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + IDEMPOTENCY_TTL_MS,
+  };
+
+  const redis = getRedis();
+  if (redis) {
+    try {
+      await redis.set(redisKey(uid, scope, key), JSON.stringify(record), {
+        ex: Math.floor(IDEMPOTENCY_TTL_MS / 1000),
+      });
+    } catch (error) {
+      console.error("[idempotency] Could not store the response in the shared store:", error);
+    }
+  }
+
   try {
     await adminDb
       .collection(COLLECTION)
       .doc(documentId(uid, scope, key))
-      .set({
-        uid,
-        scope,
-        status: response.status,
-        body: response.body,
-        createdAt: Date.now(),
-        expiresAt: Date.now() + IDEMPOTENCY_TTL_MS,
-      });
+      .set(record);
   } catch (error) {
     console.error("[idempotency] Could not store the response:", error);
   }

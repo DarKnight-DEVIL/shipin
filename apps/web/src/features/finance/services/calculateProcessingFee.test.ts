@@ -35,6 +35,34 @@ describe('calculateProcessingFee', () => {
     expect(fee).toBeCloseTo(totalToCharge - 100, 5);
   });
 
+  it('rounds the total up so the fee is never a cent short', () => {
+    const result = calculateProcessingFee({
+      amount: 100,
+      percentage: 0.044,
+      fixedFee: 0.3,
+      absorbFee: false,
+    });
+
+    // 100.30 / 0.956 = 104.9163... ; to-nearest would give 104.92 as well, but
+    // the guarantee is the direction: never below the exact gross-up.
+    expect(result.totalToCharge).toBe(104.92);
+    expect(result.totalToCharge).toBeGreaterThanOrEqual(104.9163);
+    expect(result.fee).toBe(4.92);
+  });
+
+  it('rounds a fractional cent up rather than to nearest', () => {
+    // 33.82 / 0.9651 = 35.0429... ; toFixed would charge 35.04 and lose a cent.
+    const result = calculateProcessingFee({
+      amount: 33.33,
+      percentage: 0.0349,
+      fixedFee: 0.49,
+      absorbFee: false,
+    });
+
+    expect(result.totalToCharge).toBeCloseTo(35.05, 5);
+    expect(result.fee).toBeCloseTo(1.72, 5);
+  });
+
   it('rounds monetary values to two decimals', () => {
     const result = calculateProcessingFee({
       amount: 33.33,

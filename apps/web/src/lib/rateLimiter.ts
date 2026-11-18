@@ -22,7 +22,9 @@ export interface RateLimitPolicy {
 
 export interface SharedRateLimiter {
   record(request: Request): Promise<RateLimitResult>;
-  getErrorCounts(since: number): Array<{ ip: string; errors: number; lastErrorAt: number }>;
+  getErrorCounts(
+    since: number
+  ): Promise<Array<{ ip: string; errors: number; lastErrorAt: number }>>;
 }
 
 export class InMemoryRateLimiter {
@@ -31,6 +33,18 @@ export class InMemoryRateLimiter {
 
   constructor(policy: RateLimitPolicy) {
     this.policy = policy;
+
+    // record() prunes, so a busy limiter stays small. A limiter that goes
+    // quiet keeps its last buckets forever in a long-lived process, so sweep
+    // once per window as well. unref keeps the timer from holding the process
+    // open at shutdown.
+    const timer = setInterval(() => this.prune(Date.now()), policy.windowMs);
+    timer.unref?.();
+  }
+
+  /** Number of address buckets currently held; used by tests and diagnostics. */
+  get trackedBuckets(): number {
+    return Object.keys(this.store).length;
   }
 
   private resolveClientIp(request: Request): string {

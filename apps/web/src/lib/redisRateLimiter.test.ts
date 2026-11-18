@@ -19,6 +19,9 @@ const state = vi.hoisted(() => ({
   token: '',
   isProduction: false,
   limit: vi.fn(),
+  hset: vi.fn(),
+  hgetall: vi.fn(),
+  expire: vi.fn(),
 }));
 
 vi.mock('@/config/env', () => ({
@@ -41,6 +44,10 @@ vi.mock('@/config/env', () => ({
 
 vi.mock('@upstash/redis', () => ({
   Redis: class {
+    hset = state.hset;
+    hgetall = state.hgetall;
+    expire = state.expire;
+
     constructor(_options: unknown) {}
   },
 }));
@@ -98,6 +105,9 @@ beforeEach(() => {
   state.token = '';
   state.isProduction = false;
   state.limit.mockReset();
+  state.hset.mockReset().mockResolvedValue(1);
+  state.hgetall.mockReset().mockResolvedValue({});
+  state.expire.mockReset().mockResolvedValue(1);
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -139,7 +149,7 @@ describe('createSharedRateLimiter in production without a shared store', () => {
     expect(fallback.record).not.toHaveBeenCalled();
     // Surfaced through the error counters (/api/health) and the one startup
     // warning, not a log line per request.
-    expect(limiter.getErrorCounts(0)).toEqual([
+    expect(await limiter.getErrorCounts(0)).toEqual([
       { ip: '1.2.3.4', errors: 1, lastErrorAt: expect.any(Number) },
     ]);
   });
@@ -213,11 +223,62 @@ describe('createSharedRateLimiter with Redis configured', () => {
 
     await limiter.record(requestWith('198.51.100.7'));
 
-    expect(limiter.getErrorCounts(Date.now() - 60_000)).toEqual([
+    expect(await limiter.getErrorCounts(Date.now() - 60_000)).toEqual([
       { ip: '198.51.100.7', errors: 1, lastErrorAt: expect.any(Number) },
     ]);
-    expect(limiter.getErrorCounts(Date.now() + 60_000)).toEqual([]);
-    expect(other.getErrorCounts(0)).toEqual([]);
+    expect(await limiter.getErrorCounts(Date.now() + 60_000)).toEqual([]);
+    expect(await other.getErrorCounts(0)).toEqual([]);
+  });
+});
+
+describe('shared Redis error counters', () => {
+  it('reports counts written by another instance', async () => {
+    configureRedis();
+    state.hgetall.mockResolvedValue({
+      '203.0.113.4': JSON.stringify({ errors: 4, lastErrorAt: Date.now() - 1000 }),
+      '203.0.113.5': { errors: 1, lastErrorAt: Date.now() - 500 },
+    });
+    const limiter = createSharedRateLimiter('api', 30, 60_000, makeFallback());
+
+    expect(await limiter.getErrorCounts(0)).toEqual([
+      { ip: '203.0.113.4', errors: 4, lastErrorAt: expect.any(Number) },
+      { ip: '203.0.113.5', errors: 1, lastErrorAt: expect.any(Number) },
+    ]);
+  });
+
+  it('ignores malformed and stale entries', async () => {
+    configureRedis();
+    state.hgetall.mockResolvedValue({
+      bad: 'not json',
+      wrongShape: JSON.stringify({ errors: 'many', lastErrorAt: 'soon' }),
+      old: JSON.stringify({ errors: 2, lastErrorAt: 1 }),
+    });
+    const limiter = createSharedRateLimiter('web', 100, 60_000, makeFallback());
+
+    expect(await limiter.getErrorCounts(Date.now() - 60_000)).toEqual([]);
+  });
+
+  it('keeps local counts when the store cannot be read', async () => {
+    configureRedis();
+    state.hgetall.mockRejectedValue(new Error('down'));
+    state.limit.mockRejectedValue(new Error('redis down'));
+    const limiter = createSharedRateLimiter('strict', 10, 60_000, makeFallback());
+
+    await limiter.record(requestWith('198.51.100.9'));
+
+    expect(await limiter.getErrorCounts(0)).toEqual([
+      { ip: '198.51.100.9', errors: 1, lastErrorAt: expect.any(Number) },
+    ]);
+  });
+
+  it('does not fail a request when the counter write fails', async () => {
+    configureRedis();
+    state.hset.mockRejectedValue(new Error('down'));
+    state.limit.mockRejectedValue(new Error('redis down'));
+    const limiter = createSharedRateLimiter('login', 5, 60_000, makeFallback());
+
+    await expect(limiter.record(requestWith())).resolves.toMatchObject({ ok: false });
+    await Promise.resolve();
   });
 });
 

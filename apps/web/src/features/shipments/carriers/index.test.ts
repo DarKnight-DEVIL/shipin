@@ -24,6 +24,21 @@ beforeEach(async () => {
   ({ getTrackingProvider, isIndiaPostConfigured } = await import('./index'));
 });
 
+describe('placeholder fallback', () => {
+  it('warns once that tracking is serving placeholder data', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.resetModules();
+    const fresh = await import('./index');
+
+    fresh.getTrackingProvider();
+    fresh.getTrackingProvider();
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain('placeholder feed');
+    warn.mockRestore();
+  });
+});
+
 describe('getTrackingProvider', () => {
   it('falls back to placeholder when nothing is configured', () => {
     const provider = getTrackingProvider();

@@ -146,13 +146,22 @@ describe('walletPaymentErrorResponse', () => {
   ];
 
   it.each(cases)('maps %s to a %i response', async (code, message, status) => {
-    const { walletPaymentErrorResponse } = await import('./walletPayment');
+    const { walletPaymentErrorResponse, WalletPaymentFailure } = await import(
+      './walletPayment'
+    );
 
-    expect(walletPaymentErrorResponse(new Error(code))).toEqual({
+    expect(walletPaymentErrorResponse(new WalletPaymentFailure(code as never))).toEqual({
       code,
       message,
       status,
     });
+  });
+
+  it('does not depend on error messages', async () => {
+    const { walletPaymentErrorResponse } = await import('./walletPayment');
+
+    // A reworded or wrapped message must not turn a known refusal into a 500.
+    expect(walletPaymentErrorResponse(new Error('REQUEST_NOT_FOUND'))).toBeNull();
   });
 
   it('returns null for an unrecognised error', async () => {

@@ -44,6 +44,34 @@ beforeEach(() => {
   mocks.update.mockReset().mockResolvedValue(undefined);
 });
 
+describe('saveDetailedQuote with a concurrent write', () => {
+  it('reports a conflict when the request changed after the read', async () => {
+    const updateTime = new mocks.MockTimestamp(new Date('2026-01-01T00:00:00Z'));
+    mocks.get.mockResolvedValue({
+      exists: true,
+      updateTime,
+      data: () => ({ quote: { regeneratedCount: 0 } }),
+    });
+    mocks.update.mockRejectedValue(Object.assign(new Error('stale'), { code: 9 }));
+
+    await expect(saveDetailedQuote('req-1', quote())).rejects.toThrow(
+      'changed while the quote was being saved'
+    );
+    expect(mocks.update).toHaveBeenCalledWith(expect.anything(), { lastUpdateTime: updateTime });
+  });
+
+  it('rethrows anything that is not a precondition failure', async () => {
+    mocks.get.mockResolvedValue({
+      exists: true,
+      updateTime: new mocks.MockTimestamp(new Date('2026-01-01T00:00:00Z')),
+      data: () => ({}),
+    });
+    mocks.update.mockRejectedValue(new Error('offline'));
+
+    await expect(saveDetailedQuote('req-1', quote())).rejects.toThrow('offline');
+  });
+});
+
 describe('saveDetailedQuote', () => {
   it('normalises the quote, reopens review and clears the request flag', async () => {
     mocks.get.mockResolvedValue({

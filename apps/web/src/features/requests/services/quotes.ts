@@ -1,9 +1,46 @@
 import "server-only";
 
 import { adminDb } from '@/lib/firebaseAdmin';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, type DocumentReference } from 'firebase-admin/firestore';
 import { Timestamp } from 'firebase-admin/firestore';
 import { NotFoundError, PaymentError } from '@/utils/errors';
+
+/**
+ * Firestore signals a failed optimistic-concurrency precondition as gRPC 9 /
+ * FAILED_PRECONDITION. Treated by code, never by message.
+ */
+function isPreconditionFailure(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const code = (error as { code?: unknown }).code;
+  return code === 9 || code === 'failed-precondition' || code === 'FAILED_PRECONDITION';
+}
+
+/**
+ * Write a quote only if the request is still the version that was read.
+ *
+ * Two admins saving at the same time used to produce a silent last-write-wins;
+ * the precondition turns the loser into a visible conflict instead.
+ */
+async function updateRequestIfUnchanged(
+  requestRef: DocumentReference,
+  data: Record<string, unknown>,
+  updateTime: Timestamp | undefined
+): Promise<void> {
+  try {
+    if (updateTime) {
+      await requestRef.update(data, { lastUpdateTime: updateTime });
+      return;
+    }
+    await requestRef.update(data);
+  } catch (error) {
+    if (isPreconditionFailure(error)) {
+      throw new PaymentError(
+        'This request changed while the quote was being saved. Reload it and try again.'
+      );
+    }
+    throw error;
+  }
+}
 import type { Request } from '@/types/request';
 import { quoteExpiresAt } from './quoteTtl';
 
@@ -38,17 +75,21 @@ export async function saveDetailedQuote(
 
   const requestData = snapshot.data();
 
-  await requestRef.update({
-    quote: {
-      ...normalizedQuote,
-      expired: false,
-      regeneratedCount: (requestData?.quote?.regeneratedCount ?? 0) + 1,
+  await updateRequestIfUnchanged(
+    requestRef,
+    {
+      quote: {
+        ...normalizedQuote,
+        expired: false,
+        regeneratedCount: (requestData?.quote?.regeneratedCount ?? 0) + 1,
+      },
+      status: 'review',
+      quoteRegenerationRequested: false,
+      quoteRequestedAt: null,
+      updatedAt: FieldValue.serverTimestamp(),
     },
-    status: 'review',
-    quoteRegenerationRequested: false,
-    quoteRequestedAt: null,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+    snapshot.updateTime
+  );
 }
 
 /**
@@ -105,14 +146,18 @@ export async function regenerateQuote(
 
   const requestData = snapshot.data();
 
-  await requestRef.update({
-    quote: {
-      ...normalizedQuote,
-      regeneratedCount: (requestData?.quote?.regeneratedCount ?? 0) + 1,
+  await updateRequestIfUnchanged(
+    requestRef,
+    {
+      quote: {
+        ...normalizedQuote,
+        regeneratedCount: (requestData?.quote?.regeneratedCount ?? 0) + 1,
+      },
+      status: 'review',
+      quoteRegenerationRequested: true,
+      quoteRequestedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     },
-    status: 'review',
-    quoteRegenerationRequested: true,
-    quoteRequestedAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+    snapshot.updateTime
+  );
 }

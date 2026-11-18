@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getDoc: vi.fn(),
   getDocs: vi.fn(),
   updateDoc: vi.fn(),
+  runTransaction: vi.fn(),
   arrayUnion: vi.fn((value: unknown) => ({ __union: value })),
   arrayRemove: vi.fn((value: unknown) => ({ __remove: value })),
 }));
@@ -28,6 +29,7 @@ vi.mock('firebase/firestore', () => {
   getDoc: mocks.getDoc,
   getDocs: mocks.getDocs,
   updateDoc: mocks.updateDoc,
+  runTransaction: mocks.runTransaction,
   serverTimestamp: vi.fn(() => '__SERVER_TS__'),
   arrayUnion: mocks.arrayUnion,
   arrayRemove: mocks.arrayRemove,
@@ -59,6 +61,12 @@ beforeEach(() => {
   mocks.getDoc.mockReset().mockResolvedValue(documentSnapshot({}));
   mocks.getDocs.mockReset().mockResolvedValue({ docs: [] });
   mocks.updateDoc.mockReset().mockResolvedValue(undefined);
+  // The transaction hands its own handle to the callback; routing it at the
+  // same spies keeps the assertions about what is written, not how.
+  mocks.runTransaction.mockReset().mockImplementation(
+    async (_db: unknown, callback: (tx: unknown) => unknown) =>
+      callback({ get: mocks.getDoc, update: mocks.updateDoc, set: vi.fn() })
+  );
 });
 
 describe('createShipment', () => {
@@ -91,6 +99,15 @@ describe('addRequestToShipment', () => {
         consolidation: { enabled: true, shipmentId: 'ship-1', consolidatedAt: '__SERVER_TS__' },
       },
     ]);
+  });
+
+  it('writes both documents inside one transaction', async () => {
+    await addRequestToShipment('ship-1', 'req-1');
+
+    expect(mocks.runTransaction).toHaveBeenCalledTimes(1);
+    // Both updates go through the transaction handle, so they commit or roll
+    // back together.
+    expect(mocks.updateDoc).toHaveBeenCalledTimes(2);
   });
 
   it('rejects an unknown shipment', async () => {
@@ -210,6 +227,15 @@ describe('finalizeShipment', () => {
       { path: 'shipments/ship-1' },
       { status: 'ready', finalizedAt: '__SERVER_TS__', updatedAt: '__SERVER_TS__' }
     );
+  });
+
+  it('writes both documents inside one transaction', async () => {
+    await addRequestToShipment('ship-1', 'req-1');
+
+    expect(mocks.runTransaction).toHaveBeenCalledTimes(1);
+    // Both updates go through the transaction handle, so they commit or roll
+    // back together.
+    expect(mocks.updateDoc).toHaveBeenCalledTimes(2);
   });
 
   it('rejects an unknown shipment', async () => {

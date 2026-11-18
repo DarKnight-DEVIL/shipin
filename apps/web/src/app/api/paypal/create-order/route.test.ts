@@ -181,6 +181,22 @@ describe('POST /api/paypal/create-order', () => {
     });
   });
 
+  it('refuses an amount one cent above the amount due', async () => {
+    const response = await POST(request({ ...body, amount: Number((104.7 + 0.01).toFixed(2)) }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: 'Payment amount could not be verified.',
+    });
+  });
+
+  it('accepts the amount due expressed with float noise', async () => {
+    const response = await POST(request({ ...body, amount: Number((104.7).toPrecision(17)) }));
+
+    expect(response.status).not.toBe(400);
+  });
+
   it('requires a request owner', async () => {
     mocks.requestGet.mockResolvedValue(snap({ quote: requestDoc.quote }));
 

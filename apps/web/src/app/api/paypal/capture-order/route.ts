@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
-import { FieldValue, type Timestamp } from "firebase-admin/firestore";
+import {
+  FieldValue,
+  type DocumentReference,
+  type Timestamp,
+} from "firebase-admin/firestore";
 import {
   sendNotification,
 } from "@/features/notifications/services/notificationService";
@@ -25,6 +29,69 @@ function toNumber(value: unknown): number {
   const number = Number(value);
 
   return Number.isFinite(number) ? number : 0;
+}
+
+/**
+ * How long one attempt may hold the capture claim before another may take it
+ * over. Long enough for a slow PayPal call, short enough that a crashed
+ * instance does not leave the order stuck.
+ */
+const CAPTURE_CLAIM_LEASE_MS = 2 * 60 * 1000;
+
+/**
+ * Claim the right to call PayPal's capture endpoint for this order.
+ *
+ * The status check before the call was a read-then-act race: two concurrent
+ * retries both saw "created" and both asked PayPal to capture. The claim is a
+ * transaction, so exactly one attempt wins; a completed order is reported as
+ * such, and a live claim from another attempt is reported as busy.
+ */
+async function claimCapture(
+  paymentOrderRef: DocumentReference
+): Promise<"claimed" | "completed" | "busy"> {
+  return adminDb.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(paymentOrderRef);
+    const data = snapshot.data() ?? {};
+
+    if (data.status === "completed") return "completed";
+
+    const claimedAt = toNumber(data.captureClaimedAt);
+    if (
+      data.status === "capturing" &&
+      claimedAt > 0 &&
+      Date.now() - claimedAt < CAPTURE_CLAIM_LEASE_MS
+    ) {
+      return "busy";
+    }
+
+    transaction.update(paymentOrderRef, {
+      status: "capturing",
+      captureClaimedAt: Date.now(),
+    });
+
+    return "claimed";
+  });
+}
+
+/**
+ * Hand the claim back after a failed attempt so a retry is not blocked by the
+ * lease. Best effort: a failure here only delays the next attempt.
+ */
+async function releaseCaptureClaim(
+  paymentOrderRef: DocumentReference
+): Promise<void> {
+  try {
+    await adminDb.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(paymentOrderRef);
+      if (snapshot.data()?.status !== "capturing") return;
+      transaction.update(paymentOrderRef, {
+        status: "created",
+        captureClaimedAt: null,
+      });
+    });
+  } catch (error) {
+    console.error("Could not release the PayPal capture claim:", error);
+  }
 }
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
@@ -344,10 +411,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       Number(amount.toFixed(2));
 
     if (
-      Math.abs(
-        clientAmount -
-          expectedPayPalAmount
-      ) > 0.01
+      Math.round(clientAmount * 100) !==
+      Math.round(expectedPayPalAmount * 100)
     ) {
       console.error(
         "Client PayPal amount mismatch:",
@@ -368,6 +433,38 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         { status: 400 }
       );
     }
+
+    /*
+     * ========================================
+     * CLAIM THE CAPTURE
+     * ========================================
+     */
+
+    const claim = await claimCapture(paymentOrderRef);
+
+    if (claim === "completed") {
+      return NextResponse.json({
+        success: true,
+        alreadyCompleted: true,
+        paymentType,
+        captureId: paymentOrder.captureId || null,
+      });
+    }
+
+    if (claim === "busy") {
+      return NextResponse.json(
+        {
+          success: false,
+          inProgress: true,
+          error: "This payment is already being processed. Please wait a moment and refresh.",
+        },
+        { status: 409 }
+      );
+    }
+
+    let captureSettled = false;
+
+    try {
 
     /*
      * ========================================
@@ -512,10 +609,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      */
 
     if (
-      Math.abs(
-        capturedAmount -
-          expectedPayPalAmount
-      ) > 0.01
+      Math.round(capturedAmount * 100) !==
+      Math.round(expectedPayPalAmount * 100)
     ) {
       console.error(
         "PayPal capture amount mismatch:",
@@ -605,10 +700,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         );
 
       if (
-        Math.abs(
-          storedBaseAmount -
-            additionalItemTotal
-        ) > 0.01
+        Math.round(storedBaseAmount * 100) !==
+        Math.round(additionalItemTotal * 100)
       ) {
         console.error(
           "Additional item base amount mismatch:",
@@ -730,6 +823,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         completedAt:
           FieldValue.serverTimestamp(),
       });
+
+      captureSettled = true;
 
       return NextResponse.json({
         success: true,
@@ -1113,6 +1208,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       }
     );
 
+    captureSettled = true;
+
     /*
      * ========================================
      * PAYMENT NOTIFICATION
@@ -1205,6 +1302,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         totalRequired,
     });
 
+    } finally {
+      if (!captureSettled) {
+        await releaseCaptureClaim(paymentOrderRef);
+      }
+    }
   } catch (error) {
     console.error(
       "PayPal capture order route error:",

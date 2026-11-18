@@ -509,11 +509,17 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      * the amount calculated by the server.
      */
 
+    /*
+     * Compare whole cents, not a one-cent tolerance: a browser sending
+     * 100.01 for a 100.00 quote must not be charged the extra cent.
+     */
     if (
-      Math.abs(
-        requestedPayPalAmount -
-          expectedPayPalAmount
-      ) > 0.01
+      Math.round(
+        requestedPayPalAmount * 100
+      ) !==
+      Math.round(
+        expectedPayPalAmount * 100
+      )
     ) {
       console.error(
         "PayPal amount mismatch:",

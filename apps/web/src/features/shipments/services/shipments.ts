@@ -7,6 +7,7 @@ import {
   getDoc,
   getDocs,
   query,
+  runTransaction,
   serverTimestamp,
   updateDoc,
   where,
@@ -92,29 +93,31 @@ export async function addRequestToShipment(
     requestId
   );
 
-  const shipmentSnap = await getDoc(
-    shipmentRef
-  );
+  // Both writes describe one fact, so they commit together: a shipment that
+  // lists a request the request does not point back to is a corrupt pair.
+  await runTransaction(db, async (transaction) => {
+    const shipmentSnap = await transaction.get(shipmentRef);
 
-  if (!shipmentSnap.exists()) {
-    throw new Error("Shipment not found.");
-  }
+    if (!shipmentSnap.exists()) {
+      throw new Error("Shipment not found.");
+    }
 
-  await updateDoc(shipmentRef, {
-    requestIds: arrayUnion(requestId),
+    transaction.update(shipmentRef, {
+      requestIds: arrayUnion(requestId),
 
-    updatedAt: serverTimestamp(),
-  });
+      updatedAt: serverTimestamp(),
+    });
 
-  await updateDoc(requestRef, {
-    consolidation: {
-      enabled: true,
+    transaction.update(requestRef, {
+      consolidation: {
+        enabled: true,
 
-      shipmentId,
+        shipmentId,
 
-      consolidatedAt:
-        serverTimestamp(),
-    },
+        consolidatedAt:
+          serverTimestamp(),
+      },
+    });
   });
 }
 
@@ -207,17 +210,19 @@ export async function removeRequestFromShipment(
     requestId
   );
 
-  await updateDoc(shipmentRef, {
-    requestIds: arrayRemove(requestId),
-    updatedAt: serverTimestamp(),
-  });
+  await runTransaction(db, async (transaction) => {
+    transaction.update(shipmentRef, {
+      requestIds: arrayRemove(requestId),
+      updatedAt: serverTimestamp(),
+    });
 
-  await updateDoc(requestRef, {
-    consolidation: {
-      enabled: false,
-      shipmentId: null,
-      consolidatedAt: null,
-    },
+    transaction.update(requestRef, {
+      consolidation: {
+        enabled: false,
+        shipmentId: null,
+        consolidatedAt: null,
+      },
+    });
   });
 }
 

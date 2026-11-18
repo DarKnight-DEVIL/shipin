@@ -456,7 +456,52 @@ describe('POST /api/paypal/capture-order', () => {
     const response = await POST(request(body));
 
     expect(response.status).toBe(500);
-    expect(mocks.txUpdate).not.toHaveBeenCalled();
+    // The claim transaction may have touched the order, but no payment write ran.
+    expect(mocks.requestUpdate).not.toHaveBeenCalled();
+  });
+
+  it('refuses a concurrent capture while another attempt holds the claim', async () => {
+    mocks.orderGet.mockResolvedValue(
+      snap({ ...mainOrder, status: 'capturing', captureClaimedAt: Date.now() })
+    );
+    mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
+      ref.__kind === 'order'
+        ? snap({ ...mainOrder, status: 'capturing', captureClaimedAt: Date.now() })
+        : snap(requestDoc)
+    );
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ inProgress: true });
+    // No second PayPal capture call for an order another attempt owns.
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it('retries a capture whose claim has expired', async () => {
+    const stale = { ...mainOrder, status: 'capturing', captureClaimedAt: Date.now() - 10 * 60 * 1000 };
+    mocks.orderGet.mockResolvedValue(snap(stale));
+    mocks.txGet.mockImplementation(async (ref: { __kind?: string }) => {
+      if (ref.__kind === 'wallet') return snap({ balance: 50 });
+      if (ref.__kind === 'order') return snap(stale);
+      return snap(requestDoc);
+    });
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(200);
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the claim when PayPal refuses the capture', async () => {
+    mocks.fetch.mockResolvedValue({ ok: false, status: 422, json: async () => ({}) });
+
+    await POST(request(body));
+
+    // One transaction claims the capture, a second hands it back, so the order
+    // is retryable instead of stuck for the lease.
+    expect(mocks.runTransaction).toHaveBeenCalledTimes(2);
+    expect(mocks.orderUpdate).not.toHaveBeenCalled();
   });
 
   it('skips the transaction when another request completed the order', async () => {
@@ -555,7 +600,6 @@ describe('POST /api/paypal/capture-order', () => {
       expect(mocks.orderUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'completed', captureId: 'cap-2' })
       );
-      expect(mocks.runTransaction).not.toHaveBeenCalled();
     });
 
     it('404s when the item no longer exists', async () => {

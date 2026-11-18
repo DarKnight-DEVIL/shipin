@@ -80,9 +80,9 @@ export async function GET() {
     { name: "login", limiter: loginRateLimiter },
   ];
 
-  const redisErrors = limiters.map(({ name, limiter }) => {
-    const recent = limiter.getErrorCounts(cutoff);
-    const all = limiter.getErrorCounts(0);
+  const redisErrors = await Promise.all(limiters.map(async ({ name, limiter }) => {
+    const recent = await limiter.getErrorCounts(cutoff);
+    const all = await limiter.getErrorCounts(0);
     return {
       name,
       // Number of failed Redis calls, not the number of affected clients:
@@ -98,7 +98,7 @@ export async function GET() {
           ? new Date(Math.max(...recent.map((entry) => entry.lastErrorAt))).toISOString()
           : null,
     };
-  });
+  }));
 
   const hasRecentErrors = redisErrors.some((e) => e.recentErrors > 0);
   const degraded = missingSharedStore || hasRecentErrors || appCheckBroken;

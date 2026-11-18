@@ -50,6 +50,10 @@ export interface RateLimitResult {
 /** Milliseconds used as the sliding-window cutoff for error-count queries. */
 export const RATE_LIMIT_ERROR_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
+/** Redis hash holding per-IP error counters, one per limiter. */
+const ERROR_HASH_PREFIX = "shipin:ratelimit:errors:";
+const ERROR_HASH_TTL_SECONDS = 10 * 60;
+
 /**
  * Report a Redis rate-limiting failure to Sentry in production.
  *
@@ -188,17 +192,28 @@ export function createSharedRateLimiter(
   windowMs: number,
   fallback: { record: (req: Request) => Promise<RateLimitResult> }
 ) {
-  // Per-instance error counters for Redis-backed limiters.
-  // These reset on each cold start and are NOT persisted — they exist
-  // solely so we can surface recent error counts via a health endpoint
-  // without needing an external monitoring system.
+  // Error counters are local *and* mirrored to Redis, so /api/health reports
+  // the same totals from every instance. The local map stays the fallback for
+  // when the store itself is unavailable.
   const errorCounters = new Map<string, { errors: number; lastErrorAt: number }>();
 
   function bumpCounter(key: string): void {
     const now = Date.now();
     const prev = errorCounters.get(key) ?? { errors: 0, lastErrorAt: 0 };
-    errorCounters.set(key, { errors: prev.errors + 1, lastErrorAt: now });
+    const next = { errors: prev.errors + 1, lastErrorAt: now };
+    errorCounters.set(key, next);
     reportRedisError(name, key);
+
+    const client = getRedis();
+    if (client) {
+      // Fire and forget: health reporting must never delay or fail a request.
+      void client
+        .hset(ERROR_HASH_PREFIX + name, { [key]: JSON.stringify(next) })
+        .then(() => client.expire(ERROR_HASH_PREFIX + name, ERROR_HASH_TTL_SECONDS))
+        .catch(() => {
+          /* counters are best effort */
+        });
+    }
   }
 
   return {
@@ -266,10 +281,41 @@ export function createSharedRateLimiter(
      * Callers should pass {{Date.now() - 5 * 60 * 1000}} as |since| to
      * get only recent errors (last 5 minutes).
      */
-    getErrorCounts(since: number): Array<{ ip: string; errors: number; lastErrorAt: number }> {
-      const cutoff = since;
-      return Array.from(errorCounters.entries())
-        .filter(([, v]) => v.lastErrorAt >= cutoff)
+    async getErrorCounts(
+      since: number
+    ): Promise<Array<{ ip: string; errors: number; lastErrorAt: number }>> {
+      const merged = new Map(errorCounters);
+      const client = getRedis();
+
+      if (client) {
+        try {
+          const stored = await client.hgetall<Record<string, unknown>>(
+            ERROR_HASH_PREFIX + name
+          );
+
+          for (const [ip, raw] of Object.entries(stored ?? {})) {
+            const parsed =
+              typeof raw === "string"
+                ? (JSON.parse(raw) as { errors?: unknown; lastErrorAt?: unknown })
+                : (raw as { errors?: unknown; lastErrorAt?: unknown });
+
+            const errors = Number(parsed?.errors);
+            const lastErrorAt = Number(parsed?.lastErrorAt);
+            if (!Number.isFinite(errors) || !Number.isFinite(lastErrorAt)) continue;
+
+            const existing = merged.get(ip);
+            merged.set(ip, {
+              errors: Math.max(errors, existing?.errors ?? 0),
+              lastErrorAt: Math.max(lastErrorAt, existing?.lastErrorAt ?? 0),
+            });
+          }
+        } catch {
+          // Keep the local counts; a store failure must not blank the health view.
+        }
+      }
+
+      return Array.from(merged.entries())
+        .filter(([, v]) => v.lastErrorAt >= since)
         .map(([ip, v]) => ({ ip, ...v }));
     },
   };

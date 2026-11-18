@@ -12,6 +12,27 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   set: vi.fn(),
   doc: vi.fn((_id?: string) => ({ get: mocks.get, set: mocks.set })),
+  env: { url: "", token: "" },
+  redisGet: vi.fn(),
+  redisSet: vi.fn(),
+}));
+
+vi.mock("@upstash/redis", () => ({
+  Redis: class {
+    get = mocks.redisGet;
+    set = mocks.redisSet;
+  },
+}));
+
+vi.mock("@/config/env", () => ({
+  serverEnv: {
+    get UPSTASH_REDIS_REST_URL() {
+      return mocks.env.url;
+    },
+    get UPSTASH_REDIS_REST_TOKEN() {
+      return mocks.env.token;
+    },
+  },
 }));
 
 vi.mock("@/lib/firebaseAdmin", () => ({
@@ -30,7 +51,16 @@ import {
 const request = (headers: Record<string, string> = {}) =>
   new Request("https://shipin.test/api/payment/complete-wallet", { headers });
 
+async function importWithRedis() {
+  vi.resetModules();
+  return import("./idempotency");
+}
+
 beforeEach(() => {
+  mocks.env.url = "";
+  mocks.env.token = "";
+  mocks.redisGet.mockReset();
+  mocks.redisSet.mockReset().mockResolvedValue("OK");
   mocks.doc.mockClear();
   mocks.get.mockReset();
   mocks.set.mockReset().mockResolvedValue(undefined);
@@ -55,6 +85,64 @@ describe("readIdempotencyKey", () => {
     expect(
       readIdempotencyKey(request({ "idempotency-key": "has/slash/and spaces" }))
     ).toBeNull();
+  });
+});
+
+describe("shared Redis store", () => {
+  it("reads a replay from Redis without touching Firestore", async () => {
+    mocks.env.url = "https://redis.test";
+    mocks.env.token = "token";
+    mocks.redisGet.mockResolvedValue(
+      JSON.stringify({
+        status: 200,
+        body: { success: true },
+        expiresAt: Date.now() + 60_000,
+      })
+    );
+
+    const { readIdempotentResponse } = await importWithRedis();
+    const result = await readIdempotentResponse({
+      uid: "user-1",
+      scope: "wallet.complete",
+      key: "key-12345678",
+    });
+
+    expect(result).toEqual({ status: 200, body: { success: true } });
+    expect(mocks.redisGet).toHaveBeenCalledTimes(1);
+    expect(mocks.get).not.toHaveBeenCalled();
+  });
+
+  it("falls back to Firestore when Redis fails", async () => {
+    mocks.env.url = "https://redis.test";
+    mocks.env.token = "token";
+    mocks.redisGet.mockRejectedValue(new Error("down"));
+    mocks.get.mockResolvedValue({
+      exists: true,
+      data: () => ({ status: 201, body: { ok: true }, expiresAt: Date.now() + 1000 }),
+    });
+
+    const { readIdempotentResponse } = await importWithRedis();
+    await expect(
+      readIdempotentResponse({ uid: "user-1", scope: "s", key: "key-12345678" })
+    ).resolves.toEqual({ status: 201, body: { ok: true } });
+  });
+
+  it("writes to Redis with a TTL and keeps the durable copy", async () => {
+    mocks.env.url = "https://redis.test";
+    mocks.env.token = "token";
+
+    const { rememberIdempotentResponse, IDEMPOTENCY_TTL_MS } = await importWithRedis();
+    await rememberIdempotentResponse(
+      { uid: "user-1", scope: "s", key: "key-12345678" },
+      { status: 200, body: { ok: true } }
+    );
+
+    expect(mocks.redisSet).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      { ex: Math.floor(IDEMPOTENCY_TTL_MS / 1000) }
+    );
+    expect(mocks.set).toHaveBeenCalled();
   });
 });
 

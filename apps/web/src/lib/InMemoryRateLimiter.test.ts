@@ -27,6 +27,23 @@ describe('InMemoryRateLimiter', () => {
     vi.restoreAllMocks();
   });
 
+  it('drops idle buckets without waiting for more traffic', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const idle = new InMemoryRateLimiter({ maxRequests: 5, windowMs: 60_000, message: 'x' });
+      await idle.record(createRequest({ 'x-vercel-forwarded-for': '9.9.9.9' }));
+
+      expect(idle.trackedBuckets).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(61_000);
+
+      expect(idle.trackedBuckets).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('allows requests under the limit', async () => {
     const req = createRequest({ 'x-vercel-forwarded-for': '1.2.3.4' });
     for (let i = 0; i < 5; i++) {
