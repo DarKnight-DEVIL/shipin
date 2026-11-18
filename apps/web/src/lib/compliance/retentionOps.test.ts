@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   collection: vi.fn(),
   deleted: [] as string[],
   commit: vi.fn(),
+  deleteUser: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
@@ -41,6 +42,7 @@ function fakeQuery(docs: ReturnType<typeof fakeDoc>[]) {
 }
 
 vi.mock('@/lib/firebaseAdmin', () => ({
+  adminAuth: { deleteUser: mocks.deleteUser },
   adminDb: {
     collection: mocks.collection,
     batch: () => ({
@@ -71,6 +73,7 @@ beforeEach(() => {
   mocks.collection.mockReset().mockImplementation(() => fakeQuery([]));
   mocks.deleted.length = 0;
   mocks.commit.mockReset().mockResolvedValue(undefined);
+  mocks.deleteUser.mockReset().mockResolvedValue(undefined);
   mocks.logger.info.mockReset();
   mocks.logger.error.mockReset();
 });
@@ -145,6 +148,63 @@ describe('compliance retention sweep', () => {
 
     expect(mocks.deleted).toContain('collection/closed-1');
     expect(mocks.deleted).not.toContain('collection/user-1');
+  });
+
+  it('deletes the Auth account before removing a closed profile', async () => {
+    stubCollections((name) => {
+      if (name === 'users') {
+        return fakeQuery([oldDoc('closed-1', { deletedAt: new Date() })]);
+      }
+      return fakeQuery([]);
+    });
+
+    await retentionOps.executeRetentionCleanup(false);
+
+    expect(mocks.deleteUser).toHaveBeenCalledWith('closed-1');
+    expect(mocks.deleted).toContain('collection/closed-1');
+  });
+
+  it('keeps a profile when the Auth account cannot be deleted', async () => {
+    mocks.deleteUser.mockRejectedValue({ code: 'auth/internal-error' });
+    stubCollections((name) => {
+      if (name === 'users') {
+        return fakeQuery([oldDoc('closed-2', { deletedAt: new Date() })]);
+      }
+      return fakeQuery([]);
+    });
+
+    const result = await retentionOps.executeRetentionCleanup(false);
+
+    expect(mocks.deleteUser).toHaveBeenCalledWith('closed-2');
+    expect(mocks.deleted).not.toContain('collection/closed-2');
+    expect(result.errors.some((error) => error.includes('could not delete the Auth account'))).toBe(true);
+  });
+
+  it('deletes the profile when the Auth account is already gone', async () => {
+    mocks.deleteUser.mockRejectedValue({ code: 'auth/user-not-found' });
+    stubCollections((name) => {
+      if (name === 'users') {
+        return fakeQuery([oldDoc('closed-3', { deletedAt: new Date() })]);
+      }
+      return fakeQuery([]);
+    });
+
+    await retentionOps.executeRetentionCleanup(false);
+
+    expect(mocks.deleted).toContain('collection/closed-3');
+  });
+
+  it('does not delete Auth accounts during a dry run', async () => {
+    stubCollections((name) => {
+      if (name === 'users') {
+        return fakeQuery([oldDoc('closed-4', { deletedAt: new Date() })]);
+      }
+      return fakeQuery([]);
+    });
+
+    await retentionOps.executeRetentionCleanup(true);
+
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
   });
 
   it('collects errors and keeps sweeping other collections', async () => {

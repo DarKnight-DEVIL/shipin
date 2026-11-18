@@ -39,7 +39,9 @@ Set these in your Vercel project settings → Environment Variables:
 retention period, and defaults to a dry run. Schedule the handler with
 `?dryRun=false` only after reading one dry-run report: it skips anything under a
 legal/litigation/audit hold, anything whose owner has an open rights request,
-and any `users` document whose account is not closed. Deletions are batched
+any `users` document whose account is not closed, and it deletes the Firebase
+Auth account before the profile so no sign-in is ever left without a record. If
+Auth refuses, the profile is kept for the next run. Deletions are batched
 (100 per collection per run) and the result lists every document with the
 reason it expired.
 

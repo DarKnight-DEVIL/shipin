@@ -55,7 +55,9 @@ All responses include:
 - **Retention:** `executeRetentionCleanup()` now deletes through Firestore batches
   instead of only logging intent. It is dry-run by default, refuses documents
   under a hold or with an open rights request, and only removes `users` records
-  for closed accounts. Results are returned, not just printed.
+  for closed accounts. A closed profile's Firebase Auth account is deleted first,
+  so a sweep cannot leave a live login with no profile; a refusal keeps the
+  profile for the next run. Results are returned, not just printed.
 - **Parental consent:** OTPs are six CSPRNG digits stored as a salted scrypt hash
   with a 10-minute expiry and a five-attempt limit. The code is emailed to the
   parent address recorded on the request; a failed send deletes the pending

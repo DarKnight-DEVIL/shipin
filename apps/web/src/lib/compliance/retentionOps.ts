@@ -11,7 +11,7 @@
  * that reports what it would do.
  */
 
-import { adminDb } from '@/lib/firebaseAdmin';
+import { adminAuth, adminDb } from '@/lib/firebaseAdmin';
 import { logger } from '@/lib/logger';
 import { PERSONAL_DATA_CATEGORIES, PROCESSING_REGISTER } from './dpdp';
 
@@ -84,12 +84,15 @@ function merge(into: RetentionResult, from: RetentionResult): void {
  */
 export async function executeRetentionCleanup(dryRun = true): Promise<RetentionResult> {
   const totals = emptyResult();
+  // The register maps several categories to the same collection. One document
+  // is processed once, however many categories cover it.
+  const handled = new Set<string>();
 
   for (const [category, config] of Object.entries(PROCESSING_REGISTER)) {
     try {
       merge(
         totals,
-        await cleanupCategory(category as RetentionCategory, config, dryRun)
+        await cleanupCategory(category as RetentionCategory, config, dryRun, handled)
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -112,7 +115,8 @@ export async function executeRetentionCleanup(dryRun = true): Promise<RetentionR
 async function cleanupCategory(
   category: RetentionCategory,
   config: { retentionDays: number; purposes: string[] },
-  dryRun: boolean
+  dryRun: boolean,
+  handled: Set<string>
 ): Promise<RetentionResult> {
   const result = emptyResult();
   const cutoff = new Date();
@@ -155,6 +159,30 @@ async function cleanupCategory(
           continue;
         }
 
+        const key = `${collectionName}/${doc.id}`;
+
+        if (handled.has(key)) continue;
+
+        // Deleting the profile while the Auth account can still sign in leaves
+        // a live login with no record behind it, so Auth goes first. If Auth
+        // refuses, the profile is kept for the next run.
+        if (collectionName === 'users' && !dryRun) {
+          try {
+            await adminAuth.deleteUser(doc.id);
+          } catch (error) {
+            const code = (error as { code?: string }).code;
+
+            if (code !== 'auth/user-not-found') {
+              result.skipped += 1;
+              result.errors.push(
+                `users/${doc.id}: could not delete the Auth account (${code ?? 'unknown'})`
+              );
+              continue;
+            }
+          }
+        }
+
+        handled.add(key);
         result.expired += 1;
         result.details.push({
           collection: collectionName,
