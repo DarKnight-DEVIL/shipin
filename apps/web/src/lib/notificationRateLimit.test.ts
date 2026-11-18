@@ -7,7 +7,10 @@ vi.hoisted(() => {
 });
 
 const state = vi.hoisted(() => ({
-  client: null as null | { incr: ReturnType<typeof vi.fn>; expire: ReturnType<typeof vi.fn> },
+  client: null as null | {
+    incr: ReturnType<typeof vi.fn>;
+    expire: ReturnType<typeof vi.fn>;
+  },
 }));
 
 vi.mock("@/lib/redisRateLimiter", () => ({

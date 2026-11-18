@@ -203,42 +203,57 @@ describe("indexCovers", () => {
     order: { field: "createdAt", direction: "DESCENDING" },
   };
 
-  const index = (fields: Array<{ fieldPath: string; order?: string }>, group = "requests") => ({
+  const index = (
+    fields: Array<{ fieldPath: string; order?: string }>,
+    group = "requests"
+  ) => ({
     collectionGroup: group,
     fields,
   });
 
   it("accepts the declared filter-then-order shape", () => {
     expect(
-      indexCovers(requirement, index([
-        { fieldPath: "userId", order: "ASCENDING" },
-        { fieldPath: "createdAt", order: "DESCENDING" },
-        { fieldPath: "__name__", order: "ASCENDING" },
-      ]))
+      indexCovers(
+        requirement,
+        index([
+          { fieldPath: "userId", order: "ASCENDING" },
+          { fieldPath: "createdAt", order: "DESCENDING" },
+          { fieldPath: "__name__", order: "ASCENDING" },
+        ])
+      )
     ).toBe(true);
   });
 
   it("rejects the wrong direction, collection or field order", () => {
     expect(
-      indexCovers(requirement, index([
-        { fieldPath: "userId", order: "ASCENDING" },
-        { fieldPath: "createdAt", order: "ASCENDING" },
-      ]))
-    ).toBe(false);
-    expect(
-      indexCovers(requirement, index(
-        [
+      indexCovers(
+        requirement,
+        index([
           { fieldPath: "userId", order: "ASCENDING" },
-          { fieldPath: "createdAt", order: "DESCENDING" },
-        ],
-        "shipments"
-      ))
+          { fieldPath: "createdAt", order: "ASCENDING" },
+        ])
+      )
     ).toBe(false);
     expect(
-      indexCovers(requirement, index([
-        { fieldPath: "createdAt", order: "DESCENDING" },
-        { fieldPath: "userId", order: "ASCENDING" },
-      ]))
+      indexCovers(
+        requirement,
+        index(
+          [
+            { fieldPath: "userId", order: "ASCENDING" },
+            { fieldPath: "createdAt", order: "DESCENDING" },
+          ],
+          "shipments"
+        )
+      )
+    ).toBe(false);
+    expect(
+      indexCovers(
+        requirement,
+        index([
+          { fieldPath: "createdAt", order: "DESCENDING" },
+          { fieldPath: "userId", order: "ASCENDING" },
+        ])
+      )
     ).toBe(false);
   });
 });

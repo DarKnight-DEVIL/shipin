@@ -39,7 +39,7 @@ function pruneLocal(now: number): void {
  */
 export async function allowNotification(
   userId: string,
-  now: number = Date.now(),
+  now: number = Date.now()
 ): Promise<boolean> {
   const client = getSharedRedisClient();
 
@@ -51,7 +51,7 @@ export async function allowNotification(
       if (count === 1) {
         await client.expire(
           key,
-          Math.floor(NOTIFICATION_RATE_WINDOW_MS / 1000),
+          Math.floor(NOTIFICATION_RATE_WINDOW_MS / 1000)
         );
       }
 
@@ -66,7 +66,7 @@ export async function allowNotification(
 
   const cutoff = now - NOTIFICATION_RATE_WINDOW_MS;
   const recent = (localBuckets.get(userId) ?? []).filter(
-    (stamp) => stamp > cutoff,
+    (stamp) => stamp > cutoff
   );
 
   if (recent.length >= NOTIFICATION_RATE_LIMIT) {

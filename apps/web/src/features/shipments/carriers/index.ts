@@ -24,7 +24,7 @@ function warnPlaceholderInUse(missing: string[]): void {
   warnedAboutPlaceholder = true;
 
   childLogger({ service: "tracking" }).warn(
-    `India Post is not configured (missing: ${missing.join(", ")}); customer tracking is serving the placeholder feed, not carrier data.`,
+    `India Post is not configured (missing: ${missing.join(", ")}); customer tracking is serving the placeholder feed, not carrier data.`
   );
 }
 
@@ -52,7 +52,7 @@ export function isIndiaPostConfigured(): boolean {
   return Boolean(
     serverEnv.INDIA_POST_TRACKING_URL &&
     serverEnv.INDIA_POST_CLIENT_ID &&
-    serverEnv.INDIA_POST_CLIENT_SECRET,
+    serverEnv.INDIA_POST_CLIENT_SECRET
   );
 }
 

@@ -43,7 +43,7 @@ interface RefundRequestData {
 /** The pre-v2 shape, resolved in one place instead of at every read site. */
 function legacyRefund(
   data: RefundRequestData,
-  requestId: string,
+  requestId: string
 ): RefundRequestDetails {
   // Prefer the new schema shape (data.refund) when available; fall back to
   // the legacy refundRequest fields only when the new shape is absent.
@@ -122,7 +122,7 @@ export async function getCustomersWithWallets(): Promise<AdminCustomer[]> {
 }
 
 export async function getRefundRequestDetails(
-  requestId: string,
+  requestId: string
 ): Promise<RefundRequestDetails> {
   try {
     const data = await fetchRefundData(requestId);

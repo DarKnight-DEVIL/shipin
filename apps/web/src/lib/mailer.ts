@@ -124,7 +124,7 @@ export async function sendMail({
         : {
             service: smtpService || "gmail",
             ...timeoutOptions,
-          },
+          }
     );
     const info = await smtpTransporter.sendMail({
       from: fromAddress,
@@ -140,11 +140,11 @@ export async function sendMail({
     // credentials are not available for fallback. Provide a clear message.
     throw new Error(
       "Resend API call failed and SMTP fallback is not configured. " +
-        "Please check Resend credentials or set SMTP_EMAIL and SMTP_PASSWORD for fallback.",
+        "Please check Resend credentials or set SMTP_EMAIL and SMTP_PASSWORD for fallback."
     );
   } else {
     throw new Error(
-      "Email sending not configured (RESEND_API_KEY or SMTP_EMAIL+PASSWORD required)",
+      "Email sending not configured (RESEND_API_KEY or SMTP_EMAIL+PASSWORD required)"
     );
   }
 }

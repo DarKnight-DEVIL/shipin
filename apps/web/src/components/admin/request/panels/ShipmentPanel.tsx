@@ -146,8 +146,7 @@ export default function ShipmentPanel({ request }: Props) {
       console.error("Failed to update request status:", error);
 
       toast.error("Failed to update request status.", {
-        description:
-          error instanceof Error ? error.message : undefined,
+        description: error instanceof Error ? error.message : undefined,
       });
     } finally {
       setUpdatingStatus(false);
@@ -168,10 +167,7 @@ export default function ShipmentPanel({ request }: Props) {
      * Shipment can only be created
      * after the package is packed.
      */
-    if (
-      request.status !== "packed" &&
-      request.status !== "shipped"
-    ) {
+    if (request.status !== "packed" && request.status !== "shipped") {
       toast.warning(
         "The package must be marked as Packed before creating the shipment."
       );
@@ -204,23 +200,25 @@ export default function ShipmentPanel({ request }: Props) {
        * Preserve original shipment
        * creation timestamp.
        */
-      const createdAt =
-        request.tracking?.createdAt ?? Timestamp.now();
+      const createdAt = request.tracking?.createdAt ?? Timestamp.now();
 
-      const response = await fetch(`/api/admin/requests/${request.id}/shipment`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          internalTrackingId,
-          carrier,
-          trackingNumber: trackingNumber.trim(),
-          estimatedDelivery,
-          trackingUrl: "",
-          createdAt,
-        }),
-      });
+      const response = await fetch(
+        `/api/admin/requests/${request.id}/shipment`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            internalTrackingId,
+            carrier,
+            trackingNumber: trackingNumber.trim(),
+            estimatedDelivery,
+            trackingUrl: "",
+            createdAt,
+          }),
+        }
+      );
 
       const data = await response.json();
 
@@ -247,8 +245,7 @@ export default function ShipmentPanel({ request }: Props) {
       console.error("Error saving shipment:", error);
 
       toast.error("Failed to save shipment.", {
-        description:
-          error instanceof Error ? error.message : undefined,
+        description: error instanceof Error ? error.message : undefined,
       });
     } finally {
       setSaving(false);
@@ -297,8 +294,8 @@ export default function ShipmentPanel({ request }: Props) {
               </p>
 
               <p className="mt-2 text-sm text-slate-400">
-                Complete the warehouse inspection and mark the package as
-                ready for shipment from the Warehouse tab.
+                Complete the warehouse inspection and mark the package as ready
+                for shipment from the Warehouse tab.
               </p>
             </div>
           )}
@@ -319,9 +316,7 @@ export default function ShipmentPanel({ request }: Props) {
 
           {request.status === "delivered" && (
             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-              <p className="font-medium text-emerald-300">
-                Shipment delivered
-              </p>
+              <p className="font-medium text-emerald-300">Shipment delivered</p>
             </div>
           )}
         </div>
@@ -339,9 +334,7 @@ export default function ShipmentPanel({ request }: Props) {
           {/* Carrier */}
 
           <div>
-            <label className="block text-sm text-slate-400 mb-2">
-              Carrier
-            </label>
+            <label className="block text-sm text-slate-400 mb-2">Carrier</label>
 
             <select
               value={carrier}
@@ -420,10 +413,7 @@ export default function ShipmentPanel({ request }: Props) {
                 Internal Carrier Information
               </h3>
 
-              <InfoRow
-                label="Carrier"
-                value={request.tracking.carrier}
-              />
+              <InfoRow label="Carrier" value={request.tracking.carrier} />
 
               <InfoRow
                 label="Carrier Tracking Number"
@@ -509,20 +499,12 @@ function Field({
    ADMIN INFORMATION ROW
 ========================================= */
 
-function InfoRow({
-  label,
-  value,
-}: {
-  label: string;
-  value?: string;
-}) {
+function InfoRow({ label, value }: { label: string; value?: string }) {
   return (
     <div className="flex justify-between gap-4 border-b border-slate-800 py-3 last:border-b-0">
       <span className="text-slate-400">{label}</span>
 
-      <span className="text-right font-medium text-white">
-        {value || "-"}
-      </span>
+      <span className="text-right font-medium text-white">{value || "-"}</span>
     </div>
   );
 }

@@ -8,7 +8,13 @@
  * holds the parsing (`readQueries`) and the index comparison (`indexCovers`).
  */
 
-export const EQUALITY_OPS = new Set(["==", "in", "not-in", "array-contains", "array-contains-any"]);
+export const EQUALITY_OPS = new Set([
+  "==",
+  "in",
+  "not-in",
+  "array-contains",
+  "array-contains-any",
+]);
 export const RANGE_OPS = new Set(["<", "<=", ">", ">=", "!="]);
 
 /**
@@ -188,13 +194,15 @@ export function readQueries(source) {
   function applyOrderBy(call, target) {
     const [field, direction] = call.args;
     const directionIsFirst =
-      field !== undefined && (field.toLowerCase() === "asc" || field.toLowerCase() === "desc");
+      field !== undefined &&
+      (field.toLowerCase() === "asc" || field.toLowerCase() === "desc");
     if (!field || directionIsFirst) {
       unverified.push("orderBy(<dynamic field>)");
       return;
     }
 
-    const dir = (direction ?? "").toLowerCase() === "desc" ? "DESCENDING" : "ASCENDING";
+    const dir =
+      (direction ?? "").toLowerCase() === "desc" ? "DESCENDING" : "ASCENDING";
     target.orders.set(field, dir);
   }
 
@@ -215,7 +223,8 @@ export function readQueries(source) {
   // named earlier in the file, so the spread is resolved through its array.
   for (const spread of spreadConstraints(text)) {
     const anchor = anchors.find(
-      (candidate) => candidate.pos > spread.queryStart && candidate.pos < spread.queryEnd
+      (candidate) =>
+        candidate.pos > spread.queryStart && candidate.pos < spread.queryEnd
     );
     if (!anchor) continue;
 
@@ -241,7 +250,10 @@ function spreadConstraints(text) {
 
     for (const match of body.matchAll(/\.\.\.\s*([A-Za-z_$][\w$]*)/g)) {
       const variable = match[1];
-      const assignment = new RegExp(`const\\s+${variable}\\s*(?::[^=]+)?=\\s*\\[`, "g");
+      const assignment = new RegExp(
+        `const\\s+${variable}\\s*(?::[^=]+)?=\\s*\\[`,
+        "g"
+      );
       const found = assignment.exec(text);
       if (!found) continue;
 
@@ -250,7 +262,10 @@ function spreadConstraints(text) {
       const array = text.slice(openBracket, arrayEnd);
       const filters = [
         ...calls(array, "where").map((call) => ({ ...call, name: "where" })),
-        ...calls(array, "orderBy").map((call) => ({ ...call, name: "orderBy" })),
+        ...calls(array, "orderBy").map((call) => ({
+          ...call,
+          name: "orderBy",
+        })),
       ];
 
       spread.push({
@@ -296,7 +311,11 @@ export function requirementsFor(site) {
   if (site.orders.size === 0) {
     if (site.equals.size > 0 && range) {
       return [
-        { ...site, equals: [...site.equals], order: { field: range, direction: "ASCENDING" } },
+        {
+          ...site,
+          equals: [...site.equals],
+          order: { field: range, direction: "ASCENDING" },
+        },
       ];
     }
     return [];
@@ -310,7 +329,11 @@ export function requirementsFor(site) {
 
   return [...site.orders]
     .filter(([field]) => !equals.includes(field))
-    .map(([field, direction]) => ({ ...site, equals, order: { field, direction } }));
+    .map(([field, direction]) => ({
+      ...site,
+      equals,
+      order: { field, direction },
+    }));
 }
 
 /** Firestore: equality fields first (ascending), then the ordered field. */

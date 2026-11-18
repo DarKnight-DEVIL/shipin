@@ -41,7 +41,11 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { indexCovers, readQueries, requirementsFor } from "./lib/firestore-indexes.mjs";
+import {
+  indexCovers,
+  readQueries,
+  requirementsFor,
+} from "./lib/firestore-indexes.mjs";
 
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const INDEX_FILE = path.resolve(ROOT, "..", "..", "firestore.indexes.json");
@@ -72,12 +76,16 @@ if (!existsSync(INDEX_FILE)) {
 }
 
 const indexDocument = JSON.parse(readFileSync(INDEX_FILE, "utf8"));
-const indexes = Array.isArray(indexDocument.indexes) ? indexDocument.indexes : [];
+const indexes = Array.isArray(indexDocument.indexes)
+  ? indexDocument.indexes
+  : [];
 
 const allSources = SOURCE_ROOTS.flatMap((root) => {
   const dir = path.join(ROOT, root);
   if (!existsSync(dir) || !statSync(dir).isDirectory()) {
-    console.error(`check-firestore-indexes: source root ${root} does not exist`);
+    console.error(
+      `check-firestore-indexes: source root ${root} does not exist`
+    );
     process.exit(1);
   }
   return collectFiles(dir);
@@ -92,7 +100,9 @@ const seen = new Set();
 
 for (const file of allSources) {
   const relative = path.relative(ROOT, file);
-  const { sites, unverified: fileUnverified } = readQueries(readFileSync(file, "utf8"));
+  const { sites, unverified: fileUnverified } = readQueries(
+    readFileSync(file, "utf8")
+  );
   unverified.push(...fileUnverified.map((entry) => `${relative}: ${entry}`));
 
   for (const site of sites) {
@@ -145,7 +155,9 @@ if (print) {
       `${documentIdOnly.length} document-id`
   );
   for (const site of equalityOnly) {
-    out(`  ----  ${site.collection}: ${site.equals.join(" + ")}  (${site.file})`);
+    out(
+      `  ----  ${site.collection}: ${site.equals.join(" + ")}  (${site.file})`
+    );
   }
   if (unverified.length > 0) {
     out("");
@@ -164,7 +176,9 @@ if (missing.length > 0) {
     console.error(`  - ${label(requirement)}  (${requirement.file})`);
   }
   console.error("");
-  console.error("Add to firestore.indexes.json (then deploy with `npm run deploy:firestore`):");
+  console.error(
+    "Add to firestore.indexes.json (then deploy with `npm run deploy:firestore`):"
+  );
   console.error("");
   console.error(
     JSON.stringify(
@@ -172,8 +186,14 @@ if (missing.length > 0) {
         collectionGroup: requirement.collection,
         queryScope: "COLLECTION",
         fields: [
-          ...requirement.equals.map((fieldPath) => ({ fieldPath, order: "ASCENDING" })),
-          { fieldPath: requirement.order.field, order: requirement.order.direction },
+          ...requirement.equals.map((fieldPath) => ({
+            fieldPath,
+            order: "ASCENDING",
+          })),
+          {
+            fieldPath: requirement.order.field,
+            order: requirement.order.direction,
+          },
         ],
       })),
       null,
@@ -191,5 +211,7 @@ out(
 );
 
 if (unverified.length > 0) {
-  out(`${unverified.length} call(s) could not be read: pass string literals to where()/orderBy().`);
+  out(
+    `${unverified.length} call(s) could not be read: pass string literals to where()/orderBy().`
+  );
 }

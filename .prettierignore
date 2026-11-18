@@ -1,0 +1,23 @@
+# Build output and caches.
+.next/
+.turbo/
+coverage/
+dist/
+build/
+out/
+standalone/
+playwright-report/
+test-results/
+node_modules/
+
+# Generated or third-party files.
+public/
+package-lock.json
+firestore-debug.log
+*.min.js
+
+# Prose and CI configuration keep their hand-wrapped form for now; the gate
+# here is about the code Prettier can make consistent without a rewrite.
+*.md
+*.yml
+*.yaml

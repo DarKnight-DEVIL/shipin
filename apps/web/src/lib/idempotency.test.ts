@@ -56,7 +56,7 @@ beforeEach(() => {
 describe("readIdempotencyKey", () => {
   it("returns the submitted key", () => {
     expect(
-      readIdempotencyKey(request({ "idempotency-key": "abc-123-XYZ" })),
+      readIdempotencyKey(request({ "idempotency-key": "abc-123-XYZ" }))
     ).toBe("abc-123-XYZ");
   });
 
@@ -68,12 +68,10 @@ describe("readIdempotencyKey", () => {
     // Too short, and characters outside the safe set. Ignoring keeps a header
     // typo from turning into a rejected payment.
     expect(
-      readIdempotencyKey(request({ "idempotency-key": "short" })),
+      readIdempotencyKey(request({ "idempotency-key": "short" }))
     ).toBeNull();
     expect(
-      readIdempotencyKey(
-        request({ "idempotency-key": "has/slash/and spaces" }),
-      ),
+      readIdempotencyKey(request({ "idempotency-key": "has/slash/and spaces" }))
     ).toBeNull();
   });
 });
@@ -85,7 +83,7 @@ describe("readIdempotentResponse", () => {
         status: 200,
         body: { success: true, transactionId: "txn-1" },
         expiresAt: Date.now() + 60_000,
-      }),
+      })
     );
 
     const { readIdempotentResponse } = await importWithRedis();
@@ -95,7 +93,7 @@ describe("readIdempotentResponse", () => {
         uid: "user-1",
         scope: "wallet.complete",
         key: "key-1",
-      }),
+      })
     ).resolves.toEqual({
       status: 200,
       body: { success: true, transactionId: "txn-1" },
@@ -117,13 +115,13 @@ describe("readIdempotentResponse", () => {
         uid: "user-1",
         scope: "refund.initiate",
         key: "key-1",
-      }),
+      })
     ).resolves.toEqual({ status: 201, body: { id: "req-1" } });
   });
 
   it("does not replay an expired record", async () => {
     mocks.redisGet.mockResolvedValue(
-      JSON.stringify({ status: 200, body: {}, expiresAt: Date.now() - 1 }),
+      JSON.stringify({ status: 200, body: {}, expiresAt: Date.now() - 1 })
     );
 
     const { readIdempotentResponse } = await importWithRedis();
@@ -133,7 +131,7 @@ describe("readIdempotentResponse", () => {
         uid: "user-1",
         scope: "wallet.complete",
         key: "key-1",
-      }),
+      })
     ).resolves.toBeNull();
   });
 
@@ -147,7 +145,7 @@ describe("readIdempotentResponse", () => {
         uid: "user-1",
         scope: "wallet.complete",
         key: "key-1",
-      }),
+      })
     ).resolves.toBeNull();
   });
 
@@ -164,7 +162,7 @@ describe("readIdempotentResponse", () => {
         uid: "user-1",
         scope: "wallet.complete",
         key: "key-1",
-      }),
+      })
     ).resolves.toBeNull();
     expect(console.error).toHaveBeenCalled();
   });
@@ -178,7 +176,7 @@ describe("readIdempotentResponse", () => {
         uid: "user-1",
         scope: "wallet.complete",
         key: "key-1",
-      }),
+      })
     ).resolves.toBeNull();
     expect(mocks.redisGet).not.toHaveBeenCalled();
   });
@@ -191,14 +189,14 @@ describe("rememberIdempotentResponse", () => {
 
     await rememberIdempotentResponse(
       { uid: "user-1", scope: "wallet.complete", key: "key-1" },
-      { status: 200, body: { success: true } },
+      { status: 200, body: { success: true } }
     );
 
     expect(mocks.redisSet).toHaveBeenCalledTimes(1);
     expect(mocks.redisSet).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(String),
-      { ex: Math.floor(IDEMPOTENCY_TTL_MS / 1000) },
+      { ex: Math.floor(IDEMPOTENCY_TTL_MS / 1000) }
     );
   });
 
@@ -210,8 +208,8 @@ describe("rememberIdempotentResponse", () => {
     await expect(
       rememberIdempotentResponse(
         { uid: "user-1", scope: "wallet.complete", key: "key-1" },
-        { status: 200, body: {} },
-      ),
+        { status: 200, body: {} }
+      )
     ).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalled();
   });
@@ -221,15 +219,15 @@ describe("rememberIdempotentResponse", () => {
 
     await rememberIdempotentResponse(
       { uid: "user-1", scope: "wallet.complete", key: "shared-key" },
-      { status: 200, body: {} },
+      { status: 200, body: {} }
     );
     await rememberIdempotentResponse(
       { uid: "user-2", scope: "wallet.complete", key: "shared-key" },
-      { status: 200, body: {} },
+      { status: 200, body: {} }
     );
     await rememberIdempotentResponse(
       { uid: "user-1", scope: "refund.initiate", key: "shared-key" },
-      { status: 200, body: {} },
+      { status: 200, body: {} }
     );
 
     const keys = mocks.redisSet.mock.calls.map((call) => call[0]);

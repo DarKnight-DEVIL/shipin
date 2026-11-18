@@ -110,7 +110,7 @@ export async function readIdempotentResponse({
   if (redis) {
     try {
       const stored = await redis.get<IdempotentResponse | string>(
-        redisKey(uid, scope, key),
+        redisKey(uid, scope, key)
       );
       const parsed =
         typeof stored === "string"
@@ -152,7 +152,7 @@ export async function rememberIdempotentResponse(
     scope: string;
     key: string;
   },
-  response: IdempotentResponse,
+  response: IdempotentResponse
 ): Promise<void> {
   const record = {
     uid,
@@ -172,7 +172,7 @@ export async function rememberIdempotentResponse(
     } catch (error) {
       console.error(
         "[idempotency] Could not store the response in the shared store:",
-        error,
+        error
       );
     }
   }
