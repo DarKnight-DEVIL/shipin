@@ -1,5 +1,5 @@
 /**
- * Retention sweep: which documents expire and how they are purged.
+ * Retention sweep: which documents expire and whether they are actually purged.
  *
  * Firestore access is stubbed in this file rather than in a shared helper: the
  * suite runs with `isolate: false`, so a worker shares one module registry and
@@ -8,227 +8,202 @@
  * here keeps each file self-contained, and `vi.resetModules()` in the hoisted
  * block clears whatever a previous file left behind before these imports run.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import * as retentionOps from './retentionOps';
 
-// Runs before this file's imports are evaluated, so the subjects below bind to
-// the stubs declared in this file.
 vi.hoisted(() => {
   vi.resetModules();
 });
 
-// ---------------------------------------------------------------------------
-// Shared stubs for the Firestore-backed compliance modules.
-// ---------------------------------------------------------------------------
-
-function fakeDoc(data: Record<string, unknown>, exists = true) {
-  const safeData = { id: 'doc-id', ...data };
-  const snap = {
-    exists,
-    data: () => safeData,
-    id: safeData.id as string,
-  };
-  return {
-    ...snap,
-    get: () => Promise.resolve(snap),
-    update: vi.fn().mockResolvedValue(undefined),
-    set: vi.fn().mockResolvedValue(undefined),
-    delete: vi.fn().mockResolvedValue(undefined),
-  };
-}
-
-function fakeCollection(docs: ReturnType<typeof fakeDoc>[]) {
-  return {
-    doc: (id?: string) => docs.find(d => d.data().id === id) || docs[0],
-    add: vi.fn((_data?: Record<string, unknown>) => ({ id: 'added-id' })),
-    get: () => ({ docs, empty: docs.length === 0 }),
-    where: () => fakeCollection(docs),
-    orderBy: () => fakeCollection(docs),
-    limit: () => fakeCollection(docs),
-  };
-}
-
-function fakeBatch() {
-  return {
-    delete: () => {},
-    update: () => {},
-    commit: () => Promise.resolve(),
-  };
-}
-
-// Top-level mocks — installed once via vi.mock so subjects imported at the
-// top of this file resolve against these stubs automatically.
 const mocks = vi.hoisted(() => ({
-  adminDb: {
-    collection: vi.fn(() => fakeCollection([])),
-    batch: fakeBatch,
-  },
-  // Return a placeholder object that mimics FieldValue.serverTimestamp()'s .toDate()
-  serverTimestamp: vi.fn(() => ({ toDate: () => new Date() })),
+  collection: vi.fn(),
+  deleted: [] as string[],
+  commit: vi.fn(),
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
+
+function fakeDoc(id: string, data: Record<string, unknown>) {
+  return {
+    id,
+    ref: { path: `collection/${id}` },
+    data: () => ({ id, ...data }),
+  };
+}
+
+function fakeQuery(docs: ReturnType<typeof fakeDoc>[]) {
+  const query = {
+    where: () => query,
+    limit: () => query,
+    get: () => Promise.resolve({ docs, empty: docs.length === 0 }),
+  };
+  return query;
+}
 
 vi.mock('@/lib/firebaseAdmin', () => ({
-  adminDb: mocks.adminDb,
-}));
-
-vi.mock('firebase-admin/firestore', () => ({
-  FieldValue: {
-    serverTimestamp: mocks.serverTimestamp,
+  adminDb: {
+    collection: mocks.collection,
+    batch: () => ({
+      delete: (ref: { path: string }) => {
+        mocks.deleted.push(ref.path);
+      },
+      commit: mocks.commit,
+    }),
   },
 }));
 
-beforeEach(() => {
-  mocks.adminDb.collection.mockReset();
-  mocks.adminDb.collection.mockImplementation(() => fakeCollection([]));
-  mocks.serverTimestamp.mockReset();
-  mocks.serverTimestamp.mockImplementation(() => ({ toDate: () => new Date() }));
-});
+vi.mock('@/lib/logger', () => ({ logger: mocks.logger }));
 
-/**
- * `mocks.adminDb.collection` is declared with no parameters, so a per-test
- * implementation that inspects the requested collection name needs a cast
- * rather than a narrower function type.
- */
 function stubCollections(
-  factory: (name: string) => ReturnType<typeof fakeCollection>
+  factory: (name: string) => ReturnType<typeof fakeQuery>
 ): void {
   (
-    mocks.adminDb.collection as unknown as {
-      mockImplementation: (
-        impl: (name: string) => ReturnType<typeof fakeCollection>
-      ) => void;
+    mocks.collection as unknown as {
+      mockImplementation: (impl: (name: string) => ReturnType<typeof fakeQuery>) => void;
     }
   ).mockImplementation(factory);
 }
 
+const oldDoc = (id: string, extra: Record<string, unknown> = {}) =>
+  fakeDoc(id, { createdAt: new Date(0), userId: 'user-1', ...extra });
+
+beforeEach(() => {
+  mocks.collection.mockReset().mockImplementation(() => fakeQuery([]));
+  mocks.deleted.length = 0;
+  mocks.commit.mockReset().mockResolvedValue(undefined);
+  mocks.logger.info.mockReset();
+  mocks.logger.error.mockReset();
+});
 
 describe('compliance retention sweep', () => {
-  let errorSpy: ReturnType<typeof vi.spyOn>;
-
-  const deletionLines = () =>
-    (errorSpy.mock.calls as unknown[][])
-      .map((call) => String(call[0]))
-      .filter((line) => line.startsWith('Would delete'));
-
-  beforeEach(() => {
-    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    errorSpy.mockRestore();
-  });
-
-  it('returns the aggregate result shape', async () => {
-    stubCollections(() => fakeCollection([]));
-
-    await expect(retentionOps.executeRetentionCleanup(true)).resolves.toEqual({
-      deleted: 0,
-      errors: [],
-      details: [],
-    });
-  });
-
-  it('skips documents under any hold flag', async () => {
-    stubCollections((name: string) => {
-      if (name === 'rightsRequests') return fakeCollection([]);
-      return fakeCollection([
-        fakeDoc({ id: 'held-1', createdAt: new Date(0), legalHold: true }),
-        fakeDoc({ id: 'held-2', createdAt: new Date(0), litigationHold: true }),
-        fakeDoc({ id: 'held-3', createdAt: new Date(0), auditHold: true }),
-      ]);
-    });
-
-    await retentionOps.executeRetentionCleanup(true);
-
-    expect(deletionLines()).toEqual([]);
-  });
-
-  it('skips documents whose owner has an open rights request', async () => {
-    stubCollections((name: string) => {
-      if (name === 'rightsRequests') return fakeCollection([fakeDoc({ id: 'open' })]);
-      return fakeCollection([
-        fakeDoc({ id: 'doc-1', createdAt: new Date(0), userId: 'user-1' }),
-      ]);
-    });
-
-    await retentionOps.executeRetentionCleanup(true);
-
-    expect(deletionLines()).toEqual([]);
-  });
-
-  it('flags an eligible document for deletion', async () => {
-    stubCollections((name: string) => {
-      if (name === 'rightsRequests') return fakeCollection([]);
-      return fakeCollection([
-        fakeDoc({ id: 'old-1', createdAt: new Date(0), userId: 'user-1' }),
-      ]);
-    });
-
-    await retentionOps.executeRetentionCleanup(true);
-
-    const deleted = deletionLines();
-    expect(deleted.length).toBeGreaterThan(0);
-    expect(deleted[0]).toContain('old-1');
-  });
-
-  it('continues after a collection read throws', async () => {
-    stubCollections(() => {
-      throw new Error('index missing');
-    });
-
-    await expect(retentionOps.executeRetentionCleanup(true)).resolves.toEqual({
-      deleted: 0,
-      errors: [],
-      details: [],
-    });
-
-    const lines = (errorSpy.mock.calls as unknown[][]).map((call) =>
-      String(call[0])
+  it('reports expired documents without deleting them in a dry run', async () => {
+    stubCollections((name) =>
+      name === 'rightsRequests' ? fakeQuery([]) : fakeQuery([oldDoc('old-1')])
     );
-    expect(lines.some((line) => line.includes('Cleanup error'))).toBe(true);
+
+    const result = await retentionOps.executeRetentionCleanup(true);
+
+    expect(result.expired).toBeGreaterThan(0);
+    expect(result.deleted).toBe(0);
+    expect(mocks.deleted).toEqual([]);
+    expect(mocks.commit).not.toHaveBeenCalled();
+    expect(result.details.some((detail) => detail.docId === 'old-1')).toBe(true);
   });
 
-  it('retentionCleanupHandler reports a dry run', async () => {
+  it('deletes expired documents through a batch when not a dry run', async () => {
+    stubCollections((name) =>
+      name === 'rightsRequests' ? fakeQuery([]) : fakeQuery([oldDoc('old-1')])
+    );
+
+    const result = await retentionOps.executeRetentionCleanup(false);
+
+    expect(mocks.deleted).toContain('collection/old-1');
+    expect(mocks.commit).toHaveBeenCalled();
+    expect(result.deleted).toBeGreaterThan(0);
+  });
+
+  it('keeps documents under any hold flag', async () => {
+    stubCollections((name) =>
+      name === 'rightsRequests'
+        ? fakeQuery([])
+        : fakeQuery([
+            oldDoc('held-1', { legalHold: true }),
+            oldDoc('held-2', { litigationHold: true }),
+            oldDoc('held-3', { auditHold: true }),
+          ])
+    );
+
+    const result = await retentionOps.executeRetentionCleanup(false);
+
+    expect(mocks.deleted).toEqual([]);
+    expect(result.skipped).toBeGreaterThan(0);
+  });
+
+  it('keeps documents whose owner has an open rights request', async () => {
+    stubCollections((name) =>
+      name === 'rightsRequests' ? fakeQuery([oldDoc('open')]) : fakeQuery([oldDoc('doc-1')])
+    );
+
+    const result = await retentionOps.executeRetentionCleanup(false);
+
+    expect(mocks.deleted).toEqual([]);
+    expect(result.expired).toBe(0);
+  });
+
+  it('never deletes a live account just because it is old', async () => {
+    stubCollections((name) => {
+      if (name === 'users') {
+        return fakeQuery([
+          oldDoc('user-1', { userId: undefined }),
+          oldDoc('closed-1', { deletedAt: new Date() }),
+        ]);
+      }
+      return fakeQuery([]);
+    });
+
+    await retentionOps.executeRetentionCleanup(false);
+
+    expect(mocks.deleted).toContain('collection/closed-1');
+    expect(mocks.deleted).not.toContain('collection/user-1');
+  });
+
+  it('collects errors and keeps sweeping other collections', async () => {
+    stubCollections((name) => {
+      if (name === 'requests') throw new Error('index missing');
+      return fakeQuery([]);
+    });
+
+    const result = await retentionOps.executeRetentionCleanup(true);
+
+    expect(result.errors.some((error) => error.includes('index missing'))).toBe(true);
+    expect(mocks.logger.error).toHaveBeenCalled();
+  });
+
+  it('retentionCleanupHandler defaults to a dry run', async () => {
+    const json = vi.fn();
+    const status = vi.fn(() => ({ json }));
+
+    await retentionOps.retentionCleanupHandler({ query: {} }, { status });
+
+    expect(status).toHaveBeenCalledWith(200);
+    expect(json).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true, success: true }));
+  });
+
+  it('retentionCleanupHandler deletes when dryRun=false', async () => {
+    stubCollections((name) =>
+      name === 'rightsRequests' ? fakeQuery([]) : fakeQuery([oldDoc('old-1')])
+    );
+    const json = vi.fn();
+    const status = vi.fn(() => ({ json }));
+
+    await retentionOps.retentionCleanupHandler({ query: { dryRun: 'false' } }, { status });
+
+    expect(mocks.deleted).toContain('collection/old-1');
+    expect(json).toHaveBeenCalledWith(expect.objectContaining({ dryRun: false }));
+  });
+
+  it('retentionCleanupHandler returns 500 when the sweep throws', async () => {
+    mocks.logger.info.mockImplementationOnce(() => {
+      throw new Error('boom');
+    });
     const json = vi.fn();
     const status = vi.fn(() => ({ json }));
 
     await retentionOps.retentionCleanupHandler(
-      { query: { dryRun: 'true' } },
-      { status }
-    );
-
-    expect(status).toHaveBeenCalledWith(200);
-    expect(json).toHaveBeenCalledWith({
-      success: true,
-      dryRun: true,
-      deleted: 0,
-      errors: [],
-      details: [],
-    });
-  });
-
-  it('retentionCleanupHandler returns 500 when writing fails', async () => {
-    const status = vi.fn((code: number) => ({
-      json: () => {
-        if (code === 200) throw new Error('socket closed');
-      },
-    }));
-
-    await retentionOps.retentionCleanupHandler(
-      { query: {} },
+      { query: { dryRun: 'false' } },
       { status }
     );
 
     expect(status).toHaveBeenCalledWith(500);
   });
 
-  it('runRetentionCleanupManually logs a dry-run summary', async () => {
-    await retentionOps.runRetentionCleanupManually(true);
+  it('runRetentionCleanupManually returns the result it logged', async () => {
+    const result = await retentionOps.runRetentionCleanupManually(true);
 
-    const lines = (errorSpy.mock.calls as unknown[][]).map((call) =>
-      String(call[0])
+    expect(result).toEqual(expect.objectContaining({ deleted: 0, expired: 0 }));
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      'Manual retention cleanup finished',
+      expect.objectContaining({ dryRun: true })
     );
-    expect(lines.some((line) => line.includes('dryRun: true'))).toBe(true);
   });
 });

@@ -1,120 +1,213 @@
 /**
  * DPDP Act 2023 - Retention Cleanup Operations
+ *
+ * Walks the processing register and deletes documents whose retention period
+ * has expired. Deletion is refused for anything under a legal/litigation/audit
+ * hold or whose owner has an open data-subject request, so a sweep can never
+ * destroy evidence it is required to keep.
+ *
+ * `executeRetentionCleanup` defaults to a dry run: callers must pass `false` to
+ * delete. A scheduled job that silently deletes on a typo is worse than a job
+ * that reports what it would do.
  */
 
 import { adminDb } from '@/lib/firebaseAdmin';
-import { PROCESSING_REGISTER, PERSONAL_DATA_CATEGORIES } from './dpdp';
+import { logger } from '@/lib/logger';
+import { PERSONAL_DATA_CATEGORIES, PROCESSING_REGISTER } from './dpdp';
+
+/** Firestore allows 500 writes per batch; one page per collection is 100. */
+const PAGE_SIZE = 100;
+
+export interface RetentionDetail {
+  collection: string;
+  docId: string;
+  reason: string;
+}
+
+export interface RetentionResult {
+  /** Documents actually deleted (always 0 in a dry run). */
+  deleted: number;
+  /** Documents examined and found past their retention period. */
+  expired: number;
+  /** Expired documents kept because of a hold or an open rights request. */
+  skipped: number;
+  errors: string[];
+  details: RetentionDetail[];
+}
+
+export type RetentionCategory =
+  (typeof PERSONAL_DATA_CATEGORIES)[keyof typeof PERSONAL_DATA_CATEGORIES];
+
+/** Collections each register category is allowed to touch. */
+const COLLECTIONS_BY_CATEGORY: Record<string, string[]> = {
+  account: ['users'],
+  shipping: ['requests', 'users'],
+  order: ['requests'],
+  payment: ['walletTransactions', 'paypalPaymentOrders', 'requests'],
+  support: ['supportTickets', 'supportMessages', 'notifications'],
+  auth: ['users'],
+  analytics: [],
+  marketing: ['users'],
+  cookie: [],
+};
+
+/** Hold flags that make a document ineligible regardless of age. */
+const HOLD_FLAGS = ['legalHold', 'litigationHold', 'auditHold'] as const;
+
+function hasHold(data: Record<string, unknown>): boolean {
+  return HOLD_FLAGS.some((flag) => data[flag] === true);
+}
 
 /**
- * Execute automated retention cleanup
- * Should be run as a scheduled Cloud Function / cron job daily
+ * A `users` document is only expired once the account itself is closed. Active
+ * accounts are retained for their lifetime, so age alone must never delete one:
+ * that would remove the profile while the Auth account kept signing in.
  */
-export async function executeRetentionCleanup(_dryRun = true): Promise<{
-  deleted: number;
-  errors: string[];
-  details: Array<{ collection: string; docId: string; reason: string }>;
-}> {
-  const _results = { deleted: 0, errors: [] as string[], details: [] as Array<{ collection: string; docId: string; reason: string }> };
+function isClosedAccount(data: Record<string, unknown>): boolean {
+  return Boolean(data.deletedAt || data.deletionRequestedAt || data.anonymizedAt);
+}
+
+function emptyResult(): RetentionResult {
+  return { deleted: 0, expired: 0, skipped: 0, errors: [], details: [] };
+}
+
+function merge(into: RetentionResult, from: RetentionResult): void {
+  into.deleted += from.deleted;
+  into.expired += from.expired;
+  into.skipped += from.skipped;
+  into.errors.push(...from.errors);
+  into.details.push(...from.details);
+}
+
+/**
+ * Execute retention cleanup. `dryRun` defaults to true; pass false to delete.
+ */
+export async function executeRetentionCleanup(dryRun = true): Promise<RetentionResult> {
+  const totals = emptyResult();
 
   for (const [category, config] of Object.entries(PROCESSING_REGISTER)) {
-    const cat = category as typeof PERSONAL_DATA_CATEGORIES[keyof typeof PERSONAL_DATA_CATEGORIES];
-
     try {
-      const deleted = await cleanupCategory(cat, config, _dryRun);
-      console.error('Category ' + category + ': ' + deleted.count + ' documents would be processed');
-      void deleted;
+      merge(
+        totals,
+        await cleanupCategory(category as RetentionCategory, config, dryRun)
+      );
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Category ' + category + ' cleanup error:', errMsg);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      totals.errors.push(`${category}: ${message}`);
+      logger.error('Retention cleanup failed for category', { category, error: message });
     }
   }
 
-  return { deleted: 0, errors: [], details: [] };
+  logger.info('Retention cleanup finished', {
+    dryRun,
+    deleted: totals.deleted,
+    expired: totals.expired,
+    skipped: totals.skipped,
+    errors: totals.errors.length,
+  });
+
+  return totals;
 }
 
 async function cleanupCategory(
-  category: typeof PERSONAL_DATA_CATEGORIES[keyof typeof PERSONAL_DATA_CATEGORIES],
+  category: RetentionCategory,
   config: { retentionDays: number; purposes: string[] },
-  _dryRun: boolean
-): Promise<{ count: number; details: Array<{ collection: string; docId: string; reason: string }> }> {
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - config.retentionDays);
+  dryRun: boolean
+): Promise<RetentionResult> {
+  const result = emptyResult();
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - config.retentionDays);
 
-  const collectionsToClean = (() => {
-    const map: Record<string, string[]> = {
-      account: ['users'],
-      shipping: ['requests', 'users'],
-      order: ['requests'],
-      payment: ['walletTransactions', 'paypalPaymentOrders', 'requests'],
-      support: ['supportTickets', 'supportMessages', 'notifications'],
-      auth: ['users'],
-      analytics: [],
-      marketing: ['users'],
-      cookie: [],
-    };
-    return map[category] || [];
-  })();
-
-  for (const collectionName of collectionsToClean) {
+  for (const collectionName of COLLECTIONS_BY_CATEGORY[category] ?? []) {
     try {
       const snapshot = await adminDb
         .collection(collectionName)
-        .where('createdAt', '<', cutoffDate)
-        .limit(100)
+        .where('createdAt', '<', cutoff)
+        .limit(PAGE_SIZE)
         .get();
 
-      for (const doc of snapshot.docs) {
-        const data = doc.data();
+      const batch = adminDb.batch();
+      let queued = 0;
 
-        if (data.legalHold === true || data.litigationHold === true || data.auditHold === true) {
+      for (const doc of snapshot.docs) {
+        const data = (doc.data() ?? {}) as Record<string, unknown>;
+
+        if (collectionName === 'users' && !isClosedAccount(data)) {
+          result.skipped += 1;
           continue;
         }
 
-        const rightsReq = await adminDb
+        if (hasHold(data)) {
+          result.skipped += 1;
+          continue;
+        }
+
+        const ownerId = typeof data.userId === 'string' ? data.userId : doc.id;
+        const openRequest = await adminDb
           .collection('rightsRequests')
-          .where('userId', '==', data.userId || doc.id)
+          .where('userId', '==', ownerId)
           .where('status', 'in', ['pending', 'processing', 'on_hold'])
           .limit(1)
           .get();
 
-        if (!rightsReq.empty) {
+        if (!openRequest.empty) {
+          result.skipped += 1;
           continue;
         }
 
-        if ((data.legalHold === true) || (data.litigationHold === true) || (data.auditHold === true)) {
-          continue;
-        }
+        result.expired += 1;
+        result.details.push({
+          collection: collectionName,
+          docId: doc.id,
+          reason: `${category} retention of ${config.retentionDays} days elapsed`,
+        });
 
-        console.error('Would delete: ' + collectionName + '/' + doc.id + ' (' + category + ')');
+        if (dryRun) continue;
+
+        batch.delete(doc.ref);
+        queued += 1;
+      }
+
+      if (!dryRun && queued > 0) {
+        await batch.commit();
+        result.deleted += queued;
       }
     } catch (error) {
-      console.error('Cleanup error for ' + collectionName + ':', error);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      result.errors.push(`${collectionName}: ${message}`);
+      logger.error('Retention cleanup failed for collection', {
+        collection: collectionName,
+        error: message,
+      });
     }
   }
 
-  return { count: 0, details: [] };
+  return result;
 }
 
 /**
- * Cloud Function entry point
+ * Cloud Function / cron entry point.
+ *
+ * Deletion is opt-in: only `?dryRun=false` actually removes documents.
  */
 export async function retentionCleanupHandler(
   request: { query: { dryRun?: string } },
-  response: { status: (code: number) => { json: (body: unknown) => void } },
+  response: { status: (code: number) => { json: (body: unknown) => void } }
 ): Promise<void> {
-  const _dryRun = request.query.dryRun === 'true';
+  const dryRun = request.query.dryRun !== 'false';
 
   try {
-    console.error('Starting retention cleanup (dryRun: ' + _dryRun + ')...');
-    const result = { deleted: 0, errors: [], details: [] };
+    const result = await executeRetentionCleanup(dryRun);
 
     response.status(200).json({
       success: true,
-      dryRun: _dryRun,
+      dryRun,
       ...result,
     });
   } catch (error) {
-    console.error('Retention cleanup failed:', error);
+    logger.error('Retention cleanup failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
     response.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -123,10 +216,10 @@ export async function retentionCleanupHandler(
 }
 
 /**
- * Test function to run cleanup manually
+ * Manual entry point used by operators.
  */
-export async function runRetentionCleanupManually(_dryRun = true): Promise<void> {
-  console.error('Starting retention cleanup (dryRun: ' + _dryRun + ')...');
-  const result = { deleted: 0, errors: [], details: [] };
-  console.error('Cleanup result:', JSON.stringify(result, null, 2));
+export async function runRetentionCleanupManually(dryRun = true): Promise<RetentionResult> {
+  const result = await executeRetentionCleanup(dryRun);
+  logger.info('Manual retention cleanup finished', { dryRun, ...result });
+  return result;
 }

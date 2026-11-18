@@ -8,6 +8,7 @@
  * here keeps each file self-contained, and `vi.resetModules()` in the hoisted
  * block clears whatever a previous file left behind before these imports run.
  */
+import crypto from 'crypto';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { hasParentalConsent, enforceAgeGate, verifyParentalConsent, verifyParentalConsentOTP, getUserAge } from './ageOps';
@@ -41,7 +42,10 @@ function fakeDoc(data: Record<string, unknown>, exists = true) {
 function fakeCollection(docs: ReturnType<typeof fakeDoc>[]) {
   return {
     doc: (id?: string) => docs.find(d => d.data().id === id) || docs[0],
-    add: vi.fn((_data?: Record<string, unknown>) => ({ id: 'added-id' })),
+    add: vi.fn((_data?: Record<string, unknown>) => ({
+      id: 'added-id',
+      delete: vi.fn().mockResolvedValue(undefined),
+    })),
     get: () => ({ docs, empty: docs.length === 0 }),
     where: () => fakeCollection(docs),
     orderBy: () => fakeCollection(docs),
@@ -66,6 +70,7 @@ const mocks = vi.hoisted(() => ({
   },
   // Return a placeholder object that mimics FieldValue.serverTimestamp()'s .toDate()
   serverTimestamp: vi.fn(() => ({ toDate: () => new Date() })),
+  sendMail: vi.fn(),
 }));
 
 vi.mock('@/lib/firebaseAdmin', () => ({
@@ -75,14 +80,18 @@ vi.mock('@/lib/firebaseAdmin', () => ({
 vi.mock('firebase-admin/firestore', () => ({
   FieldValue: {
     serverTimestamp: mocks.serverTimestamp,
+    delete: () => '__DELETE__',
   },
 }));
+
+vi.mock('@/lib/mailer', () => ({ sendMail: mocks.sendMail }));
 
 beforeEach(() => {
   mocks.adminDb.collection.mockReset();
   mocks.adminDb.collection.mockImplementation(() => fakeCollection([]));
   mocks.serverTimestamp.mockReset();
   mocks.serverTimestamp.mockImplementation(() => ({ toDate: () => new Date() }));
+  mocks.sendMail.mockReset().mockResolvedValue(undefined);
 });
 
 /**
@@ -255,13 +264,19 @@ describe('compliance parental consent flow', () => {
     ).resolves.toEqual({ success: false, error: 'Invalid OTP format' });
   });
 
-  it('verifyParentalConsentOTP verifies the consent and the child profile', async () => {
+  it('verifyParentalConsentOTP verifies a matching code and the child profile', async () => {
+    const salt = 'a'.repeat(32);
+    const hash = crypto.scryptSync('123456', salt, 32).toString('hex');
     const consents = fakeCollection([
       fakeDoc({
         id: 'consent-1',
         childUid: 'child-3',
         status: 'pending',
         expiresAt: future,
+        otpHash: hash,
+        otpSalt: salt,
+        otpAttempts: 0,
+        otpExpiresAt: future,
       }),
     ]);
     const users = fakeCollection([fakeDoc({ id: 'child-3' })]);
@@ -286,6 +301,160 @@ describe('compliance parental consent flow', () => {
         parentalConsentMethod: 'otp',
       })
     );
+  });
+
+  it('verifyParentalConsentOTP refuses a request with no stored code', async () => {
+    stubCollections(() =>
+      fakeCollection([
+        fakeDoc({ id: 'consent-1', status: 'pending', expiresAt: future }),
+      ])
+    );
+
+    await expect(
+      verifyParentalConsentOTP({ consentId: 'consent-1', otp: '123456' })
+    ).resolves.toEqual({
+      success: false,
+      error: 'This consent request has no verification code. Request a new one.',
+    });
+  });
+
+  it('verifyParentalConsentOTP increments attempts on a wrong code', async () => {
+    const salt = 'b'.repeat(32);
+    const consents = fakeCollection([
+      fakeDoc({
+        id: 'consent-1',
+        childUid: 'child-3',
+        status: 'pending',
+        expiresAt: future,
+        otpHash: crypto.scryptSync('111111', salt, 32).toString('hex'),
+        otpSalt: salt,
+        otpAttempts: 2,
+        otpExpiresAt: future,
+      }),
+    ]);
+    stubCollections((name: string) =>
+      name === 'users' ? fakeCollection([fakeDoc({ id: 'child-3' })]) : consents
+    );
+
+    await expect(
+      verifyParentalConsentOTP({ consentId: 'consent-1', otp: '222222' })
+    ).resolves.toEqual({ success: false, error: 'Incorrect OTP.' });
+
+    const consentDoc = consents.doc('consent-1') as ReturnType<typeof fakeDoc>;
+    expect(consentDoc.update).toHaveBeenCalledWith({ otpAttempts: 3 });
+  });
+
+  it('verifyParentalConsentOTP treats a malformed stored hash as a mismatch', async () => {
+    stubCollections(() =>
+      fakeCollection([
+        fakeDoc({
+          id: 'consent-1',
+          status: 'pending',
+          expiresAt: future,
+          otpHash: 'ab',
+          otpSalt: 'e'.repeat(32),
+          otpAttempts: 0,
+          otpExpiresAt: future,
+        }),
+      ])
+    );
+
+    await expect(
+      verifyParentalConsentOTP({ consentId: 'consent-1', otp: '111111' })
+    ).resolves.toEqual({ success: false, error: 'Incorrect OTP.' });
+  });
+
+  it('verifyParentalConsentOTP locks out after five wrong codes', async () => {
+    const salt = 'c'.repeat(32);
+    stubCollections(() =>
+      fakeCollection([
+        fakeDoc({
+          id: 'consent-1',
+          status: 'pending',
+          expiresAt: future,
+          otpHash: crypto.scryptSync('111111', salt, 32).toString('hex'),
+          otpSalt: salt,
+          otpAttempts: 5,
+          otpExpiresAt: future,
+        }),
+      ])
+    );
+
+    await expect(
+      verifyParentalConsentOTP({ consentId: 'consent-1', otp: '111111' })
+    ).resolves.toEqual({
+      success: false,
+      error: 'Too many attempts. Request a new code.',
+    });
+  });
+
+  it('verifyParentalConsentOTP rejects a code past its own expiry', async () => {
+    const salt = 'd'.repeat(32);
+    stubCollections(() =>
+      fakeCollection([
+        fakeDoc({
+          id: 'consent-1',
+          status: 'pending',
+          expiresAt: future,
+          otpHash: crypto.scryptSync('111111', salt, 32).toString('hex'),
+          otpSalt: salt,
+          otpAttempts: 0,
+          otpExpiresAt: past,
+        }),
+      ])
+    );
+
+    await expect(
+      verifyParentalConsentOTP({ consentId: 'consent-1', otp: '111111' })
+    ).resolves.toEqual({
+      success: false,
+      error: 'Verification code expired. Request a new one.',
+    });
+  });
+
+  it('an OTP request stores only a hash and emails the code to the parent', async () => {
+    const users = fakeCollection([fakeDoc({ id: 'child-5' })]);
+    const consents = fakeCollection([fakeDoc({ id: 'unused' })]);
+    stubCollections((name: string) => (name === 'users' ? users : consents));
+
+    await verifyParentalConsent({
+      childUid: 'child-5',
+      parentEmail: 'parent@example.com',
+      consentMethod: 'otp',
+    });
+
+    const written = consents.add.mock.calls[0][0] as Record<string, unknown>;
+    expect(written.otpHash).toEqual(expect.any(String));
+    expect(written.otpSalt).toEqual(expect.any(String));
+    expect(written).not.toHaveProperty('otp');
+
+    const mail = mocks.sendMail.mock.calls[0][0] as { to: string; text: string };
+    expect(mail.to).toBe('parent@example.com');
+    const code = /\b(\d{6})\b/.exec(mail.text)?.[1];
+    expect(code).toBeDefined();
+
+    // The emailed code is the one the hash was built from.
+    expect(
+      crypto.scryptSync(code!, written.otpSalt as string, 32).toString('hex')
+    ).toBe(written.otpHash);
+  });
+
+  it('an OTP request is discarded when the email cannot be sent', async () => {
+    mocks.sendMail.mockRejectedValue(new Error('smtp down'));
+    const users = fakeCollection([fakeDoc({ id: 'child-6' })]);
+    const consents = fakeCollection([fakeDoc({ id: 'unused' })]);
+    stubCollections((name: string) => (name === 'users' ? users : consents));
+
+    await expect(
+      verifyParentalConsent({
+        childUid: 'child-6',
+        parentEmail: 'parent@example.com',
+        consentMethod: 'otp',
+      })
+    ).resolves.toEqual({
+      success: false,
+      error: 'Could not send the verification email.',
+    });
   });
 
   it('getUserAge returns null for a profile without a date of birth', async () => {

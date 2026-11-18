@@ -6,6 +6,9 @@
 
 import { adminDb } from '@/lib/firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { serverEnv } from '@/config/env';
+import { fetchWithTimeout } from '@/lib/http';
+import { logger } from '@/lib/logger';
 import { PERSONAL_DATA_CATEGORIES } from './dpdp';
 
 export interface BreachRecord {
@@ -56,12 +59,63 @@ export async function recordBreach(params: {
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  // Auto-escalate critical breaches
+  // A critical breach has a 72-hour statutory clock, so it cannot depend on
+  // someone reading application logs. It is logged at error level and, when a
+  // webhook is configured, pushed to the on-call channel.
   if (params.severity === 'critical') {
-    console.error('CRITICAL BREACH RECORDED:', docRef.id, params);
+    logger.error('CRITICAL BREACH RECORDED', {
+      breachId: docRef.id,
+      severity: params.severity,
+      estimatedAffectedUsers: params.estimatedAffectedUsers,
+      affectedCategories: params.affectedCategories,
+    });
+    await alertCriticalBreach(docRef.id, params);
   }
 
   return docRef.id;
+}
+
+/**
+ * Send a critical breach to the incident channel.
+ *
+ * Fire-and-forget by design: the breach record is already written, and a failed
+ * page must not fail the caller that reported the incident.
+ */
+async function alertCriticalBreach(
+  breachId: string,
+  params: { severity: string; description: string; estimatedAffectedUsers: number }
+): Promise<void> {
+  const webhook = serverEnv.BREACH_ALERT_WEBHOOK_URL;
+
+  if (!webhook) {
+    logger.error('No BREACH_ALERT_WEBHOOK_URL configured for a critical breach', { breachId });
+    return;
+  }
+
+  try {
+    const response = await fetchWithTimeout(webhook, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: `CRITICAL data breach recorded: ${params.description} (${params.estimatedAffectedUsers} users affected, id ${breachId})`,
+        breachId,
+        severity: params.severity,
+        estimatedAffectedUsers: params.estimatedAffectedUsers,
+      }),
+    }, 5_000);
+
+    if (!response.ok) {
+      logger.error('Breach alert webhook rejected the notification', {
+        breachId,
+        status: response.status,
+      });
+    }
+  } catch (error) {
+    logger.error('Breach alert webhook failed', {
+      breachId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
 }
 
 /**

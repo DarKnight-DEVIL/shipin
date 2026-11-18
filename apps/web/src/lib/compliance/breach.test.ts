@@ -10,10 +10,23 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+import { serverEnv } from '@/config/env';
 import { recordBreach, updateBreach, getBreach, getAllBreaches, getActiveBreaches } from './breach';
 
 // Runs before this file's imports are evaluated, so the subjects below bind to
 // the stubs declared in this file.
+const loggerMocks = vi.hoisted(() => ({
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
+
+vi.mock('@/lib/logger', () => ({
+  logger: loggerMocks,
+  childLogger: () => loggerMocks,
+}));
+
 vi.hoisted(() => {
   vi.resetModules();
 });
@@ -114,29 +127,87 @@ describe('compliance breach ops', () => {
     );
   });
 
-  it('recordBreach logs a critical breach to stderr', async () => {
-    const collection = fakeCollection([]);
-    mocks.adminDb.collection.mockImplementation(() => collection);
-    collection.add.mockReturnValue({ id: 'breach-2' });
-
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    await recordBreach({
-      severity: 'critical',
+  function criticalBreach() {
+    return {
+      severity: 'critical' as const,
       description: 'Critical breach',
       affectedCategories: ['payment'],
       estimatedAffectedUsers: 1,
       discoveredAt: new Date(),
       reportedToBoard: true,
       reportedToUsers: false,
-    });
+    };
+  }
 
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('CRITICAL BREACH RECORDED'),
-      expect.any(String),
-      expect.objectContaining({ severity: 'critical' })
+  it('recordBreach logs a critical breach at error level', async () => {
+    const collection = fakeCollection([]);
+    mocks.adminDb.collection.mockImplementation(() => collection);
+    collection.add.mockReturnValue({ id: 'breach-2' });
+    loggerMocks.error.mockReset();
+
+    await recordBreach(criticalBreach());
+
+    expect(loggerMocks.error).toHaveBeenCalledWith(
+      'CRITICAL BREACH RECORDED',
+      expect.objectContaining({ breachId: 'breach-2', severity: 'critical' })
     );
-    errorSpy.mockRestore();
+  });
+
+  it('recordBreach pages the configured webhook for a critical breach', async () => {
+    const collection = fakeCollection([]);
+    mocks.adminDb.collection.mockImplementation(() => collection);
+    collection.add.mockReturnValue({ id: 'breach-3' });
+    serverEnv.BREACH_ALERT_WEBHOOK_URL = 'https://alerts.example.test/hook';
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    await recordBreach(criticalBreach());
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://alerts.example.test/hook',
+      expect.objectContaining({ method: 'POST' })
+    );
+    const body = JSON.parse(
+      (fetchSpy.mock.calls[0][1] as RequestInit).body as string
+    );
+    expect(body.breachId).toBe('breach-3');
+    fetchSpy.mockRestore();
+    serverEnv.BREACH_ALERT_WEBHOOK_URL = '';
+  });
+
+  it('logs a rejected alert webhook response', async () => {
+    const collection = fakeCollection([]);
+    mocks.adminDb.collection.mockImplementation(() => collection);
+    collection.add.mockReturnValue({ id: 'breach-5' });
+    serverEnv.BREACH_ALERT_WEBHOOK_URL = 'https://alerts.example.test/hook';
+    loggerMocks.error.mockReset();
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 500 }));
+
+    await recordBreach(criticalBreach());
+
+    expect(loggerMocks.error).toHaveBeenCalledWith(
+      'Breach alert webhook rejected the notification',
+      expect.objectContaining({ breachId: 'breach-5', status: 500 })
+    );
+    fetchSpy.mockRestore();
+    serverEnv.BREACH_ALERT_WEBHOOK_URL = '';
+  });
+
+  it('a failed alert webhook does not fail the breach record', async () => {
+    const collection = fakeCollection([]);
+    mocks.adminDb.collection.mockImplementation(() => collection);
+    collection.add.mockReturnValue({ id: 'breach-4' });
+    vi.stubEnv('BREACH_ALERT_WEBHOOK_URL', 'https://alerts.example.test/hook');
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('network down'));
+
+    await expect(recordBreach(criticalBreach())).resolves.toBe('breach-4');
+    fetchSpy.mockRestore();
+    vi.unstubAllEnvs();
   });
 
   it('updateBreach updates only the requested fields', async () => {
