@@ -11,6 +11,8 @@
  * that reports what it would do.
  */
 
+import { FieldValue } from 'firebase-admin/firestore';
+
 import { adminAuth, adminDb } from '@/lib/firebaseAdmin';
 import { logger } from '@/lib/logger';
 import { PERSONAL_DATA_CATEGORIES, PROCESSING_REGISTER } from './dpdp';
@@ -177,9 +179,14 @@ async function cleanupCategory(
               result.errors.push(
                 `users/${doc.id}: could not delete the Auth account (${code ?? 'unknown'})`
               );
+              await recordRetentionFailure(doc.id, code ?? 'unknown');
               continue;
             }
           }
+        }
+
+        if (collectionName === 'users' && !dryRun) {
+          await clearRetentionFailure(doc.id);
         }
 
         handled.add(key);
@@ -209,6 +216,127 @@ async function cleanupCategory(
       });
     }
   }
+
+  return result;
+}
+
+/**
+ * Record an account whose Auth deletion keeps failing.
+ *
+ * The profile is deliberately kept, so the document is the audit trail. This
+ * ledger makes the stuck accounts a queryable list instead of a line in each
+ * run's output, and `attempts` shows whether it is retrying or genuinely stuck.
+ */
+async function recordRetentionFailure(uid: string, code: string): Promise<void> {
+  try {
+    await adminDb
+      .collection('retentionFailures')
+      .doc(uid)
+      .set(
+        {
+          uid,
+          lastError: code,
+          lastAttemptAt: FieldValue.serverTimestamp(),
+          attempts: FieldValue.increment(1),
+          needsReview: true,
+        },
+        { merge: true }
+      );
+  } catch (error) {
+    logger.error('Could not record a retention failure', {
+      uid,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
+async function clearRetentionFailure(uid: string): Promise<void> {
+  try {
+    await adminDb.collection('retentionFailures').doc(uid).delete();
+  } catch (error) {
+    logger.error('Could not clear a retention failure', {
+      uid,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
+export interface OrphanSweepResult {
+  examined: number;
+  orphaned: number;
+  deleted: number;
+  errors: string[];
+  details: Array<{ uid: string; reason: string }>;
+}
+
+/**
+ * Delete Auth accounts that have no profile document.
+ *
+ * The reverse of the profile sweep: an account whose `users/{uid}` document is
+ * gone can still sign in, and every API call then 403s with
+ * USER_PROFILE_NOT_FOUND. A profile is only treated as missing if the Auth
+ * account is older than `minAgeMs`, so a signup racing its profile write is not
+ * deleted. Defaults to a dry run.
+ */
+export async function deleteOrphanedAuthAccounts(options: {
+  dryRun?: boolean;
+  maxUsers?: number;
+  minAgeMs?: number;
+} = {}): Promise<OrphanSweepResult> {
+  const dryRun = options.dryRun !== false;
+  const maxUsers = options.maxUsers ?? 1000;
+  const minAgeMs = options.minAgeMs ?? 7 * 24 * 60 * 60 * 1000;
+  const result: OrphanSweepResult = {
+    examined: 0,
+    orphaned: 0,
+    deleted: 0,
+    errors: [],
+    details: [],
+  };
+
+  let pageToken: string | undefined;
+
+  do {
+    const page = await adminAuth.listUsers(1000, pageToken);
+
+    for (const user of page.users) {
+      if (result.examined >= maxUsers) break;
+
+      result.examined += 1;
+
+      const created = user.metadata?.creationTime
+        ? Date.parse(user.metadata.creationTime)
+        : Number.NaN;
+
+      if (!Number.isFinite(created) || Date.now() - created < minAgeMs) continue;
+
+      const profile = await adminDb.collection('users').doc(user.uid).get();
+      if (profile.exists) continue;
+
+      result.orphaned += 1;
+      result.details.push({ uid: user.uid, reason: 'no users/{uid} profile' });
+
+      if (dryRun) continue;
+
+      try {
+        await adminAuth.deleteUser(user.uid);
+        result.deleted += 1;
+      } catch (error) {
+        const code = (error as { code?: string }).code;
+        if (code === 'auth/user-not-found') continue;
+        result.errors.push(`${user.uid}: ${code ?? 'unknown'}`);
+      }
+    }
+
+    pageToken = page.pageToken;
+  } while (pageToken && result.examined < maxUsers);
+
+  logger.info('Orphaned Auth account sweep finished', {
+    dryRun,
+    examined: result.examined,
+    orphaned: result.orphaned,
+    deleted: result.deleted,
+  });
 
   return result;
 }

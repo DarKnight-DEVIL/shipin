@@ -57,6 +57,11 @@ export function getAccountBlock(
   if (!profile) return null;
 
   if (isSet(profile.deletedAt)) return { status: 'deleted', ...BLOCKED.deleted };
+  // Requested deletion and anonymisation are the two states the retention sweep
+  // treats as closed. Blocking them here means a profile awaiting cleanup — or
+  // one whose Auth deletion failed — cannot be used in the meantime.
+  if (isSet(profile.deletionRequestedAt)) return { status: 'deleted', ...BLOCKED.deleted };
+  if (isSet(profile.anonymizedAt)) return { status: 'deleted', ...BLOCKED.deleted };
   if (isSet(profile.banned)) return { status: 'banned', ...BLOCKED.banned };
   if (isSet(profile.suspended)) return { status: 'suspended', ...BLOCKED.suspended };
   if (isSet(profile.disabled)) return { status: 'disabled', ...BLOCKED.disabled };

@@ -21,6 +21,9 @@ const mocks = vi.hoisted(() => ({
   deleted: [] as string[],
   commit: vi.fn(),
   deleteUser: vi.fn(),
+  listUsers: vi.fn(),
+  failureSet: vi.fn(),
+  failureDelete: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
@@ -32,17 +35,22 @@ function fakeDoc(id: string, data: Record<string, unknown>) {
   };
 }
 
-function fakeQuery(docs: ReturnType<typeof fakeDoc>[]) {
+function fakeQuery(docs: ReturnType<typeof fakeDoc>[], profileExists = false) {
   const query = {
     where: () => query,
     limit: () => query,
     get: () => Promise.resolve({ docs, empty: docs.length === 0 }),
+    doc: () => ({
+      set: mocks.failureSet,
+      delete: mocks.failureDelete,
+      get: () => Promise.resolve({ exists: profileExists, data: () => ({}) }),
+    }),
   };
   return query;
 }
 
 vi.mock('@/lib/firebaseAdmin', () => ({
-  adminAuth: { deleteUser: mocks.deleteUser },
+  adminAuth: { deleteUser: mocks.deleteUser, listUsers: mocks.listUsers },
   adminDb: {
     collection: mocks.collection,
     batch: () => ({
@@ -74,6 +82,9 @@ beforeEach(() => {
   mocks.deleted.length = 0;
   mocks.commit.mockReset().mockResolvedValue(undefined);
   mocks.deleteUser.mockReset().mockResolvedValue(undefined);
+  mocks.listUsers.mockReset();
+  mocks.failureSet.mockReset().mockResolvedValue(undefined);
+  mocks.failureDelete.mockReset().mockResolvedValue(undefined);
   mocks.logger.info.mockReset();
   mocks.logger.error.mockReset();
 });
@@ -194,6 +205,36 @@ describe('compliance retention sweep', () => {
     expect(mocks.deleted).toContain('collection/closed-3');
   });
 
+  it('records a failure ledger entry when Auth keeps refusing', async () => {
+    mocks.deleteUser.mockRejectedValue({ code: 'auth/internal-error' });
+    stubCollections((name) => {
+      if (name === 'users') {
+        return fakeQuery([oldDoc('stuck-1', { deletedAt: new Date() })]);
+      }
+      return fakeQuery([]);
+    });
+
+    await retentionOps.executeRetentionCleanup(false);
+
+    expect(mocks.failureSet).toHaveBeenCalledWith(
+      expect.objectContaining({ uid: 'stuck-1', needsReview: true }),
+      { merge: true }
+    );
+  });
+
+  it('clears a failure ledger entry once Auth deletion succeeds', async () => {
+    stubCollections((name) => {
+      if (name === 'users') {
+        return fakeQuery([oldDoc('closed-5', { deletedAt: new Date() })]);
+      }
+      return fakeQuery([]);
+    });
+
+    await retentionOps.executeRetentionCleanup(false);
+
+    expect(mocks.failureDelete).toHaveBeenCalled();
+  });
+
   it('does not delete Auth accounts during a dry run', async () => {
     stubCollections((name) => {
       if (name === 'users') {
@@ -265,5 +306,128 @@ describe('compliance retention sweep', () => {
       'Manual retention cleanup finished',
       expect.objectContaining({ dryRun: true })
     );
+  });
+});
+
+describe('orphaned Auth accounts', () => {
+  const oldAccount = (uid: string) => ({
+    uid,
+    metadata: { creationTime: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() },
+  });
+
+  it('reports orphans without deleting them in a dry run', async () => {
+    mocks.listUsers.mockResolvedValue({ users: [oldAccount('ghost-1')], pageToken: undefined });
+    stubCollections(() => fakeQuery([]));
+
+    const result = await retentionOps.deleteOrphanedAuthAccounts();
+
+    expect(result).toMatchObject({ examined: 1, orphaned: 1, deleted: 0 });
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it('deletes an old Auth account with no profile', async () => {
+    mocks.listUsers.mockResolvedValue({ users: [oldAccount('ghost-2')], pageToken: undefined });
+    stubCollections(() => fakeQuery([]));
+
+    const result = await retentionOps.deleteOrphanedAuthAccounts({ dryRun: false });
+
+    expect(mocks.deleteUser).toHaveBeenCalledWith('ghost-2');
+    expect(result.deleted).toBe(1);
+  });
+
+  it('keeps an account that still has a profile', async () => {
+    mocks.listUsers.mockResolvedValue({ users: [oldAccount('user-1')], pageToken: undefined });
+    stubCollections((name) =>
+      name === 'users' ? fakeQuery([], true) : fakeQuery([])
+    );
+
+    const result = await retentionOps.deleteOrphanedAuthAccounts({ dryRun: false });
+
+    expect(result.orphaned).toBe(0);
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it('leaves a freshly created account alone', async () => {
+    mocks.listUsers.mockResolvedValue({
+      users: [{ uid: 'new-1', metadata: { creationTime: new Date().toISOString() } }],
+      pageToken: undefined,
+    });
+    stubCollections(() => fakeQuery([]));
+
+    const result = await retentionOps.deleteOrphanedAuthAccounts({ dryRun: false });
+
+    expect(result.examined).toBe(1);
+    expect(result.orphaned).toBe(0);
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it('paginates through the Auth user list', async () => {
+    mocks.listUsers
+      .mockResolvedValueOnce({ users: [oldAccount('ghost-a')], pageToken: 'page-2' })
+      .mockResolvedValueOnce({ users: [oldAccount('ghost-b')], pageToken: undefined });
+    stubCollections(() => fakeQuery([]));
+
+    const result = await retentionOps.deleteOrphanedAuthAccounts({ dryRun: false });
+
+    expect(mocks.listUsers).toHaveBeenCalledTimes(2);
+    expect(result.deleted).toBe(2);
+  });
+
+  it('treats an already-deleted Auth user as gone', async () => {
+    mocks.listUsers.mockResolvedValue({ users: [oldAccount('ghost-4')], pageToken: undefined });
+    mocks.deleteUser.mockRejectedValue({ code: 'auth/user-not-found' });
+    stubCollections(() => fakeQuery([]));
+
+    const result = await retentionOps.deleteOrphanedAuthAccounts({ dryRun: false });
+
+    expect(result.errors).toEqual([]);
+    expect(result.deleted).toBe(0);
+  });
+
+  it('skips an account without a creation time', async () => {
+    mocks.listUsers.mockResolvedValue({ users: [{ uid: 'no-meta' }], pageToken: undefined });
+    stubCollections(() => fakeQuery([]));
+
+    const result = await retentionOps.deleteOrphanedAuthAccounts({ dryRun: false });
+
+    expect(result.orphaned).toBe(0);
+  });
+
+  it('keeps the sweep alive when the failure ledger cannot be written', async () => {
+    mocks.failureSet.mockRejectedValue(new Error('ledger down'));
+    mocks.deleteUser.mockRejectedValue({ code: 'auth/internal-error' });
+    stubCollections((name) =>
+      name === 'users'
+        ? fakeQuery([oldDoc('stuck-2', { deletedAt: new Date() })])
+        : fakeQuery([])
+    );
+
+    const result = await retentionOps.executeRetentionCleanup(false);
+
+    expect(result.errors.some((error) => error.includes('stuck-2'))).toBe(true);
+  });
+
+  it('survives a failure ledger entry that cannot be cleared', async () => {
+    mocks.failureDelete.mockRejectedValue(new Error('ledger down'));
+    stubCollections((name) =>
+      name === 'users'
+        ? fakeQuery([oldDoc('closed-6', { deletedAt: new Date() })])
+        : fakeQuery([])
+    );
+
+    await retentionOps.executeRetentionCleanup(false);
+
+    expect(mocks.deleted).toContain('collection/closed-6');
+  });
+
+  it('reports a failed orphan deletion without stopping the sweep', async () => {
+    mocks.listUsers.mockResolvedValue({ users: [oldAccount('ghost-3')], pageToken: undefined });
+    mocks.deleteUser.mockRejectedValue({ code: 'auth/internal-error' });
+    stubCollections(() => fakeQuery([]));
+
+    const result = await retentionOps.deleteOrphanedAuthAccounts({ dryRun: false });
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.deleted).toBe(0);
   });
 });

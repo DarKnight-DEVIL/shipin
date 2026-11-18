@@ -7,6 +7,13 @@ const mocks = vi.hoisted(() => ({
   onSnapshot: vi.fn(),
 }));
 
+//  shares the module registry: without this the subject can
+// stay bound to an earlier file's Firestore mock and its subscriptions never
+// reach this file's emitter.
+vi.hoisted(() => {
+  vi.resetModules();
+});
+
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn((_db: unknown, ...path: string[]) => ({ path: path.join('/') })),
   doc: vi.fn((_db: unknown, ...path: string[]) => ({ path: path.join('/') })),

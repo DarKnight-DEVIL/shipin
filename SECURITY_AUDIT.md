@@ -57,7 +57,10 @@ All responses include:
   under a hold or with an open rights request, and only removes `users` records
   for closed accounts. A closed profile's Firebase Auth account is deleted first,
   so a sweep cannot leave a live login with no profile; a refusal keeps the
-  profile for the next run. Results are returned, not just printed.
+  profile for the next run and lists it in `retentionFailures`. Profiles with
+  `deletionRequestedAt` or `anonymizedAt` are blocked at authentication, so a
+  closed account cannot be used while it waits for cleanup. An orphan sweep
+  deletes Auth accounts that have no profile (dry run by default).
 - **Parental consent:** OTPs are six CSPRNG digits stored as a salted scrypt hash
   with a 10-minute expiry and a five-attempt limit. The code is emailed to the
   parent address recorded on the request; a failed send deletes the pending

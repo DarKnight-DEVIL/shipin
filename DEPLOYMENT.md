@@ -41,7 +41,11 @@ retention period, and defaults to a dry run. Schedule the handler with
 legal/litigation/audit hold, anything whose owner has an open rights request,
 any `users` document whose account is not closed, and it deletes the Firebase
 Auth account before the profile so no sign-in is ever left without a record. If
-Auth refuses, the profile is kept for the next run. Deletions are batched
+Auth refuses, the profile is kept for the next run and an entry is written to
+`retentionFailures/{uid}` (attempts, last error). Clear that collection's entries
+only after fixing the cause. `deleteOrphanedAuthAccounts()` covers the reverse
+case — an Auth account with no profile — and also defaults to a dry run, skipping
+accounts younger than seven days so a signup is never raced. Deletions are batched
 (100 per collection per run) and the result lists every document with the
 reason it expired.
 

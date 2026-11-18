@@ -465,6 +465,21 @@ describe('compliance parental consent flow', () => {
     await expect(getUserAge('user-1')).resolves.toBeNull();
   });
 
+  it('getUserAge returns null for a missing user', async () => {
+    stubCollections(() => fakeCollection([fakeDoc({}, false)]));
+
+    await expect(getUserAge('missing')).resolves.toBeNull();
+  });
+
+  it('enforceAgeGate reports a missing user', async () => {
+    stubCollections(() => fakeCollection([fakeDoc({}, false)]));
+
+    await expect(enforceAgeGate('missing')).resolves.toEqual({
+      allowed: false,
+      error: 'User not found',
+    });
+  });
+
   it('getUserAge calculates age from the stored date of birth', async () => {
     stubCollections(() =>
       fakeCollection([fakeDoc({ id: 'user-1', dateOfBirth: '1990-01-01' })])

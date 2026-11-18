@@ -277,6 +277,24 @@ describe('compliance breach ops', () => {
     expect(result[0].severity).toBe('low');
   });
 
+  it('getAllBreaches filters by status when one is given', async () => {
+    const stored: Record<string, unknown> = {
+      severity: 'open',
+      description: 'Filtered',
+      affectedCategories: [],
+      estimatedAffectedUsers: 0,
+      reportedToBoard: false,
+      reportedToUsers: false,
+      status: 'open',
+    };
+    mocks.adminDb.collection.mockImplementation(() => fakeCollection([fakeDoc(stored)]));
+
+    const records = await getAllBreaches('open');
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ description: 'Filtered' });
+  });
+
   it('getActiveBreaches only returns open or contained records', async () => {
     const stored: Record<string, unknown> = {
       severity: 'high',

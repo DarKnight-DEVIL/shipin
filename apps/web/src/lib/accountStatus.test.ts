@@ -18,6 +18,8 @@ describe('getAccountBlock', () => {
     ['banned', true],
     ['deletedAt', new Date('2026-01-01T00:00:00.000Z')],
     ['deletedAt', '2026-01-01T00:00:00.000Z'],
+    ['deletionRequestedAt', new Date('2026-01-01T00:00:00.000Z')],
+    ['anonymizedAt', '2026-01-01T00:00:00.000Z'],
     ['banned', 'fraud'],
     ['suspended', 'chargeback investigation'],
     ['disabled', 1],
@@ -37,6 +39,8 @@ describe('getAccountBlock', () => {
     ['banned', false],
     ['suspended', false],
     ['deletedAt', null],
+    ['deletionRequestedAt', null],
+    ['anonymizedAt', false],
   ])('ignores %s set to the inert value %j', (field, value) => {
     expect(getAccountBlock({ role: 'customer', [field]: value })).toBeNull();
   });
