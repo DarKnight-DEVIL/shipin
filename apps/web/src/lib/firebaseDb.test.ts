@@ -147,4 +147,27 @@ describe("firebaseDb", () => {
     expect(() => getFirebaseDb()).not.toThrow();
     expect(mocks.connectFirestoreEmulator).not.toHaveBeenCalled();
   });
+
+  it("proxies reads, binds methods and writes through to the client", async () => {
+    mocks.getFirestore.mockReturnValue({
+      name: "firestore",
+      ping(this: { name: string }) {
+        return this.name;
+      },
+    });
+
+    const mod = await import("./firebaseDb");
+    const instance = mod.getFirebaseDb() as unknown as Record<string, unknown>;
+    const proxy = mod.db as unknown as Record<string, unknown>;
+
+    // `getModularInstance()` reads `_delegate`; without this the modular SDK
+    // rejects the proxy and every doc(db, ...) call throws.
+    expect(proxy._delegate).toBe(instance);
+    // A method must run against the client, not the proxy object.
+    expect((proxy.ping as () => string)()).toBe("firestore");
+
+    proxy.marker = "set-through";
+    expect(instance.marker).toBe("set-through");
+    expect(proxy.marker).toBe("set-through");
+  });
 });

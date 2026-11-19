@@ -114,4 +114,26 @@ describe("POST /api/auth/login-intent", () => {
     // The helper emits the reset as epoch seconds, not milliseconds.
     expect(response.headers.get("X-RateLimit-Reset")).toBe("1234567");
   });
+
+  it("allows the attempt and says so when the store is unavailable", async () => {
+    // A missing store or a Redis outage must not lock every customer out of
+    // signing in; the route allows the attempt and marks the response degraded.
+    mockLoginRateLimiter.record.mockResolvedValue({
+      ok: false,
+      unavailable: true,
+      limit: 5,
+      remaining: 0,
+      reset: Date.now() + 60000,
+    } as never);
+    mockIsRateLimited.mockReturnValue(true);
+
+    const request = createMockRequest({ "x-vercel-forwarded-for": "1.2.3.4" });
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      allowed: true,
+      degraded: true,
+    });
+  });
 });

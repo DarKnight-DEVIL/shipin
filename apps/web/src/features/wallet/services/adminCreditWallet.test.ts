@@ -186,6 +186,18 @@ describe("adminCreditWallet — guards", () => {
       "INVALID_WALLET_BALANCE"
     );
   });
+
+  it("treats a wallet with no balance or currency as an empty USD wallet", async () => {
+    const { db, writes } = makeDb({
+      "users/cust-1": customer(),
+      "wallets/cust-1": {},
+    });
+
+    const result = await adminCreditWallet(db as never, baseParams);
+
+    expect(result.previousBalance).toBe(0);
+    expect(writes[0].data).toMatchObject({ balance: 50, currency: "USD" });
+  });
 });
 
 describe("adminCreditWallet — refunds", () => {
@@ -334,6 +346,23 @@ describe("adminCreditWallet — refunds", () => {
     expect(update?.data).toMatchObject({
       "refundRequest.walletStatus": "completed",
       "refundRequest.walletAmount": 50,
+    });
+  });
+
+  it("falls back to the credited amount when the request records no refund amounts", async () => {
+    const { db, writes } = makeDb({
+      "users/cust-1": customer(),
+      "requests/req-1": requestDoc({ refundRequest: { status: "requested" } }),
+    });
+
+    await adminCreditWallet(db as never, refundParams);
+
+    const update = writes.find((write) => write.kind === "update");
+    // Nothing recorded, so nothing is outstanding: the request is refunded.
+    expect(update?.data).toMatchObject({
+      "refundRequest.walletStatus": "completed",
+      "refundRequest.walletAmount": 50,
+      status: "refunded",
     });
   });
 });
