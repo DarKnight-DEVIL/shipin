@@ -514,6 +514,15 @@ describe("POST /api/paypal/capture-order", () => {
     );
   });
 
+  it("does not release the claim it settled", async () => {
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(200);
+    // Exactly two transactions: the claim, then the settlement. A third would
+    // be a release, handing a paid order back for a second capture attempt.
+    expect(mocks.runTransaction).toHaveBeenCalledTimes(2);
+  });
+
   it("handles a PayPal-only payment", async () => {
     mocks.orderGet.mockResolvedValue(
       snap({ ...mainOrder, walletApplied: 0, paypalAmount: 104.7 })

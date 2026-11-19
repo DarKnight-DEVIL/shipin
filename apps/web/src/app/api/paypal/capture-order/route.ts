@@ -238,8 +238,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const { captureId, capturedAmount, capturedCurrency } = captured;
 
     // --- 11. Settle the payment ---
-    let captureSettled = false;
-
+    // Assigns the flag declared above the try: `finally` reads it, and a
+    // redeclaration here would silently keep that one false forever.
     if (paymentType === "additional_item") {
       const settlement = await settleAdditionalItemPayment({
         requestRef,

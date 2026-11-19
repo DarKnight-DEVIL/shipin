@@ -1,6 +1,13 @@
 /** Wallet balance deduction logic. */
+import type { DocumentReference } from "firebase-admin/firestore";
+
 import { adminDb } from "@/lib/firebaseAdmin";
-import { adminAuth } from "@/lib/firebaseAuth";
+
+/** The fields this service reads off the payment order document. */
+interface PaymentOrderFields {
+  userId?: string;
+  requestId?: string;
+}
 
 export interface DeductWalletResult {
   ok: boolean;
@@ -19,9 +26,9 @@ export async function deductWallet({
   capturedAmount,
   capturedCurrency,
 }: {
-  requestRef: any;
-  paymentOrderRef: any;
-  paymentOrder: any;
+  requestRef: DocumentReference;
+  paymentOrderRef: DocumentReference;
+  paymentOrder: PaymentOrderFields;
   captureId: string;
   capturedAmount: number;
   capturedCurrency: string;
