@@ -63,9 +63,12 @@ const request = (body: unknown) =>
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 
+// A fresh copy per read: these fixtures are shared across cases, and the route
+// mutates the document it settles. Handing back the same object let one case's
+// write leak into the next (`isolate: false`, so ordering exposes it).
 const snap = (data: Record<string, unknown> | undefined) => ({
   exists: data !== undefined,
-  data: () => data,
+  data: () => (data === undefined ? undefined : structuredClone(data)),
 });
 
 const requestDoc = {
