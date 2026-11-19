@@ -1,42 +1,62 @@
 #!/usr/bin/env node
-/**
- * Fails when a coverage threshold glob matches no file.
- *
- * Vitest checks each glob-keyed threshold against the files that glob resolves
- * to. When it resolves to nothing, the threshold has nothing to measure and is
- * skipped — silently. Renaming `src/features/wallet` or mistyping
- * `src/app/api/payment/**` therefore removes a money-path gate while the run
- * stays green, and nothing in the coverage report says so.
- *
- * This script reads the exact same glob keys the config uses (they share
- * `coverage-thresholds.mjs`), resolves each against the tracked source tree,
- * and exits non-zero if any glob matches nothing.
- *
- * It also validates the floor *values*, which Vitest does not police: a family
- * floor above 100 can never be met, one below the global minimum enforces
- * nothing extra while reading like a stricter gate, and an unknown metric key
- * (`brnaches`) is ignored outright — leaving a family that looks gated and is
- * not.
- *
- * Usage:
- *   node scripts/check-coverage-globs.mjs
- *
- * Matching uses `path.matchesGlob` (Node 22.5+), so the check reads globs the
- * same way Node does rather than re-implementing a matcher.
- */
+//
+// Fails when a coverage threshold glob matches no file.
+//
+// Vitest checks each glob-keyed threshold against the files that glob resolves
+// to. When it resolves to nothing, the threshold has nothing to measure and is
+// skipped — silently. Renaming `src/features/wallet` or mistyping
+// `src/app/api/payment/**` therefore removes a money-path gate while the run
+// stays green, and nothing in the coverage report says so.
+//
+// This script reads the exact same glob keys the config uses (they share
+// `coverage-thresholds.mjs`), resolves each against the tracked source tree,
+// and exits non-zero if any glob matches nothing.
+//
+// It also validates the floor *values*, which Vitest does not police: a family
+// floor above 100 can never be met, one below the global minimum enforces
+// nothing extra while reading like a stricter gate, and an unknown metric key
+// (`brnaches`) is ignored outright — leaving a family that looks gated and is
+// not.
+//
+// Usage:
+//   node scripts/check-coverage-globs.mjs
+//
+// Matching uses `path.matchesGlob` (Node 22.5+), so the check reads globs the
+// same way Node does rather than re-implementing a matcher.
+//
+"use strict";
 import { readdirSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import {
   COVERAGE_GLOB_THRESHOLDS,
   COVERAGE_METRICS,
   GLOBAL_COVERAGE_FLOORS,
+  PACKAGES_GLOBAL_FLOORS,
 } from "../coverage-thresholds.mjs";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
+//
+// Resolve the project root. The script lives at apps/web/scripts/ and the
+// project root (containing package.json, apps/, packages/) is three levels
+// up. We go up from the script file path until we reach the project root.
+//
+const scriptPath = path.resolve(fileURLToPath(new URL(import.meta.url)));
+let ROOT = scriptPath;
+// Walk up 3 levels: script → scripts → web → shipin (project root)
+for (let i = 0; i < 3; i++) {
+  ROOT = path.dirname(ROOT);
+}
+// Safety check: if package.json isn't at ROOT, keep walking up
+while (!existsSync(path.join(ROOT, "package.json"))) {
+  const parent = path.dirname(ROOT);
+  if (parent === ROOT) break; // reached filesystem root
+  ROOT = parent;
+}
 
-/** Directories that never contain covered source. */
+//
+// Directories that never contain covered source.
+//
 const SKIP_DIRS = new Set([
   "node_modules",
   ".git",
@@ -46,30 +66,35 @@ const SKIP_DIRS = new Set([
   "test-results",
 ]);
 
-/**
- * Walk `src/` and return repo-relative POSIX paths.
- *
- * Coverage itself runs over `src/`, and thresholds apply to production files
- * only, so test suites and docs are filtered out here too — a glob that only
- * matches `route.test.ts` or a README is just as dead as one that matches
- * nothing at all.
- */
-function collectSourceFiles(dir) {
+//
+// Walk src/ and return repo-relative POSIX paths starting from src/.
+//
+// Coverage itself runs over src/, and thresholds apply to production files
+// only, so test suites and docs are filtered out here too — a glob that only
+// matches route.test.ts or a README is just as dead as one that matches
+// nothing at all.
+//
+function collectSourceFilesFromDir(dir) {
   const files = [];
 
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
       if (SKIP_DIRS.has(entry.name)) continue;
-      files.push(...collectSourceFiles(path.join(dir, entry.name)));
+      files.push(...collectSourceFilesFromDir(path.join(dir, entry.name)));
       continue;
     }
 
     if (!entry.isFile()) continue;
 
-    const relative = path
+    let relative = path
       .relative(ROOT, path.join(dir, entry.name))
       .split(path.sep)
       .join("/");
+
+    // Strip apps/web/ prefix so paths start from src/ to match config globs
+    if (relative.startsWith("apps/web/")) {
+      relative = relative.slice("apps/web/".length);
+    }
 
     if (/\.test\.(ts|tsx)$/.test(relative)) continue;
     if (relative.endsWith("README.md")) continue;
@@ -80,6 +105,31 @@ function collectSourceFiles(dir) {
   return files;
 }
 
+//
+// Collect source files from both apps/web/src and packages/*/src.
+//
+function collectSourceFiles() {
+  const files = [];
+  // Collect from apps/web/src
+  const webSrc = path.join(ROOT, "apps", "web", "src");
+  if (existsSync(webSrc)) {
+    files.push(...collectSourceFilesFromDir(webSrc));
+  }
+  // Also include packages
+  const packagesDir = path.join(ROOT, "packages");
+  if (existsSync(packagesDir)) {
+    for (const pkg of readdirSync(packagesDir)) {
+      const pkgSrc = path.join(packagesDir, pkg, "src");
+      try {
+        files.push(...collectSourceFilesFromDir(pkgSrc));
+      } catch (e) {
+        // some packages may not have src dirs
+      }
+    }
+  }
+  return files;
+}
+
 if (typeof path.matchesGlob !== "function") {
   console.error(
     "check-coverage-globs: this script needs Node 22.5+ (path.matchesGlob)."
@@ -87,13 +137,9 @@ if (typeof path.matchesGlob !== "function") {
   process.exit(1);
 }
 
-/**
- * Problems with the configured numbers themselves.
- *
- * Vitest accepts any value here; it simply compares percentages against it. So
- * these mistakes are all silent at test time and only visible as a gate that
- * does not gate.
- */
+//
+// Problems with the configured numbers themselves.
+//
 function validateFloors() {
   const problems = [];
 
@@ -174,10 +220,12 @@ if (globs.length === 0) {
   process.exit(1);
 }
 
-/** Informational output goes to stdout; failures go to stderr. */
+//
+// Informational output goes to stdout; failures go to stderr.
+//
 const out = (line = "") => process.stdout.write(`${line}\n`);
 
-const files = collectSourceFiles(path.join(ROOT, "src"));
+const files = collectSourceFiles();
 const results = globs.map((glob) => ({
   glob,
   matches: files.filter((file) => path.matchesGlob(file, glob)),

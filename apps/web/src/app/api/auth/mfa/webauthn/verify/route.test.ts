@@ -192,6 +192,7 @@ describe("POST /api/auth/mfa/webauthn/verify", () => {
         response: assertion,
         expectedChallenge: "CHALLENGE",
         credential: { credentialID: "cred-1", counter: 4 },
+        requestOrigin: "http://localhost",
       });
       expect(mocks.refUpdate).toHaveBeenCalledWith({
         "mfa.webauthn.pendingChallenge": null,
@@ -203,6 +204,26 @@ describe("POST /api/auth/mfa/webauthn/verify", () => {
   });
 
   describe("step 2 — options", () => {
+    it("treats a missing body as the options request", async () => {
+      // `mfaApi` sends no body for this step; parsing it unconditionally threw
+      // and made the security-key button fail with a 500 before any prompt.
+      const response = await POST(
+        new NextRequest("http://localhost/api/auth/mfa/webauthn/verify", {
+          method: "POST",
+        })
+      );
+
+      expect(response.status).toBe(200);
+      expect(mocks.buildAuthenticationOptions).toHaveBeenCalledWith({
+        allowCredentials: [{ credentialID: "cred-1", counter: 4 }],
+        requestOrigin: "http://localhost",
+      });
+      await expect(response.json()).resolves.toMatchObject({
+        success: true,
+        options: { challenge: "NEW" },
+      });
+    });
+
     it("returns a fresh challenge and stores it", async () => {
       const now = 1_800_000_000_000;
       vi.spyOn(Date, "now").mockReturnValue(now);
@@ -211,6 +232,7 @@ describe("POST /api/auth/mfa/webauthn/verify", () => {
 
       expect(mocks.buildAuthenticationOptions).toHaveBeenCalledWith({
         allowCredentials: [{ credentialID: "cred-1", counter: 4 }],
+        requestOrigin: "http://localhost",
       });
       expect(mocks.update).toHaveBeenCalledWith({
         "mfa.webauthn.pendingChallenge": "NEW",

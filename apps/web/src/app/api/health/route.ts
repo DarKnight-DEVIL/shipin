@@ -38,7 +38,7 @@
 
 import { NextResponse } from "next/server";
 
-import { isProduction, serverEnv } from "@/config/env";
+import { isProduction } from "@/config/env";
 import { getAppCheckStatus } from "@/lib/appCheck";
 import {
   apiRateLimiter,
@@ -46,15 +46,24 @@ import {
   strictRateLimiter,
   webRateLimiter,
 } from "@/lib/rateLimiter";
-import { RATE_LIMIT_ERROR_WINDOW_MS } from "@/lib/redisRateLimiter";
+import {
+  getRateLimitStoreStatus,
+  RATE_LIMIT_ERROR_WINDOW_MS,
+} from "@/lib/redisRateLimiter";
 
 export async function GET() {
-  const redisConfigured = Boolean(
-    serverEnv.UPSTASH_REDIS_REST_URL && serverEnv.UPSTASH_REDIS_REST_TOKEN
-  );
-  // In production a missing store means per-instance limits. The app keeps
-  // serving (and logs a startup warning), so this is degraded, not down.
-  const missingSharedStore = isProduction && !redisConfigured;
+  // One derivation, shared with the limiter that enforces the limits. The
+  // variables being set is not the same as the store working: a URL that is not
+  // https never produces a Ratelimit instance, so every `record()` call returns
+  // `unavailable` and the proxy serves the request unmetered. Reporting
+  // `connected` for that state is the one thing this probe must not do, which
+  // is why the decision lives in `getRateLimitStoreStatus` and not here.
+  //
+  // In production a missing store means per-instance limits (none, in effect).
+  // The app keeps serving and logs a startup warning, so it is degraded, not
+  // down.
+  const { configured: redisConfigured, degraded: missingSharedStore } =
+    getRateLimitStoreStatus();
 
   // Two independent switches, reported separately so a half-configured
   // deployment is visible instead of looking either fully on or fully off. The

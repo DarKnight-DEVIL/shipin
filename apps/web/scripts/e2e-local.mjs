@@ -3,7 +3,7 @@
  * One command for the local E2E suite.
  *
  *   npm run test:e2e:local                 # build, serve it, run the public specs
- *   npm run test:e2e:local -- --signed-in  # + Auth emulator, seeded admin, sign-in spec
+ *   npm run test:e2e:local -- --signed-in  # + Auth emulator, seeded admin, sign-in specs
  *   npm run test:e2e:local -- -g PayPal    # extra args go to `playwright test`
  *
  * Why a script instead of a longer npm one-liner:
@@ -21,8 +21,10 @@
  *     first and says what to install.
  *
  * `--signed-in` also starts the Auth emulator, seeds an admin account
- * (`scripts/e2e/seed-auth-user.mjs`) and runs signed-in-smoke.spec.ts, so the
- * sign-in path is covered without a staging account.
+ * (`scripts/e2e/seed-auth-user.mjs`) and adds signed-in-smoke.spec.ts and
+ * mfa-passkey.spec.ts, so the sign-in path is covered without a staging
+ * account. It is a superset of the default run — CI calls exactly this mode,
+ * so there is one definition of the suite instead of two that can drift.
  *
  * App configuration still comes from the environment like every other run:
  * `apps/web/.env.local` (Next loads it) or exported variables. A production
@@ -130,6 +132,10 @@ const env = {
   UPSTASH_REDIS_REST_URL: "",
   UPSTASH_REDIS_REST_TOKEN: "",
   RATE_LIMIT_STORE_OPTIONAL: "1",
+  // Same store, different failure: the MFA revocation list fails closed in
+  // production, so without this every elevation is rejected and the cookie
+  // authorizes nothing. E2E only — never set on a deployment.
+  MFA_DENYLIST_OPTIONAL: "1",
 };
 
 if (signedIn) {
@@ -146,31 +152,37 @@ if (signedIn) {
     // from its own defaults, but the spec has to be told the same values.
     E2E_ADMIN_EMAIL: process.env.E2E_ADMIN_EMAIL || SEED_EMAIL,
     E2E_ADMIN_PASSWORD: process.env.E2E_ADMIN_PASSWORD || SEED_PASSWORD,
+    // `.env.local` points APP_URL at Vercel, which a production server refuses
+    // as an RP ID (a passkey would be scoped to every tenant). This run serves
+    // its own build on localhost, so it claims that origin.
+    APP_URL: "http://localhost:3000",
   });
 }
 
 // Paths include `tests/`: Playwright treats each positional argument as a
 // regex over the file path, and a bare `smoke.spec.ts` also matches
 // `signed-in-smoke.spec.ts` — which then skips itself for the wrong reason.
-const API_CONTRACT_SPECS = [
+const SPECS = [
+  "tests/smoke.spec.ts",
+  "tests/hydration.spec.ts",
+  "tests/sitemap-check.spec.ts",
   // Money-path contracts. The authenticated cases skip unless the Auth
   // emulator is running, so the default suite still covers the 401/403
   // boundary on every run.
   "tests/checkout-flow.spec.ts",
   "tests/wallet-topup.spec.ts",
   "tests/admin-refund-local.spec.ts",
-].join(" ");
+];
 
-const specs = signedIn
-  ? // With the Auth emulator up, the same contracts also exercise their
-    // authenticated branches (validation 400s, unknown fixture 404s, the
-    // non-admin 403), which is where an authorization regression shows up.
-    `tests/signed-in-smoke.spec.ts ${API_CONTRACT_SPECS}`
-  : [
-      "tests/smoke.spec.ts",
-      "tests/hydration.spec.ts",
-      "tests/sitemap-check.spec.ts",
-    ].join(" ") + ` ${API_CONTRACT_SPECS}`;
+const specs = [
+  ...SPECS,
+  // With the Auth emulator up, the contracts above also exercise their
+  // authenticated branches (validation 400s, unknown fixture 404s, the
+  // non-admin 403), which is where an authorization regression shows up.
+  ...(signedIn
+    ? ["tests/signed-in-smoke.spec.ts", "tests/mfa-passkey.spec.ts"]
+    : []),
+].join(" ");
 
 const playwright = [
   "npx playwright test --config=playwright.config.ts",

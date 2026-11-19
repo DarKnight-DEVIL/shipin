@@ -9,6 +9,7 @@ import path from "path";
 import {
   COVERAGE_GLOB_THRESHOLDS,
   GLOBAL_COVERAGE_FLOORS,
+  PACKAGES_GLOBAL_FLOORS,
 } from "./coverage-thresholds.mjs";
 
 export default defineConfig({
@@ -45,6 +46,11 @@ export default defineConfig({
         "src/features/**/*.ts",
         "src/app/api/**/*.ts",
         "src/components/**/*.ts",
+        // Package-level source files
+        "packages/ui/src/**",
+        "packages/utils/src/**",
+        "packages/config/src/**",
+        "packages/shared/src/**",
       ],
       exclude: [
         "src/app/api/**/route.test.ts", // test files are not production code
@@ -72,6 +78,12 @@ export default defineConfig({
         // carry a weak subtree. Every glob must match a file, or its gate is
         // dead weight — `npm run check:coverage-globs` enforces that in CI.
         ...COVERAGE_GLOB_THRESHOLDS,
+
+        // ---- Package-level coverage floors ----
+        // Each glob is checked on its own aggregate, so a strong sibling cannot
+        // carry a weak subtree. Every glob must match a file, or its gate is
+        // dead weight — `npm run check:coverage-globs` enforces that in CI.
+        ...PACKAGES_GLOBAL_FLOORS,
       },
     },
   },

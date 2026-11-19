@@ -319,4 +319,21 @@ describe("adminCreditWallet — refunds", () => {
       amount: 50,
     });
   });
+
+  it("preserves the requested wallet amount when a different amount is credited", async () => {
+    const { db, writes } = makeDb({
+      "users/cust-1": customer(),
+      "requests/req-1": requestDoc({
+        refundRequest: { status: "requested", walletAmount: 50 },
+      }),
+    });
+
+    await adminCreditWallet(db as never, { ...refundParams, creditAmount: 40 });
+
+    const update = writes.find((write) => write.kind === "update");
+    expect(update?.data).toMatchObject({
+      "refundRequest.walletStatus": "completed",
+      "refundRequest.walletAmount": 50,
+    });
+  });
 });

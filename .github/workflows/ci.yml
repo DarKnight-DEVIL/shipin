@@ -51,6 +51,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
+          package-manager: npm@12.2.2
+
+      - name: Enable corepack (respects packageManager field)
+        run: corepack enable
 
       - name: Install dependencies
         run: npm ci
@@ -87,6 +91,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
+          package-manager: npm@12.2.2
+
+      - name: Enable corepack (respects packageManager field)
+        run: corepack enable
 
       - name: Install dependencies
         run: npm ci
@@ -100,13 +108,18 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
-          # Dummy env vars for build-time validation.
+          # Dummy env vars, kept so the CI build matches a real deployment.
           #
-          # The NEXT_PUBLIC_* values are read while Next collects page-data for
-          # prerendered routes (clientEnv validates them at import time), so a
-          # build without them dies with "Missing required environment variable:
-          # NEXT_PUBLIC_FIREBASE_API_KEY" while collecting /robots.txt. The
-          # bundle-budget and e2e jobs already pass these; this job did not.
+          # They are not what keeps the build alive: client env is validated
+          # where it is used, not at import time, so a clean build with every
+          # NEXT_PUBLIC_* unset compiles and prerenders all static pages (the
+          # lazy Firebase handles in src/lib/firebase.ts and firebaseDb.ts are
+          # what made that true). They stay because NEXT_PUBLIC_* values are
+          # inlined into the client bundle at build time, and a bundle compiled
+          # without them ships an empty Firebase config that cannot sign anyone
+          # in. The bundle-budget job builds with these values; the e2e job gets
+          # its own from scripts/e2e-local.mjs, which points Firebase at the
+          # emulators instead.
           PAYPAL_CLIENT_ID: "test"
           PAYPAL_CLIENT_SECRET: "test"
           NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
@@ -163,6 +176,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
+          package-manager: npm@12.2.2
+
+      - name: Enable corepack (respects packageManager field)
+        run: corepack enable
 
       - name: Install dependencies
         run: npm ci
@@ -170,7 +187,8 @@ jobs:
       - name: Build for production
         run: npm run build
         env:
-          # Dummy env vars so the production build passes startup validation.
+          # Dummy env vars, so the measured bundle inlines the same NEXT_PUBLIC_*
+          # values that ship; the build itself no longer needs them.
           NODE_ENV: "production"
           PAYPAL_CLIENT_ID: "test"
           PAYPAL_CLIENT_SECRET: "test"
@@ -219,6 +237,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
+          package-manager: npm@12.2.2
+
+      - name: Enable corepack (respects packageManager field)
+        run: corepack enable
 
       - name: Install dependencies
         run: npm ci
@@ -328,6 +350,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
+          package-manager: npm@12.2.2
+
+      - name: Enable corepack (respects packageManager field)
+        run: corepack enable
 
       - name: Install dependencies
         run: npm ci
@@ -440,6 +466,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
+          package-manager: npm@12.2.2
+
+      - name: Enable corepack (respects packageManager field)
+        run: corepack enable
 
       - name: Install dependencies
         run: npm ci
@@ -447,58 +477,31 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
 
-      # Build once; Playwright starts the server itself (see
-      # PLAYWRIGHT_WEBSERVER_COMMAND below). The previous version built the app
-      # and then polled a port nothing listened on, so E2E silently fell back to
-      # a dev server and never exercised the production build.
-      - name: Build for production
-        run: npm run build
-        env:
-          # Per step, not job-wide: NODE_ENV=production at job level would make
-          # `npm ci` skip devDependencies. The dummies come from the job env.
-          NODE_ENV: "production"
+      # The suite is a Java process (firebase-tools 15 refuses runtimes below
+      # Java 21), and the runner's JDK check only proves one exists — the
+      # ubuntu-latest image does not necessarily ship a new enough one.
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
 
       # A production build must actually execute its JavaScript. This catches
       # the failure mode where every page renders correctly but nothing
       # hydrates — a CSP with a nonce the prerendered HTML can never carry,
       # a bundling change, a MIME/type regression. Smoke tests asserting page
       # text pass straight through that, which is how it shipped once.
-      # Always runs against the local build above, never E2E_STAGING_URL.
-      # Emits the run results to the job summary even on failure so the public
-      # channel below gives detail when the HTML logs are gated behind GitHub
-      # sign-in.
-      - name: Run local E2E specs (production build, Firestore emulator)
-        # `emulators:exec` owns the emulator for this step: the Firestore-backed
-        # routes need a datastore, this job has no service account, and a
-        # background `&` emulator is killed when its step ends. One boot serves
-        # both spec files.
-        #
-        # The old summary block here read `playwright-report/report.json`, which
-        # the config never writes (reporter: 'html'), so it only ever produced an
-        # empty code fence. Playwright's own failure output is the report.
+      # Always local, never E2E_STAGING_URL.
+      #
+      # One definition of the suite: `apps/web/scripts/e2e-local.mjs` builds and
+      # serves the production bundle, owns `emulators:exec` for Firestore + Auth,
+      # seeds the admin and runs the spec list. Repeating any of that here is how
+      # the two drifted — the duplicate env once silently skipped both signed-in
+      # specs. The job env keeps only the startup dummies the build and server
+      # validate, which the staging steps need too.
+      - name: Run local E2E specs (production build, Firestore + Auth emulators)
         if: env.E2E_STAGING_URL == ''
-        run: |
-          npx --yes firebase-tools@15.36.0 --config firebase.json \
-            emulators:exec --only firestore --project shipin-e2e \
-            "npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/smoke.spec.ts apps/web/playwright-test/tests/hydration.spec.ts apps/web/playwright-test/tests/sitemap-check.spec.ts apps/web/playwright-test/tests/checkout-flow.spec.ts apps/web/playwright-test/tests/wallet-topup.spec.ts apps/web/playwright-test/tests/admin-refund-local.spec.ts"
-        env:
-          # The server started here validates the same startup variables the
-          # build did; without them Playwright times out waiting for it.
-          NODE_ENV: "production"
-          CI: "1"
-          BASE_URL: "http://localhost:3000"
-          # Playwright runs this from the config's directory (apps/web).
-          # `npm start` serves the traced standalone build — the same entrypoint
-          # the Docker image runs — and that server takes its port from PORT, not
-          # from an argument, so the health check below waits on the right one.
-          PORT: "3000"
-          PLAYWRIGHT_WEBSERVER_COMMAND: "npm start"
-          # This job has no Upstash store, and a production build refuses to
-          # boot without one (a real deployment must not serve traffic with
-          # rate limiting silently off). The E2E suite is the documented
-          # exception; nothing outside this step and scripts/e2e-local.mjs sets
-          # it.
-          RATE_LIMIT_STORE_OPTIONAL: "1"
+        run: npm run test:e2e:signed-in
 
       # The write path needs a service account; without one it would fail on a
       # missing variable instead of skipping, and a failing step takes the
@@ -615,6 +618,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
+          package-manager: npm@12.2.2
+
+      - name: Enable corepack (respects packageManager field)
+        run: corepack enable
 
       - name: Install dependencies
         run: npm ci

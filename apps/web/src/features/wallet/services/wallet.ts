@@ -11,6 +11,7 @@ import {
 
 import { db } from "@/lib/firebaseDb";
 import { toShipINError } from "@/utils/errors";
+import type { WalletTransaction } from "@/types/wallet";
 
 export interface WalletData {
   balance: number;
@@ -43,7 +44,7 @@ export async function getWallet(userId: string): Promise<WalletData> {
 
 export async function getWalletTransactions(
   userId: string
-): Promise<unknown[]> {
+): Promise<WalletTransaction[]> {
   try {
     const q = query(
       collection(db, "walletTransactions"),
@@ -55,7 +56,7 @@ export async function getWalletTransactions(
 
     return snapshot.docs.map((doc) => ({
       id: doc.id,
-      ...doc.data(),
+      ...(doc.data() as Omit<WalletTransaction, "id">),
     }));
   } catch (error) {
     throw toShipINError(error);

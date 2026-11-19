@@ -370,5 +370,26 @@ describe("refundPayPalOrder", () => {
     });
   });
 
+  it("refunds in the currency of the original transaction", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: "t" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: "refund-eur" }),
+      });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await refundPayPalOrder("capture-1", 10.5, "EUR");
+
+    const [, options] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(JSON.parse(String(options.body))).toEqual({
+      amount: { currency_code: "EUR", value: "10.50" },
+    });
+  });
+
   afterEach(() => vi.restoreAllMocks());
 });

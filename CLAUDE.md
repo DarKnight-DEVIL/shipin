@@ -30,7 +30,7 @@ npm run lint             # Run ESLint (config in package.json)
 **Testing** (all commands from the repo root):
 
 ```bash
-npm test                      # Vitest unit suite (2123 tests, from the repo root)
+npm test                      # Vitest unit suite (from the repo root)
 npm run typecheck             # tsc --noEmit
 npm run test:coverage         # unit suite + the coverage floors
 npm run test:rules            # Firestore rules against the emulator (needs a JDK)
@@ -194,11 +194,14 @@ Critical env vars required:
 
 ### next.config.ts
 - React Strict Mode **enabled** by default in Next.js 16 (see `next.config.ts`)
-- `output: 'standalone'`. `npm start` runs the traced `.next/standalone/apps/web/server.js`
-  (`prestart` copies `public/` and `.next/static/` into it, exactly like the Dockerfile),
-  and `STANDALONE_OUTPUT_EXCLUDES` in `apps/web/standalone-output-excludes.mjs` keeps coverage,
-  Playwright artefacts and `.env*` files out of the traced tree. `npm start` reads the env
-  files with `--env-file-if-exists` instead of shipping them.
+- `output: 'standalone'`. `npm run build` runs `scripts/prepare-standalone.mjs` after
+  `next build`, so the traced `.next/standalone/apps/web/` tree already carries `public/`
+  and `.next/static/` and boots when `server.js` is started directly. `npm start` runs the
+  same idempotent script again through `prestart`, exactly like the Dockerfile's `COPY`s.
+  That script also prunes what the tracer copies and must not ship — coverage, Playwright
+  artefacts and the real `.env*` credentials (`STANDALONE_ARTEFACTS` / `STANDALONE_ENV_FILES`
+  in `apps/web/standalone-output-excludes.mjs`, which `outputFileTracingExcludes` also asks
+  the tracer to skip); `npm start` reads the env files with `--env-file-if-exists` instead.
 
 ### Tailwind CSS v4 (no `tailwind.config.ts`)
 

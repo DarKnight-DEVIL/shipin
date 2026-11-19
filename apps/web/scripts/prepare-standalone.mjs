@@ -8,8 +8,12 @@
  * `public/` and `.next/static/` out — static assets are not traced. The
  * Dockerfile performs those two copies itself
  * (`COPY apps/web/public ./apps/web/public`,
- * `COPY apps/web/.next/static ./apps/web/.next/static`); this script is the
- * local equivalent, run by `npm start` through the `prestart` hook.
+ * `COPY apps/web/.next/static ./apps/web/.next/static`). This script is the
+ * local equivalent, and it runs twice on purpose: `build` calls it right after
+ * `next build` so the artefact is serveable however it is started, and
+ * `prestart` runs it again before `npm start`. The second pass matters because
+ * `prestart` is an npm lifecycle hook: a container or a supervisor that runs
+ * `server.js` directly never triggers it.
  *
  * It also prunes what the tracer drags in and must not ship: the test/coverage
  * artefacts (see `STANDALONE_ARTEFACTS`) and the environment files, which hold

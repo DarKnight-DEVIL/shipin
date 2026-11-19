@@ -3,7 +3,9 @@
  *
  * `@upstash/redis` and `@upstash/ratelimit` are mocked so no network calls are
  * made, which lets us exercise the three real paths: no Redis configured
- * (in-memory fallback), Redis answering, and Redis failing (fail-closed).
+ * (in-memory fallback), Redis answering, and Redis failing (the result is
+ * flagged `unavailable`, so the proxy serves the request and /api/health
+ * reports degraded).
  */
 
 import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";

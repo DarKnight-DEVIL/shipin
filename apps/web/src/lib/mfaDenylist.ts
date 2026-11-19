@@ -88,20 +88,17 @@ export async function isMfaSessionDenied(jti: string): Promise<boolean> {
   const redis = getRedis();
 
   if (!redis) {
-    if (isProduction) {
-      // Fail closed: without a store we cannot prove the session is still valid.
+    // Without a store the answer to "revoked?" is unknown, so production fails
+    // closed — except for the E2E opt-out (never set on a deployment), where
+    // failing closed would reject every elevation the run just created.
+    if (isProduction && process.env["MFA_DENYLIST_OPTIONAL"] !== "1") {
       console.error(
         "[mfa] No revocation store configured; rejecting the elevation session."
       );
       return true;
     }
 
-    // Fail open when MFA_DENYLIST_OPTIONAL=1 is set (E2E only):
-    // without a store we cannot prove revocation, so don't block.
-    // Use process.env directly to avoid vitest mock issues with getters.
-    const mfaOptional = process.env["MFA_DENYLIST_OPTIONAL"] === "1";
-    if (mfaOptional) return false;
-
+    // Development (or the E2E opt-out): nothing to revoke against.
     return false;
   }
 

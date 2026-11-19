@@ -96,6 +96,7 @@ describe("POST /api/auth/mfa/webauthn/register/start", () => {
       userName: "admin@example.com",
       displayName: "Token Name",
       excludeCredentials: [{ credentialID: "cred-1" }],
+      requestOrigin: "http://localhost",
     });
     expect(mocks.refUpdate).toHaveBeenCalledWith({
       "mfa.webauthn.pendingChallenge": "CHALLENGE",

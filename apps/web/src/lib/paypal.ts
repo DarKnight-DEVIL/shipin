@@ -11,7 +11,7 @@
 import { serverEnv, isProduction } from "@/config/env";
 import { createShipINError } from "@/utils/errors";
 import { fetchWithTimeout } from "@/lib/http";
-import { childLogger } from "@/lib/logger";
+import { childLogger } from "./logger";
 
 const paypalLog = childLogger({ service: "paypal" });
 
@@ -114,9 +114,17 @@ export async function capturePayPalOrder(orderID: string): Promise<unknown> {
   return response.json();
 }
 
+/**
+ * Refund a captured PayPal payment.
+ *
+ * `currency` is the currency of the original transaction, read from the stored
+ * payment order by the caller. PayPal rejects a refund whose currency differs
+ * from the capture, so it must never be assumed.
+ */
 export async function refundPayPalOrder(
   captureId: string,
-  amount?: number
+  amount?: number,
+  currency = "USD"
 ): Promise<unknown> {
   const token = await getPayPalAccessToken();
   const baseUrl = getPayPalBaseUrl();
@@ -124,7 +132,7 @@ export async function refundPayPalOrder(
   const body: Record<string, unknown> = {};
   if (amount !== undefined) {
     body.amount = {
-      currency_code: "USD",
+      currency_code: currency,
       value: amount.toFixed(2),
     };
   }

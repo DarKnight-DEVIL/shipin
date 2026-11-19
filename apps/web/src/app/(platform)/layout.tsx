@@ -20,8 +20,15 @@ export default function PlatformLayout({
   const [userEmail, setUserEmail] = useState("");
   // Seeded from the current session so a page that is already signed in does
   // not render once before the listener fires.
-  const [signedInUid, setSignedInUid] = useState<string | null>(
-    () => auth.currentUser?.uid ?? null
+  //
+  // The `window` guard is load-bearing: React also renders this component on the
+  // server while prerendering `/addresses` and the rest of the platform, and a
+  // property read is what initializes the lazy `auth` handle. Without it the
+  // build reached Firebase's client SDK with no client env and died with
+  // "Firebase client failed to initialize" on the first static page. A server
+  // render has no session anyway, so `null` is the correct answer there.
+  const [signedInUid, setSignedInUid] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : (auth.currentUser?.uid ?? null)
   );
   const [readyUid, setReadyUid] = useState<string | null>(null);
 

@@ -131,22 +131,6 @@ describe("InMemoryRateLimiter", () => {
     ).toBe(false);
   });
 
-  it("skips routes listed in skipRoutes", async () => {
-    const skipLimiter = new InMemoryRateLimiter({
-      maxRequests: 1,
-      windowMs: 60_000,
-      message: "Test",
-      skipRoutes: ["/api/health"],
-    });
-    const req = createRequest(
-      { "x-vercel-forwarded-for": "1.2.3.4" },
-      "http://example.com/api/health"
-    );
-    const result = await skipLimiter.record(req);
-    expect(result.ok).toBe(true);
-    expect(result.remaining).toBe(1);
-  });
-
   it("resets after the window expires", async () => {
     vi.useFakeTimers();
     try {

@@ -29,6 +29,60 @@ export const WEBAUTHN_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 export const WEBAUTHN_RP_NAME = "ShipIN";
 
 /**
+ * Relying party local development falls back to when APP_URL is not a domain
+ * this deployment owns.
+ *
+ * A passkey is bound to its RP ID for life, so a preview host such as
+ * `*.vercel.app` must never become the RP ID. Development still needs one to
+ * exercise the ceremony, and loopback is what a browser accepts over http — it
+ * is also the origin `next dev` serves by default.
+ */
+const DEV_LOOPBACK_ORIGIN = "http://localhost:3000";
+
+/**
+ * An `http` origin on the loopback interface, with or without a port.
+ *
+ * `127.0.0.1` is accepted as a *request* origin so the config stays
+ * self-consistent, but a passkey can only be created on `localhost`: browsers
+ * refuse any RP ID at an IP-address origin (`SecurityError: This is an invalid
+ * domain`), which is why no alias origin is accepted at verification either.
+ */
+function isLoopbackHttpOrigin(origin: string): boolean {
+  return /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(origin);
+}
+
+/**
+ * The origin a development ceremony actually runs on.
+ *
+ * `next dev -p 4000` — or Next falling back to 3001 when 3000 is taken — serves
+ * a different origin than the one baked into APP_URL, and a passkey cannot be
+ * used across origins. The value comes from the request, so only loopback
+ * origins are accepted: a forged `Host` can then at worst name another loopback
+ * port, never a domain an attacker controls. Outside development this is never
+ * consulted.
+ */
+function devOriginFor(
+  requestOrigin: string | undefined,
+  configuredOrigin: string
+): string {
+  const candidate = requestOrigin?.trim();
+
+  if (candidate) {
+    try {
+      const origin = new URL(candidate).origin;
+
+      if (isLoopbackHttpOrigin(origin)) return origin;
+    } catch {
+      // Unparseable: fall through to the configured/fallback origin.
+    }
+  }
+
+  return isLoopbackHttpOrigin(configuredOrigin)
+    ? configuredOrigin
+    : DEV_LOOPBACK_ORIGIN;
+}
+
+/**
  * Normalize the configured deployment URL to an origin.
  *
  * There is no hard-coded production host on purpose. A passkey is bound to one
@@ -60,7 +114,7 @@ export function resolveAppOrigin(
     );
   }
 
-  return "http://localhost:3000";
+  return DEV_LOOPBACK_ORIGIN;
 }
 
 export interface StoredWebAuthnCredential {
@@ -77,6 +131,19 @@ export interface StoredWebAuthnCredential {
   backedUp?: boolean;
 }
 
+/**
+ * The credential id for a ceremony call.
+ *
+ * Legacy records wrote it as `id`; one helper keeps that compatibility in a
+ * single cast instead of two casts at every call site.
+ */
+function credentialIdOf(
+  credential: StoredWebAuthnCredential
+): Base64URLString {
+  const legacy = credential as unknown as { id?: string };
+  return (credential.credentialID || legacy.id || "") as Base64URLString;
+}
+
 /** Shape stored at `users/{uid}.mfa.webauthn`. */
 export interface WebAuthnRecord {
   enabled?: boolean;
@@ -87,12 +154,6 @@ export interface WebAuthnRecord {
   pendingExpires?: number | null;
 }
 
-/**
- * The origin and RP ID this deployment answers the ceremony for.
- *
- * Both come from APP_URL (not the request Host header) so a forged Host cannot
- * change which origin an assertion is checked against.
- */
 /**
  * Domains shared by unrelated tenants.
  *
@@ -122,15 +183,39 @@ export function isSharedHostingDomain(hostname: string): boolean {
   );
 }
 
-export function getWebAuthnConfig(): {
+/**
+ * The origin and RP ID this deployment answers the ceremony for.
+ *
+ * In production both come from APP_URL, never the request, so a forged Host
+ * cannot change which origin an assertion is checked against. Development also
+ * accepts the loopback origin the request arrived on — `next dev` may run on
+ * another port — and ignores any non-loopback value.
+ */
+export function getWebAuthnConfig(requestOrigin?: string): {
   origin: string;
   rpID: string;
   rpName: string;
 } {
   const origin = resolveAppOrigin(serverEnv.APP_URL);
   const rpID = new URL(origin).hostname;
+  const sharedHosting = isSharedHostingDomain(rpID);
 
-  if (isSharedHostingDomain(rpID)) {
+  // Development follows the origin the ceremony is actually served from. The
+  // committed env files point APP_URL at the Vercel deployment, and `next dev`
+  // may not even be on port 3000, so the configured host is unusable as an RP
+  // ID here. Production keeps refusing a shared host: an RP ID under
+  // `vercel.app` would cover every other tenant on the provider.
+  if (!isProduction && (sharedHosting || isLoopbackHttpOrigin(origin))) {
+    const devOrigin = devOriginFor(requestOrigin, origin);
+
+    return {
+      origin: devOrigin,
+      rpID: new URL(devOrigin).hostname,
+      rpName: WEBAUTHN_RP_NAME,
+    };
+  }
+
+  if (sharedHosting) {
     throw new Error(
       `APP_URL points at the shared hosting domain "${rpID}". WebAuthn would register passkeys for the whole hosting provider, so point APP_URL at a domain ShipIN owns.`
     );
@@ -139,15 +224,8 @@ export function getWebAuthnConfig(): {
   return { origin, rpID, rpName: WEBAUTHN_RP_NAME };
 }
 
-/** Origins accepted for local development in addition to the configured one. */
-function expectedOrigins(): string[] {
-  const { origin } = getWebAuthnConfig();
-
-  if (isProduction) return [origin];
-
-  return Array.from(
-    new Set([origin, "http://localhost:3000", "http://127.0.0.1:3000"])
-  );
+function expectedOrigins(requestOrigin?: string): string[] {
+  return [getWebAuthnConfig(requestOrigin).origin];
 }
 
 /** Normalize the stored record, including the legacy `credentialIds` shape. */
@@ -200,8 +278,9 @@ export async function buildRegistrationOptions(params: {
   userName: string;
   displayName: string;
   excludeCredentials: StoredWebAuthnCredential[];
+  requestOrigin?: string;
 }) {
-  const { rpID, rpName } = getWebAuthnConfig();
+  const { rpID, rpName } = getWebAuthnConfig(params.requestOrigin);
 
   return generateRegistrationOptions({
     rpName,
@@ -226,10 +305,11 @@ export async function buildRegistrationOptions(params: {
 export async function verifyRegistration(params: {
   response: RegistrationResponseJSON;
   expectedChallenge: string;
+  requestOrigin?: string;
 }): Promise<
   { verified: false } | { verified: true; credential: StoredWebAuthnCredential }
 > {
-  const { rpID } = getWebAuthnConfig();
+  const { rpID } = getWebAuthnConfig(params.requestOrigin);
 
   let result;
 
@@ -237,7 +317,7 @@ export async function verifyRegistration(params: {
     result = await verifyRegistrationResponse({
       response: params.response,
       expectedChallenge: params.expectedChallenge,
-      expectedOrigin: expectedOrigins(),
+      expectedOrigin: expectedOrigins(params.requestOrigin),
       expectedRPID: rpID,
       requireUserVerification: false,
     });
@@ -270,16 +350,14 @@ export async function verifyRegistration(params: {
 
 export async function buildAuthenticationOptions(params: {
   allowCredentials: StoredWebAuthnCredential[];
+  requestOrigin?: string;
 }) {
-  const { rpID } = getWebAuthnConfig();
+  const { rpID } = getWebAuthnConfig(params.requestOrigin);
 
   return generateAuthenticationOptions({
     rpID,
     allowCredentials: params.allowCredentials.map((credential) => ({
-      id:
-        (credential as { credentialID?: string; id?: string }).credentialID ??
-        (credential as { credentialID?: string; id?: string }).id ??
-        "",
+      id: credentialIdOf(credential),
       transports: credential.transports as never,
     })),
     // The account proved its password/ID token; this proves possession.
@@ -291,18 +369,18 @@ export async function verifyAssertion(params: {
   response: AuthenticationResponseJSON;
   expectedChallenge: string;
   credential: StoredWebAuthnCredential;
+  requestOrigin?: string;
 }): Promise<{ verified: boolean; newCounter: number }> {
-  const { rpID } = getWebAuthnConfig();
+  const { rpID } = getWebAuthnConfig(params.requestOrigin);
 
   try {
     const result = await verifyAuthenticationResponse({
       response: params.response,
       expectedChallenge: params.expectedChallenge,
-      expectedOrigin: expectedOrigins(),
+      expectedOrigin: expectedOrigins(params.requestOrigin),
       expectedRPID: rpID,
       credential: {
-        id: (params.credential as { credentialID?: string; id?: string })
-          .credentialID as Base64URLString,
+        id: credentialIdOf(params.credential),
         publicKey: new Uint8Array(
           Buffer.from(params.credential.publicKey, "base64url")
         ),

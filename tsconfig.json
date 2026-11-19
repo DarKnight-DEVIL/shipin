@@ -30,6 +30,14 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
+    // `types` replaces the automatic inclusion of every @types package, and
+    // that restriction is the point: without it each workspace would pull the
+    // ambient declarations of every dependency in the tree (three, qrcode,
+    // testing-library, ...) into code that never loads them. DOM globals do
+    // not come from @types at all — they come from `lib` above — so client
+    // code is unaffected. An ambient package a workspace does rely on has to
+    // be named there: `apps/web` adds `vitest/globals` because its vitest
+    // config sets `globals: true`.
     "types": ["node"]
   }
 }

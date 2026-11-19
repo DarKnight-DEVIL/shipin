@@ -494,7 +494,7 @@ describe("POST /api/paypal/capture-order", () => {
       expect.objectContaining({
         userId: "user-1",
         requestId: "req-1",
-        category: "payment",
+        type: "payment_received",
         whatsapp: expect.objectContaining({
           templateName: "shipin_payment_received",
         }),

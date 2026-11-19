@@ -68,10 +68,14 @@ describe("firebaseDb", () => {
     expect(mocks.getFirestore).toHaveBeenCalledWith({ name: "existing" });
   });
 
-  it("exports a db handle bound to the same client", async () => {
+  it("exports a lazy db handle bound to the same client", async () => {
     const mod = await import("./firebaseDb");
 
-    expect(mod.db).toEqual({ name: "firestore" });
+    // Importing the module must not create the client (or its SDK) at load.
+    expect(mocks.getFirestore).not.toHaveBeenCalled();
+
+    // The first property access initializes it.
+    expect((mod.db as unknown as { name: string }).name).toBe("firestore");
     expect(mocks.getFirestore).toHaveBeenCalledTimes(1);
   });
 

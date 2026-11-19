@@ -49,6 +49,11 @@ export const ROUTE_AUTH_CLASSIFICATION: Record<string, RouteAuth> = {
   "/api/notifications": "customer",
   "/api/addresses": "customer",
   "/api/wallet": "customer",
+  // Every route currently under this prefix authenticates with a Firebase ID
+  // token: the MFA routes call `requireAuthWithProfile` (or verify the Bearer
+  // token themselves), so "customer" is the correct default and fails closed.
+  // A new PRE-authentication route (sign-in, reset) must be added as an exact
+  // "public" entry above; it must not rely on this prefix.
   "/api/auth": "customer",
 
   // --- Admin ---

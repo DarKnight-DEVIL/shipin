@@ -15,6 +15,27 @@
  *     cannot enforce global limits across serverless regions, which is exactly
  *     why this must be visible rather than silent.
  *   - In development/test, falls back to in-memory limiter when Redis is not configured.
+ */
+
+import { childLogger } from "./logger";
+
+/**
+ * Shared (cross-instance) rate limiter backed by Upstash Redis.
+ *
+ * The existing in-memory limiter in rateLimiter.ts only counts requests
+ * per Node.js process, so on Vercel (or any multi-instance deployment)
+ * a client could spread its requests across many instances and bypass
+ * the limit. This module stores counters in Redis so the limit holds
+ * globally.
+ *
+ * Behavior:
+ *   - If UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_TOKEN are not set in production,
+ *     the deployment is DEGRADED, not down: startup logs one warning, limits
+ *     fall back to the per-instance in-memory path, and /api/health reports
+ *     `degraded` so uptime monitoring can see the gap. Per-instance limits
+ *     cannot enforce global limits across serverless regions, which is exactly
+ *     why this must be visible rather than silent.
+ *   - In development/test, falls back to in-memory limiter when Redis is not configured.
  *   - If Redis is configured but a call fails (network error, timeout), the
  *     limiter returns `unavailable`: the request is NOT rejected, because a
  *     store outage must never lock every user out (see the fail-open branch in
@@ -137,10 +158,9 @@ export function reportRateLimitStoreStatus(): RateLimitStoreStatus {
   const status = getRateLimitStoreStatus();
 
   if (status.degraded) {
-    console.warn(
-      "[RateLimiter] UPSTASH_REDIS_REST_URL and/or UPSTASH_REDIS_REST_TOKEN are not set in production. " +
-        "Rate limits are per-instance only; /api/health reports this as degraded. " +
-        "Set both variables to enforce limits across serverless regions."
+    const rateLimiterLogger = childLogger({ service: "rate-limiter" });
+rateLimiterLogger.warn(
+      "[RateLimiter] UPSTASH_REDIS_REST_URL and/or UPSTASH_REDIS_REST_TOKEN are not set in production. " +        "Rate limits are per-instance only; /api/health reports this as degraded. " +        "Set both variables to enforce limits across serverless regions."
     );
   }
 
@@ -289,12 +309,13 @@ export function createSharedRateLimiter(
           reset,
         };
       } catch (error) {
-        // Fail CLOSED: a Redis outage must not silently allow excess requests.
-        // Report via Sentry for production alerting and bump local counter
-        // so /api/health can expose the current error rate.
+        // Fail OPEN, but flagged: an outage must not lock every user out (see
+        // the `unavailable` branch in proxy.ts), so the request is served. The
+        // gap is not silent — this is counted, sent to Sentry and reported as
+        // `degraded` by /api/health, which is the alert an operator acts on.
         bumpCounter(ip);
         console.error(
-          `[RateLimiter:${name}] Redis call failed, rejecting request (fail-closed):`,
+          `[RateLimiter:${name}] Redis call failed, serving request without a limit (degraded):`,
           error instanceof Error ? error.message : error
         );
         return {

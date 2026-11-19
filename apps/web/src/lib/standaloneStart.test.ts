@@ -38,6 +38,18 @@ describe("standalone start contract", () => {
     expect(scripts.prestart).toBe("node scripts/prepare-standalone.mjs");
   });
 
+  it("makes the build itself serveable, not only the start script", () => {
+    // `prestart` is npm lifecycle sugar around `npm start`. Anything that runs
+    // `node .next/standalone/apps/web/server.js` directly — a container that
+    // bypasses npm, a supervisor, a one-off — skips it and then serves HTML
+    // whose `/_next/static` chunks 404. Preparing at build time makes the
+    // artefact serveable however it is started; `prestart` stays as the
+    // idempotent second pass.
+    expect(scripts.build.endsWith("node scripts/prepare-standalone.mjs")).toBe(
+      true
+    );
+  });
+
   it("keeps local test artefacts out of the traced tree", () => {
     for (const artefact of [
       "coverage",

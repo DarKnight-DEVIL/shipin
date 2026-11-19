@@ -34,6 +34,7 @@ Visit `http://localhost:3000` to see the app.
 | `npm test` | Run Vitest unit tests |
 | `npm run test:watch` | Watch mode for tests |
 | `npm run test:coverage` | Tests with coverage report |
+| `npm run emulators` | Emulators + Emulator UI (`localhost:4000`) + dev server |
 | `npm run analyze` | Build with bundle size analysis |
 | `npx playwright test` | Run Playwright E2E smoke tests |
 | `npx playwright test --ui` | Interactive E2E test runner |

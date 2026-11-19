@@ -7,6 +7,7 @@
  * becomes unreachable at runtime falls open with /api/health reporting
  * `degraded` — an outage must not lock everyone out.
  */
+import { childLogger } from "@/lib/logger";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   webRateLimiter,
@@ -129,7 +130,8 @@ export default async function proxy(request: NextRequest) {
         );
       } else {
         // In dev/test, warn but allow (for easier development).
-        console.warn(`[proxy] Unclassified route (dev): ${pathname}`);
+        const proxyLogger = childLogger({ service: "proxy" });
+        proxyLogger.warn(`[proxy] Unclassified route (dev): ${pathname}`);
       }
     } else if (classification === "customer" || classification === "admin") {
       const authHeader = request.headers.get("authorization");

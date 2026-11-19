@@ -218,7 +218,10 @@ export async function adminCreditWallet(
       transaction.update(requestRef, {
         "refundRequest.walletStatus": "completed",
 
-        "refundRequest.walletAmount": creditAmount,
+        // Preserve the amount the customer asked for; the actual credit is
+        // recorded on the wallet transaction above.
+        "refundRequest.walletAmount":
+          walletAmount > 0 ? walletAmount : creditAmount,
 
         "refundRequest.walletCompletedAt": FieldValue.serverTimestamp(),
 

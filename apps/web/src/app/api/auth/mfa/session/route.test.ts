@@ -262,6 +262,28 @@ describe("POST /api/auth/mfa/session", () => {
     expect(mocks.verifyMfaProof).not.toHaveBeenCalled();
   });
 
+  it("serves the attempt when the shared limiter store is unavailable", async () => {
+    // A store-less production deployment (and the local E2E run) reports
+    // `unavailable`, not an over-limit client. Treating it as abuse answered
+    // 429 for every elevation, which is how this was found.
+    mocks.isRateLimited.mockReturnValue(true);
+    mocks.record.mockResolvedValue({
+      ok: false,
+      unavailable: true,
+      limit: 5,
+      remaining: 0,
+      reset: Date.now() + 60_000,
+    });
+
+    const response = await POST(
+      authRequest({ method: "totp", code: "123456" })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.verifyMfaProof).toHaveBeenCalled();
+    expect(mocks.addRateLimitHeaders).not.toHaveBeenCalled();
+  });
+
   it("rejects an unreadable body", async () => {
     const response = await POST(authRequest("not json"));
 

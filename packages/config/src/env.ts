@@ -14,15 +14,17 @@ export function getRequiredEnv(key: string): string {
   return value;
 }
 
-/**
- * One reader per group, so a caller pays for — and is only refused by — the
+/** One reader per group, so a caller pays for — and is only refused by — the
  * variables it actually reads.
- *
- * A single `readEnvConfig()` behind the proxy meant `ENV.SENTRY.DSN` built the
- * whole object: it threw about a missing R2 secret or PayPal key the caller
- * never asked for, and re-read every variable on each property access.
+ * A single `readEnvConfig()` behind the proxy meant `ENV.SENTRY.DSN` built
+ * the whole object: it threw about a missing R2 secret or PayPal key the
+ * caller never asked for, and re-read every variable on each property access.
+ * Now each group is read independently, and accessing a missing group returns
+ * undefined instead of throwing.
  */
-const readers = {
+
+/** Readers for each env group — each one validates only its own variables. */
+export const readers = {
   NODE_ENV: () => getEnv("NODE_ENV", "development"),
   APP_URL: () => getRequiredEnv("NEXT_PUBLIC_APP_URL"),
   FIREBASE: () => ({
@@ -30,9 +32,7 @@ const readers = {
     AUTH_DOMAIN: getRequiredEnv("NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN"),
     PROJECT_ID: getRequiredEnv("NEXT_PUBLIC_FIREBASE_PROJECT_ID"),
     STORAGE_BUCKET: getRequiredEnv("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET"),
-    MESSAGING_SENDER_ID: getRequiredEnv(
-      "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID"
-    ),
+    MESSAGING_SENDER_ID: getRequiredEnv("NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID"),
     APP_ID: getRequiredEnv("NEXT_PUBLIC_FIREBASE_APP_ID"),
   }),
   PAYPAL: () => ({
@@ -62,32 +62,38 @@ const readers = {
   }),
 } as const;
 
+/** The validated environment, resolved per group on access. */
 export type EnvConfig = {
   [K in keyof typeof readers]: ReturnType<(typeof readers)[K]>;
 };
 
-/**
- * The validated environment, resolved per group on access.
- *
- * This is not the app's validator: `apps/web/src/config/env` is, and it is the
- * one that runs at startup. This reader exists for packages that cannot import
- * app code, and the two must keep naming the same variables.
- *
- * Importing `@shipin/config` validates nothing, so `SITE_CONFIG.name` and unit
- * tests keep working without a full environment. Accessing a group reads and
- * checks only that group, and nothing is silently defaulted. Values are not
- * cached: environment variables do not change in a running server, and caching
- * would hide a test that sets a variable after the first read.
+/** Safe proxy that never throws on property access.
+ * Each group validates only its own variables — accessing ENV.SENTRY.DSN
+ * will never throw about a missing R2 secret or PayPal key.
+ * Accessing an unknown key returns undefined.
  */
 export const ENV = new Proxy({} as EnvConfig, {
   get(_target, property) {
     if (typeof property !== "string" || !(property in readers)) {
       return undefined;
     }
-
-    return readers[property as keyof EnvConfig]();
+    return readers[property as keyof typeof readers]();
   },
   has(_target, property) {
     return typeof property === "string" && property in readers;
   },
-});
+  getOwnPropertyDescriptor(_target, prop) {
+    if (typeof prop !== "string" || !(prop in readers)) {
+      return undefined;
+    }
+    return {
+      value: readers[prop as keyof typeof readers](),
+      writable: false,
+      enumerable: true,
+      configurable: true,
+    };
+  },
+  ownKeys() {
+    return Object.keys(readers);
+  },
+});

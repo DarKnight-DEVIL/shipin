@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { DecodedIdToken } from "firebase-admin/auth";
+
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { verifyTotp, verifyBackupCode } from "@/lib/mfa";
 import { getMfaSession } from "@/lib/mfaSession";
@@ -83,7 +85,7 @@ export async function requireAdmin(request: Request): Promise<AdminUser> {
    * ========================================
    */
 
-  let decodedToken;
+  let decodedToken: DecodedIdToken;
 
   try {
     /*

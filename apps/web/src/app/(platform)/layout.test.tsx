@@ -21,11 +21,13 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 const state = vi.hoisted(() => ({
   pathname: "/dashboard",
   replace: vi.fn(),
   currentUser: null as { uid: string } | null,
+  currentUserReads: 0,
   authCallback: null as null | ((user: unknown) => Promise<void> | void),
   unsubscribe: vi.fn(),
   getDoc: vi.fn(),
@@ -45,6 +47,7 @@ vi.mock("@/lib/firebase", () => ({
   get auth() {
     return {
       get currentUser() {
+        state.currentUserReads += 1;
         return state.currentUser;
       },
       onAuthStateChanged: (
@@ -117,6 +120,7 @@ beforeEach(() => {
   vi.resetModules();
   state.pathname = "/dashboard";
   state.currentUser = null;
+  state.currentUserReads = 0;
   state.authCallback = null;
   state.replace.mockReset();
   state.unsubscribe.mockReset();
@@ -127,6 +131,40 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+/**
+ * The layout is also rendered on the server while `next build` prerenders every
+ * platform route. A property read there initializes the lazy `auth` handle,
+ * which needs the client env the build may not have (`NEXT_PUBLIC_FIREBASE_*`),
+ * and `next build` died on `/addresses` with "Firebase client failed to
+ * initialize" before the `window` guard existed.
+ */
+describe("PlatformLayout: server render", () => {
+  it("does not touch the auth handle while prerendering", () => {
+    state.currentUser = signedInUser();
+    vi.stubGlobal("window", undefined);
+
+    try {
+      expect(() =>
+        renderToStaticMarkup(<PlatformLayout>{page}</PlatformLayout>)
+      ).not.toThrow();
+      expect(state.currentUserReads).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("still seeds the session user in the browser", () => {
+    state.currentUser = signedInUser();
+
+    render(<PlatformLayout>{page}</PlatformLayout>);
+
+    expect(state.currentUserReads).toBe(1);
+    // Seeded as signed in, so the page is held behind the skeleton until the
+    // listener delivers the profile repair.
+    expect(screen.getByTestId("loading")).toBeTruthy();
+  });
 });
 
 describe("PlatformLayout: signed out", () => {

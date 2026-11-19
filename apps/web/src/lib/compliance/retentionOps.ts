@@ -14,7 +14,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
-import { logger } from "@/lib/logger";
+import { logger } from "../logger";
 import { PERSONAL_DATA_CATEGORIES, PROCESSING_REGISTER } from "./dpdp";
 
 /**

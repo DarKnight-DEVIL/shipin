@@ -78,6 +78,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const verification = await verifyRegistration({
     response: credential as never,
     expectedChallenge: storedChallenge,
+    requestOrigin: request.nextUrl.origin,
   });
 
   if (!verification.verified) {

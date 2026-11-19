@@ -147,6 +147,7 @@ describe("POST /api/auth/mfa/webauthn/register/complete", () => {
     expect(mocks.verifyRegistration).toHaveBeenCalledWith({
       response: { id: "new" },
       expectedChallenge: "CHALLENGE",
+      requestOrigin: "http://localhost",
     });
     expect(mocks.refUpdate).toHaveBeenCalledWith({
       "mfa.webauthn.credentials": [

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { childLogger } from "../../../lib/logger";
+
 import { adminDb } from "@/lib/firebaseAdmin";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { isKnownWhatsAppTemplate } from "@/features/notifications/templates";
@@ -153,7 +155,8 @@ export async function sendNotification({
    * the limit exists to protect the customer from the flood.
    */
   if (!(await allowNotification(userId))) {
-    console.warn(
+    const notificationLogger = childLogger({ service: "notification" });
+    notificationLogger.warn(
       `Notification rate limit reached for user ${userId}; dropping "${type}".`
     );
     return;

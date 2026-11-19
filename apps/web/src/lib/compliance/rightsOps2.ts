@@ -5,6 +5,7 @@
  */
 
 import { adminDb } from "@/lib/firebaseAdmin";
+import { childLogger } from "../../lib/logger";
 
 import { FieldValue } from "firebase-admin/firestore";
 

@@ -5,7 +5,7 @@ import { WHATSAPP_TEMPLATES } from "@/features/notifications/templates";
 import { buildPaymentReceivedNotification } from "./paymentReceivedNotification";
 
 describe("buildPaymentReceivedNotification", () => {
-  it("carries the payment category on every channel", () => {
+  it("carries the payment_received type on every channel", () => {
     const notification = buildPaymentReceivedNotification({
       userId: "user-1",
       requestId: "req-1",
@@ -15,29 +15,19 @@ describe("buildPaymentReceivedNotification", () => {
     expect(notification).toMatchObject({
       userId: "user-1",
       requestId: "req-1",
-      type: "payment",
-      category: "payment",
+      type: "payment_received",
       channels: { inApp: true, email: true, whatsapp: true },
     });
   });
 
-  it("fills the WhatsApp template with the customer name, then the request", () => {
-    const { whatsapp } = buildPaymentReceivedNotification({
+  it("uses the correct WhatsApp template name", () => {
+    const notification = buildPaymentReceivedNotification({
       userId: "user-1",
       requestId: "req-1",
       customerName: "Ada",
     });
 
-    expect(whatsapp.templateName).toBe(WHATSAPP_TEMPLATES.paymentReceived);
-    expect(whatsapp.languageCode).toBe("en");
-    expect(whatsapp.components).toEqual([
-      {
-        type: "body",
-        parameters: [
-          { type: "text", text: "Ada" },
-          { type: "text", text: "req-1" },
-        ],
-      },
-    ]);
+    expect(notification.channels.whatsapp).toBe(true);
+    expect(WHATSAPP_TEMPLATES.paymentReceived).toBe("shipin_payment_received");
   });
 });

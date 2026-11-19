@@ -223,10 +223,14 @@ export const SECURITY_HEADERS: Record<string, string> = {
   /**
    * Permissions Policy (previously Feature-Policy).
    * Restricts powerful browser features.
+   *
+   * `publickey-credentials-get=(self)` is what lets the passkey sign-in
+   * ceremony run: the admin MFA gate calls `navigator.credentials.get`, and the
+   * default of denying it made the security-key button fail instantly.
    */
   "Permissions-Policy":
     "accelerometer=(), camera=(), gyroscope=(), magnetometer=(), microphone=(), " +
-    "payment=(self), publickey-credentials-get=(), usb=(), geolocation=(), " +
+    "payment=(self), publickey-credentials-get=(self), usb=(), geolocation=(), " +
     // `clipboard-write=(self)`: the admin backup-code list copies through
     // navigator.clipboard, and `clipboard-write=()` blocked that outright — the
     // button silently did nothing. Reading the clipboard is still denied.

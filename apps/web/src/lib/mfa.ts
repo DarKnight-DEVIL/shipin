@@ -82,24 +82,27 @@ export function generateBackupCodes(
 
 /**
  * Hash a backup code for storage.
- */
+ *
+ * Uses scrypt (slow, memory-hard function) to prevent brute-force attacks.
+ * Output is salt (16 bytes = 32 hex chars) + derived key (64 bytes = 128 hex chars) = 160 hex chars total. * The salt is prepended to the derived key so it can be extracted during verification. */
 export function hashBackupCode(code: string): string {
-  return crypto
-    .createHash("sha256")
-    .update(code.trim().toUpperCase())
-    .digest("hex");
+  const salt = crypto.randomBytes(16);
+  const derivedKey = crypto.scryptSync(code.trim().toUpperCase(), salt, 64, { N: 16384, r: 8, p: 1 });
+  // Salt is 16 bytes (32 hex chars), derived key is 64 bytes (128 hex chars)  return Buffer.from(salt).toString("hex") + derivedKey.toString("hex");
 }
 
 /**
  * Verify a backup code against stored hashes.
  *
+ * Each stored hash is format: saltHex (32 chars) + derivedKeyHex (128 chars) = 160 chars total. * The salt is extracted and used with scrypt for constant-time comparison. *
  * @param code - The backup code to verify
- * @param hashedCodes - Array of SHA-256 hashed backup codes
- * @returns Index of the matched code, or -1 if not found
+ * @param hashedCodes - Array of scrypt-hashed backup codes (salt+derivedKey format) * @returns Index of the matched code, or -1 if not found
  */
 export function verifyBackupCode(code: string, hashedCodes: string[]): number {
-  const hash = hashBackupCode(code);
-  return hashedCodes.indexOf(hash);
+  for (let i = 0; i < hashedCodes.length; i++) {
+    // Salt is first 32 hex chars (16 bytes), derived key is last 128 hex chars (64 bytes)    const storedHash = hashedCodes[i];    if (storedHash.length !== 160) continue;    const storedSalt = Buffer.from(storedHash.slice(0, 32), "hex");    const storedDerivedKey = Buffer.from(storedHash.slice(32), "hex");        // Derive key from code using the stored salt for constant-time comparison    const derivedKey = crypto.scryptSync(code.trim().toUpperCase(), storedSalt, 64, { N: 16384, r: 8, p: 1 });    const derivedKeyBuf = Buffer.from(derivedKey);        // Use constant-time comparison for both length and content    if (derivedKeyBuf.length === storedDerivedKey.length && crypto.timingSafeEqual(derivedKeyBuf, storedDerivedKey)) {
+      return i;
+    }  }  return -1;
 }
 
 /**

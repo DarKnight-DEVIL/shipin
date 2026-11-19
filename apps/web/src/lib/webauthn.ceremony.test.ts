@@ -176,12 +176,12 @@ describe("verifyRegistration", () => {
     ).resolves.toEqual({ verified: false });
   });
 
-  it("accepts localhost origins in development but not production", async () => {
+  it("accepts only the served origin in development and only APP_URL in production", async () => {
     mocks.verifyRegistrationResponse.mockResolvedValue({ verified: false });
     await verifyRegistration({ response, expectedChallenge: "c" });
     expect(
       mocks.verifyRegistrationResponse.mock.calls[0][0].expectedOrigin
-    ).toEqual(["http://localhost:3000", "http://127.0.0.1:3000"]);
+    ).toEqual(["http://localhost:3000"]);
 
     mocks.state.production = true;
     mocks.state.appUrl = "https://shipin.app";
@@ -277,5 +277,99 @@ describe("verifyAssertion", () => {
         credential: CREDENTIAL,
       })
     ).resolves.toEqual({ verified: false, newCounter: 5 });
+  });
+});
+
+describe("development on a shared hosting domain", () => {
+  it("falls back to a loopback relying party", () => {
+    mocks.state.production = false;
+    mocks.state.appUrl = "https://shipin-psi.vercel.app";
+
+    // A passkey registered against `vercel.app` would belong to every tenant
+    // on the host, so development uses loopback instead of refusing outright.
+    expect(getWebAuthnConfig()).toEqual({
+      origin: "http://localhost:3000",
+      rpID: "localhost",
+      rpName: "ShipIN",
+    });
+  });
+
+  it("binds registration and verification to that loopback party", async () => {
+    mocks.state.appUrl = "https://shipin-psi.vercel.app";
+    mocks.generateRegistrationOptions.mockResolvedValue({ challenge: "c" });
+    mocks.verifyRegistrationResponse.mockResolvedValue({ verified: false });
+
+    await buildRegistrationOptions({
+      uid: "uid-1",
+      userName: "admin@shipin.app",
+      displayName: "Admin",
+      excludeCredentials: [],
+    });
+
+    expect(mocks.generateRegistrationOptions.mock.calls[0][0]).toMatchObject({
+      rpID: "localhost",
+    });
+
+    await verifyRegistration({ response, expectedChallenge: "c" });
+
+    expect(mocks.verifyRegistrationResponse.mock.calls[0][0]).toMatchObject({
+      expectedOrigin: ["http://localhost:3000"],
+      expectedRPID: "localhost",
+    });
+  });
+
+  it("still refuses a shared hosting relying party in production", () => {
+    mocks.state.production = true;
+    mocks.state.appUrl = "https://shipin-psi.vercel.app";
+
+    expect(() => getWebAuthnConfig()).toThrow(/shared hosting domain/);
+  });
+
+  it("follows the port the dev server is actually on", () => {
+    mocks.state.appUrl = "https://shipin-psi.vercel.app";
+
+    // `next dev -p 4321`, or Next falling back off a busy 3000: the passkey is
+    // bound to the origin that served the page, not the URL in `.env`.
+    expect(getWebAuthnConfig("http://localhost:4321")).toEqual({
+      origin: "http://localhost:4321",
+      rpID: "localhost",
+      rpName: "ShipIN",
+    });
+  });
+
+  it("ignores a request origin that is not loopback", () => {
+    mocks.state.appUrl = "https://shipin-psi.vercel.app";
+
+    // The value comes from the request, so a forged Host must not be able to
+    // move the relying party to a domain an attacker controls.
+    expect(getWebAuthnConfig("https://evil.example").origin).toBe(
+      "http://localhost:3000"
+    );
+  });
+
+  it("keeps a domain the deployment owns even in development", () => {
+    mocks.state.appUrl = "https://shipin.example.com";
+
+    expect(getWebAuthnConfig("http://localhost:4321").origin).toBe(
+      "https://shipin.example.com"
+    );
+  });
+});
+
+describe("verification on a non-default dev port", () => {
+  it("accepts the origin the ceremony was served from", async () => {
+    mocks.state.appUrl = "https://shipin-psi.vercel.app";
+    mocks.verifyRegistrationResponse.mockResolvedValue({ verified: false });
+
+    await verifyRegistration({
+      response,
+      expectedChallenge: "c",
+      requestOrigin: "http://localhost:4321",
+    });
+
+    expect(mocks.verifyRegistrationResponse.mock.calls[0][0]).toMatchObject({
+      expectedOrigin: ["http://localhost:4321"],
+      expectedRPID: "localhost",
+    });
   });
 });

@@ -89,6 +89,17 @@ vi.mock("@/lib/rateLimiter", () => {
 
 vi.mock("@/lib/redisRateLimiter", () => ({
   RATE_LIMIT_ERROR_WINDOW_MS: 5 * 60 * 1000,
+  /**
+   * Mirrors the real helper: a store is usable only when the URL parses as
+   * https and a token is set. The route has to report *this*, not
+   * `Boolean(url)` — the "set but unusable URL" case below is exactly where
+   * the two disagree, and it is where the limiter returns `unavailable` on
+   * every call while a truthiness check would keep answering `healthy`.
+   */
+  getRateLimitStoreStatus: () => {
+    const configured = /^https:\/\/\S+$/.test(state.url) && Boolean(state.token);
+    return { configured, degraded: state.isProduction && !configured };
+  },
 }));
 
 import { GET } from "./route";
@@ -138,6 +149,23 @@ describe("GET /api/health", () => {
     expect(response.status).toBe(200);
     expect(body.status).toBe("healthy");
     expect(body.redis.status).toBe("connected");
+  });
+
+  it("reports degraded when the shared store URL is set but unusable", async () => {
+    // A non-https URL means the limiter never creates a Ratelimit instance:
+    // rate limits are off, so a probe answering `healthy` here hides an
+    // unmetered deployment from uptime monitoring.
+    state.isProduction = true;
+    state.url = "http://insecure.example";
+    state.token = "tok";
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("degraded");
+    expect(body.redis.configured).toBe(false);
+    expect(body.redis.status).toBe("missing");
   });
 
   it("reports App Check as disabled when neither switch is set", async () => {

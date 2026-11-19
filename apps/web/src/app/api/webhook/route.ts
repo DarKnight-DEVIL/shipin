@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withErrorHandler } from "@/utils/errors";
+import { childLogger } from "@/lib/logger";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
@@ -16,6 +17,8 @@ import { buildPaymentReceivedNotification } from "@/lib/paypal/paymentReceivedNo
 // PayPal Webhook ID from the developer dashboard.
 // Should be set in environment variables: PAYPAL_WEBHOOK_ID
 const PAYPAL_WEBHOOK_ID = serverEnv.PAYPAL_WEBHOOK_ID;
+
+const webhookLogger = childLogger({ service: "paypal-webhook" });
 
 /**
  * Headers PayPal signs every delivery with.
@@ -259,7 +262,7 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
   const requestRef = adminDb.collection("requests").doc(requestId);
 
   // Run transaction to atomically update request + wallet + notifications
-  await adminDb.runTransaction(async (transaction) => {
+  const customerName = await adminDb.runTransaction(async (transaction) => {
     const requestSnapshot = await transaction.get(requestRef);
     if (!requestSnapshot.exists) {
       console.error("Request not found:", requestId);
@@ -326,6 +329,13 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
         });
       }
     }
+
+    // The payment order never stores a name; the request does.
+    return (
+      (requestData.customerName as string | undefined) ||
+      requestData.shippingAddress?.firstName ||
+      "Customer"
+    );
   });
 
   // Send notification (outside transaction)
@@ -334,7 +344,7 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
       buildPaymentReceivedNotification({
         userId: paymentOrder.userId,
         requestId,
-        customerName: paymentOrder.customerName || requestId,
+        customerName: customerName || "Customer",
       })
     );
   } catch (error) {

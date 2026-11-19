@@ -142,15 +142,15 @@ function isLoopbackOrigin(origin: string): boolean {
  * `window.origin` if needed.
  */
 export function isAllowedOrigin(origin: string | null): boolean {
+  // No Origin header is not a cross-origin request (same-origin, server-side,
+  // or a non-browser client), so there is no origin to allow. Deny-by-default
+  // is kept as the contract: `getCorsHeaders` only emits headers when an
+  // origin was supplied, and the proxy only runs the CORS check on requests
+  // that carry one, so an absent Origin never fails an API call.
   if (!origin) return false;
   const normalized = origin.toLowerCase().trim().replace(/\/+$/, "");
 
-  // Local development is same-origin regardless of port. Pinning this to :3000
-  // meant that whenever `next dev` picked another port, every API call from the
-  // page was answered with 403 CORS_ORIGIN_NOT_ALLOWED — which surfaced as
-  // "Unable to sign in" because profile creation runs through /api/profile.
-  // Loopback cannot be reached by a remote attacker, so this is dev-only.
-  if (process.env.NODE_ENV !== "production" && isLoopbackOrigin(normalized)) {
+  // Local development is same-origin regardless of port. Pinning this to :3000// meant that whenever `next dev` picked another port, every API call from the// page was answered with 403 CORS_ORIGIN_NOT_ALLOWED — which surfaced as// "Unable to sign in" because profile creation runs through /api/profile.// Loopback cannot be reached by a remote attacker, so this is dev-only.// Loopback origins are accepted outside of production.  if (process.env.NODE_ENV !== "production" && isLoopbackOrigin(normalized)) {
     return true;
   }
 

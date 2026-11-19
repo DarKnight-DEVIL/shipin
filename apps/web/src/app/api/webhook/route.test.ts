@@ -269,12 +269,30 @@ describe("POST /api/webhook", () => {
       },
     });
     expect(mocks.sendNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "user-1", category: "payment" })
+      expect.objectContaining({ userId: "user-1", type: "payment_received" })
     );
     await expect(response.json()).resolves.toEqual({
       received: true,
       success: true,
     });
+  });
+
+  it("uses the request's customer name, not the payment order", async () => {
+    seedOrder({ customerName: undefined });
+    mocks.txGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        status: "awaiting_payment",
+        userId: "user-1",
+        customerName: "Grace",
+      }),
+    });
+
+    await POST(request(captureEvent()));
+
+    expect(mocks.sendNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ customerName: "Grace" })
+    );
   });
 
   it("debits the wallet when part of the payment came from it", async () => {

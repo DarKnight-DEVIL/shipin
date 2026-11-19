@@ -223,7 +223,10 @@ interface SessionRequestBody {
 export const POST = withErrorHandler(async (request: NextRequest) => {
   const limit = await loginRateLimiter.record(request);
 
-  if (isRateLimited(limit)) {
+  // Infrastructure failure, not abuse — the rule the proxy and login-intent
+  // apply. Failing closed here answered 429 for every elevation on a
+  // store-less deployment (which is every local E2E run).
+  if (isRateLimited(limit) && !limit.unavailable) {
     const response = NextResponse.json(
       {
         success: false,
@@ -327,6 +330,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       response: assertion,
       expectedChallenge: record.pendingChallenge,
       credential: stored,
+      // Same origin rule as the verify route: the ceremony is bound to the
+      // origin that served the page, which is not necessarily APP_URL in dev.
+      requestOrigin: request.nextUrl.origin,
     });
 
     if (!result.verified) {

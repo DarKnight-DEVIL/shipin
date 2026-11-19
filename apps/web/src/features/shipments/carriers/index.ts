@@ -1,5 +1,5 @@
 import { serverEnv } from "@/config/env";
-import { childLogger } from "@/lib/logger";
+import { childLogger } from "../../../lib/logger";
 
 import { createIndiaPostProvider } from "./indiaPostProvider";
 import { createPlaceholderProvider } from "./placeholderProvider";

@@ -128,4 +128,20 @@ describe("isMfaSessionDenied", () => {
     await expect(isMfaSessionDenied("jti-1")).resolves.toBe(false);
     expect(h.exists).not.toHaveBeenCalled();
   });
+
+  it("honours the E2E opt-out instead of failing closed", async () => {
+    h.env = { url: "", token: "" };
+    h.isProduction = true;
+    process.env["MFA_DENYLIST_OPTIONAL"] = "1";
+
+    try {
+      const { isMfaSessionDenied } = await load();
+
+      // Without this, every elevation on a store-less production build (the
+      // local E2E run) is rejected and the passkey cookie authorizes nothing.
+      await expect(isMfaSessionDenied("jti-1")).resolves.toBe(false);
+    } finally {
+      delete process.env["MFA_DENYLIST_OPTIONAL"];
+    }
+  });
 });

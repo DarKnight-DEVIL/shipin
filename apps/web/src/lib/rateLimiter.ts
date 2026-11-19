@@ -24,9 +24,7 @@ export interface RateLimitPolicy {
   maxRequests: number;
   windowMs: number;
   message: string;
-  /** Exact pathname values that should bypass this limiter. */
-  skipRoutes?: string[];
-}
+}
 
 export interface SharedRateLimiter {
   record(request: Request): Promise<RateLimitResult>;
@@ -76,17 +74,7 @@ export class InMemoryRateLimiter {
     request: Request
   ): Promise<import("./redisRateLimiter").RateLimitResult> {
     const now = Date.now();
-    const pathname = new URL(request.url).pathname;
-    if (this.policy.skipRoutes?.includes(pathname)) {
-      return {
-        ok: true,
-        limit: this.policy.maxRequests,
-        remaining: this.policy.maxRequests,
-        reset: now + this.policy.windowMs,
-      };
-    }
-
-    this.prune(now);
+    this.prune(now);
     const ip = this.resolveClientIp(request);
     const history = (this.store[ip] ??= []).filter(
       (entry) => now - entry.timestamp < this.policy.windowMs

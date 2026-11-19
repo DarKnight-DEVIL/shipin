@@ -71,9 +71,3 @@ export const adminAuth = new Proxy({} as ReturnType<typeof getAuth>, {
   },
 });
 
-// Test-only escape hatch so compliance tests can swap the underlying collection
-// without importing serverEnv (which would require a full server env during tests).
-export function setTestDb(_db: unknown): void {
-  // This is a no-op in production; the compliance test stubs only replace the
-  // collection factory on the hoisted vitest context.
-}

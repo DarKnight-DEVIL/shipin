@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { getAdminAuthError, requireAdmin } from "@/lib/adminAuth";
+import { childLogger } from "../../../../lib/logger";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -168,8 +169,9 @@ async function handlePatch(request: NextRequest): Promise<NextResponse> {
 
   await targetRef.update({ role: nextRole });
 
-  console.warn(
-    `[AdminUsers] ${admin.email ?? admin.uid} set role of ${uid} to ${nextRole}`
+  const adminLogger = childLogger({ service: "admin-users" });
+  adminLogger.warn(
+    `AdminUsers: ${admin.email ?? admin.uid} set role of ${uid} to ${nextRole}`
   );
 
   return NextResponse.json(

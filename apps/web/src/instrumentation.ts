@@ -6,6 +6,8 @@
  * observability setup.
  */
 
+import { childLogger } from "@/lib/logger";
+
 import { validateProductionRequiredEnv } from "@/config/env";
 import { reportAppCheckStatus } from "@/lib/appCheck";
 import { reportRateLimitStoreStatus } from "@/lib/redisRateLimiter";
@@ -88,7 +90,8 @@ export async function register() {
         // Expected for a deployed bundle that ships compiled output without src/.
         // routeClassification.test.ts enforces the same invariant in CI, so this
         // is a notice rather than a degraded state.
-        console.warn(
+        const instrumentationLogger = childLogger({ service: "instrumentation" });
+        instrumentationLogger.warn(
           `[instrumentation] route classification check skipped: ${report.skipped}`
         );
       }

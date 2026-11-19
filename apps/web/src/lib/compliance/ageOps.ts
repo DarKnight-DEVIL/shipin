@@ -6,7 +6,7 @@ import crypto from "crypto";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { sendMail } from "@/lib/mailer";
-import { logger } from "@/lib/logger";
+import { logger } from "../logger";
 import { FieldValue } from "firebase-admin/firestore";
 import { calculateAge } from "./ageVerification";
 

@@ -13,9 +13,12 @@ import "server-only";
 import { getAppCheck } from "firebase-admin/app-check";
 
 import { clientEnv, isProduction, serverEnv } from "@/config/env";
+import { childLogger } from "@/lib/logger";
 
 /** Firebase's conventional header for a client-supplied App Check token. */
 export const APP_CHECK_HEADER = "x-firebase-appcheck";
+
+const appCheckLogger = childLogger({ service: "appcheck" });
 
 export type AppCheckOutcome = "ok" | "missing" | "invalid" | "not-enforced";
 
@@ -102,7 +105,7 @@ export function reportAppCheckStatus(): AppCheckConfiguration {
           "Set the site key in production, or turn enforcement off."
       );
     }
-    console.warn(
+    appCheckLogger.warn(
       "[AppCheck] APP_CHECK_ENFORCEMENT is on but NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY is empty. " +
         "Clients cannot mint an App Check token. Set the site key, or turn enforcement off."
     );
@@ -112,7 +115,7 @@ export function reportAppCheckStatus(): AppCheckConfiguration {
     process.env.NODE_ENV === "production"
   ) {
     // Site key exists but enforcement is off in production - warn but don't fail.
-    console.warn(
+    appCheckLogger.warn(
       "[AppCheck] NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY is set but APP_CHECK_ENFORCEMENT is not 'true'. " +
         "Production deployments should enforce App Check. API routes will accept requests without tokens."
     );

@@ -44,4 +44,35 @@ export function getFirebaseDb(): Firestore {
   return _db;
 }
 
-export const db: Firestore = getFirebaseDb();
+/**
+ * Lazy Firestore handle.
+ *
+ * Importing this module must not create the client (and its ~170 KB SDK) at
+ * module load: only reading a property initializes it, so pages that import a
+ * shared helper without querying stay cheap, and builds without client env
+ * variables do not fail while collecting page data.
+ */
+export const db: Firestore = new Proxy({} as Firestore, {
+  get(_target, property) {
+    const instance = getFirebaseDb();
+
+    // Load-bearing, exactly like `auth._delegate` in `./firebase`. The modular
+    // API normalizes its first argument with `getModularInstance()`, which
+    // returns `service._delegate ?? service` and then checks
+    // `instanceof Firestore`. Without this branch `doc(db, ...)`,
+    // `collection(db, ...)` and the rest reject the proxy with "Expected first
+    // argument to doc() to be a CollectionReference, a DocumentReference or
+    // FirebaseFirestore", which put every signed-in page in its error boundary.
+    if (property === "_delegate") return instance;
+
+    const value = (instance as unknown as Record<PropertyKey, unknown>)[
+      property
+    ];
+    return typeof value === "function" ? value.bind(instance) : value;
+  },
+  set(_target, property, value) {
+    (getFirebaseDb() as unknown as Record<PropertyKey, unknown>)[property] =
+      value;
+    return true;
+  },
+});

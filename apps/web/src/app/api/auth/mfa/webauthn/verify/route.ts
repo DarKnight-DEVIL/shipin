@@ -38,11 +38,13 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  const body = await request.json();
-  const { verifyOnly, credential } = body as {
-    verifyOnly?: boolean;
-    credential?: unknown;
-  };
+  // The step-2 call ("give me a challenge") carries no payload — `mfaApi`
+  // sends no body when none is needed — so an empty request is normal. Parsing
+  // it unconditionally threw "Unexpected end of JSON input" and answered 500,
+  // which meant security-key sign-in could never obtain a challenge.
+  const { verifyOnly, credential } = (await request
+    .json()
+    .catch(() => ({}))) as { verifyOnly?: boolean; credential?: unknown };
 
   const userSnapshot = await adminDb
     .collection("users")
@@ -122,6 +124,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       response: cred as never,
       expectedChallenge: record.pendingChallenge,
       credential: stored,
+      requestOrigin: request.nextUrl.origin,
     });
 
     if (!result.verified) {
@@ -155,6 +158,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   // Step 2: return authentication options (challenge)
   const options = await buildAuthenticationOptions({
     allowCredentials: credentials,
+    requestOrigin: request.nextUrl.origin,
   });
 
   // Store the challenge for verification. In the simplewebauthn JSON format

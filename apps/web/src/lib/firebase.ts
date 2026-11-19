@@ -2,6 +2,8 @@ import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
 import type { AppCheck } from "firebase/app-check";
 
+import { childLogger } from "@/lib/logger";
+
 import { clientEnv } from "@/config/env";
 
 /**
@@ -43,7 +45,8 @@ function startAppCheck(firebaseApp: FirebaseApp): void {
 
   if (!siteKey) {
     if (clientEnv.NODE_ENV === "production") {
-      console.warn(
+      const fbcLogger = childLogger({ service: "app-check" });
+      fbcLogger.warn(
         "[app-check] NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY is not set. " +
           "Sign-in and API calls will fail while this Firebase project enforces App Check."
       );
@@ -154,4 +157,36 @@ export function ensureFirebaseApp(): { app: FirebaseApp; auth: Auth } {
 
 export const getFirebaseAuth = () => ensureFirebaseApp().auth;
 
-export const auth: Auth = ensureFirebaseApp().auth;
+/**
+ * Lazy `Auth` handle.
+ *
+ * Constructing the proxy does not touch Firebase, so importing this module no
+ * longer initializes the client and validates every `NEXT_PUBLIC_*` variable at
+ * module load. Build-time page-data collection and server routes that import
+ * shared helpers stay free of client env; the first property access creates the
+ * app.
+ *
+ * `_delegate` is special-cased because Firebase's public auth functions
+ * normalize their argument with `auth._delegate ?? auth`; without it they would
+ * keep operating on the proxy rather than the real instance.
+ */
+export const auth: Auth = new Proxy({} as Auth, {
+  get(_target, property) {
+    const instance = ensureFirebaseApp().auth;
+    if (property === "_delegate") return instance;
+
+    const value = (instance as unknown as Record<PropertyKey, unknown>)[
+      property
+    ];
+    return typeof value === "function" ? value.bind(instance) : value;
+  },
+  set(_target, property, value) {
+    (ensureFirebaseApp().auth as unknown as Record<PropertyKey, unknown>)[
+      property
+    ] = value;
+    return true;
+  },
+  has(_target, property) {
+    return property in (ensureFirebaseApp().auth as object);
+  },
+});

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { childLogger } from "../../../../lib/logger";
+
 import { adminDb } from "@/lib/firebaseAdmin";
 
 import { FieldValue } from "firebase-admin/firestore";
@@ -205,7 +207,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         );
       }
 
-      console.warn(
+      const walletLogger = childLogger({ service: "capture-wallet-topup" });
+walletLogger.warn(
         "[capture-wallet-topup] reconciling an already-captured order",
         {
           orderID,

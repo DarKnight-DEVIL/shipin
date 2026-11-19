@@ -48,6 +48,7 @@ vi.mock("@/lib/adminAuth", () => ({
 }));
 
 import { GET, PATCH } from "./route";
+import { logger } from "../../../../lib/logger";
 
 const listRequest = () =>
   new NextRequest("https://shipin.test/api/admin/users");
@@ -78,7 +79,7 @@ beforeEach(() => {
   mocks.docGet.mockReset().mockResolvedValue(snapshot({ role: "customer" }));
   mocks.docUpdate.mockReset().mockResolvedValue(undefined);
   mocks.adminQueryGet.mockReset().mockResolvedValue({ size: 2 });
-  vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.spyOn(logger, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 

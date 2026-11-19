@@ -8,7 +8,7 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { serverEnv } from "@/config/env";
 import { fetchWithTimeout } from "@/lib/http";
-import { logger } from "@/lib/logger";
+import { logger } from "../logger";
 import { PERSONAL_DATA_CATEGORIES } from "./dpdp";
 
 export interface BreachRecord {

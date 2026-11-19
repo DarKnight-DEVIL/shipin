@@ -2,6 +2,11 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "allowJs": true,
+    // `vitest.config.ts` sets `globals: true`, so describe/it/expect exist at
+    // runtime without an import. The base config deliberately restricts
+    // `types` to node, which would leave those globals untyped; name the
+    // package here so the type graph matches the runner.
+    "types": ["node", "vitest/globals"],
     "plugins": [
       {
         "name": "next"

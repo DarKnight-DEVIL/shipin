@@ -1,7 +1,7 @@
 import { serverEnv } from "@/config/env";
 import { createShipINError } from "@/utils/errors";
 import { fetchWithTimeout } from "@/lib/http";
-import { childLogger } from "@/lib/logger";
+import { childLogger } from "./logger";
 
 const whatsappLog = childLogger({ service: "whatsapp" });
 

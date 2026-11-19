@@ -55,6 +55,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     userName: email,
     displayName,
     excludeCredentials: existingCredentials,
+    // Development binds the ceremony to the origin this request was served
+    // from, so a dev server on a non-default port still works.
+    requestOrigin: request.nextUrl.origin,
   });
 
   // Store the challenge for verification (consumed in /complete). In the
