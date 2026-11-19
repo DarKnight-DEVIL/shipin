@@ -10,11 +10,13 @@ vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: { runTransaction: mocks.runTransaction },
 }));
 
-import {
-  CAPTURE_CLAIM_LEASE_MS,
-  claimCapture,
-  releaseCaptureClaim,
-} from "./captureClaim";
+type ClaimModule = typeof import("./captureClaim");
+
+// Loaded per test, after the reset below: `isolate: false` means another file
+// may already have imported this module (and bound it to its own
+// `@/lib/firebaseAdmin` mock) before this file registers the one above, which
+// made every case read an empty snapshot and answer "claimed".
+let mod: ClaimModule;
 
 const ref = { id: "order-1" } as never;
 
@@ -23,7 +25,10 @@ const orderWith = (data: Record<string, unknown>) => ({
   data: () => data,
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules();
+  mod = await import("./captureClaim");
+
   mocks.get.mockReset();
   mocks.update.mockReset();
   mocks.runTransaction
@@ -41,7 +46,7 @@ describe("claimCapture", () => {
   it("claims a created order and stamps the lease", async () => {
     mocks.get.mockResolvedValue(orderWith({ status: "created" }));
 
-    await expect(claimCapture(ref)).resolves.toBe("claimed");
+    await expect(mod.claimCapture(ref)).resolves.toBe("claimed");
     expect(mocks.update).toHaveBeenCalledWith(ref, {
       status: "capturing",
       captureClaimedAt: expect.any(Number),
@@ -51,7 +56,7 @@ describe("claimCapture", () => {
   it("reports an already completed order without rewriting it", async () => {
     mocks.get.mockResolvedValue(orderWith({ status: "completed" }));
 
-    await expect(claimCapture(ref)).resolves.toBe("completed");
+    await expect(mod.claimCapture(ref)).resolves.toBe("completed");
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
@@ -60,7 +65,7 @@ describe("claimCapture", () => {
       orderWith({ status: "capturing", captureClaimedAt: Date.now() })
     );
 
-    await expect(claimCapture(ref)).resolves.toBe("busy");
+    await expect(mod.claimCapture(ref)).resolves.toBe("busy");
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
@@ -68,24 +73,24 @@ describe("claimCapture", () => {
     mocks.get.mockResolvedValue(
       orderWith({
         status: "capturing",
-        captureClaimedAt: Date.now() - CAPTURE_CLAIM_LEASE_MS - 1,
+        captureClaimedAt: Date.now() - mod.CAPTURE_CLAIM_LEASE_MS - 1,
       })
     );
 
-    await expect(claimCapture(ref)).resolves.toBe("claimed");
+    await expect(mod.claimCapture(ref)).resolves.toBe("claimed");
     expect(mocks.update).toHaveBeenCalled();
   });
 
   it("takes over a capturing order that never recorded a claim time", async () => {
     mocks.get.mockResolvedValue(orderWith({ status: "capturing" }));
 
-    await expect(claimCapture(ref)).resolves.toBe("claimed");
+    await expect(mod.claimCapture(ref)).resolves.toBe("claimed");
   });
 
   it("claims an order with no data at all", async () => {
     mocks.get.mockResolvedValue({ exists: false, data: () => undefined });
 
-    await expect(claimCapture(ref)).resolves.toBe("claimed");
+    await expect(mod.claimCapture(ref)).resolves.toBe("claimed");
   });
 });
 
@@ -93,7 +98,7 @@ describe("releaseCaptureClaim", () => {
   it("returns a held claim to created", async () => {
     mocks.get.mockResolvedValue(orderWith({ status: "capturing" }));
 
-    await releaseCaptureClaim(ref);
+    await mod.releaseCaptureClaim(ref);
 
     expect(mocks.update).toHaveBeenCalledWith(ref, {
       status: "created",
@@ -104,7 +109,7 @@ describe("releaseCaptureClaim", () => {
   it("leaves a settled order alone", async () => {
     mocks.get.mockResolvedValue(orderWith({ status: "completed" }));
 
-    await releaseCaptureClaim(ref);
+    await mod.releaseCaptureClaim(ref);
 
     expect(mocks.update).not.toHaveBeenCalled();
   });
@@ -116,7 +121,7 @@ describe("releaseCaptureClaim", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
 
-    await expect(releaseCaptureClaim(ref)).resolves.toBeUndefined();
+    await expect(mod.releaseCaptureClaim(ref)).resolves.toBeUndefined();
     expect(consoleError).toHaveBeenCalledWith(
       "Could not release the PayPal capture claim:",
       error
