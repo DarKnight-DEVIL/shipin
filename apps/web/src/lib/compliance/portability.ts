@@ -11,7 +11,7 @@
  * GDPR Art 20: Right to data portability.
  */
 
-import { PERSONAL_DATA_CATEGORIES, type PersonalDataCategory } from "./dpdp";
+import { type PersonalDataCategory } from "./dpdp";
 
 export const getDataPortabilityExport = (
   category: PersonalDataCategory,

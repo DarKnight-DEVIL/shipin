@@ -23,6 +23,9 @@ const OPT_OUT = "RATE_LIMIT_STORE_OPTIONAL";
 
 /** Server-only vars that `validateProductionRequiredEnv` requires in production. */
 const SERVER_ENV_KEYS = [
+  // Signs the admin MFA cookie. Required in production, so every case that is
+  // not about it has to provide it — CI has no .env.local to fall back on.
+  "MFA_SESSION_SECRET",
   "FIREBASE_ADMIN_PROJECT_ID",
   "FIREBASE_ADMIN_CLIENT_EMAIL",
   "FIREBASE_ADMIN_PRIVATE_KEY",
@@ -63,6 +66,7 @@ async function loadEnvModule() {
 function setEverythingButStore() {
   vi.stubEnv("NODE_ENV", "production");
   vi.stubEnv("PAYPAL_WEBHOOK_ID", "WH-1");
+  vi.stubEnv("MFA_SESSION_SECRET", "test-mfa-session-secret-0123456789abcdef");
   vi.stubEnv("FIREBASE_ADMIN_PROJECT_ID", "test-project");
   vi.stubEnv(
     "FIREBASE_ADMIN_CLIENT_EMAIL",
