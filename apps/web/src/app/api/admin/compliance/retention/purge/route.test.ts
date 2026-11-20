@@ -273,11 +273,34 @@ describe("inspection photos", () => {
   });
 
   it("resumes from the stored cursor", async () => {
-    state.system = { photosCursor: "2023-06-01T00:00:00.000Z" };
+    state.system = {
+      photosCursor: "2023-06-01T00:00:00.000Z",
+      supportCursor: "2023-07-01T00:00:00.000Z",
+    };
 
     await POST(signedRequest());
 
     expect(state.startsAfter).toContain("2023-06-01T00:00:00.000Z");
+    expect(state.startsAfter).toContain("2023-07-01T00:00:00.000Z");
+  });
+
+  it("stores a null cursor when a full page has no usable timestamp to resume from", async () => {
+    // Documents are ordered by `deliveredAt`, so a full page whose rows lack it
+    // should not be possible — but the sweep must not write `undefined` into the
+    // state document if it happens; it stores null and restarts next run.
+    state.requests = Array.from({ length: PAGE_SIZE }, (_, index) =>
+      storedDoc(`r${index}`, {})
+    );
+    state.tickets = Array.from({ length: PAGE_SIZE }, (_, index) =>
+      storedDoc(`t${index}`, { status: "open" })
+    );
+
+    await POST(signedRequest());
+
+    expect(state.sets[0].value).toMatchObject({
+      photosCursor: null,
+      supportCursor: null,
+    });
   });
 });
 
@@ -320,5 +343,36 @@ describe("support conversations", () => {
     await POST(signedRequest());
 
     expect(state.deletes).toEqual([]);
+  });
+
+  it("keeps a ticket resolved inside the window", async () => {
+    state.tickets = [
+      storedDoc("t1", {
+        status: "resolved",
+        resolvedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      }),
+    ];
+
+    await POST(signedRequest());
+
+    expect(state.deletes).toEqual([]);
+  });
+
+  it("advances its own cursor across a full page", async () => {
+    state.tickets = Array.from({ length: PAGE_SIZE }, (_, index) =>
+      storedDoc(`t${index}`, {
+        status: "resolved",
+        resolvedAt: new Date(Date.UTC(2023, 0, 1 + index)).toISOString(),
+      })
+    );
+
+    await POST(signedRequest());
+
+    expect(state.deletes).toHaveLength(PAGE_SIZE);
+    expect(state.sets[0].value).toMatchObject({
+      supportCursor: (
+        state.tickets.at(-1)!.data() as { resolvedAt: unknown }
+      ).resolvedAt,
+    });
   });
 });
