@@ -435,6 +435,13 @@ jobs:
       SMTP_EMAIL: "test@test.com"
       SMTP_PASSWORD: "test"
       RESEND_API_KEY: "test"
+      # The production server refuses to boot without a session-signing secret
+      # (`validateProductionRequiredEnv`), and there is no .env.local here. The
+      # local suite used to be skipped whenever E2E_STAGING_URL was set, so this
+      # was never needed in the job — the server answered with a fatal
+      # "Missing required production environment variables" only once the step
+      # started running again. Dummy value, min 32 chars.
+      MFA_SESSION_SECRET: "shipin-e2e-mfa-session-secret-0123456789"
       FIREBASE_ADMIN_PROJECT_ID: "test"
       FIREBASE_ADMIN_CLIENT_EMAIL: "test@test.com"
       FIREBASE_ADMIN_PRIVATE_KEY: "test"
