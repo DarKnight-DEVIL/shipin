@@ -56,7 +56,7 @@ jobs:
             echo "- seed: \`${seed:-unknown}\`"
             echo "- result: $([ "$status" -eq 0 ] && echo 'pass' || echo 'fail')"
             echo ""
-            echo "Replay locally with: \`npm run test:shuffle -- --sequence.seed=${seed:-<seed>}\`"
+            echo "Replay locally with: \`node scripts/run-test-shuffle-ci.js --sequence.seed=${seed:-<seed>}\`"
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
         env:

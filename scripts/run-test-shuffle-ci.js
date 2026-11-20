@@ -12,20 +12,19 @@ from the CI matrix (`npm_package_seed` by convention here), falls back to
 the three fixed seeds the workflow uses, and runs a no-isolate single-worker
 shuffle that reproduces the same failure mode the CI job is meant to catch.
 
-Usage (preferred once CI points at it):
+Usage (what CI and the replay hints run):
 
   node scripts/run-test-shuffle-ci.js --sequence.seed=104729
 
-
-Usage (npm wrapper, when the root script is changed to call this file):
-
-  npm run test:shuffle:ci -- --sequence.seed=104729
+With no seed it runs the three fixed seeds the CI job uses.
  */
 
 const { spawnSync } = require("node:child_process");
 const { resolve } = require("node:path");
 
-const ROOT = resolve(__dirname, "..", "..");
+// `__dirname` is <repo>/scripts, so one `..` is the repo root. Two of them
+// pointed at the parent of the checkout, and `cwd` then did not exist.
+const ROOT = resolve(__dirname, "..");
 const WEB_PKG = resolve(ROOT, "apps", "web");
 
 const args = process.argv.slice(2);
@@ -80,6 +79,9 @@ for (const s of seeds) {
       },
       stdio: "inherit",
       windowsHide: false,
+      // `npx` is a .cmd shim on Windows, which spawnSync cannot resolve without
+      // a shell. Without this the replay hint fails on a developer's machine.
+      shell: process.platform === "win32",
     }
   );
 

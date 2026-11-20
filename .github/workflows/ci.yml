@@ -336,7 +336,7 @@ jobs:
   # luck on whatever order the filesystem happened to return.
   #
   # Reproduce a failure locally with the seed Vitest prints in its output:
-  #   npm run test:shuffle -- --sequence.seed=<seed>
+  #   node scripts/run-test-shuffle-ci.js --sequence.seed=<seed>
   #
   # Fix the FILE that fails, not the shared setup: `vi.resetModules()` plus
   # `await import()` of the module under test in `beforeEach`, as
@@ -370,12 +370,16 @@ jobs:
         # cross-file coupling, so one seed would let CI go green on a lucky
         # order. Fixed rather than random so a red run is reproducible from the
         # log alone; rotate or add a seed when you want more coverage.
+        # `npm run test:shuffle -- --sequence.seed=N` does NOT forward the flag:
+        # npm reads it as its own config, warns "Unknown cli config
+        # --sequence.seed" and runs vitest with a clock-derived seed. This job
+        # therefore ran three random orders while advertising three fixed ones,
+        # which is why a red nightly was not replayable from CI. The wrapper
+        # invokes vitest directly, so the seed is the seed.
         run: |
           set -euo pipefail
           for seed in 104729 130363 155921; do
-            echo "::group::vitest run --sequence.seed=$seed"
-            npm run test:shuffle -- --sequence.seed=$seed
-            echo "::endgroup::"
+            node scripts/run-test-shuffle-ci.js --sequence.seed=$seed
           done
         env:
           PAYPAL_CLIENT_ID: "test"
