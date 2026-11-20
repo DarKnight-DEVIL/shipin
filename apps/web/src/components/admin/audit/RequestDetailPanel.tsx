@@ -56,7 +56,7 @@ export function RequestDetailPanel({
               src={selectedCustomer.photoURL}
               width={80}
               height={80}
-              alt={selectedCustomer.displayName}
+              alt={selectedCustomer.displayName ?? "Customer profile photo"}
               className="h-full w-full rounded-full object-cover"
               referrerPolicy="no-referrer"
             />

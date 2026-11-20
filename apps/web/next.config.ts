@@ -38,6 +38,10 @@ const nextConfig: NextConfig = {
     "@shipin/utils",
   ],
   images: {
+    // AVIF first, WebP next: both are far smaller than the source JPEG/PNG for
+    // the same visual quality, which is an LCP win on the photo-heavy request
+    // pages. Next falls back to the original format for unsupported browsers.
+    formats: ["image/avif", "image/webp"],
     // Firebase Auth fills `photoURL` with the Google account picture, which is
     // served from lh3. Without this entry next/image refuses the src at render
     // time ("hostname is not configured") and every admin customer avatar is a

@@ -1,3 +1,5 @@
+import { siteConfig } from "@/config/site";
+
 /**
  * Search-engine policy, in one place.
  *
@@ -26,6 +28,20 @@ export const INDEXABLE_ROUTES = [
 ] as const;
 
 export type IndexableRoute = (typeof INDEXABLE_ROUTES)[number];
+
+/**
+ * Absolute canonical URL for a public route.
+ *
+ * Canonical tags, the sitemap, JSON-LD and `/llms.txt` all build their URLs
+ * here, so a page can never advertise two spellings of the same address: the
+ * trailing slash is normalised away, matching the sitemap entries Next emits.
+ */
+export function canonicalUrl(route: string): string {
+  const base = siteConfig.url.replace(/\/+$/, "");
+  const path = route === "/" ? "/" : `/${route.replace(/^\/+|\/+$/g, "")}`;
+
+  return `${base}${path}`;
+}
 
 /**
  * Exact match on purpose: `/track` is indexable, but `/track/<id>` is a

@@ -190,6 +190,7 @@ export const footerColumns: FooterColumn[] = [
       { label: "Network", href: "#network" },
       { label: "Pricing", href: "#pricing" },
       { label: "FAQ", href: "#faq" },
+      { label: "Track shipment", href: "/track" },
     ],
   },
   {

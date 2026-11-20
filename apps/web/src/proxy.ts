@@ -24,6 +24,7 @@ import {
 import { getCorsHeaders, isAllowedOrigin } from "@/lib/cors";
 import { classifyRoute } from "@/config/routeAuth";
 import { isIndexableRoute } from "@/config/seo";
+import { isInsecureRequest } from "@/lib/https";
 
 // The classification table lives in `@/config/routeAuth` so the Node-only
 // startup validator (src/config/routeClassification.ts) can enumerate every
@@ -51,6 +52,21 @@ function isAuthEntryPath(pathname: string): boolean {
 
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Enforce HTTPS before anything else: an insecure request gets one 308 to the
+  // same path over TLS. Vercel already does this at the edge, so this only
+  // fires for a host that terminates TLS in front of the app. Development is
+  // untouched (no forwarded header, and loopback has no TLS at all).
+  if (
+    process.env.NODE_ENV === "production" &&
+    isInsecureRequest(request.headers.get("x-forwarded-proto"))
+  ) {
+    const httpsUrl = request.nextUrl.clone();
+    httpsUrl.protocol = "https:";
+    const redirect = NextResponse.redirect(httpsUrl, 308);
+    redirect.headers.set("Strict-Transport-Security", SECURITY_HEADERS["Strict-Transport-Security"]);
+    return redirect;
+  }
 
   const isApi = pathname.startsWith("/api/");
   const limiter = isApi

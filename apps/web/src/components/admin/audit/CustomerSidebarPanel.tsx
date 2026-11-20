@@ -75,7 +75,7 @@ export function CustomerSidebarPanel({
                       src={customer.photoURL}
                       width={44}
                       height={44}
-                      alt={customer.displayName}
+                      alt={customer.displayName ?? "Customer profile photo"}
                       className="h-full w-full rounded-full object-cover"
                     />
                   ) : (

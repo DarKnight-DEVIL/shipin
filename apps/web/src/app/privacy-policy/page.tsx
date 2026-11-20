@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
-import { INDEX_ROBOTS } from "@/config/seo";
+import { INDEX_ROBOTS, canonicalUrl } from "@/config/seo";
+import JsonLd from "@/components/seo/JsonLd";
+import { breadcrumbSchema, webPageSchema } from "@/lib/seo/structuredData";
 import Link from "next/link";
 
 export const metadata: Metadata = {
+  alternates: { canonical: canonicalUrl("/privacy-policy") },
   robots: INDEX_ROBOTS,
   title: "Privacy Policy",
   description:
@@ -12,6 +15,20 @@ export const metadata: Metadata = {
 export default function PrivacyPolicyPage() {
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <JsonLd
+        data={[
+          webPageSchema({
+            path: "/privacy-policy",
+            name: "Privacy Policy",
+            description:
+              "How ShipIN collects, uses, shares and protects personal information for international forwarding orders.",
+          }),
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Privacy Policy", path: "/privacy-policy" },
+          ]),
+        ]}
+      />
       <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-4xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
           <Link
@@ -397,6 +414,29 @@ export default function PrivacyPolicyPage() {
 
       <footer className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 mt-16">
         <div className="max-w-4xl mx-auto px-4 py-8 sm:px-6 lg:px-8 text-center">
+          <nav
+            aria-label="Site"
+            className="flex flex-wrap justify-center gap-x-6 gap-y-2 mb-4"
+          >
+            <Link
+              href="/"
+              className="text-orange-600 dark:text-orange-400 hover:underline"
+            >
+              Home
+            </Link>
+            <Link
+              href="/track"
+              className="text-orange-600 dark:text-orange-400 hover:underline"
+            >
+              Track a shipment
+            </Link>
+            <Link
+              href="/terms"
+              className="text-orange-600 dark:text-orange-400 hover:underline"
+            >
+              Terms of Service
+            </Link>
+          </nav>
           <p className="text-gray-600 dark:text-gray-400">
             Questions?{" "}
             <Link

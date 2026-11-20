@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
-import { INDEX_ROBOTS } from "@/config/seo";
+import { INDEX_ROBOTS, canonicalUrl } from "@/config/seo";
+import JsonLd from "@/components/seo/JsonLd";
+import { breadcrumbSchema, webPageSchema } from "@/lib/seo/structuredData";
 import Link from "next/link";
 
 export const metadata: Metadata = {
+  alternates: { canonical: canonicalUrl("/terms") },
   robots: INDEX_ROBOTS,
   title: "Terms of Service",
   description:
@@ -12,6 +15,20 @@ export const metadata: Metadata = {
 export default function TermsPage() {
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <JsonLd
+        data={[
+          webPageSchema({
+            path: "/terms",
+            name: "Terms of Service",
+            description:
+              "The terms that govern ShipIN accounts, quotes, payments, shipping, customs duties and liability.",
+          }),
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Terms of Service", path: "/terms" },
+          ]),
+        ]}
+      />
       <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-4xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
           <Link
@@ -334,6 +351,29 @@ export default function TermsPage() {
 
       <footer className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 mt-16">
         <div className="max-w-4xl mx-auto px-4 py-8 sm:px-6 lg:px-8 text-center">
+          <nav
+            aria-label="Site"
+            className="flex flex-wrap justify-center gap-x-6 gap-y-2 mb-4"
+          >
+            <Link
+              href="/"
+              className="text-orange-600 dark:text-orange-400 hover:underline"
+            >
+              Home
+            </Link>
+            <Link
+              href="/track"
+              className="text-orange-600 dark:text-orange-400 hover:underline"
+            >
+              Track a shipment
+            </Link>
+            <Link
+              href="/privacy-policy"
+              className="text-orange-600 dark:text-orange-400 hover:underline"
+            >
+              Privacy Policy
+            </Link>
+          </nav>
           <p className="text-gray-600 dark:text-gray-400">
             Questions?{" "}
             <Link

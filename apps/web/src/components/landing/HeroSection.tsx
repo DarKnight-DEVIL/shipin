@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useAxeScan } from "@/lib/axeScan";
@@ -14,6 +14,36 @@ const SplineHero = dynamic(
     ),
   { ssr: false, loading: () => null }
 );
+
+/**
+ * Mounts the 3D scene once the main thread is idle.
+ *
+ * The Spline runtime is the heaviest thing on the landing page (a WebGL bundle
+ * plus a scene download). Loading it alongside the H1 delayed the largest
+ * contentful paint and blocked taps on the CTAs, so it now starts after the
+ * browser has painted and has spare capacity — with a timeout so a busy device
+ * still gets the scene, and no scene at all for `prefers-reduced-motion`.
+ */
+function DeferredSpline() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
+    const schedule = window.requestIdleCallback;
+    if (typeof schedule === "function") {
+      const handle = schedule(() => setReady(true), { timeout: 2000 });
+      return () => window.cancelIdleCallback?.(handle);
+    }
+
+    const timer = window.setTimeout(() => setReady(true), 300);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return ready ? <SplineHero /> : null;
+}
 
 export interface HeroSectionProps {
   onPlanSelect: (planId: "standard" | "express" | "merchant") => void;
@@ -29,7 +59,7 @@ export default function HeroSection({ onPlanSelect }: HeroSectionProps) {
   return (
     <section className="hero" ref={heroRef} aria-labelledby="hero-title">
       <div className="hero__spline">
-        <SplineHero />
+        <DeferredSpline />
       </div>
 
       <div className="hero__content shell">

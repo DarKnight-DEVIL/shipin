@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { siteConfig } from "@/config/site";
-import { INDEX_ROBOTS } from "@/config/seo";
+import { INDEX_ROBOTS, canonicalUrl } from "@/config/seo";
 
 /**
  * Landing page metadata.
@@ -48,11 +48,24 @@ export const metadata: Metadata = {
     images: [siteConfig.ogImage],
     creator: siteConfig.twitterHandle,
   },
+  alternates: { canonical: canonicalUrl("/") },
   robots: INDEX_ROBOTS,
 };
 
+import JsonLd from "@/components/seo/JsonLd";
+import {
+  organizationSchema,
+  serviceSchema,
+  websiteSchema,
+} from "@/lib/seo/structuredData";
 import LandingShell from "./_landing/LandingShell";
 
 export default function HomePage() {
-  return <LandingShell />;
+  return (
+    <>
+      {/* Organization + WebSite + Service, as one @graph. */}
+      <JsonLd data={[organizationSchema(), websiteSchema(), serviceSchema()]} />
+      <LandingShell />
+    </>
+  );
 }
