@@ -9,13 +9,11 @@
  * behind it.
  */
 
+import { readFileSync } from "node:fs";
+
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const admin = vi.hoisted(() => ({ verifyToken: vi.fn() }));
-// How often the App Check SDK is actually loaded. It has to stay at zero for a
-// plain import of the module: `instrumentation.ts` imports it at boot, and
-// loading the SDK there is what crashed every route in the deployment.
-const sdk = vi.hoisted(() => ({ loads: 0 }));
 // `vitest.setup.ts` mocks '@/config/env' for the whole suite with a static
 // object, so this file supplies its own mutable version instead of relying on
 // `process.env` (which that global mock never reads).
@@ -25,10 +23,9 @@ const env = vi.hoisted(() => ({
   production: false as boolean,
 }));
 
-vi.mock("firebase-admin/app-check", () => {
-  sdk.loads += 1;
-  return { getAppCheck: () => ({ verifyToken: admin.verifyToken }) };
-});
+vi.mock("firebase-admin/app-check", () => ({
+  getAppCheck: () => ({ verifyToken: admin.verifyToken }),
+}));
 
 vi.mock("@/config/env", () => ({
   get serverEnv() {
@@ -63,7 +60,6 @@ beforeEach(async () => {
   env.siteKey = "";
   env.production = false;
   admin.verifyToken.mockReset();
-  sdk.loads = 0;
 });
 
 afterEach(() => {
@@ -113,22 +109,23 @@ describe("isAppCheckEnforced", () => {
 });
 
 describe("verifyAppCheckRequest", () => {
-  it("loads the App Check SDK only when it has a token to verify", async () => {
-    // Regression guard: the boot instrumentation hook imports this module, and
-    // a top-level `firebase-admin/app-check` import pulled jwks-rsa -> jose
-    // into a CommonJS runtime (ERR_REQUIRE_ESM), so the deployment answered
-    // every request with 500 and the signed-in E2E smoke test timed out on a
+  it("keeps the App Check SDK out of the module's static import graph", () => {
+    // Regression guard, and it has to read the source: the failure lived in
+    // the module graph, not in behaviour. `instrumentation.ts` imports this
+    // module at boot, so a top-level `firebase-admin/app-check` import loaded
+    // jwks-rsa -> jose there, the deployed runtime could not require() that
+    // ESM entry (ERR_REQUIRE_ESM), and Next answered every route, static pages
+    // included, with 500. The signed-in E2E smoke test then timed out on a
     // login page that never rendered.
-    expect(sdk.loads).toBe(0);
-
-    env.enforcement = "true";
-    admin.verifyToken.mockResolvedValue({ appId: "app-1" });
-
-    await appCheck.verifyAppCheckRequest(
-      requestWithHeaders({ [appCheck.APP_CHECK_HEADER]: "good-token" })
+    //
+    // The status helpers need no SDK, so it may only be imported on demand.
+    const source = readFileSync(
+      new URL("./appCheck.ts", import.meta.url),
+      "utf8"
     );
 
-    expect(sdk.loads).toBe(1);
+    expect(source).not.toContain('from "firebase-admin/app-check"');
+    expect(source).toContain('import("firebase-admin/app-check")');
   });
 
   it("reports not-enforced without looking at the request", async () => {
