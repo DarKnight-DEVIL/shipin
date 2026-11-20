@@ -24,7 +24,7 @@ import {
 import { getCorsHeaders, isAllowedOrigin } from "@/lib/cors";
 import { classifyRoute } from "@/config/routeAuth";
 import { isIndexableRoute } from "@/config/seo";
-import { isInsecureRequest } from "@/lib/https";
+import { isInsecureRequest, isLoopbackHost } from "@/lib/https";
 
 // The classification table lives in `@/config/routeAuth` so the Node-only
 // startup validator (src/config/routeClassification.ts) can enumerate every
@@ -59,7 +59,8 @@ export default async function proxy(request: NextRequest) {
   // untouched (no forwarded header, and loopback has no TLS at all).
   if (
     process.env.NODE_ENV === "production" &&
-    isInsecureRequest(request.headers.get("x-forwarded-proto"))
+    isInsecureRequest(request.headers.get("x-forwarded-proto")) &&
+    !isLoopbackHost(request.nextUrl.hostname)
   ) {
     const httpsUrl = request.nextUrl.clone();
     httpsUrl.protocol = "https:";
