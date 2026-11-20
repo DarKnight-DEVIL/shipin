@@ -22,6 +22,11 @@
  *
  * It is idempotent: both copy destinations are replaced, never merged, so a
  * rebuild cannot leave a previous build's hashed chunks behind.
+ *
+ * Vercel is the one target that does not use this tree: `next.config.ts` only
+ * emits standalone output off Vercel, because Vercel runs its own per-route
+ * Next.js functions. `npm run build` still calls this script there, so an
+ * absent `.next/standalone` has to be a skip rather than a failure.
  */
 import { cpSync, existsSync, rmSync } from "node:fs";
 import path from "node:path";
@@ -40,6 +45,13 @@ const standaloneAppDir = path.join(
   "apps",
   "web"
 );
+
+if (process.env.VERCEL) {
+  console.log(
+    "Vercel build: skipping the standalone tree; Vercel serves its own Next.js output."
+  );
+  process.exit(0);
+}
 
 if (!existsSync(path.join(standaloneAppDir, "server.js"))) {
   console.error(

@@ -8,7 +8,14 @@ const ANALYZE = process.env.ANALYZE === "true";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  output: "standalone",
+  // Vercel builds Next.js itself and runs one function per route, so it must
+  // not get standalone output. Standalone is for the targets that run a single
+  // traced Node server — the Docker image and `npm start` — and emitting it for
+  // Vercel too made the deployment one generic `index` function executing the
+  // traced tree, which crashed on a runtime `require()` of jose's ESM entry
+  // (jwks-rsa, pulled in by firebase-admin). Vercel sets VERCEL=1 in its build
+  // environment; see scripts/prepare-standalone.mjs, which skips itself there.
+  output: process.env.VERCEL ? undefined : "standalone",
   // The tracer follows filesystem reads in server code, so local run artefacts
   // end up in the standalone tree (coverage/ alone is 13 MB) and from there in
   // anything built out of it. Keys are route globs and '*' matches every route.

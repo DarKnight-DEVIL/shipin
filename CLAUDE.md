@@ -194,7 +194,10 @@ Critical env vars required:
 
 ### next.config.ts
 - React Strict Mode **enabled** by default in Next.js 16 (see `next.config.ts`)
-- `output: 'standalone'`. `npm run build` runs `scripts/prepare-standalone.mjs` after
+- `output: 'standalone'`, except on Vercel: `output` is `undefined` when `VERCEL=1`, so
+  Vercel's own builder emits one function per route instead of running the traced tree as
+  a single `index` function. `scripts/prepare-standalone.mjs` skips itself there.
+  `npm run build` runs `scripts/prepare-standalone.mjs` after
   `next build`, so the traced `.next/standalone/apps/web/` tree already carries `public/`
   and `.next/static/` and boots when `server.js` is started directly. `npm start` runs the
   same idempotent script again through `prestart`, exactly like the Dockerfile's `COPY`s.
