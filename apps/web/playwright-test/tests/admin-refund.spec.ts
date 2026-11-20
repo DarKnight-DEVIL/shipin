@@ -36,19 +36,28 @@
  * below into the job environment.
  *
  * Required environment:
- *   BASE_URL                 staging origin (the spec skips on localhost)
+ *   BASE_URL                 staging origin, or a localhost build with
+ *                            E2E_ALLOW_LOCAL_REFUND_SMOKE=1
  *   E2E_REFUND_REQUEST_ID    a fresh "purchased" request id
  *   E2E_REFUND_CUSTOMER_ID   that request's userId
  *   E2E_ADMIN_TOTP_SECRET    base32 TOTP secret enrolled for the admin
  *   and either
  *     E2E_ADMIN_ID_TOKEN     a ready Firebase ID token, or
  *     E2E_ADMIN_EMAIL + E2E_ADMIN_PASSWORD + E2E_FIREBASE_API_KEY
+ *   E2E_REFUND_ADMIN_EMAIL + E2E_REFUND_ADMIN_PASSWORD are used instead of the
+ *   two above when set (the local run seeds this account with the TOTP).
  *
  * Optional:
  *   E2E_ALLOW_LOCAL_REFUND_SMOKE=1   allow a localhost BASE_URL (dev server or
  *                                    emulator) instead of a remote staging host
+ *   FIREBASE_AUTH_EMULATOR_HOST   sign in against the Auth emulator instead of
+ *                                 Identity Toolkit (set by
+ *                                 `npm run test:e2e:local -- --signed-in`)
  *
- * Use a dedicated staging admin. Never run this with production credentials.
+ * Locally the fixture, the admin and its TOTP enrolment all come from the
+ * emulators (see scripts/e2e-local.mjs), so the whole chain runs in CI with no
+ * service account. Against staging it needs a staging admin seed; never run it
+ * with production credentials.
  */
 import {
   test,
@@ -81,13 +90,21 @@ const isRemoteTarget = !!baseUrl && !baseUrl.startsWith("http://localhost");
 // Destructive test: remote only, unless the caller opts into a local target.
 const allowLocal = env.E2E_ALLOW_LOCAL_REFUND_SMOKE === "1";
 
+const authEmulatorHost =
+  env.FIREBASE_AUTH_EMULATOR_HOST ??
+  env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ??
+  "";
+
 const settings = {
   requestId: env.E2E_REFUND_REQUEST_ID ?? "",
   customerId: env.E2E_REFUND_CUSTOMER_ID ?? "",
   totpSecret: env.E2E_ADMIN_TOTP_SECRET ?? "",
   idToken: env.E2E_ADMIN_ID_TOKEN ?? "",
-  email: env.E2E_ADMIN_EMAIL ?? "",
-  password: env.E2E_ADMIN_PASSWORD ?? "",
+  // A dedicated admin for the refund chain: locally it is the only seeded
+  // account with a second factor enrolled, while the other specs need an admin
+  // without one. Staging keeps using the single configured admin.
+  email: env.E2E_REFUND_ADMIN_EMAIL || env.E2E_ADMIN_EMAIL || "",
+  password: env.E2E_REFUND_ADMIN_PASSWORD || env.E2E_ADMIN_PASSWORD || "",
   firebaseApiKey: env.E2E_FIREBASE_API_KEY ?? "",
 };
 
@@ -119,20 +136,25 @@ async function readJson(response: APIResponse): Promise<RefundBody> {
   return (await response.json()) as RefundBody;
 }
 
-/** Firebase ID token for the staging admin, via Identity Toolkit. */
+/**
+ * Firebase ID token for the admin: Identity Toolkit on staging, the Auth
+ * emulator locally. Both answer the same identitytoolkit shape, so only the
+ * host and the key differ — the emulator ignores the key's value.
+ */
 async function signIn(request: APIRequestContext): Promise<string> {
   if (settings.idToken) return settings.idToken;
 
-  const response = await request.post(
-    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${settings.firebaseApiKey}`,
-    {
-      data: {
-        email: settings.email,
-        password: settings.password,
-        returnSecureToken: true,
-      },
-    }
-  );
+  const url = authEmulatorHost
+    ? `http://${authEmulatorHost}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${settings.firebaseApiKey || "fake-api-key"}`
+    : `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${settings.firebaseApiKey}`;
+
+  const response = await request.post(url, {
+    data: {
+      email: settings.email,
+      password: settings.password,
+      returnSecureToken: true,
+    },
+  });
 
   expect(
     response.ok(),
@@ -140,7 +162,12 @@ async function signIn(request: APIRequestContext): Promise<string> {
   ).toBe(true);
 
   const body = (await response.json()) as { idToken?: string };
-  expect(body.idToken, "Identity Toolkit returned no idToken").toBeTruthy();
+  expect(
+    body.idToken,
+    authEmulatorHost
+      ? "the Auth emulator returned no idToken"
+      : "Identity Toolkit returned no idToken"
+  ).toBeTruthy();
   return body.idToken as string;
 }
 

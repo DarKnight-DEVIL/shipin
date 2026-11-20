@@ -89,6 +89,7 @@ describe("POST /api/admin/requests/[requestId]/tracking/refresh", () => {
     const response = await POST(post(), context());
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
+      success: false,
       code: "INTERNAL_ERROR",
       error: "ADMIN_ACCESS_REQUIRED",
     });

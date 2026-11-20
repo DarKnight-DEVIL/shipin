@@ -493,6 +493,13 @@ jobs:
       # text pass straight through that, which is how it shipped once.
       # Always local, never E2E_STAGING_URL.
       #
+      # Unconditional on purpose. This used to run only when E2E_STAGING_URL was
+      # empty, so configuring staging — the recommended setup — silently turned
+      # off the only coverage of hydration, the emulator-backed signed-in specs
+      # and the passkey ceremony, which cannot run remotely because it registers
+      # a credential. Staging adds real-database coverage; it does not replace
+      # any of that.
+      #
       # One definition of the suite: `apps/web/scripts/e2e-local.mjs` builds and
       # serves the production bundle, owns `emulators:exec` for Firestore + Auth,
       # seeds the admin and runs the spec list. Repeating any of that here is how
@@ -500,7 +507,6 @@ jobs:
       # specs. The job env keeps only the startup dummies the build and server
       # validate, which the staging steps need too.
       - name: Run local E2E specs (production build, Firestore + Auth emulators)
-        if: env.E2E_STAGING_URL == ''
         run: npm run test:e2e:signed-in
 
       # CI and the Vercel deployment both start from the same push, so a

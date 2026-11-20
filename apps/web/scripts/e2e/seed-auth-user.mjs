@@ -21,6 +21,10 @@
  *   E2E_SEED_EMAIL     (default e2e-admin@shipin.test)
  *   E2E_SEED_PASSWORD  (default shipin-e2e-password)
  *   E2E_SEED_ROLE      "admin" (default) or "customer"
+ *   E2E_SEED_TOTP_SECRET      base32 secret to enrol on a second, refund-only
+ *                             admin (the seeded admin itself stays without MFA)
+ *   E2E_SEED_MFA_EMAIL        (default e2e-refund-admin@shipin.test)
+ *   E2E_SEED_MFA_PASSWORD     (default E2E_SEED_PASSWORD)
  *   FIREBASE_ADMIN_PROJECT_ID  (default shipin-e2e)
  */
 import { createRequire } from "node:module";
@@ -55,52 +59,112 @@ const app = initializeApp({ projectId });
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const profile = {
+// Admin routes are gated on an enrolled second factor, so the refund smoke test
+// needs an admin that can satisfy `requireAdmin`. Enrolling a TOTP here — the
+// same shape `/api/auth/mfa/totp/setup` + `/verify` leave behind — is what makes
+// that test runnable against the emulators instead of only on a staging
+// deployment with a service account.
+//
+// It is a SEPARATE account on purpose. `mfa-passkey.spec.ts` registers its own
+// factor and `admin-refund-local.spec.ts` asserts the gate's MFA_SETUP_REQUIRED
+// path; both need an admin with nothing enrolled, so enrolling TOTP on the
+// seeded admin broke them.
+const totpSecret = process.env.E2E_SEED_TOTP_SECRET ?? "";
+const refundAdminEmail =
+  process.env.E2E_SEED_MFA_EMAIL ?? "e2e-refund-admin@shipin.test";
+const refundAdminPassword = process.env.E2E_SEED_MFA_PASSWORD ?? password;
+
+/**
+ * Create (or repair) one Auth user and its `users/{uid}` profile.
+ * `totpSecret` is only written when given, so an account seeded without one
+ * really has no second factor — the gate distinguishes the two states.
+ */
+async function seedAccount({
   email,
-  displayName: "E2E Admin",
+  password,
   role,
-  emailVerified: true,
-  updatedAt: FieldValue.serverTimestamp(),
-};
-
-let uid;
-
-try {
-  const existing = await auth.getUserByEmail(email);
-  uid = existing.uid;
-  await auth.updateUser(uid, {
-    password,
-    emailVerified: true,
-    displayName: profile.displayName,
-  });
-} catch (error) {
-  if (error?.code !== "auth/user-not-found") {
-    fail(`could not read the auth emulator: ${error?.message ?? error}`);
-  }
-  const created = await auth.createUser({
+  displayName,
+  totpSecret = "",
+}) {
+  const profile = {
     email,
-    password,
+    displayName,
+    role,
     emailVerified: true,
-    displayName: profile.displayName,
-  });
-  uid = created.uid;
+    ...(totpSecret
+      ? {
+          mfa: {
+            totp: { secret: totpSecret, enabled: true, backupCodes: [] },
+            required: true,
+          },
+        }
+      : {}),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+
+  let uid;
+
+  try {
+    const existing = await auth.getUserByEmail(email);
+    uid = existing.uid;
+    await auth.updateUser(uid, {
+      password,
+      emailVerified: true,
+      displayName,
+    });
+  } catch (error) {
+    if (error?.code !== "auth/user-not-found") {
+      fail(`could not read the auth emulator: ${error?.message ?? error}`);
+    }
+    const created = await auth.createUser({
+      email,
+      password,
+      emailVerified: true,
+      displayName,
+    });
+    uid = created.uid;
+  }
+
+  if (firestoreEmulatorHost) {
+    await db
+      .collection("users")
+      .doc(uid)
+      .set(
+        { ...profile, createdAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+  } else {
+    console.error(
+      "seed-auth-user: FIRESTORE_EMULATOR_HOST is not set, so no profile document " +
+        'was written. The admin area needs users/{uid}.role = "admin".'
+    );
+  }
+
+  return uid;
 }
 
-if (firestoreEmulatorHost) {
-  await db
-    .collection("users")
-    .doc(uid)
-    .set(
-      { ...profile, createdAt: FieldValue.serverTimestamp() },
-      { merge: true }
-    );
-} else {
-  console.error(
-    "seed-auth-user: FIRESTORE_EMULATOR_HOST is not set, so no profile document " +
-      'was written. The admin area needs users/{uid}.role = "admin".'
-  );
-}
+const uid = await seedAccount({
+  email,
+  password,
+  role,
+  displayName: "E2E Admin",
+});
 
 console.log(`E2E_ADMIN_EMAIL=${email}`);
 console.log(`E2E_ADMIN_PASSWORD=${password}`);
 console.log(`E2E_ADMIN_UID=${uid}`);
+
+if (totpSecret) {
+  const refundAdminUid = await seedAccount({
+    email: refundAdminEmail,
+    password: refundAdminPassword,
+    role: "admin",
+    displayName: "E2E Refund Admin",
+    totpSecret,
+  });
+
+  console.log(`E2E_REFUND_ADMIN_EMAIL=${refundAdminEmail}`);
+  console.log(`E2E_REFUND_ADMIN_PASSWORD=${refundAdminPassword}`);
+  console.log(`E2E_REFUND_ADMIN_UID=${refundAdminUid}`);
+  console.log(`E2E_ADMIN_TOTP_SECRET=${totpSecret}`);
+}

@@ -19,13 +19,19 @@
  * ---------------------------------------------------------------------------
  *
  * Required environment:
- *   FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL,
- *   FIREBASE_ADMIN_PRIVATE_KEY   staging service account
+ *   FIREBASE_ADMIN_PROJECT_ID    target project
  *   E2E_SEED_CONFIRM             must equal FIREBASE_ADMIN_PROJECT_ID
+ *   FIREBASE_ADMIN_CLIENT_EMAIL, FIREBASE_ADMIN_PRIVATE_KEY
+ *                                staging service account — required against a
+ *                                real project, unnecessary when
+ *                                FIRESTORE_EMULATOR_HOST is set (the emulator
+ *                                accepts an unauthenticated admin SDK)
  *
  * Optional:
  *   E2E_SEED_WALLET_AMOUNT   wallet portion (default 40)
  *   E2E_SEED_PAYPAL_AMOUNT   PayPal portion (default 60)
+ *   E2E_SEED_REQUEST_ID      reuse a fixed request id (default random)
+ *   E2E_SEED_CUSTOMER_ID     reuse a fixed customer id (default random)
  *
  * Usage:
  *   node scripts/e2e/seed-refund-fixture.mjs            # write the fixture
@@ -60,10 +66,19 @@ const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID ?? "";
 const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL ?? "";
 const privateKey = normalizePrivateKey(process.env.FIREBASE_ADMIN_PRIVATE_KEY);
 const confirm = process.env.E2E_SEED_CONFIRM ?? "";
+// Against the emulator the admin SDK needs no credential, which is what lets
+// the refund smoke test run locally (see scripts/e2e-local.mjs). The
+// confirmation key below still applies, so this never weakens the staging guard.
+const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST ?? "";
 
-if (!projectId || !clientEmail || !privateKey) {
+if (!projectId) {
+  fail("missing FIREBASE_ADMIN_PROJECT_ID (the target project).");
+}
+
+if (!emulatorHost && (!clientEmail || !privateKey)) {
   fail(
-    "missing FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL or FIREBASE_ADMIN_PRIVATE_KEY."
+    "missing FIREBASE_ADMIN_CLIENT_EMAIL or FIREBASE_ADMIN_PRIVATE_KEY. Set " +
+      "FIRESTORE_EMULATOR_HOST to seed the local emulator instead."
   );
 }
 
@@ -78,8 +93,10 @@ const walletAmount = amountFromEnv("E2E_SEED_WALLET_AMOUNT", 40);
 const paypalAmount = amountFromEnv("E2E_SEED_PAYPAL_AMOUNT", 60);
 const amount = Number((walletAmount + paypalAmount).toFixed(2));
 
-const requestId = `e2e-refund-${randomUUID()}`;
-const customerId = `e2e-customer-${randomUUID()}`;
+const requestId =
+  process.env.E2E_SEED_REQUEST_ID || `e2e-refund-${randomUUID()}`;
+const customerId =
+  process.env.E2E_SEED_CUSTOMER_ID || `e2e-customer-${randomUUID()}`;
 
 /**
  * Shape the refund endpoints expect: `POST /refund` only accepts a
@@ -182,7 +199,11 @@ async function main() {
   }
 
   if (getApps().length === 0) {
-    initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
+    initializeApp(
+      emulatorHost
+        ? { projectId }
+        : { credential: cert({ projectId, clientEmail, privateKey }) }
+    );
   }
   const db = getFirestore();
 
@@ -205,7 +226,8 @@ async function main() {
   }
 
   console.error(
-    `seeded ${paths.request} (wallet ${walletAmount} / PayPal ${paypalAmount} of ${amount} ${CURRENCY})`
+    `seeded ${paths.request} in ${emulatorHost ? "the emulator" : projectId} ` +
+      `(wallet ${walletAmount} / PayPal ${paypalAmount} of ${amount} ${CURRENCY})`
   );
   console.error(
     `cleanup when convenient: delete ${paths.request}, ${paths.user} and ${paths.wallet}`

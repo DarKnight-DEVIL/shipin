@@ -21,10 +21,17 @@
  *     first and says what to install.
  * 
  * `--signed-in` also starts the Auth emulator, seeds an admin account
- * (`scripts/e2e/seed-auth-user.mjs`) and adds signed-in-smoke.spec.ts and
- * mfa-passkey.spec.ts, so the sign-in path is covered without a staging
- * account. It is a superset of the default run — CI calls exactly this mode,
- * so there is one definition of the suite instead of two that can drift.
+ * (`scripts/e2e/seed-auth-user.mjs`) and adds signed-in-smoke.spec.ts,
+ * mfa-passkey.spec.ts and admin-refund.spec.ts, so the sign-in and money paths
+ * are covered without a staging account. It is a superset of the default run —
+ * CI calls exactly this mode, so there is one definition of the suite instead
+ * of two that can drift.
+ *
+ * The refund smoke test drives the real refund endpoints against the emulator:
+ * the admin is seeded with an enrolled TOTP (so `requireAdmin` is satisfied),
+ * and `scripts/e2e/seed-refund-fixture.mjs` writes a throwaway "purchased"
+ * request for it to refund. That is what keeps the money path in CI without a
+ * staging service account.
  * 
  * App configuration still comes from the environment like every other run:
  * `apps/web/.env.local` (Next loads it) or exported variables. A production
@@ -139,6 +146,32 @@ const env = {
 };
 
 if (signedIn) {
+  // One secret shared by the seeder (which stores it on the refund admin) and
+  // the refund spec (which mints codes from it). A fresh one per run keeps the
+  // fixture honest.
+  const { generateSecret } = await import("otplib");
+  const totpSecret = generateSecret();
+
+  // Two admins, deliberately: the refund chain needs an enrolled second factor,
+  // while the passkey spec and the MFA-gate spec both need an admin with none.
+  // Defines the credentials once and hands the same pair to the seeder and the
+  // specs, so the two can never disagree about who was seeded.
+  //
+  // Fixed fixture credentials, never the ambient ones. `E2E_ADMIN_EMAIL` /
+  // `E2E_ADMIN_PASSWORD` are repository secrets in CI (the staging admin), and
+  // the seeder prints what it seeds: inheriting them would write that password
+  // into a public job log and sign the emulator run in as the real operator.
+  const adminEmail = SEED_EMAIL;
+  const adminPassword = SEED_PASSWORD;
+  const refundAdminEmail = "e2e-refund-admin@shipin.test";
+  const refundAdminPassword = SEED_PASSWORD;
+
+  // Fixed ids: the fixture lives only as long as this `emulators:exec` run, so
+  // there is nothing to collide with, and the spec needs the ids before the
+  // script that writes them has run.
+  const refundRequestId = "e2e-refund-local-request";
+  const refundCustomerId = "e2e-refund-local-customer";
+
   Object.assign(env, {
     FIREBASE_AUTH_EMULATOR_HOST: AUTH_EMULATOR,
     NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: AUTH_EMULATOR,
@@ -148,14 +181,36 @@ if (signedIn) {
     // sign in") even though both sides point at the same emulator.
     NEXT_PUBLIC_FIREBASE_PROJECT_ID: "shipin-e2e",
     FIREBASE_ADMIN_PROJECT_ID: "shipin-e2e",
-    // The spec and the seeder share these; the seeder would create the account
-    // from its own defaults, but the spec has to be told the same values.
-    E2E_ADMIN_EMAIL: process.env.E2E_ADMIN_EMAIL || SEED_EMAIL,
-    E2E_ADMIN_PASSWORD: process.env.E2E_ADMIN_PASSWORD || SEED_PASSWORD,
+    // The specs and the seeder share these; the seeder would create the
+    // accounts from its own defaults, but the specs have to be told the same
+    // values. `E2E_SEED_*` is what the seeder reads.
+    E2E_ADMIN_EMAIL: adminEmail,
+    E2E_ADMIN_PASSWORD: adminPassword,
+    E2E_SEED_EMAIL: adminEmail,
+    E2E_SEED_PASSWORD: adminPassword,
+    E2E_SEED_MFA_EMAIL: refundAdminEmail,
+    E2E_SEED_MFA_PASSWORD: refundAdminPassword,
+    E2E_REFUND_ADMIN_EMAIL: refundAdminEmail,
+    E2E_REFUND_ADMIN_PASSWORD: refundAdminPassword,
     // `.env.local` points APP_URL at Vercel, which a production server refuses
     // as an RP ID (a passkey would be scoped to every tenant). This run serves
     // its own build on localhost, so it claims that origin.
     APP_URL: "http://localhost:3000",
+    // The emulator ignores the key's value but the specs require it present.
+    E2E_FIREBASE_API_KEY: process.env.E2E_FIREBASE_API_KEY || "fake-api-key",
+    // Second factor for the seeded admin, and the codes the refund spec mints.
+    E2E_SEED_TOTP_SECRET: totpSecret,
+    E2E_ADMIN_TOTP_SECRET: totpSecret,
+    // Refund fixture: `E2E_SEED_*` writes it, `E2E_REFUND_*` consumes it.
+    E2E_SEED_CONFIRM: "shipin-e2e",
+    E2E_SEED_REQUEST_ID: refundRequestId,
+    E2E_SEED_CUSTOMER_ID: refundCustomerId,
+    E2E_REFUND_REQUEST_ID: refundRequestId,
+    E2E_REFUND_CUSTOMER_ID: refundCustomerId,
+    // The refund spec refuses a localhost target unless this is set: it moves
+    // money, and on staging it is the difference between a fixture and a
+    // customer's real request.
+    E2E_ALLOW_LOCAL_REFUND_SMOKE: "1",
   });
 }
 
@@ -206,7 +261,13 @@ const specs = [
   // authenticated branches (validation 400s, unknown fixture 404s, the
   // non-admin 403), which is where an authorization regression shows up.
   ...(signedIn
-    ? ["tests/signed-in-smoke.spec.ts", "tests/mfa-passkey.spec.ts"]
+    ? [
+        "tests/signed-in-smoke.spec.ts",
+        "tests/mfa-passkey.spec.ts",
+        // Full refund chain: the only check that drives the real endpoints end
+        // to end. It skips itself unless the fixture and TOTP above are set.
+        "tests/admin-refund.spec.ts",
+      ]
     : []),
 ].join(" ");
 
@@ -216,10 +277,11 @@ const playwright = [
   ...extraArgs,
 ].join(" ");
 
-// The seeder runs in the same `emulators:exec` script so the Auth emulator is
-// already listening, and its users survive only for this run.
+// The seeders run in the same `emulators:exec` script so the emulators are
+// already listening, and everything they write survives only for this run.
 const script = signedIn
-  ? `node scripts/e2e/seed-auth-user.mjs && ${playwright}`
+  ? "node scripts/e2e/seed-auth-user.mjs && " +
+    `node scripts/e2e/seed-refund-fixture.mjs && ${playwright}`
   : playwright;
 
 console.log("\n› Building the production bundle…");

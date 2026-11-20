@@ -123,12 +123,24 @@ export function toShipINError(error: unknown): ShipINError {
  * Never leaks stack traces or internal details in production.
  */
 export function serializeError(error: unknown): {
+  success: false;
   error: string;
   code?: string;
   details?: unknown;
 } {
   const err = toShipINError(error);
-  const payload: { error: string; code?: string; details?: unknown } = {
+  // `success: false` is part of the documented envelope
+  // (response-convention.md) and what the API clients branch on
+  // (`apiClient`: `!response.ok || payload.success === false`). Without it an
+  // error body had no discriminator at all, so a caller reading only the JSON
+  // — the refund smoke test did — could not tell a rejection from a result.
+  const payload: {
+    success: false;
+    error: string;
+    code?: string;
+    details?: unknown;
+  } = {
+    success: false,
     error: err.message,
     code: err.code,
   };

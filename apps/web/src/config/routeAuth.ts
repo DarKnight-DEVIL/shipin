@@ -37,6 +37,15 @@ export const ROUTE_AUTH_CLASSIFICATION: Record<string, RouteAuth> = {
   // entries here take precedence over that prefix.
   "/api/auth/login-intent": "public",
   "/api/auth/password-leak-check": "public",
+  // The hourly quote sweep authenticates itself: a timestamp plus an HMAC of it
+  // signed with CRON_SECRET (see the route). GitHub Actions calls it with no
+  // Firebase session, so under the "/api/admin" prefix the proxy answered every
+  // run with 401 AUTHENTICATION_REQUIRED before the handler could check the
+  // signature — the cron had never expired a single quote. The handler still
+  // refuses a caller that cannot produce a valid signature, and the proxy keeps
+  // rate-limiting it. An exact entry, so the admin prefix still covers every
+  // other route below it.
+  "/api/admin/requests/quotes/expire": "public",
 
   // --- Customer ---
   "/api/profile": "customer",
@@ -69,6 +78,19 @@ export const ROUTE_AUTH_CLASSIFICATION: Record<string, RouteAuth> = {
 
 export type RouteClassification = RouteAuth | "unclassified";
 
+/**
+ * Entries that classify exactly one path and must not cover its children.
+ *
+ * Matching below is prefix-based, which is what lets `/api/admin` cover every
+ * route under it. An exception carved out of a protected prefix has the
+ * opposite requirement: a future `/api/admin/requests/quotes/expire/something`
+ * must not inherit the cron route's "public" by accident. Keep every such
+ * exception in this set, so the carve-out cannot leak.
+ */
+const EXACT_ONLY: ReadonlySet<string> = new Set([
+  "/api/admin/requests/quotes/expire",
+]);
+
 export function classifyRoute(pathname: string): RouteClassification {
   const exact = ROUTE_AUTH_CLASSIFICATION[pathname];
   if (exact) return exact;
@@ -78,6 +100,7 @@ export function classifyRoute(pathname: string): RouteClassification {
   for (const [prefix, classification] of Object.entries(
     ROUTE_AUTH_CLASSIFICATION
   )) {
+    if (EXACT_ONLY.has(prefix)) continue;
     if (pathname.startsWith(prefix) && prefix.length > matchLength) {
       match = classification;
       matchLength = prefix.length;

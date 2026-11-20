@@ -47,6 +47,15 @@ describe("the real route tree", () => {
     expect(classifyRoute("/api/whatsapp/test")).toBe("admin");
     expect(classifyRoute("/api/compliance/breach")).toBe("admin");
     expect(classifyRoute("/api/compliance/dashboard")).toBe("admin");
+    // The hourly cron signs its request with CRON_SECRET and has no Bearer
+    // token. Classified "admin" by prefix, the proxy rejected it with 401
+    // before the handler saw the signature, so the sweep never ran in
+    // production. Auth for this route is the HMAC, not a session.
+    expect(classifyRoute("/api/admin/requests/quotes/expire")).toBe("public");
+    // The exception is exact: every other admin route still declares admin.
+    expect(classifyRoute("/api/admin/requests/quotes/expire/extra")).toBe(
+      "admin"
+    );
   });
 
   it("keeps the rest of the surface where it was", () => {
