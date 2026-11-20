@@ -9,7 +9,9 @@
   --primary-soft: rgba(16, 185, 129, 0.1);
   --fg: #f1f5f9;
   --fg-soft: #94a3b8;
-  --muted: #64748b;
+  /* 4.24:1 on --bg failed AA for normal text (captions, eyebrows, metadata).
+     #8b98aa is 6.89:1 and still reads as secondary. */
+  --muted: #8b98aa;
   --border: #1e293b;
   --border-strong: #334155;
   --header-h: 76px;
@@ -212,7 +214,9 @@ h3 {
 
 .btn--primary:hover {
   background: var(--primary-deep);
-  color: #ffffff;
+  /* White on #059669 is 3.4:1, below AA at the button's 14px size; the same
+     dark ink used at rest is 5.35:1 on the hover green. */
+  color: #020617;
 }
 
 .btn--accent {
