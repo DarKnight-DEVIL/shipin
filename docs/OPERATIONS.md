@@ -352,3 +352,36 @@ Escalation path: payment failures → PayPal status page → Upstash status page
 → Vercel status page. Record every production incident in the incident log
 with the timeline, the rollback decision, and the follow-up test that prevents
 recurrence.
+
+## 4. Personal data breach response
+
+The regulator clock starts when a ShipIN person becomes aware of an incident, not
+when the post-mortem starts. GDPR allows 72 hours to notify the competent
+supervisory authority; DPDP requires notification to the Data Protection Board
+and to affected Data Principals.
+
+1. **Contain first (0–1h).** Rotate the exposed credential, revoke the session,
+   or disable the route. Never delete logs or Firestore documents while
+   investigating — the register needs them.
+2. **Record the incident.** `POST /api/compliance/breach` as an admin
+   (`src/lib/compliance/breach.ts` keeps the register: severity, timeline, data
+   categories, affected users). An incident without a register entry is an
+   incident that cannot be reported accurately.
+3. **Scope it (1–24h).** Which collections and fields were reachable? Use the
+   `logRightsRequest` trail and Firestore audit fields to bound the affected
+   user ids. Do not sample: enumerate.
+4. **Decide reportability (by 24h).** Risk to rights and freedoms — credentials,
+   payment identifiers, addresses, inspection photos — is reportable. A
+   theoretical exposure with no evidence of access may not be, and that decision
+   is written down with its reasoning.
+5. **Notify (by 72h).** Supervisory authority and, where high risk, affected
+   customers in plain language: what happened, when, what data, what we did,
+   what they should do, who to contact (`support@shipin.co`).
+6. **Rotate and fix.** The credential rotated in step 1 stays rotated. Add the
+   regression test that would have caught it.
+7. **Close the entry** with the notification dates and the fix reference. The
+   register is the evidence of compliance; a closed entry with dates is worth
+   more than a perfect narrative.
+
+Never state in public copy that a breach did not happen, or that data "may have"
+been accessed, before step 3 is complete.

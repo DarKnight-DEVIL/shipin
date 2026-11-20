@@ -239,9 +239,102 @@ export default function PrivacyPolicyPage() {
             </div>
           </section>
 
+          <section id="legal-basis" className="mb-12">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+              5. Legal Basis for Processing
+            </h2>
+            <p className="mb-4">
+              Where data protection law requires a legal basis (the GDPR in the
+              EEA and UK, and India&apos;s Digital Personal Data Protection Act,
+              2023), this is what we rely on for each purpose.
+            </p>
+            <div className="overflow-x-auto my-6">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-800">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Purpose
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Legal basis
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Why
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                  <tr>
+                    <td className="px-4 py-3">Account and sign-in</td>
+                    <td className="px-4 py-3">Contract — Art. 6(1)(b)</td>
+                    <td className="px-4 py-3">
+                      There is no service without an account.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3">Buying, inspecting, shipping</td>
+                    <td className="px-4 py-3">Contract — Art. 6(1)(b)</td>
+                    <td className="px-4 py-3">
+                      Includes sharing the delivery address with the carrier.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3">Payments, refunds, invoices</td>
+                    <td className="px-4 py-3">
+                      Contract + legal obligation — Art. 6(1)(b), (c)
+                    </td>
+                    <td className="px-4 py-3">
+                      Tax and accounting law requires the records.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3">
+                      Fraud prevention, rate limiting, security logs
+                    </td>
+                    <td className="px-4 py-3">
+                      Legitimate interests — Art. 6(1)(f)
+                    </td>
+                    <td className="px-4 py-3">
+                      Keeping the platform and payments safe for everyone.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3">Order and status email</td>
+                    <td className="px-4 py-3">Contract — Art. 6(1)(b)</td>
+                    <td className="px-4 py-3">
+                      You can turn the channel off from any email.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3">WhatsApp status updates</td>
+                    <td className="px-4 py-3">Consent — Art. 6(1)(a)</td>
+                    <td className="px-4 py-3">
+                      Opt-in only, timestamped, revocable in Settings.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3">
+                      Error monitoring and aggregate analytics
+                    </td>
+                    <td className="px-4 py-3">
+                      Legitimate interests — Art. 6(1)(f)
+                    </td>
+                    <td className="px-4 py-3">
+                      Cookieless and aggregated; no advertising profile.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p>
+              We do not make automated decisions that produce legal effects about
+              you, and we do not sell personal data.
+            </p>
+          </section>
+
           <section id="analytics" className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-              5. Analytics
+              6. Analytics
             </h2>
             <p className="mb-4">
               We use <strong>Vercel Analytics</strong> and{" "}
@@ -254,7 +347,7 @@ export default function PrivacyPolicyPage() {
 
           <section id="cookies" className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-              6. Cookies
+              7. Cookies
             </h2>
             <p className="mb-4">
               We do not use cookies for tracking, advertising or analytics. The
@@ -271,19 +364,63 @@ export default function PrivacyPolicyPage() {
 
           <section id="data-retention" className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-              7. Data Retention
+              8. Data Retention
             </h2>
+            <div className="overflow-x-auto my-6">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-800">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Record
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Kept for
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                  <tr>
+                    <td className="px-4 py-3">Profile and addresses</td>
+                    <td className="px-4 py-3">
+                      Until you delete your account, then anonymised immediately
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3">Orders, invoices and payment records</td>
+                    <td className="px-4 py-3">8 years (tax and accounting law)</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3">Inspection and packing photos</td>
+                    <td className="px-4 py-3">24 months after delivery</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3">Support conversations</td>
+                    <td className="px-4 py-3">24 months after the ticket closes</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3">Error and security logs</td>
+                    <td className="px-4 py-3">90 days</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3">Backups</td>
+                    <td className="px-4 py-3">
+                      7-day point-in-time recovery, 90-day daily exports
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
             <p className="mb-4">
               We retain your personal data for as long as your account is active
               and as needed to fulfill your orders. Order and payment records
               are retained for legal and tax compliance purposes. You may
-              request deletion of your account data at any time (see Section 9).
+              request deletion of your account data at any time (see Section 10).
             </p>
           </section>
 
           <section id="data-security" className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-              8. Data Security
+              9. Data Security
             </h2>
             <p className="mb-4">
               We take reasonable precautions to protect your data:
@@ -321,7 +458,7 @@ export default function PrivacyPolicyPage() {
 
           <section id="your-rights" className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-              9. Your Rights
+              10. Your Rights
             </h2>
             <p className="mb-4">
               Depending on your location, you may have the right to:
@@ -356,7 +493,7 @@ export default function PrivacyPolicyPage() {
 
           <section id="children" className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-              10. Children
+              11. Children
             </h2>
             <p className="mb-4">
               ShipIN is not intended for users under the age of 18. We do not
@@ -366,7 +503,7 @@ export default function PrivacyPolicyPage() {
 
           <section id="changes" className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-              11. Changes to This Policy
+              12. Changes to This Policy
             </h2>
             <p className="mb-4">
               We may update this Privacy Policy from time to time. We will
@@ -377,7 +514,7 @@ export default function PrivacyPolicyPage() {
 
           <section id="contact" className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-              12. Contact
+              13. Contact
             </h2>
             <p className="mb-4">
               For privacy-related questions, data access requests, or to report
@@ -408,6 +545,99 @@ export default function PrivacyPolicyPage() {
               <br />
               Hours: Mon to Sat, 09:00 to 19:00 IST
             </address>
+          </section>
+        </div>
+      </article>
+
+      <article className="max-w-4xl mx-auto px-4 pb-12 sm:px-6 lg:px-8">
+        <div className="prose prose-lg dark:prose-invert max-w-none">
+          <section id="international-transfers" className="mb-12">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+              14. Where your data is processed
+            </h2>
+            <p className="mb-4">
+              ShipIN is established in India and processes data there, on Google
+              Cloud (Firestore) infrastructure. PayPal, Resend and Vercel process
+              payment, email and hosting data in their own regions under their
+              own terms. If you are in the EEA or the UK and need the transfer
+              mechanism that applies to your order, and the contact details of
+              any representative appointed for your jurisdiction, ask us in
+              writing before you order and we will confirm what is in place.
+            </p>
+          </section>
+
+          <section id="marketing" className="mb-12">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+              15. Marketing and consent
+            </h2>
+            <p className="mb-4">
+              We do not run marketing or promotional email. Every message you
+              receive is transactional: a quote, a payment receipt, a shipping
+              update, a support reply, or a security notice. That is why there
+              is no newsletter toggle in Settings — there is no newsletter.
+            </p>
+            <ul className="list-disc list-inside space-y-2">
+              <li>
+                <strong>Email</strong> is on by default because it carries order
+                status. Every message has a one-click unsubscribe link and
+                <code>List-Unsubscribe</code> headers; unsubscribing switches the
+                channel off until you turn it back on in Settings.
+              </li>
+              <li>
+                <strong>WhatsApp</strong> updates are never on by default. They
+                require an explicit opt-in, which is stored with a consent
+                timestamp, and can be withdrawn at any time.
+              </li>
+              <li>
+                If we ever introduce marketing email, it will be opt-in only and
+                kept separate from transactional mail.
+              </li>
+            </ul>
+          </section>
+
+          <section id="sub-processors" className="mb-12">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+              16. Sub-processors and data processing agreements
+            </h2>
+            <p className="mb-4">
+              The current sub-processor list is published in the
+              <a href="/cookie-policy" className="text-orange-700 dark:text-orange-300 hover:underline">
+                Cookie Policy
+              </a>
+              : Google Firebase, PayPal, Cloudflare, Resend, Vercel, Sentry and
+              Spline. Each is engaged for a specific purpose and receives only
+              the data that purpose needs.
+            </p>
+            <p className="mb-4">
+              Each provider is used under the data processing terms it publishes
+              for its service. If you need the current list, the processing terms
+              on file, or a signed agreement for your own compliance file, email
+              <a href="mailto:support@shipin.co" className="text-orange-700 dark:text-orange-300 hover:underline">
+                support@shipin.co
+              </a>
+              and we will send it.
+            </p>
+          </section>
+
+          <section id="breach" className="mb-12">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+              17. Personal data breaches
+            </h2>
+            <p className="mb-4">
+              Suspected incidents are logged in an internal breach register with
+              a severity, an owner and a timeline. Where a breach is likely to
+              put your rights and freedoms at risk, we notify you without undue
+              delay with what happened, what data was involved and what you
+              should do — and, where the GDPR applies, we notify the competent
+              supervisory authority within 72 hours of becoming aware of it.
+            </p>
+            <p>
+              To report a suspected vulnerability or incident, email
+              <a href="mailto:support@shipin.co" className="text-orange-700 dark:text-orange-300 hover:underline">
+                support@shipin.co
+              </a>
+              .
+            </p>
           </section>
         </div>
       </article>
