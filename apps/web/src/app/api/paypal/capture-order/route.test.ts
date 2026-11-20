@@ -140,6 +140,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.resetModules();
 });
 
 describe("POST /api/paypal/capture-order", () => {

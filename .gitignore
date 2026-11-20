@@ -1,120 +1,30 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Dependencies
+node_modules/
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# Environment variables
+.env*
+.env.example*
 
-# testing
-/coverage
+# Logs
+logs/
+*.log
 
-# next.js
+# Runtime platform
+.DS_Store
+pids/
+*.pid
+*.seed
+
+# Cloudflare Sites
+/.wrangler/state
+/.wrangler/env
+/.vitepress/.vitepress
+
+# Test artifacts
+artifacts/
+
+# Next.js
 /.next/
 /out/
 
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-# The template has placeholders only and documents every required variable.
-!.env.example
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-*.zip
-patch*.js
-fix*.py
-write_emails.js
-
-# agent tooling / scratch artifacts
-.claude/
-.cloud-attachments/
-.freebuff/
-
-# Agent/tooling directories
-.agents/
-.claude/
-.cloud-attachments/
-.freebuff/
-.impeccable/
-.playwright-cli/
-# Playwright run artifacts (reports, traces, failure contexts)
-playwright-report/
-test-results/
-.postman/
-.serena/
-.shots/
-.output/
-
-# Config/UI
-.vscode/
-
-# Build outputs
-.next/
-.vercel/
-node_modules/
-coverage/
-build/
-out/
-
-# Debug/scratch files
-diff_out.txt
-tsc_out.txt
-*.log
-*.tsbuildinfo
-next-env.d.ts
-
-# Temporary fix scripts
-fix-*.js
-fix-*.py
-fix-*.ps1
-restore_env.py
-diagnose*.js
-get-token*.js
-write_emails.js
-patch*.js
-
-# Local lint / audit scratch output
-eslint_*.json
-eslint_*.txt
-*_eslint.json
-lint_*.txt
-build_output.txt
-
-# Local scratch / audit artifacts (kept out of the repo root)
-.scratch/
-write_*.py
-write_*.js
-temp_write.*
-append_test.js
-tsc_*.txt
-test_*.txt
-*_b64.txt
-qp_fix_result.txt
-screenshot*.png
-site-restored.png
-# Local visual-check captures
-screenshots/
-
-# Turborepo local cache
-.turbo/
+# Dependencies
