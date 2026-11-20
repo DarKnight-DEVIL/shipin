@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-/**
+/** 
  * One command for the local E2E suite.
- *
+ * 
  *   npm run test:e2e:local                 # build, serve it, run the public specs
  *   npm run test:e2e:local -- --signed-in  # + Auth emulator, seeded admin, sign-in specs
  *   npm run test:e2e:local -- -g PayPal    # extra args go to `playwright test`
- *
+ * 
  * Why a script instead of a longer npm one-liner:
- *
+ * 
  *   - The specs need a datastore. CI has no Firebase service account and must
  *     not have one, so the server is pointed at the Firestore emulator via
  *     FIRESTORE_EMULATOR_HOST, and `emulators:exec` owns the emulator for
@@ -19,18 +19,19 @@
  *   - The emulator is a Java process. When `java` is missing, the failure
  *     arrives as an opaque "Could not spawn `java -version`", so this checks
  *     first and says what to install.
- *
+ * 
  * `--signed-in` also starts the Auth emulator, seeds an admin account
  * (`scripts/e2e/seed-auth-user.mjs`) and adds signed-in-smoke.spec.ts and
  * mfa-passkey.spec.ts, so the sign-in path is covered without a staging
  * account. It is a superset of the default run — CI calls exactly this mode,
  * so there is one definition of the suite instead of two that can drift.
- *
+ * 
  * App configuration still comes from the environment like every other run:
  * `apps/web/.env.local` (Next loads it) or exported variables. A production
  * server validates its startup variables, so the build and the server must see
  * the same ones — see playwright-test/README.md.
  */
+
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -38,10 +39,9 @@ import path from "node:path";
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const isWindows = process.platform === "win32";
 
-/**
+/** 
  * Run one command line through the platform shell (`/bin/sh -c` on POSIX,
  * `cmd.exe /c` on Windows).
- *
  * A single string, not an argv array: `emulators:exec` takes its script as one
  * quoted argument, and passing that through an argv array makes the CLI split
  * it back into "too many arguments". Quoting here is limited to that one
@@ -98,9 +98,7 @@ if (java.error?.code === "ENOENT" || (java.status ?? 1) !== 0) {
             "  # macOS:         brew install openjdk",
             "  export JAVA_HOME=/usr/lib/jvm/<jdk>",
             '  export PATH="$JAVA_HOME/bin:$PATH"',
-          ]),
-      "",
-      "CI does not need this: ubuntu-latest images ship a JDK.",
+          ])
     ].join("\n")
   );
   process.exit(1);
@@ -136,6 +134,8 @@ const env = {
   // production, so without this every elevation is rejected and the cookie
   // authorizes nothing. E2E only — never set on a deployment.
   MFA_DENYLIST_OPTIONAL: "1",
+  // E2E: tell Next.js the base URL so sitemap.xml uses localhost instead of Vercel.
+  NEXT_PUBLIC_APP_URL: "http://localhost:3000",
 };
 
 if (signedIn) {
