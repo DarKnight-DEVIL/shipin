@@ -26,7 +26,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    isolate: false,
+    isolate: true,
     setupFiles: ["./vitest.setup.ts"],
     // `scripts/**` carries the migration suite; without it the only test for
     // the quote-expiry backfill never ran.
