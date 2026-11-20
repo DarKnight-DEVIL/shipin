@@ -1,21 +1,4 @@
 import { vi, beforeAll, afterAll, afterEach } from "vitest";
-
-// The suite runs with `isolate: false`, so every file in a worker shares one
-// module registry. That is deliberate — it is what lets the shuffle jobs catch
-// state leaking between files — but it also means a module imported by file A is
-// handed to file B already evaluated against A's mocks. A per-test
-// `vi.resetModules()` cannot undo that, because B's static imports ran before
-// its first test: PayPal's capture claim reached from the capture-order route
-// test still held the claim mock from another file's suite and answered
-// "completed", so twenty payment assertions saw a 200 that no code path
-// produced.
-//
-// This setup module is evaluated once per test file, before that file is
-// imported, so clearing the registry here gives every file its own fresh module
-// graph — the one thing isolation used to provide. Everything else the shared
-// registry exposes (globals, spies, timers, DOM) still leaks, so the shuffle
-// jobs keep their teeth.
-vi.resetModules();
 // jest-dom's matchers are only used by the suites that opt into happy-dom.
 // Importing them for every suite made setup the single largest cost of a run
 // (~70ms per file), so they are loaded only where a DOM actually exists.

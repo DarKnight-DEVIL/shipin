@@ -55,7 +55,20 @@ vi.mock("firebase-admin/firestore", () => ({
   Timestamp: { now: () => 0 },
 }));
 
-import { POST } from "./route";
+/**
+ * Imported per test, after `vi.resetModules()` — the pattern
+ * `src/lib/appCheck.test.ts` uses.
+ *
+ * The suite runs with `isolate: false`, so one module registry is shared by
+ * every file in a worker: a module another file already imported arrives bound
+ * to *that* file's mocks. That is exactly how the nightly shuffle failed here —
+ * the route's capture claim kept a stale transaction mock answering
+ * "completed", so twenty payment assertions saw a 200 that no code path
+ * produced. A reset plus a dynamic import gives this file its own module graph;
+ * a static import cannot, because it is evaluated before this file's first
+ * test.
+ */
+let POST: typeof import("./route").POST;
 
 const request = (body: unknown) =>
   new NextRequest("http://localhost/api/paypal/capture-order", {
@@ -104,7 +117,10 @@ const captureOk = {
   ],
 };
 
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules();
+  ({ POST } = await import("./route"));
+
   mocks.requireAuthWithProfile.mockReset().mockResolvedValue({
     token: { uid: "user-1" },
     profile: { uid: "user-1", role: "customer" },

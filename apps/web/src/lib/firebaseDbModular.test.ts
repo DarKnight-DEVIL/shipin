@@ -19,6 +19,12 @@ vi.unmock("@/lib/firebaseDb");
 
 describe("lazy db handle with the real modular API", () => {
   it("is accepted by doc() and collection()", async () => {
+    // `vi.unmock` only stops the next import from being substituted; with
+    // `isolate: false` a worker-shared registry can still hand back the mocked
+    // module another file already loaded. Resetting first is what makes the
+    // unmock observable, and it is how this file failed a nightly shuffle.
+    vi.resetModules();
+
     const { doc, collection } = await import("firebase/firestore");
     const { db } = await import("@/lib/firebaseDb");
 

@@ -13,7 +13,14 @@ vi.mock("@/lib/paypal", () => ({
 }));
 vi.mock("@/config/env", () => ({ serverEnv: mocks.env }));
 
-import { createPayPalOrder } from "./createPayPalOrder";
+/**
+ * Imported per test, after `vi.resetModules()`: with `isolate: false` one module
+ * registry is shared by every file in a worker, so this module (and its env /
+ * transport imports) can arrive already evaluated against another file's mocks.
+ * That is how this file failed a nightly shuffle — the sandbox-host fallback saw
+ * an env it never set. Same pattern as `src/lib/appCheck.test.ts`.
+ */
+let createPayPalOrder: typeof import("./createPayPalOrder").createPayPalOrder;
 
 /**
  * The transport is injected rather than mocked at `@/lib/http`: the suite runs
@@ -32,7 +39,10 @@ const sentBody = () => JSON.parse(mocks.fetchWithTimeout.mock.calls[0][1].body);
 
 let consoleError: ReturnType<typeof vi.spyOn>;
 
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules();
+  ({ createPayPalOrder } = await import("./createPayPalOrder"));
+
   mocks.env.PAYPAL_API_URL = "https://paypal.test";
   mocks.fetchWithTimeout.mockReset().mockResolvedValue({
     ok: true,

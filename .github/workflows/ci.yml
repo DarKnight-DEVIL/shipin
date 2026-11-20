@@ -337,6 +337,13 @@ jobs:
   #
   # Reproduce a failure locally with the seed Vitest prints in its output:
   #   npm run test:shuffle -- --sequence.seed=<seed>
+  #
+  # Fix the FILE that fails, not the shared setup: `vi.resetModules()` plus
+  # `await import()` of the module under test in `beforeEach`, as
+  # src/lib/appCheck.test.ts does. A registry reset in vitest.setup.ts would
+  # hand every file a private module graph and quietly delete the class of leak
+  # this job exists to catch — it did briefly, and the shuffle guarantee was not
+  # true while it was there.
   test-order-independence:
     name: Test Order Independence
     runs-on: ubuntu-latest
