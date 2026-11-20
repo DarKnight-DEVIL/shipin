@@ -3,9 +3,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { withErrorHandler } from "@/utils/errors";
 import { isQuoteExpired } from "@/features/requests/services/quoteExpiry";
+import { verifyCronRequest } from "@/lib/cronAuth";
 import { createNotification } from "@/features/notifications/services/server";
 import type { Request } from "@/types/request";
-import crypto from "crypto";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -25,14 +25,12 @@ const SWEEP_LIMIT = 200;
  * Cron-triggered (via GitHub Actions) endpoint that marks every quote past its
  * deadline as expired and notifies the customer.
  *
- * Authenticated by a shared CRON_SECRET Bearer token + timestamp + HMAC signature.
+ * Authenticated by a timestamp + HMAC signature made with CRON_SECRET, verified
+ * by the shared helper in `@/lib/cronAuth` (also used by the retention purge).
  * The timestamp prevents replay attacks (requests older than 5 min are rejected).
- * The HMAC proves the caller knows the secret without sending it in plaintext.
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
   const cronSecret = process.env.CRON_SECRET;
-  const timestampHeader = request.headers.get("x-cron-timestamp");
-  const signatureHeader = request.headers.get("x-cron-signature");
 
   if (!cronSecret) {
     console.error("[Cron] CRON_SECRET not configured");
@@ -42,39 +40,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  // Authorization: timestamp + HMAC (new).
-  // Reject a timestamp outside the replay window (5 min behind, 1 min ahead
-  // to absorb clock skew between GitHub Actions and the deployment).
-  let isAuthValid = false;
-
-  if (timestampHeader && signatureHeader) {
-    // Reject a timestamp outside the replay window (5 min behind, 1 min ahead
-    // to absorb clock skew between GitHub Actions and the deployment).
-    const requestTime = parseInt(timestampHeader, 10);
-    const now = Date.now();
-    if (
-      !isNaN(requestTime) &&
-      now - requestTime <= 5 * 60 * 1000 &&
-      requestTime <= now + 60 * 1000
-    ) {
-      const body = await request.text();
-      const expectedSignature = crypto
-        .createHmac("sha256", cronSecret)
-        .update(`${timestampHeader}|${body}`)
-        .digest("hex");
-
-      const providedSig = Buffer.from(signatureHeader, "hex");
-      const expectedSig = Buffer.from(expectedSignature, "hex");
-      if (
-        providedSig.length === expectedSig.length &&
-        crypto.timingSafeEqual(providedSig, expectedSig)
-      ) {
-        isAuthValid = true;
-      }
-    }
-  }
-
-  if (!isAuthValid) {
+  // Timestamp + HMAC, with a replay window and a small clock-skew allowance.
+  if (!(await verifyCronRequest(request, cronSecret))) {
     return NextResponse.json(
       { success: false, error: "Unauthorized.", code: "UNAUTHORIZED" },
       { status: 401, headers: NO_STORE }

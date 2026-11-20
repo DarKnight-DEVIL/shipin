@@ -1,0 +1,68 @@
+name: Retention Purge Daily Cron
+
+on:
+  schedule:
+    # 02:40 UTC daily — after the nightly test job, before business hours in
+    # Mumbai, so a failed purge is visible before anyone starts work.
+    - cron: "40 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  trigger-retention-purge:
+    name: Trigger Retention Purge
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify required secrets
+        env:
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          missing=""
+
+          if [ -z "$PRODUCTION_URL" ]; then missing="$missing PRODUCTION_URL"; fi
+          if [ -z "$CRON_SECRET" ]; then missing="$missing CRON_SECRET"; fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. The retention purge cannot run, so expired photos and support tickets stay stored."
+            exit 1
+          fi
+
+          case "$PRODUCTION_URL" in
+            https://*) ;;
+            *)
+              echo "::error::PRODUCTION_URL must be an https:// URL (got a value without that scheme)."
+              exit 1
+              ;;
+          esac
+
+      - name: Call retention purge endpoint
+        run: |
+          TIMESTAMP=$(date +%s%3N)
+          PAYLOAD=""
+          SIGNATURE=$(echo -n "${TIMESTAMP}|${PAYLOAD}" | openssl dgst -sha256 -hmac "${{ secrets.CRON_SECRET }}" | sed "s/^.* //")
+          curl --fail-with-body -sS -X POST \
+            -H "x-cron-timestamp: $TIMESTAMP" \
+            -H "x-cron-signature: $SIGNATURE" \
+            "${{ secrets.PRODUCTION_URL }}/api/admin/compliance/retention/purge"
+
+      - name: Report a failed run
+        if: failure()
+        run: |
+          {
+            echo "### Retention purge failed"
+            echo ""
+            echo "Expired inspection photos and resolved support tickets were not"
+            echo "deleted on this run, so the site is retaining data longer than the"
+            echo "Privacy Policy (§8) states. Scheduled runs can be delayed or skipped"
+            echo "by GitHub — check the run history before assuming the endpoint is down."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "${{ secrets.ALERT_WEBHOOK_URL }}" ]; then
+            curl --fail-with-body -sS -X POST \
+              -H 'Content-Type: application/json' \
+              -d '{"text":"ShipIN: the daily retention purge failed."}' \
+              "${{ secrets.ALERT_WEBHOOK_URL }}" || true
+          else
+            echo "::error::ALERT_WEBHOOK_URL is not set, so this failure reached nobody. Configure the repository secret (see DEPLOYMENT.md -> Cron alerting)."
+          fi

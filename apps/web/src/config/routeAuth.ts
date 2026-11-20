@@ -52,6 +52,11 @@ export const ROUTE_AUTH_CLASSIFICATION: Record<string, RouteAuth> = {
   // "/api/notifications" prefix below, the proxy answered every unsubscribe
   // click with 401 before the handler could verify the signature.
   "/api/notifications/unsubscribe": "public",
+  // Daily retention purge. Like the quote sweep it authenticates itself with a
+  // timestamp + HMAC signed with CRON_SECRET; GitHub Actions has no Firebase
+  // session, so under the "/api/admin" prefix the proxy would otherwise answer
+  // every run with 401 before the signature is checked.
+  "/api/admin/compliance/retention/purge": "public",
 
   // --- Customer ---
   "/api/profile": "customer",

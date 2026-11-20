@@ -416,6 +416,16 @@ export default function PrivacyPolicyPage() {
               are retained for legal and tax compliance purposes. You may
               request deletion of your account data at any time (see Section 10).
             </p>
+            <p className="mb-4">
+              Two of these periods are enforced by an automated daily job rather
+              than left to routine cleanup: photos are deleted from storage once
+              their 24-month post-delivery window closes, and a support ticket is
+              deleted with its messages once it has been resolved for two years. The
+              job deliberately does not touch orders, invoices or payment
+              records, which the eight-year legal period requires us to keep. Log
+              and backup retention is configured at the providers listed in
+              Section 16.
+            </p>
           </section>
 
           <section id="data-security" className="mb-12">

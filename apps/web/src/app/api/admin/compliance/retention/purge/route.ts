@@ -1,0 +1,240 @@
+import { NextRequest, NextResponse } from "next/server";
+import { FieldValue } from "firebase-admin/firestore";
+
+import { adminDb } from "@/lib/firebaseAdmin";
+import { withErrorHandler } from "@/utils/errors";
+import { verifyCronRequest } from "@/lib/cronAuth";
+import { deleteR2Objects } from "@/lib/r2Delete";
+import {
+  PHOTO_RETENTION_MONTHS,
+  SUPPORT_RETENTION_MONTHS,
+  collectPhotoKeys,
+  isPastRetention,
+  retentionCutoff,
+} from "@/lib/compliance/retention";
+
+/**
+ * POST /api/admin/compliance/retention/purge
+ *
+ * The scheduled half of Privacy Policy §8. Sessions were the easy part; this is
+ * what makes "inspection photos: 24 months after delivery" and "support
+ * conversations: 24 months after the ticket closes" true instead of aspirational.
+ *
+ * Runs daily from `.github/workflows/retention-purge.yml`, authenticated with the
+ * same timestamp + HMAC scheme as the quote sweep (`CRON_SECRET`).
+ *
+ * Deliberately NOT purged here:
+ * - orders, invoices and payment records, which §8 keeps for 8 years;
+ * - anything with an unparseable timestamp, because guessing would delete live
+ *   data on a parse failure.
+ *
+ * Paging: each run processes one bounded page and stores a cursor in
+ * `system/retention`, so a scan that meets fifty photo-less requests does not get
+ * stuck re-reading them forever. When the page is short the cursor resets, which
+ * starts the next pass from the oldest record again.
+ */
+
+const NO_STORE = { "Cache-Control": "no-store" } as const;
+
+/** Documents handled per collection per run. Kept small: one run is one request. */
+const PAGE_SIZE = 50;
+
+interface RetentionState {
+  photosCursor?: unknown;
+  supportCursor?: unknown;
+}
+
+interface PhotoPurgeResult {
+  scanned: number;
+  cleared: number;
+  objectsDeleted: number;
+  objectsFailed: number;
+  passComplete: boolean;
+  nextCursor?: unknown;
+}
+
+interface SupportPurgeResult {
+  scanned: number;
+  ticketsDeleted: number;
+  messagesDeleted: number;
+  passComplete: boolean;
+  nextCursor?: unknown;
+}
+
+function unauthorized() {
+  return NextResponse.json(
+    { success: false, error: "Unauthorized.", code: "UNAUTHORIZED" },
+    { status: 401, headers: NO_STORE }
+  );
+}
+
+async function readState(): Promise<RetentionState> {
+  const snapshot = await adminDb.collection("system").doc("retention").get();
+  return snapshot.exists ? (snapshot.data() as RetentionState) : {};
+}
+
+async function purgeExpiredPhotos(
+  now: Date,
+  cursor: unknown
+): Promise<PhotoPurgeResult> {
+  const cutoff = retentionCutoff(PHOTO_RETENTION_MONTHS, now);
+
+  // One inequality field, ordered by the same field: uses the automatic
+  // single-field index, so this needs no composite index in
+  // firestore.indexes.json. Documents without `deliveredAt` are not returned,
+  // which is exactly right — nothing is delivered, so no retention clock applies.
+  let query = adminDb
+    .collection("requests")
+    .where("deliveredAt", "<=", cutoff) as FirebaseQuery;
+
+  query = query.orderBy("deliveredAt", "asc").limit(PAGE_SIZE);
+  if (cursor) query = query.startAfter(cursor);
+
+  const snapshot = await query.get();
+
+  const result: PhotoPurgeResult = {
+    scanned: snapshot.size,
+    cleared: 0,
+    objectsDeleted: 0,
+    objectsFailed: 0,
+    passComplete: snapshot.size < PAGE_SIZE,
+    // Advance past the last row of this page, not the cursor that started it:
+    // storing the incoming cursor would make every full page repeat forever.
+    nextCursor: snapshot.docs.at(-1)?.data().deliveredAt,
+  };
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data() as { warehouse?: unknown };
+    const keys = collectPhotoKeys(data.warehouse);
+    if (keys.length === 0) continue;
+
+    const outcome = await deleteR2Objects(keys);
+    result.objectsDeleted += outcome.deleted;
+    result.objectsFailed += outcome.failed;
+
+    // Clear the pointers only when storage confirmed every delete. Clearing them
+    // after a partial failure would strand the objects: nothing would reference
+    // them, so no later run could retry.
+    if (outcome.failed > 0) continue;
+
+    await doc.ref.update({
+      "warehouse.inspectionPhotos": [],
+      "warehouse.photos": [],
+      "warehouse.shippingLabel": null,
+      "retention.photosPurgedAt": FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    result.cleared++;
+  }
+
+  return result;
+}
+
+async function purgeExpiredSupport(
+  now: Date,
+  cursor: unknown
+): Promise<SupportPurgeResult> {
+  const cutoff = retentionCutoff(SUPPORT_RETENTION_MONTHS, now);
+
+  // Range on `resolvedAt`, so open tickets (no resolvedAt) never match. The
+  // status check below is belt-and-braces: a ticket that was reopened keeps its
+  // old resolvedAt, and its messages are evidence until it is resolved again.
+  let query = adminDb
+    .collection("supportTickets")
+    .where("resolvedAt", "<=", cutoff) as FirebaseQuery;
+
+  query = query.orderBy("resolvedAt", "asc").limit(PAGE_SIZE);
+  if (cursor) query = query.startAfter(cursor);
+
+  const snapshot = await query.get();
+
+  const result: SupportPurgeResult = {
+    scanned: snapshot.size,
+    ticketsDeleted: 0,
+    messagesDeleted: 0,
+    passComplete: snapshot.size < PAGE_SIZE,
+    nextCursor: snapshot.docs.at(-1)?.data().resolvedAt,
+  };
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data() as { status?: string; resolvedAt?: unknown };
+    if (data.status !== "resolved") continue;
+    if (!isPastRetention(data.resolvedAt, SUPPORT_RETENTION_MONTHS, now)) continue;
+
+    const messages = await adminDb
+      .collection("supportMessages")
+      .where("ticketId", "==", doc.id)
+      .get();
+
+    for (const message of messages.docs) {
+      await message.ref.delete();
+      result.messagesDeleted++;
+    }
+
+    await doc.ref.delete();
+    result.ticketsDeleted++;
+  }
+
+  return result;
+}
+
+export const POST = withErrorHandler(async (request: NextRequest) => {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    console.error("[Cron] CRON_SECRET not configured; retention purge refused.");
+    return NextResponse.json(
+      { success: false, error: "Cron not configured.", code: "CONFIG_ERROR" },
+      { status: 500, headers: NO_STORE }
+    );
+  }
+
+  if (!(await verifyCronRequest(request, cronSecret))) return unauthorized();
+
+  const now = new Date();
+  const state = await readState();
+
+  const photos = await purgeExpiredPhotos(now, state.photosCursor);
+  const support = await purgeExpiredSupport(now, state.supportCursor);
+
+  await adminDb
+    .collection("system")
+    .doc("retention")
+    .set(
+      {
+        photosCursor: photos.passComplete
+          ? FieldValue.delete()
+          : (photos.nextCursor ?? null),
+        supportCursor: support.passComplete
+          ? FieldValue.delete()
+          : (support.nextCursor ?? null),
+        lastRunAt: FieldValue.serverTimestamp(),
+        lastRun: { photos, support },
+      },
+      { merge: true }
+    );
+
+  return NextResponse.json(
+    { success: true, photos, support, timestamp: now.toISOString() },
+    { status: 200, headers: NO_STORE }
+  );
+});
+
+/**
+ * Minimal shape of the fluent Firestore query used above, so the two `as` casts
+ * stay honest without importing the admin SDK's full generic types.
+ */
+interface FirebaseQuery {
+  where(field: string, op: string, value: unknown): FirebaseQuery;
+  orderBy(field: string, direction: "asc" | "desc"): FirebaseQuery;
+  limit(count: number): FirebaseQuery;
+  startAfter(value: unknown): FirebaseQuery;
+  get(): Promise<{
+    size: number;
+    docs: Array<{
+      id: string;
+      data(): Record<string, unknown>;
+      ref: { update(v: object): Promise<unknown>; delete(): Promise<unknown> };
+    }>;
+  }>;
+}

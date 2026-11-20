@@ -385,3 +385,39 @@ and to affected Data Principals.
 
 Never state in public copy that a breach did not happen, or that data "may have"
 been accessed, before step 3 is complete.
+
+## 7. Retention purge (Privacy Policy §8)
+
+`POST /api/admin/compliance/retention/purge` enforces the retention table on the
+privacy page. Before this existed the periods were published but nothing applied
+them: every inspection photo and support transcript was kept forever.
+
+- **Schedule:** `.github/workflows/retention-purge.yml`, daily at 02:40 UTC.
+  Same `CRON_SECRET` timestamp + HMAC scheme as the quote sweep; the endpoint is
+  `public` in `routeAuth.ts` because GitHub Actions has no Firebase session.
+- **Deletes:** R2 objects referenced by `warehouse.inspectionPhotos`,
+  `warehouse.photos` and `warehouse.shippingLabel` for requests delivered more
+  than 24 months ago (then clears those pointers and stamps
+  `retention.photosPurgedAt`); `supportTickets` documents — with their
+  `supportMessages` — resolved more than 24 months ago.
+- **Never deletes:** orders, invoices or payment records (8-year legal period),
+  a reopened ticket (`status` is not `resolved`), or anything whose timestamp
+  cannot be parsed. A parse failure must not become a deletion.
+- **Storage failures:** if R2 reports a per-key error, the pointers stay, so the
+  next run retries instead of leaving unreferenced objects behind.
+- **Paging:** each run handles 50 documents per collection and keeps its position
+  in `system/retention`. When a page comes back short the cursor is removed, so
+  the next run starts a fresh pass from the oldest record.
+
+Manual check against production:
+
+```bash
+TS=$(date +%s%3N)
+SIG=$(printf '%s|' "$TS" | openssl dgst -sha256 -hmac "$CRON_SECRET" | sed 's/^.* //')
+curl -sS -X POST -H "x-cron-timestamp: $TS" -H "x-cron-signature: $SIG" \
+  "$PRODUCTION_URL/api/admin/compliance/retention/purge"
+```
+
+The response reports `photos` and `support` counts plus `passComplete`. An empty
+run with `scanned: 0` on both is the healthy steady state; a run where
+`objectsFailed` keeps growing means R2 credentials or bucket policy are wrong.
