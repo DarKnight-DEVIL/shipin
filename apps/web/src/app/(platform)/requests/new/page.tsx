@@ -441,6 +441,19 @@ export default function NewRequestPage() {
                 </div>
               </dl>
 
+              {/*
+                Consent at the point of collection, not buried in a policy: what
+                the customer is confirming about the goods, and what this form's
+                data is used for. Kept next to the submit button on purpose.
+              */}
+              <p className="mt-4 text-[11px] leading-5 text-[var(--muted)]">
+                By submitting you confirm the items are legal to buy and export,
+                and accept our <a href="/terms">Terms of Service</a>,{" "}
+                <a href="/refund-policy">Refund Policy</a> and{" "}
+                <a href="/privacy-policy">Privacy Policy</a>. The product links
+                and address are used only to buy, inspect and ship this order.
+              </p>
+
               <div className="app-notice-warning mt-4 flex items-start gap-2 rounded-lg px-3 py-2.5 text-[11px] leading-5 text-amber-800 dark:text-amber-300">
                 <AlertTriangle size={13} className="mt-0.5 shrink-0" />
                 <span>Requests lock after submit. Changes need support.</span>

@@ -34,6 +34,21 @@ const ROUTE_SUMMARY: Record<
     summary:
       "Eligibility, quotes and payment, shipping and customs duties, restricted items, liability and governing law.",
   },
+  "/refund-policy": {
+    title: "Refund & Cancellation Policy",
+    summary:
+      "Cancellation before and after procurement, refund methods and timing, damaged-item claims and what is not refundable.",
+  },
+  "/cookie-policy": {
+    title: "Cookie Policy",
+    summary:
+      "The single cookie ShipIN sets, the cookieless analytics used, and every service that receives customer data.",
+  },
+  "/licences": {
+    title: "Fonts, Icons and Image Licences",
+    summary:
+      "Open-source licences for the typefaces and icon sets, and the provenance of the site's imagery.",
+  },
 };
 
 export function buildLlmsTxt(): string {

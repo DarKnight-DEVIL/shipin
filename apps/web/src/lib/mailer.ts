@@ -36,6 +36,11 @@ export interface SendMailOptions {
   html: string;
   text?: string;
   from?: string;
+  /**
+   * Extra MIME headers, e.g. `List-Unsubscribe`. Transactional mail needs them
+   * so a mail client can offer its own unsubscribe button.
+   */
+  headers?: Record<string, string>;
 }
 
 export async function sendMail({
@@ -44,6 +49,7 @@ export async function sendMail({
   html,
   text,
   from,
+  headers,
 }: SendMailOptions) {
   // Lazy-load env vars on first send (bypasses build-time static analysis).
   // Gated on `initialized` rather than on `resend`: with SMTP only, `resend`
@@ -98,6 +104,7 @@ export async function sendMail({
         subject,
         html,
         text,
+        ...(headers ? { headers } : {}),
       });
 
       if (error) {
@@ -143,6 +150,7 @@ export async function sendMail({
       subject,
       html,
       text,
+      ...(headers ? { headers } : {}),
     });
 
     return { id: info.messageId, provider: "smtp" };

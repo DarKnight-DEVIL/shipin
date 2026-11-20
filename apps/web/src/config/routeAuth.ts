@@ -46,6 +46,12 @@ export const ROUTE_AUTH_CLASSIFICATION: Record<string, RouteAuth> = {
   // rate-limiting it. An exact entry, so the admin prefix still covers every
   // other route below it.
   "/api/admin/requests/quotes/expire": "public",
+  // One-click email unsubscribe. The person clicking a link in their inbox has
+  // no session by definition; the signed token in the URL authorises exactly
+  // one action (turn email off for the account it names). Under the
+  // "/api/notifications" prefix below, the proxy answered every unsubscribe
+  // click with 401 before the handler could verify the signature.
+  "/api/notifications/unsubscribe": "public",
 
   // --- Customer ---
   "/api/profile": "customer",

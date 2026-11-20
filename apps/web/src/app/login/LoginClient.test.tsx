@@ -186,6 +186,10 @@ function fillRegisterForm(password: string, email = "new@example.com") {
   fireEvent.change(screen.getByLabelText("Password"), {
     target: { value: password },
   });
+  // Registration requires an explicit 18+ / policy acceptance. A real browser
+  // refuses to submit the form until it is ticked, so the helper ticks it just
+  // as a person would; the assertions in these tests are about password rules.
+  fireEvent.click(screen.getByRole("checkbox"));
 }
 
 function submitRegisterForm() {

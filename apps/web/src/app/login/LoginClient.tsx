@@ -83,6 +83,14 @@ export default function LoginClient() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isRegister, setIsRegister] = useState(false);
+  /**
+   * Explicit 18+ and policy acceptance, required to create an account. The
+   * previous copy said "by creating an account you agree" with no action, which
+   * is not consent, and nothing anywhere asked the customer's age — while the
+   * Privacy Policy says the service is 18+ and the DPDP age checks expect an
+   * adult.
+   */
+  const [acceptedPolicies, setAcceptedPolicies] = useState(false);
   const [formError, setFormError] = useState("");
   // Optional documentation link rendered under the inline error, for
   // failures a user cannot fix from this page.
@@ -592,6 +600,12 @@ export default function LoginClient() {
                 className="login__email-form"
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (isRegister && !acceptedPolicies) {
+                    setFormError(
+                      "Confirm you are 18 or older and accept the Terms, Privacy Policy and Refund Policy."
+                    );
+                    return;
+                  }
                   handleEmailAuth();
                 }}
               >
@@ -629,6 +643,24 @@ export default function LoginClient() {
                   />
                 </label>
 
+                {isRegister && (
+                  <label className="login__consent">
+                    <input
+                      type="checkbox"
+                      checked={acceptedPolicies}
+                      onChange={(e) => setAcceptedPolicies(e.target.checked)}
+                      disabled={loading}
+                      required
+                    />
+                    <span>
+                      I am 18 or older and I accept the{" "}
+                      <a href="/terms">Terms of Service</a>,{" "}
+                      <a href="/privacy-policy">Privacy Policy</a> and{" "}
+                      <a href="/refund-policy">Refund Policy</a>.
+                    </span>
+                  </label>
+                )}
+
                 <button
                   type="submit"
                   className="login__google"
@@ -650,8 +682,8 @@ export default function LoginClient() {
                 <p className="login__terms">
                   {isRegister ? (
                     <>
-                      By creating an account you agree to ShipIN&apos;s terms of
-                      service.
+                      We ask for a name and email only. You can delete your
+                      account and data at any time under Settings → Your data.
                     </>
                   ) : (
                     <>
@@ -786,7 +818,10 @@ export default function LoginClient() {
               </button>
 
               <p className="login__terms">
-                By continuing, you agree to ShipIN&apos;s terms of service.
+                By continuing you confirm you are 18 or older and agree to our{" "}
+                <a href="/terms">terms of service</a>,{" "}
+                <a href="/privacy-policy">privacy policy</a> and{" "}
+                <a href="/refund-policy">refund policy</a>.
               </p>
 
               <p className="login__switch">

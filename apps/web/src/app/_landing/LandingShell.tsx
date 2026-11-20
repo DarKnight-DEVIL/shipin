@@ -2,6 +2,7 @@
 import Link from "next/link";
 
 import StickyMobileCTA from "@/components/StickyMobileCTA";
+import CookieSettingsButton from "@/components/CookieSettingsButton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bricolage_Grotesque } from "next/font/google";
 import { onAuthStateChanged } from "firebase/auth";
@@ -42,7 +43,7 @@ const plans: Plan[] = [
     code: "Tier 01",
     name: "Standard",
     price: "$0",
-    unit: "per request",
+    unit: "service fee per request",
     description: "For a first order or a single item you cannot get shipped.",
     features: [
       "Standard inspection at the hub",
@@ -57,7 +58,7 @@ const plans: Plan[] = [
     code: "Tier 02",
     name: "Express",
     price: "$9",
-    unit: "per request",
+    unit: "service fee per request",
     description: "For launches, samples and anything with a date attached.",
     features: [
       "Priority queue at every checkpoint",
@@ -111,26 +112,33 @@ const marketTicker = [
   "São Paulo",
 ];
 
+/*
+ * These were invented statistics ("42 corridors" against six published lanes,
+ * "6.2 day median", "40% freight saved", "99.2% manifest accuracy", each
+ * stamped "last quarter") with nothing behind them. A dashboard cannot show
+ * four measured numbers nobody measured, so these state what the page itself
+ * can prove: the lanes it lists, their published transit, and the pricing rules.
+ */
 const metrics = [
   {
-    value: "42",
-    label: "Shipping corridors",
-    detail: "Direct lanes from the Mumbai hub to six continents.",
+    value: "6",
+    label: "Published corridors",
+    detail: "Mumbai lanes listed below, each with its own cut-off days.",
   },
   {
-    value: "6.2",
-    label: "Median transit",
-    detail: "Door to door, customs cleared, last quarter.",
+    value: "3–10",
+    label: "Transit, in days",
+    detail: "Door to door per published lane, excluding customs holds.",
   },
   {
-    value: "40%",
-    label: "Freight saved",
-    detail: "Average reduction after consolidation and repacking.",
+    value: "1",
+    label: "Quote before purchase",
+    detail: "Product, freight, service fee and duties itemised before you approve.",
   },
   {
-    value: "99.2%",
-    label: "Manifest accuracy",
-    detail: "Units matched to the photo set before export.",
+    value: "0",
+    label: "Subscriptions",
+    detail: "Pay per request. Nothing recurring, nothing auto-renewed.",
   },
 ];
 
@@ -190,7 +198,7 @@ const faqs = [
   {
     question: "How long does a request take?",
     answer:
-      "Median door to door is 6.2 days across our corridors. A quote is usually back within one business day, and inspection happens the day your parcel reaches the hub.",
+      "Published lane transit is 3 to 10 days door to door; the corridor table above lists each lane, and customs holds add time on top. A quote is usually back within one business day, and inspection happens the day your parcel reaches the hub.",
   },
 ];
 
@@ -972,8 +980,8 @@ export default function Home() {
                 </ol>
 
                 <p className="telemetry__foot">
-                  <span>Sample manifest</span>
-                  <span>Updated 12s ago</span>
+                  <span>Illustrative example</span>
+                  <span>Not a live shipment</span>
                 </p>
               </div>
             </div>
@@ -1002,7 +1010,7 @@ export default function Home() {
                   <div className="plan__head">
                     <span className="plan__code">{plan.code}</span>
                     {plan.featured && (
-                      <span className="chip chip--outline">Most chosen</span>
+                      <span className="chip chip--outline">Time-critical</span>
                     )}
                   </div>
                   <h3 className="plan__name">{plan.name}</h3>
@@ -1040,9 +1048,14 @@ export default function Home() {
 
             <div className="pricing__note">
               <span>
-                Duties, taxes and freight are quoted before you approve.
+                Every quote itemises product cost, domestic shipping,
+                international freight, the service fee and duties before you
+                approve.
               </span>
-              <span>Cancel free before procurement starts.</span>
+              <span>
+                Cancel free before procurement starts — see the{" "}
+                <a href="/refund-policy">Refund Policy</a>.
+              </span>
             </div>
           </div>
         </section>
@@ -1162,6 +1175,9 @@ export default function Home() {
                 <li>
                   <a href="#faq">FAQ</a>
                 </li>
+                <li>
+                  <Link href="/track">Track a shipment</Link>
+                </li>
               </ul>
             </div>
 
@@ -1194,6 +1210,16 @@ export default function Home() {
             <a href="/terms" className="footer__link">
               Terms of Service
             </a>
+            <a href="/refund-policy" className="footer__link">
+              Refund Policy
+            </a>
+            <a href="/cookie-policy" className="footer__link">
+              Cookie Policy
+            </a>
+            <a href="/licences" className="footer__link">
+              Licences
+            </a>
+            <CookieSettingsButton className="footer__link" />
           </div>
         </div>
       </footer>

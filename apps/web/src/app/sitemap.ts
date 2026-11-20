@@ -31,6 +31,21 @@ const ROUTE_META: Record<
     priority: 0.7,
     lastModified: "2026-09-01",
   },
+  "/refund-policy": {
+    changeFrequency: "monthly",
+    priority: 0.6,
+    lastModified: "2026-11-20",
+  },
+  "/cookie-policy": {
+    changeFrequency: "monthly",
+    priority: 0.6,
+    lastModified: "2026-11-20",
+  },
+  "/licences": {
+    changeFrequency: "yearly",
+    priority: 0.4,
+    lastModified: "2026-11-20",
+  },
 };
 
 /**

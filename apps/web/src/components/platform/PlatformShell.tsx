@@ -66,6 +66,14 @@ export default function PlatformShell({
     <main
       className={`shipin-app ${display.variable} min-h-screen bg-[var(--background)] text-[var(--foreground)]`}
     >
+      {/* Keyboard users land here first and can jump past the sidebar, which is
+          otherwise ~20 tab stops on every signed-in page. */}
+      <a
+        href="#platform-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-[var(--card)] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)]"
+      >
+        Skip to content
+      </a>
       <Sidebar
         pathname={pathname}
         unreadCount={unreadCount}
@@ -76,7 +84,11 @@ export default function PlatformShell({
         onCloseMobile={() => setMobileOpen(false)}
         onLogout={handleLogout}
       />
-      <section className="min-h-screen md:pl-[248px]">
+      <section
+        id="platform-content"
+        tabIndex={-1}
+        className="min-h-screen md:pl-[248px]"
+      >
         <div className="shipin-page">{children}</div>
       </section>
     </main>

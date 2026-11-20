@@ -25,6 +25,9 @@ export const INDEXABLE_ROUTES = [
   "/track",
   "/privacy-policy",
   "/terms",
+  "/refund-policy",
+  "/cookie-policy",
+  "/licences",
 ] as const;
 
 export type IndexableRoute = (typeof INDEXABLE_ROUTES)[number];

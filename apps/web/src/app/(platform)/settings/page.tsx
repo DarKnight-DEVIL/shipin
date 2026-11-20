@@ -70,12 +70,26 @@ const SecuritySection = dynamic(
   }
 );
 
+const DataPrivacySection = dynamic(
+  () =>
+    import("@/components/settings/DataPrivacySection").then(
+      (mod) => mod.default
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-40 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
+);
+
 const SECTIONS = [
   ["account", "Account"],
   ["security", "Security"],
   ["appearance", "Appearance"],
   ["dashboard", "Dashboard"],
   ["channels", "Notifications"],
+  ["privacy", "Your data"],
 ] as const;
 
 export default function SettingsPage() {
@@ -128,6 +142,8 @@ export default function SettingsPage() {
           <DashboardMetricsSection settings={dashboardSettings} />
 
           <NotificationsSettings settings={notificationSettings} />
+
+          <DataPrivacySection />
         </div>
       </div>
     </div>

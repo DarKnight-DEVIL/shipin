@@ -385,7 +385,7 @@ export default function PrivacyPolicyPage() {
               dashboard or email us at{" "}
               <a
                 href="mailto:support@shipin.co"
-                className="text-orange-600 dark:text-orange-400 hover:underline"
+                className="text-orange-700 dark:text-orange-300 hover:underline"
               >
                 support@shipin.co
               </a>
@@ -401,7 +401,7 @@ export default function PrivacyPolicyPage() {
               Phone:{" "}
               <a
                 href="tel:+912268234567"
-                className="text-orange-600 dark:text-orange-400 hover:underline"
+                className="text-orange-700 dark:text-orange-300 hover:underline"
               >
                 +91 22 6823 4567
               </a>
@@ -420,28 +420,46 @@ export default function PrivacyPolicyPage() {
           >
             <Link
               href="/"
-              className="text-orange-600 dark:text-orange-400 hover:underline"
+              className="text-orange-700 dark:text-orange-300 hover:underline"
             >
               Home
             </Link>
             <Link
               href="/track"
-              className="text-orange-600 dark:text-orange-400 hover:underline"
+              className="text-orange-700 dark:text-orange-300 hover:underline"
             >
               Track a shipment
             </Link>
             <Link
               href="/terms"
-              className="text-orange-600 dark:text-orange-400 hover:underline"
+              className="text-orange-700 dark:text-orange-300 hover:underline"
             >
               Terms of Service
+            </Link>
+            <Link
+              href="/refund-policy"
+              className="text-orange-700 dark:text-orange-300 hover:underline"
+            >
+              Refund Policy
+            </Link>
+            <Link
+              href="/cookie-policy"
+              className="text-orange-700 dark:text-orange-300 hover:underline"
+            >
+              Cookie Policy
+            </Link>
+            <Link
+              href="/licences"
+              className="text-orange-700 dark:text-orange-300 hover:underline"
+            >
+              Licences
             </Link>
           </nav>
           <p className="text-gray-600 dark:text-gray-400">
             Questions?{" "}
             <Link
               href="/support"
-              className="text-orange-600 dark:text-orange-400 hover:underline"
+              className="text-orange-700 dark:text-orange-300 hover:underline"
             >
               Contact Support
             </Link>

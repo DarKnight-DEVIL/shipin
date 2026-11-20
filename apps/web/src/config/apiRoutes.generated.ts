@@ -55,6 +55,7 @@ export const API_ROUTE_PATHS: readonly string[] = [
   "/api/notifications/clear-read",
   "/api/notifications/preferences",
   "/api/notifications/read-all",
+  "/api/notifications/unsubscribe",
   "/api/payment/complete-wallet",
   "/api/paypal/capture-order",
   "/api/paypal/capture-wallet-topup",

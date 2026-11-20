@@ -27,6 +27,7 @@ export function organizationSchema(): JsonLdNode {
     "@type": "Organization",
     "@id": ORGANIZATION_ID,
     name: "ShipIN",
+    legalName: "ShipIN Logistics",
     url: SITE_URL,
     logo: `${SITE_URL}/icons/icon-512.png`,
     image: `${SITE_URL}${siteConfig.ogImage}`,

@@ -7,6 +7,10 @@ import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { isKnownWhatsAppTemplate } from "@/features/notifications/templates";
 import { allowNotification } from "@/lib/notificationRateLimit";
 import { sendMail } from "@/lib/mailer";
+import {
+  buildUnsubscribeHeaders,
+  createUnsubscribeUrl,
+} from "@/lib/privacy/unsubscribeToken";
 
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
@@ -253,6 +257,10 @@ export async function sendNotification({
    */
   if (channels.email === true && preferences.channels.email && userEmail) {
     try {
+      // Null when the deployment has no signing secret; the email still sends,
+      // just without a footer link it could not authenticate.
+      const unsubscribeUrl = createUnsubscribeUrl(userId);
+
       await sendMail({
         to: userEmail,
 
@@ -291,8 +299,22 @@ export async function sendNotification({
             >
               ShipIN
             </p>
+
+            ${
+              unsubscribeUrl
+                ? `<p style="margin-top:8px;color:#6b7280;font-size:12px">
+              You are receiving this because of an order on your ShipIN account.
+              <a href="${unsubscribeUrl}" style="color:#6b7280;text-decoration:underline">
+                Unsubscribe from these emails
+              </a>
+            </p>`
+                : ""
+            }
           </div>
         `,
+        ...(unsubscribeUrl
+          ? { headers: buildUnsubscribeHeaders(unsubscribeUrl) }
+          : {}),
       });
     } catch (error) {
       /*
