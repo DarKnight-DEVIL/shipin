@@ -118,14 +118,44 @@ describe("verifyAppCheckRequest", () => {
     // included, with 500. The signed-in E2E smoke test then timed out on a
     // login page that never rendered.
     //
-    // The status helpers need no SDK, so it may only be imported on demand.
+    // A behavioural assertion cannot cover this. The suite runs with
+    // `isolate: false`, so one registry is shared by every file and whether a
+    // mock factory runs at all depends on which file imported the module
+    // first — a counter here passes or fails by seed rather than by code.
     const source = readFileSync(
       new URL("./appCheck.ts", import.meta.url),
       "utf8"
     );
 
-    expect(source).not.toContain('from "firebase-admin/app-check"');
-    expect(source).toContain('import("firebase-admin/app-check")');
+    const SDK = "firebase-admin/app-check";
+
+    // Every way to pull a module in without a call: `import x from "…"`,
+    // `export {x} from "…"`, `import "…"` and TS `import x = require("…")`.
+    // Quote style and spacing are not part of the contract, so neither is
+    // asserted.
+    const staticSpecifiers = [
+      ...source.matchAll(/\bfrom\s*["']([^"']+)["']/g),
+      ...source.matchAll(/\bimport\s*["']([^"']+)["']/g),
+      ...source.matchAll(/\brequire\s*\(\s*["']([^"']+)["']\s*\)/g),
+    ].map((match) => match[1]);
+
+    expect(staticSpecifiers).not.toContain(SDK);
+
+    // …and the on-demand load it relies on must stay inside the verifier,
+    // where a failure is a rejected token instead of a dead server. A
+    // top-level `await import()` would load the SDK just as early as a static
+    // import, and would sit before this declaration.
+    const verifier = source.indexOf(
+      "export async function verifyAppCheckRequest("
+    );
+    expect(verifier).toBeGreaterThan(-1);
+
+    const sdkImports = [
+      ...source.matchAll(/\bimport\s*\(\s*["']([^"']+)["']\s*\)/g),
+    ].filter((match) => match[1] === SDK);
+
+    expect(sdkImports).toHaveLength(1);
+    expect(sdkImports[0].index).toBeGreaterThan(verifier);
   });
 
   it("reports not-enforced without looking at the request", async () => {
