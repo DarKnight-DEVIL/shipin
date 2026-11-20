@@ -503,6 +503,28 @@ jobs:
         if: env.E2E_STAGING_URL == ''
         run: npm run test:e2e:signed-in
 
+      # CI and the Vercel deployment both start from the same push, so a
+      # staging spec can reach the deployment that is being replaced while the
+      # new one is still building. Waiting here is what tells the two apart:
+      # the previous deployment answered 500 on every route (the boot
+      # instrumentation hook could not load firebase-admin/app-check), and the
+      # signed-in smoke test then timed out clicking "Sign in with email" on a
+      # page that never rendered. `/api/health` answers 200 whenever the process
+      # is up, degraded or not, so this only waits for a server that can serve.
+      - name: Wait for the staging deployment to answer
+        if: env.E2E_STAGING_URL != ''
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            if curl -fsS --max-time 10 "$E2E_STAGING_URL/api/health" > /dev/null; then
+              echo "Staging answered on attempt ${attempt}."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::${E2E_STAGING_URL} did not answer within 10 minutes."
+          exit 1
+
       # The write path needs a service account; without one it would fail on a
       # missing variable instead of skipping, and a failing step takes the
       # read-only signed-in smoke down with it.

@@ -10,8 +10,6 @@
 
 import "server-only";
 
-import { getAppCheck } from "firebase-admin/app-check";
-
 import { clientEnv, isProduction, serverEnv } from "@/config/env";
 import { childLogger } from "@/lib/logger";
 
@@ -139,6 +137,17 @@ export async function verifyAppCheckRequest(
   if (!token) return "missing";
 
   try {
+    // Loaded here, never at module scope. `firebase-admin/app-check` pulls in
+    // jwks-rsa, which `require()`s jose's ESM-only entry; on the deployed
+    // serverless runtime that throws ERR_REQUIRE_ESM while the module graph
+    // loads. `instrumentation.ts` imports this file at boot to report the two
+    // flags above, so a top-level import there took the whole server down —
+    // Next logged "an error occurred while loading the instrumentation hook"
+    // and answered every route, static pages included, with 500.
+    //
+    // The status helpers need none of the SDK, and verification is the only
+    // thing that does, so this is the one place it may be loaded.
+    const { getAppCheck } = await import("firebase-admin/app-check");
     await getAppCheck().verifyToken(token);
     return "ok";
   } catch (error) {
