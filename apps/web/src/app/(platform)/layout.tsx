@@ -20,8 +20,15 @@ export default function PlatformLayout({
   const [userEmail, setUserEmail] = useState("");
   // Seeded from the current session so a page that is already signed in does
   // not render once before the listener fires.
-  const [signedInUid, setSignedInUid] = useState<string | null>(
-    () => auth.currentUser?.uid ?? null
+  //
+  // The `window` guard is load-bearing: React also renders this component on the
+  // server while prerendering `/addresses` and the rest of the platform, and a
+  // property read is what initializes the lazy `auth` handle. Without it the
+  // build reached Firebase's client SDK with no client env and died with
+  // "Firebase client failed to initialize" on the first static page. A server
+  // render has no session anyway, so `null` is the correct answer there.
+  const [signedInUid, setSignedInUid] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : (auth.currentUser?.uid ?? null)
   );
   const [readyUid, setReadyUid] = useState<string | null>(null);
 
@@ -53,9 +60,8 @@ export default function PlatformLayout({
         // Imported here, not at module scope: the profile service pulls in the
         // Firestore SDK, and the shell is the first thing every platform route
         // renders.
-        const { ensureUserProfile } = await import(
-          "@/features/users/services/userProfile"
-        );
+        const { ensureUserProfile } =
+          await import("@/features/users/services/userProfile");
         // Google sign-in never passes through registration, so an account can
         // authenticate while having no `users/{uid}` document. Every API route
         // then answers 403 USER_PROFILE_NOT_FOUND, which looks like a broken
@@ -96,7 +102,7 @@ export default function PlatformLayout({
 
   // Child effects run before the layout's, so without this gate a page issues
   // its first API call while the repair is still in flight. Signed-out visitors
-  // are unaffected: they render as before, and the routes themselves redirect.
+  // are unaffected: they render as before, and every data route rejects them.
   const profileReady = !signedInUid || readyUid === signedInUid;
 
   return (

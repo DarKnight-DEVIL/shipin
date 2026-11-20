@@ -2,43 +2,44 @@
  * ShipIN request proxy (Next.js 16 file convention, formerly "middleware"): rate limits, security headers, CORS, and cookie security.
  *
  * Limits come from the shared Redis limiter when UPSTASH_REDIS_REST_* is set, so
- * they hold across serverless instances; without it production fails closed
- * (dev/test fall back to an in-memory limiter).
+ * they hold across serverless instances. A production build without a store
+ * refuses to start (validateProductionRequiredEnv), and a configured store that
+ * becomes unreachable at runtime falls open with /api/health reporting
+ * `degraded` — an outage must not lock everyone out.
  */
+import { childLogger } from "@/lib/logger";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   webRateLimiter,
   apiRateLimiter,
+  authEntryRateLimiter,
   isRateLimited,
   addRateLimitHeaders,
 } from "@/lib/rateLimiter";
-import { SECURITY_HEADERS, getProductionCSP, getDevCSP } from "@/lib/securityHeaders";
+import {
+  SECURITY_HEADERS,
+  getProductionCSP,
+  getDevCSP,
+} from "@/lib/securityHeaders";
 import { getCorsHeaders, isAllowedOrigin } from "@/lib/cors";
+import { classifyRoute } from "@/config/routeAuth";
+import { isIndexableRoute } from "@/config/seo";
 
-const SENSITIVE_PATHS = [
-  "/api/paypal/",
-  "/api/payment/",
-  "/api/admin/",
-  "/api/r2/",
-  "/api/support/",
-];
-
-/**
- * Routes that bypass middleware entirely.
- *
- * `/api/webhook` needs its raw body for signature verification and is already
- * authenticated by the provider's signature, so it must not be rate limited
- * (a 429 would make the provider retry or drop the event).
- */
-const BYPASS_PATHS = ["/api/webhook"];
+// The classification table lives in `@/config/routeAuth` so the Node-only
+// startup validator (src/config/routeClassification.ts) can enumerate every
+// route under src/app/api and compare it against the same table this bundle
+// enforces per request. An unclassified route answers 500 here at runtime, so
+// that validator throws at boot instead of shipping the gap.
 
 /**
- * Sign-in entry points that must never be rate limited.
+ * Sign-in entry points.
  *
- * These are the recovery path for every other failure: a burst of retries, a
- * shared limiter store that cannot be reached, or a proxy in fail-closed mode
- * would otherwise answer /login with a 429 and leave nobody able to sign in.
- * They still receive the security headers below.
+ * These are the recovery path for every other failure, so they get the
+ * generous `authEntryRateLimiter` budget rather than the default page limit:
+ * a human retrying a failing sign-in is never blocked, but a scripted flood on
+ * the two cheapest paths is still metered. A shared-store outage still falls
+ * open (see the `unavailable` branch below) so nobody is locked out by
+ * infrastructure.
  */
 const AUTH_ENTRY_PATHS = ["/login", "/verify-email"];
 
@@ -51,27 +52,22 @@ function isAuthEntryPath(pathname: string): boolean {
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (BYPASS_PATHS.some((path) => pathname.startsWith(path))) {
-    return NextResponse.next();
-  }
-
   const isApi = pathname.startsWith("/api/");
-  const limiter = isApi ? apiRateLimiter : webRateLimiter;
+  const limiter = isApi
+    ? apiRateLimiter
+    : isAuthEntryPath(pathname)
+      ? authEntryRateLimiter
+      : webRateLimiter;
 
-  const skipRateLimit = !isApi && isAuthEntryPath(pathname);
-  const limitResult = skipRateLimit
-    ? { ok: true, limit: 0, remaining: 0, reset: 0 }
-    : await limiter.record(request);
+  const limitResult = await limiter.record(request);
 
   // A rejection caused by a missing/unreachable shared store is an
-  // infrastructure problem, not an abusive client. Serve the request and let
-  // /api/health report the deployment as degraded.
-  if (isRateLimited(limitResult) && limitResult.unavailable) {
-    console.warn(
-      `[proxy] rate-limit store unavailable for ${pathname}; allowing request.`
-    );
-  }
-
+  // infrastructure problem, not an abusive client. Serve the request.
+  //
+  // Nothing is logged here on purpose: with no store configured this is every
+  // request (the E2E suite alone produced 111 of these), and with a store that
+  // is down the limiter's own error counter, the startup warning and
+  // /api/health already carry the signal.
   if (isRateLimited(limitResult) && !limitResult.unavailable) {
     const response = NextResponse.json(
       {
@@ -81,6 +77,20 @@ export default async function proxy(request: NextRequest) {
       },
       { status: 429 }
     );
+    addRateLimitHeaders(response.headers, limitResult);
+    return response;
+  }
+
+  // Preflight requests should not continue to application route handlers.
+  // Handle OPTIONS BEFORE auth check since preflight requests don't have Authorization headers.
+  if (isApi && request.method === "OPTIONS") {
+    const response = new NextResponse(null, { status: 204 });
+    const origin = request.headers.get("origin");
+    if (origin) {
+      for (const [name, value] of Object.entries(getCorsHeaders(origin))) {
+        response.headers.set(name, value);
+      }
+    }
     addRateLimitHeaders(response.headers, limitResult);
     return response;
   }
@@ -98,16 +108,45 @@ export default async function proxy(request: NextRequest) {
     );
   }
 
-  // Preflight requests should not continue to application route handlers.
-  if (isApi && request.method === "OPTIONS") {
-    const response = new NextResponse(null, { status: 204 });
-    if (origin) {
-      for (const [name, value] of Object.entries(getCorsHeaders(origin))) {
-        response.headers.set(name, value);
+  // --- Centralized authentication enforcement ---
+  // Classify the route and enforce auth presence at the edge.
+  // This provides a safety net: even if a route handler forgets its auth check,
+  // the proxy will reject requests without a Bearer token.
+  if (isApi) {
+    const classification = classifyRoute(pathname);
+    if (classification === "unclassified") {
+      // In production, fail closed on unclassified routes to prevent accidental exposure.
+      if (process.env.NODE_ENV === "production") {
+        console.error(
+          `[proxy] UNCLASSIFIED ROUTE: ${pathname} — rejecting request. Add to ROUTE_AUTH_CLASSIFICATION.`
+        );
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Route not configured.",
+            code: "ROUTE_UNCLASSIFIED",
+          },
+          { status: 500 }
+        );
+      } else {
+        // In dev/test, warn but allow (for easier development).
+        const proxyLogger = childLogger({ service: "proxy" });
+        proxyLogger.warn(`[proxy] Unclassified route (dev): ${pathname}`);
+      }
+    } else if (classification === "customer" || classification === "admin") {
+      const authHeader = request.headers.get("authorization");
+      if (!authHeader?.startsWith("Bearer ")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Authentication required.",
+            code: "AUTHENTICATION_REQUIRED",
+          },
+          { status: 401 }
+        );
       }
     }
-    if (!skipRateLimit) addRateLimitHeaders(response.headers, limitResult);
-    return response;
+    // "public" routes need no auth check here.
   }
 
   const isDev = process.env.NODE_ENV === "development";
@@ -118,13 +157,14 @@ export default async function proxy(request: NextRequest) {
   // per-request nonce could never match it (see getProductionCSP).
   const response = NextResponse.next();
 
-  if (!skipRateLimit) addRateLimitHeaders(response.headers, limitResult);
+  addRateLimitHeaders(response.headers, limitResult);
   response.headers.set("Content-Security-Policy", csp);
 
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
     if (name !== "Content-Security-Policy") response.headers.set(name, value);
   }
 
+  // Apply CORS headers for API routes with allowed origins
   if (isApi && origin) {
     for (const [name, value] of Object.entries(getCorsHeaders(origin))) {
       response.headers.set(name, value);
@@ -140,18 +180,11 @@ export default async function proxy(request: NextRequest) {
     response.headers.set("X-Debug-Mode", "disabled");
   }
 
-  if (
-    !request.headers.has("authorization") &&
-    SENSITIVE_PATHS.some((path) => pathname.startsWith(path))
-  ) {
-    // Informational only. Actual authorization must be enforced by each route.
-    response.headers.set("X-Sensitive-Route", "true");
-  }
-
-  // Public landing + track pages should be indexable by search engines.
-  // Authenticated/app pages keep the default noindex from SECURITY_HEADERS.
-  const PUBLIC_ROUTES = ["/", "/track"];
-  if (PUBLIC_ROUTES.includes(pathname)) {
+  // Only public marketing/legal pages are indexable; every signed-in page
+  // keeps the default noindex from SECURITY_HEADERS. The list lives in
+  // config/seo.ts so the sitemap cannot advertise a URL this header marks
+  // noindex (the mismatch Search Console reports as "Excluded by noindex tag").
+  if (isIndexableRoute(pathname)) {
     response.headers.set("X-Robots-Tag", "index, follow");
   }
 
@@ -159,6 +192,11 @@ export default async function proxy(request: NextRequest) {
 }
 
 export const config = {
+  // `/api/webhook` is excluded: signature verification needs the raw body and
+  // the provider signature is its authentication. The proxy never sees it,
+  // so this route meters itself (`apiRateLimiter`, plus a cheap signature-
+  // header gate) before it spends a PayPal verification call — see
+  // src/app/api/webhook/route.ts.
   matcher: [
     "/((?!api/webhook|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],

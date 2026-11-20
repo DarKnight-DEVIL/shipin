@@ -1,15 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withErrorHandler } from "@/utils/errors";
+import { childLogger } from "@/lib/logger";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { serverEnv } from "@/config/env";
+import {
+  apiRateLimiter,
+  addRateLimitHeaders,
+  isRateLimited,
+} from "@/lib/rateLimiter";
 import { verifyPayPalWebhook } from "@/lib/paypal";
 import { sendNotification } from "@/features/notifications/services/notificationService";
+import { buildPaymentReceivedNotification } from "@/lib/paypal/paymentReceivedNotification";
 
 // PayPal Webhook ID from the developer dashboard.
 // Should be set in environment variables: PAYPAL_WEBHOOK_ID
 const PAYPAL_WEBHOOK_ID = serverEnv.PAYPAL_WEBHOOK_ID;
+
+const webhookLogger = childLogger({ service: "paypal-webhook" });
+
+/**
+ * Headers PayPal signs every delivery with.
+ *
+ * A body without them cannot pass `verifyPayPalWebhook`, which forwards these
+ * values straight to PayPal's verify endpoint. Checking their presence costs
+ * nothing locally and keeps an unauthenticated flood from buying an OAuth
+ * token plus a verification call per request.
+ */
+const PAYPAL_SIGNATURE_HEADERS = [
+  "paypal-transmission-id",
+  "paypal-transmission-sig",
+  "paypal-transmission-time",
+  "paypal-cert-url",
+  "paypal-auth-algo",
+] as const;
 
 /**
  * POST /api/webhook
@@ -22,11 +47,57 @@ const PAYPAL_WEBHOOK_ID = serverEnv.PAYPAL_WEBHOOK_ID;
  * (See proxy.ts matcher config.)
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
+  // The proxy matcher excludes this path so signature verification sees the
+  // raw body — which also means the global API limiter never sees it. Meter
+  // it here, before any external call: an unauthenticated flood would
+  // otherwise spend a PayPal OAuth token and a verify-webhook-signature call
+  // on every request. Fail open on `unavailable` so a limiter outage cannot
+  // drop payment confirmations, exactly like the proxy does.
+  const limit = await apiRateLimiter.record(request);
+
+  if (isRateLimited(limit) && !limit.unavailable) {
+    const response = NextResponse.json(
+      {
+        success: false,
+        error: "Too many requests, please try again later.",
+        code: "RATE_LIMIT_ERROR",
+      },
+      { status: 429 }
+    );
+    addRateLimitHeaders(response.headers, limit);
+    return response;
+  }
+
   if (!PAYPAL_WEBHOOK_ID) {
     console.error("PAYPAL_WEBHOOK_ID is not configured");
     return NextResponse.json(
-      { success: false, error: "Webhook not configured.", code: "CONFIGURATION_ERROR" },
+      {
+        success: false,
+        error: "Webhook not configured.",
+        code: "CONFIGURATION_ERROR",
+      },
       { status: 500 }
+    );
+  }
+
+  // Cheap gate first: without PayPal's signature headers the verification
+  // call below cannot succeed, so reject the request before spending it.
+  const missingSignatureHeader = PAYPAL_SIGNATURE_HEADERS.find(
+    (name) => !request.headers.get(name)
+  );
+
+  if (missingSignatureHeader) {
+    console.warn(
+      "PayPal webhook missing signature header:",
+      missingSignatureHeader
+    );
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Invalid webhook signature.",
+        code: "INVALID_SIGNATURE",
+      },
+      { status: 400 }
     );
   }
 
@@ -34,12 +105,20 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const rawBody = await request.text();
 
   // Verify the webhook signature (using request.headers directly as Headers object)
-  const valid = await verifyPayPalWebhook(request.headers, rawBody, PAYPAL_WEBHOOK_ID);
+  const valid = await verifyPayPalWebhook(
+    request.headers,
+    rawBody,
+    PAYPAL_WEBHOOK_ID
+  );
 
   if (!valid) {
     console.warn("PayPal webhook signature verification failed");
     return NextResponse.json(
-      { success: false, error: "Invalid webhook signature.", code: "INVALID_SIGNATURE" },
+      {
+        success: false,
+        error: "Invalid webhook signature.",
+        code: "INVALID_SIGNATURE",
+      },
       { status: 400 }
     );
   }
@@ -52,6 +131,25 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       { success: false, error: "Invalid JSON.", code: "INVALID_JSON" },
       { status: 400 }
     );
+  }
+
+  // PayPal retries a delivery it could not confirm, so the same event id can
+  // arrive twice. The marker is written only after the handler succeeds: a
+  // failed attempt still returns 500 and is retried.
+  const eventId = typeof event.id === "string" ? event.id : "";
+  const eventRef = eventId
+    ? adminDb.collection("paypalWebhookEvents").doc(eventId)
+    : null;
+
+  if (eventRef) {
+    const seen = await eventRef.get();
+    if (seen.exists) {
+      return NextResponse.json({
+        received: true,
+        success: true,
+        duplicate: true,
+      });
+    }
   }
 
   // Process the event
@@ -73,13 +171,28 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         break;
 
       default:
-        // Unhandled event types are acknowledged but not processed
+      // Unhandled event types are acknowledged but not processed
     }
   } catch (error) {
     console.error("Webhook processing error:", error);
-    // Return 200 to prevent PayPal from retrying, but log the error
-    // The internal processing failure should be monitored separately
-    return NextResponse.json({ received: true, success: true });
+    // Return 500 so PayPal will retry the webhook delivery.
+    // handleCaptureCompleted is idempotent (checks captureId + request status),
+    // so retries are safe.
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Webhook processing failed.",
+        code: "WEBHOOK_PROCESSING_ERROR",
+      },
+      { status: 500 }
+    );
+  }
+
+  if (eventRef) {
+    await eventRef.set({
+      eventType: event.event_type ?? "unknown",
+      processedAt: FieldValue.serverTimestamp(),
+    });
   }
 
   // PayPal requires a 2xx to stop delivery; `received` is the provider contract.
@@ -99,9 +212,13 @@ interface PayPalCapture {
  */
 async function handleCaptureCompleted(capture: PayPalCapture) {
   const captureId = capture.id;
-  const orderId = capture.supplementary_data?.related_ids?.order_id
-    || capture.links?.find((l) => l.rel === "order")?.href?.split("/").pop()
-    || "";
+  const orderId =
+    capture.supplementary_data?.related_ids?.order_id ||
+    capture.links
+      ?.find((l) => l.rel === "order")
+      ?.href?.split("/")
+      .pop() ||
+    "";
 
   if (!orderId) {
     console.error("Capture completed but no order ID found:", captureId);
@@ -125,7 +242,6 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
 
   // Check if already processed (idempotency)
   if (paymentOrder.status === "completed") {
-    
     return;
   }
 
@@ -146,7 +262,7 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
   const requestRef = adminDb.collection("requests").doc(requestId);
 
   // Run transaction to atomically update request + wallet + notifications
-  await adminDb.runTransaction(async (transaction) => {
+  const customerName = await adminDb.runTransaction(async (transaction) => {
     const requestSnapshot = await transaction.get(requestRef);
     if (!requestSnapshot.exists) {
       console.error("Request not found:", requestId);
@@ -193,45 +309,44 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
       const walletRef = adminDb.collection("wallets").doc(requestData.userId);
       const walletSnapshot = await transaction.get(walletRef);
       if (walletSnapshot.exists) {
+        const currentBalance = walletSnapshot.data()?.balance ?? 0;
+        const newBalance = currentBalance - walletApplied;
         transaction.update(walletRef, {
-          balance: FieldValue.increment(-walletApplied),
+          balance: newBalance,
           updatedAt: FieldValue.serverTimestamp(),
         });
-        const walletTransactionRef = adminDb.collection("walletTransactions").doc();
+        const walletTransactionRef = adminDb
+          .collection("walletTransactions")
+          .doc();
         transaction.set(walletTransactionRef, {
           userId: requestData.userId,
           type: "payment",
           amount: -walletApplied,
-          balanceAfter: FieldValue.increment(-walletApplied),
+          balanceAfter: newBalance,
           requestId,
           description: "Request Payment",
           createdAt: FieldValue.serverTimestamp(),
         });
       }
     }
+
+    // The payment order never stores a name; the request does.
+    return (
+      (requestData.customerName as string | undefined) ||
+      requestData.shippingAddress?.firstName ||
+      "Customer"
+    );
   });
 
   // Send notification (outside transaction)
   try {
-    const userId = paymentOrder.userId;
-    const customerName = paymentOrder.customerName || requestId;
-    await sendNotification({
-      userId,
-      requestId,
-      title: "Payment Received",
-      message: "We've received your payment successfully.",
-      type: "payment",
-      category: "payment",
-      channels: { inApp: true, email: true, whatsapp: true },
-      whatsapp: {
-        templateName: "shipin_payment_received",
-        languageCode: "en",
-        components: [{ type: "body", parameters: [
-          { type: "text", text: customerName },
-          { type: "text", text: requestId },
-        ]}],
-      },
-    });
+    await sendNotification(
+      buildPaymentReceivedNotification({
+        userId: paymentOrder.userId,
+        requestId,
+        customerName: customerName || "Customer",
+      })
+    );
   } catch (error) {
     console.error("Webhook notification failed:", error);
   }

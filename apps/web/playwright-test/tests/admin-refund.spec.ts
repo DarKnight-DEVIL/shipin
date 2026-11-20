@@ -50,8 +50,13 @@
  *
  * Use a dedicated staging admin. Never run this with production credentials.
  */
-import { test, expect, type APIRequestContext, type APIResponse } from '@playwright/test';
-import { generateSync } from 'otplib';
+import {
+  test,
+  expect,
+  type APIRequestContext,
+  type APIResponse,
+} from "@playwright/test";
+import { generateSync } from "otplib";
 
 type RefundBody = {
   success?: boolean;
@@ -71,41 +76,43 @@ type RefundBody = {
 };
 
 const env = process.env;
-const baseUrl = env.BASE_URL ?? '';
-const isRemoteTarget = !!baseUrl && !baseUrl.startsWith('http://localhost');
+const baseUrl = env.BASE_URL ?? "";
+const isRemoteTarget = !!baseUrl && !baseUrl.startsWith("http://localhost");
 // Destructive test: remote only, unless the caller opts into a local target.
-const allowLocal = env.E2E_ALLOW_LOCAL_REFUND_SMOKE === '1';
+const allowLocal = env.E2E_ALLOW_LOCAL_REFUND_SMOKE === "1";
 
 const settings = {
-  requestId: env.E2E_REFUND_REQUEST_ID ?? '',
-  customerId: env.E2E_REFUND_CUSTOMER_ID ?? '',
-  totpSecret: env.E2E_ADMIN_TOTP_SECRET ?? '',
-  idToken: env.E2E_ADMIN_ID_TOKEN ?? '',
-  email: env.E2E_ADMIN_EMAIL ?? '',
-  password: env.E2E_ADMIN_PASSWORD ?? '',
-  firebaseApiKey: env.E2E_FIREBASE_API_KEY ?? '',
+  requestId: env.E2E_REFUND_REQUEST_ID ?? "",
+  customerId: env.E2E_REFUND_CUSTOMER_ID ?? "",
+  totpSecret: env.E2E_ADMIN_TOTP_SECRET ?? "",
+  idToken: env.E2E_ADMIN_ID_TOKEN ?? "",
+  email: env.E2E_ADMIN_EMAIL ?? "",
+  password: env.E2E_ADMIN_PASSWORD ?? "",
+  firebaseApiKey: env.E2E_FIREBASE_API_KEY ?? "",
 };
 
 const canSignIn =
-  settings.idToken !== '' ||
-  (settings.email !== '' && settings.password !== '' && settings.firebaseApiKey !== '');
+  settings.idToken !== "" ||
+  (settings.email !== "" &&
+    settings.password !== "" &&
+    settings.firebaseApiKey !== "");
 
 const missing = [
   !isRemoteTarget &&
     !allowLocal &&
-    'BASE_URL (must point at staging, or set E2E_ALLOW_LOCAL_REFUND_SMOKE=1)',
-  !settings.requestId && 'E2E_REFUND_REQUEST_ID',
-  !settings.customerId && 'E2E_REFUND_CUSTOMER_ID',
-  !settings.totpSecret && 'E2E_ADMIN_TOTP_SECRET',
+    "BASE_URL (must point at staging, or set E2E_ALLOW_LOCAL_REFUND_SMOKE=1)",
+  !settings.requestId && "E2E_REFUND_REQUEST_ID",
+  !settings.customerId && "E2E_REFUND_CUSTOMER_ID",
+  !settings.totpSecret && "E2E_ADMIN_TOTP_SECRET",
   !canSignIn &&
-    'E2E_ADMIN_ID_TOKEN, or E2E_ADMIN_EMAIL + E2E_ADMIN_PASSWORD + E2E_FIREBASE_API_KEY',
+    "E2E_ADMIN_ID_TOKEN, or E2E_ADMIN_EMAIL + E2E_ADMIN_PASSWORD + E2E_FIREBASE_API_KEY",
 ].filter(Boolean) as string[];
 
 const round = (value: number) => Number(value.toFixed(2));
 
 /** MFA codes are single-use in time, so mint a fresh one per request. */
 function mfaHeaders(): Record<string, string> {
-  return { 'X-MFA-TOTP': generateSync({ secret: settings.totpSecret }) };
+  return { "X-MFA-TOTP": generateSync({ secret: settings.totpSecret }) };
 }
 
 async function readJson(response: APIResponse): Promise<RefundBody> {
@@ -133,7 +140,7 @@ async function signIn(request: APIRequestContext): Promise<string> {
   ).toBe(true);
 
   const body = (await response.json()) as { idToken?: string };
-  expect(body.idToken, 'Identity Toolkit returned no idToken').toBeTruthy();
+  expect(body.idToken, "Identity Toolkit returned no idToken").toBeTruthy();
   return body.idToken as string;
 }
 
@@ -142,25 +149,31 @@ const adminHeaders = (idToken: string) => ({
   ...mfaHeaders(),
 });
 
-test.describe('Admin refund (staging)', () => {
+test.describe("Admin refund (staging)", () => {
   // One request, one wallet: the steps below are only meaningful in order.
-  test.describe.configure({ mode: 'serial' });
+  test.describe.configure({ mode: "serial" });
 
-  test.skip(missing.length > 0, `staging refund smoke needs: ${missing.join(', ')}`);
+  test.skip(
+    missing.length > 0,
+    `staging refund smoke needs: ${missing.join(", ")}`
+  );
 
-  test('refunds a purchased request through the wallet and PayPal portions', async ({
+  test("refunds a purchased request through the wallet and PayPal portions", async ({
     request,
   }) => {
     const requestPath = `/api/admin/requests/${settings.requestId}`;
 
-    const idToken = await test.step('sign in as a staging admin', () => signIn(request));
+    const idToken = await test.step("sign in as a staging admin", () =>
+      signIn(request));
 
-    await test.step('admin endpoints reject an unauthenticated caller', async () => {
-      const response = await request.post(`${requestPath}/refund`, { data: {} });
+    await test.step("admin endpoints reject an unauthenticated caller", async () => {
+      const response = await request.post(`${requestPath}/refund`, {
+        data: {},
+      });
       expect(response.status()).toBe(401);
     });
 
-    const initiated = await test.step('initiate the refund', async () => {
+    const initiated = await test.step("initiate the refund", async () => {
       const response = await request.post(`${requestPath}/refund`, {
         headers: adminHeaders(idToken),
         data: {},
@@ -170,13 +183,13 @@ test.describe('Admin refund (staging)', () => {
       // A consumed fixture shows up here; say so instead of failing obliquely.
       expect(
         response.status(),
-        `could not initiate the refund: ${body.error ?? 'unknown error'}. ` +
-          'If this request already has a refund workflow, seed a fresh ' +
+        `could not initiate the refund: ${body.error ?? "unknown error"}. ` +
+          "If this request already has a refund workflow, seed a fresh " +
           '"purchased" request for E2E_REFUND_REQUEST_ID.'
       ).toBe(200);
 
-      expect(body.status).toBe('refund_requested');
-      expect(body.refundRequest?.status).toBe('requested');
+      expect(body.status).toBe("refund_requested");
+      expect(body.refundRequest?.status).toBe("requested");
 
       const walletAmount = Number(body.refundRequest?.walletAmount ?? 0);
       const paypalAmount = Number(body.refundRequest?.paypalAmount ?? 0);
@@ -189,7 +202,7 @@ test.describe('Admin refund (staging)', () => {
     });
 
     if (initiated.paypalAmount > 0) {
-      await test.step('the PayPal portion cannot be recorded twice over', async () => {
+      await test.step("the PayPal portion cannot be recorded twice over", async () => {
         const response = await request.post(`${requestPath}/refund/paypal`, {
           headers: adminHeaders(idToken),
           data: {
@@ -206,33 +219,33 @@ test.describe('Admin refund (staging)', () => {
     }
 
     if (initiated.walletAmount > 0) {
-      await test.step('return the wallet portion', async () => {
-        const response = await request.post('/api/admin/wallet/credit', {
+      await test.step("return the wallet portion", async () => {
+        const response = await request.post("/api/admin/wallet/credit", {
           headers: adminHeaders(idToken),
           data: {
             customerId: settings.customerId,
             amount: initiated.walletAmount,
-            type: 'refund',
+            type: "refund",
             requestId: settings.requestId,
-            description: 'Staging smoke test refund',
+            description: "Staging smoke test refund",
           },
         });
         const body = await readJson(response);
 
         expect(
           response.status(),
-          `wallet credit failed: ${body.error ?? 'unknown error'}`
+          `wallet credit failed: ${body.error ?? "unknown error"}`
         ).toBe(200);
 
         expect(body.creditAdded).toBe(round(initiated.walletAmount));
-        expect(round(Number(body.previousBalance) + initiated.walletAmount)).toBe(
-          body.newBalance
-        );
+        expect(
+          round(Number(body.previousBalance) + initiated.walletAmount)
+        ).toBe(body.newBalance);
       });
     }
 
     if (initiated.paypalAmount > 0) {
-      await test.step('record the PayPal portion', async () => {
+      await test.step("record the PayPal portion", async () => {
         const transactionId = `SMOKE-${Date.now()}`;
         const response = await request.post(`${requestPath}/refund/paypal`, {
           headers: adminHeaders(idToken),
@@ -242,16 +255,16 @@ test.describe('Admin refund (staging)', () => {
 
         expect(
           response.status(),
-          `PayPal portion failed: ${body.error ?? 'unknown error'}`
+          `PayPal portion failed: ${body.error ?? "unknown error"}`
         ).toBe(200);
 
         expect(body.refund?.transactionId).toBe(transactionId);
         // The last portion to land finalises the request by itself.
-        expect(body.refund?.status).toBe('completed');
+        expect(body.refund?.status).toBe("completed");
       });
     }
 
-    await test.step('completing is a no-op once every portion is settled', async () => {
+    await test.step("completing is a no-op once every portion is settled", async () => {
       const response = await request.post(`${requestPath}/refund/complete`, {
         headers: adminHeaders(idToken),
       });
@@ -259,16 +272,16 @@ test.describe('Admin refund (staging)', () => {
 
       expect(
         response.status(),
-        `completion failed: ${body.error ?? 'unknown error'}`
+        `completion failed: ${body.error ?? "unknown error"}`
       ).toBe(200);
 
       // Only a persisted refundRequest.status === "completed" can answer this,
       // so it doubles as a read-back of what the database kept.
-      expect(body.status).toBe('refunded');
+      expect(body.status).toBe("refunded");
       expect(body.alreadyCompleted).toBe(true);
     });
 
-    await test.step('the workflow cannot be started again', async () => {
+    await test.step("the workflow cannot be started again", async () => {
       const response = await request.post(`${requestPath}/refund`, {
         headers: adminHeaders(idToken),
         data: {},
@@ -279,7 +292,7 @@ test.describe('Admin refund (staging)', () => {
       expect(body.success).toBe(false);
     });
 
-    await test.step('a second PayPal record is refused', async () => {
+    await test.step("a second PayPal record is refused", async () => {
       const response = await request.post(`${requestPath}/refund/paypal`, {
         headers: adminHeaders(idToken),
         data: { amount: 1, transactionId: `SMOKE-DUP-${Date.now()}` },

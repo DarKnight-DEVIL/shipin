@@ -20,7 +20,12 @@ interface RefreshResponse {
     lastSyncedAt: string | null;
     syncPaused: boolean;
     syncPauseReason: string | null;
-    events: { code: string; description: string; location?: string; occurredAt: string }[];
+    events: {
+      code: string;
+      description: string;
+      location?: string;
+      occurredAt: string;
+    }[];
     notice?: string;
   };
 }
@@ -41,8 +46,10 @@ function formatWhen(value?: { toDate?: () => Date } | string | null) {
 }
 
 const PAUSE_COPY: Record<string, string> = {
-  delivered: "Paused — carrier confirmed delivery. Automatic polls have stopped; a manual refresh still works.",
-  terminal_status: "Paused — this request is closed, so automatic polls have stopped.",
+  delivered:
+    "Paused — carrier confirmed delivery. Automatic polls have stopped; a manual refresh still works.",
+  terminal_status:
+    "Paused — this request is closed, so automatic polls have stopped.",
   no_carrier_number: "Waiting — no consignment number has been recorded yet.",
 };
 
@@ -56,13 +63,15 @@ const PAUSE_COPY: Record<string, string> = {
 export default function TrackingPanel({ request }: Props) {
   const tracking = request.tracking;
   const [refreshing, setRefreshing] = useState(false);
-  const [lastResult, setLastResult] = useState<RefreshResponse["shipment"] | null>(
-    null
-  );
+  const [lastResult, setLastResult] = useState<
+    RefreshResponse["shipment"] | null
+  >(null);
 
   const events = lastResult?.events ?? tracking?.events ?? [];
-  const carrierStatus = lastResult?.carrierStatus ?? tracking?.carrierStatus ?? null;
-  const lastSyncedAt = lastResult?.lastSyncedAt ?? tracking?.lastSyncedAt ?? null;
+  const carrierStatus =
+    lastResult?.carrierStatus ?? tracking?.carrierStatus ?? null;
+  const lastSyncedAt =
+    lastResult?.lastSyncedAt ?? tracking?.lastSyncedAt ?? null;
   const syncPaused = lastResult?.syncPaused ?? tracking?.syncPaused ?? false;
   const pauseReason = lastResult?.syncPauseReason ?? null;
   const notice = lastResult?.notice;
@@ -117,7 +126,9 @@ export default function TrackingPanel({ request }: Props) {
             <p className="mt-1 font-mono text-sm text-white">
               {tracking?.trackingNumber ?? "—"}
             </p>
-            <p className="mt-1 text-xs text-slate-600">Never shown to customers</p>
+            <p className="mt-1 text-xs text-slate-600">
+              Never shown to customers
+            </p>
           </div>
 
           <div>
@@ -132,7 +143,9 @@ export default function TrackingPanel({ request }: Props) {
 
           <div>
             <p className="text-xs text-slate-500">Last synced</p>
-            <p className="mt-1 text-sm text-white">{formatWhen(lastSyncedAt)}</p>
+            <p className="mt-1 text-sm text-white">
+              {formatWhen(lastSyncedAt)}
+            </p>
           </div>
 
           <div>
@@ -214,7 +227,9 @@ export default function TrackingPanel({ request }: Props) {
                 <p className="mt-1 text-xs text-slate-500">
                   {new Date(event.occurredAt).toLocaleString()}
                   {event.location ? ` · ${event.location}` : ""}
-                  <span className="ml-2 font-mono text-slate-600">{event.code}</span>
+                  <span className="ml-2 font-mono text-slate-600">
+                    {event.code}
+                  </span>
                 </p>
               </li>
             ))}

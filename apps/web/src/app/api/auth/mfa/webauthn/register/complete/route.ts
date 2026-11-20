@@ -22,13 +22,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
-  if (auth.profile.role !== "admin") {
-    return NextResponse.json(
-      { success: false, error: "Administrator access required.", code: "ADMIN_ACCESS_REQUIRED" },
-      { status: 403, headers: NO_STORE }
-    );
-  }
-
   const body = await request.json();
   const { credential, credentialName } = body as {
     credential?: unknown;
@@ -37,26 +30,47 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   if (!credential || typeof credential !== "object") {
     return NextResponse.json(
-      { success: false, error: "Invalid credential.", code: "INVALID_CREDENTIAL" },
+      {
+        success: false,
+        error: "Invalid credential.",
+        code: "INVALID_CREDENTIAL",
+      },
       { status: 400, headers: NO_STORE }
     );
   }
 
-  const userSnapshot = await adminDb.collection("users").doc(auth.profile.uid).get();
+  const userSnapshot = await adminDb
+    .collection("users")
+    .doc(auth.profile.uid)
+    .get();
   if (!userSnapshot.exists) {
     return NextResponse.json(
-      { success: false, error: "User not found.", code: "USER_PROFILE_NOT_FOUND" },
+      {
+        success: false,
+        error: "User not found.",
+        code: "USER_PROFILE_NOT_FOUND",
+      },
       { status: 404, headers: NO_STORE }
     );
   }
 
   const userData = userSnapshot.data() as Record<string, unknown> | undefined;
-  const record = (userData?.mfa as { webauthn?: WebAuthnRecord } | undefined)?.webauthn ?? {};
+  const record =
+    (userData?.mfa as { webauthn?: WebAuthnRecord } | undefined)?.webauthn ??
+    {};
   const storedChallenge = record.pendingChallenge;
 
-  if (!storedChallenge || record.pendingExpires && Date.now() > record.pendingExpires) {
+  if (
+    !storedChallenge ||
+    (record.pendingExpires && Date.now() > record.pendingExpires)
+  ) {
     return NextResponse.json(
-      { success: false, error: "No pending WebAuthn registration or challenge expired. Start registration first.", code: "WEBAUTHN_CHALLENGE_EXPIRED" },
+      {
+        success: false,
+        error:
+          "No pending WebAuthn registration or challenge expired. Start registration first.",
+        code: "WEBAUTHN_CHALLENGE_EXPIRED",
+      },
       { status: 400, headers: NO_STORE }
     );
   }
@@ -64,11 +78,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const verification = await verifyRegistration({
     response: credential as never,
     expectedChallenge: storedChallenge,
+    requestOrigin: request.nextUrl.origin,
   });
 
   if (!verification.verified) {
     return NextResponse.json(
-      { success: false, error: "WebAuthn attestation verification failed.", code: "WEBAUTHN_VERIFICATION_FAILED" },
+      {
+        success: false,
+        error: "WebAuthn attestation verification failed.",
+        code: "WEBAUTHN_VERIFICATION_FAILED",
+      },
       { status: 400, headers: NO_STORE }
     );
   }
@@ -82,12 +101,19 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   );
   if (hasDuplicate) {
     return NextResponse.json(
-      { success: false, error: "This security key is already registered.", code: "WEBAUTHN_CREDENTIAL_EXISTS" },
+      {
+        success: false,
+        error: "This security key is already registered.",
+        code: "WEBAUTHN_CREDENTIAL_EXISTS",
+      },
       { status: 400, headers: NO_STORE }
     );
   }
 
-  const credentialNameFinal = credentialName && typeof credentialName === "string" ? credentialName : "Security Key";
+  const credentialNameFinal =
+    credentialName && typeof credentialName === "string"
+      ? credentialName
+      : "Security Key";
 
   await userSnapshot.ref.update({
     "mfa.webauthn.credentials": [

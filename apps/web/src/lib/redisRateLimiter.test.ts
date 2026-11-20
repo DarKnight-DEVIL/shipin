@@ -3,10 +3,12 @@
  *
  * `@upstash/redis` and `@upstash/ratelimit` are mocked so no network calls are
  * made, which lets us exercise the three real paths: no Redis configured
- * (in-memory fallback), Redis answering, and Redis failing (fail-closed).
+ * (in-memory fallback), Redis answering, and Redis failing (the result is
+ * flagged `unavailable`, so the proxy serves the request and /api/health
+ * reports degraded).
  */
 
-import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
+import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 
 // These suites rebuild their module graph per test (they reset modules so each
 // case gets a fresh instance). That is cheap normally but can exceed the
@@ -15,15 +17,18 @@ import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 vi.setConfig({ testTimeout: 15_000 });
 
 const state = vi.hoisted(() => ({
-  url: '',
-  token: '',
+  url: "",
+  token: "",
   isProduction: false,
   limit: vi.fn(),
+  hset: vi.fn(),
+  hgetall: vi.fn(),
+  expire: vi.fn(),
 }));
 
-vi.mock('@/config/env', () => ({
+vi.mock("@/config/env", () => ({
   serverEnv: {
-    PAYPAL_ENV: 'sandbox',
+    PAYPAL_ENV: "sandbox",
     get UPSTASH_REDIS_REST_URL() {
       return state.url;
     },
@@ -39,13 +44,17 @@ vi.mock('@/config/env', () => ({
   },
 }));
 
-vi.mock('@upstash/redis', () => ({
+vi.mock("@upstash/redis", () => ({
   Redis: class {
+    hset = state.hset;
+    hgetall = state.hgetall;
+    expire = state.expire;
+
     constructor(_options: unknown) {}
   },
 }));
 
-vi.mock('@upstash/ratelimit', () => ({
+vi.mock("@upstash/ratelimit", () => ({
   Ratelimit: class {
     static slidingWindow = vi.fn(() => ({}));
 
@@ -58,9 +67,9 @@ vi.mock('@upstash/ratelimit', () => ({
 // Imported per file instead of statically: with a shared module registry the
 // first importer fixes which mocks this module binds to, so a static import
 // can inherit another file's stub.
-let createSharedRateLimiter: typeof import('./redisRateLimiter').createSharedRateLimiter;
-let reportRateLimitStoreStatus: typeof import('./redisRateLimiter').reportRateLimitStoreStatus;
-let RATE_LIMIT_ERROR_WINDOW_MS: typeof import('./redisRateLimiter').RATE_LIMIT_ERROR_WINDOW_MS;
+let createSharedRateLimiter: typeof import("./redisRateLimiter").createSharedRateLimiter;
+let reportRateLimitStoreStatus: typeof import("./redisRateLimiter").reportRateLimitStoreStatus;
+let RATE_LIMIT_ERROR_WINDOW_MS: typeof import("./redisRateLimiter").RATE_LIMIT_ERROR_WINDOW_MS;
 
 beforeEach(async () => {
   vi.resetModules();
@@ -68,7 +77,7 @@ beforeEach(async () => {
     createSharedRateLimiter,
     reportRateLimitStoreStatus,
     RATE_LIMIT_ERROR_WINDOW_MS,
-  } = await import('./redisRateLimiter'));
+  } = await import("./redisRateLimiter"));
 });
 
 const fallbackResult = {
@@ -82,39 +91,42 @@ function makeFallback() {
   return { record: vi.fn(async () => fallbackResult) };
 }
 
-function requestWith(ip = '1.2.3.4') {
-  return new Request('http://localhost:3000/api/test', {
-    headers: { 'cf-connecting-ip': ip },
+function requestWith(ip = "1.2.3.4") {
+  return new Request("http://localhost:3000/api/test", {
+    headers: { "x-vercel-forwarded-for": ip },
   });
 }
 
 function configureRedis() {
-  state.url = 'https://t.upstash.io';
-  state.token = 'tok';
+  state.url = "https://t.upstash.io";
+  state.token = "tok";
 }
 
 beforeEach(() => {
-  state.url = '';
-  state.token = '';
+  state.url = "";
+  state.token = "";
   state.isProduction = false;
   state.limit.mockReset();
-  vi.spyOn(console, 'error').mockImplementation(() => {});
+  state.hset.mockReset().mockResolvedValue(1);
+  state.hgetall.mockReset().mockResolvedValue({});
+  state.expire.mockReset().mockResolvedValue(1);
+  vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('RATE_LIMIT_ERROR_WINDOW_MS', () => {
-  it('is 5 minutes in ms', () => {
+describe("RATE_LIMIT_ERROR_WINDOW_MS", () => {
+  it("is 5 minutes in ms", () => {
     expect(RATE_LIMIT_ERROR_WINDOW_MS).toBe(5 * 60 * 1000);
   });
 });
 
-describe('createSharedRateLimiter without Redis configured', () => {
-  it('delegates to the in-memory fallback', async () => {
+describe("createSharedRateLimiter without Redis configured", () => {
+  it("delegates to the in-memory fallback", async () => {
     const fallback = makeFallback();
-    const limiter = createSharedRateLimiter('web', 100, 60_000, fallback);
+    const limiter = createSharedRateLimiter("web", 100, 60_000, fallback);
 
     const result = await limiter.record(requestWith());
 
@@ -124,27 +136,32 @@ describe('createSharedRateLimiter without Redis configured', () => {
   });
 });
 
-describe('createSharedRateLimiter in production without a shared store', () => {
-  it('fails closed instead of using per-instance limits', async () => {
+describe("createSharedRateLimiter in production without a shared store", () => {
+  it("reports the missing store as unavailable instead of using per-instance limits", async () => {
     state.isProduction = true;
     const fallback = makeFallback();
-    const limiter = createSharedRateLimiter('api', 30, 60_000, fallback);
+    const limiter = createSharedRateLimiter("api", 30, 60_000, fallback);
 
     const result = await limiter.record(requestWith());
 
     expect(result.ok).toBe(false);
+    expect(result.unavailable).toBe(true);
     expect(result.remaining).toBe(0);
     // Silent degradation to in-memory limits is exactly what must not happen.
     expect(fallback.record).not.toHaveBeenCalled();
-    expect(console.error).toHaveBeenCalled();
+    // Surfaced through the error counters (/api/health) and the one startup
+    // warning, not a log line per request.
+    expect(await limiter.getErrorCounts(0)).toEqual([
+      { ip: "1.2.3.4", errors: 1, lastErrorAt: expect.any(Number) },
+    ]);
   });
 
-  it('fails closed when the configured URL is not https', async () => {
+  it("fails closed when the configured URL is not https", async () => {
     state.isProduction = true;
-    state.url = 'http://insecure.example';
-    state.token = 'tok';
+    state.url = "http://insecure.example";
+    state.token = "tok";
     const fallback = makeFallback();
-    const limiter = createSharedRateLimiter('api', 30, 60_000, fallback);
+    const limiter = createSharedRateLimiter("api", 30, 60_000, fallback);
 
     const result = await limiter.record(requestWith());
 
@@ -153,14 +170,18 @@ describe('createSharedRateLimiter in production without a shared store', () => {
   });
 });
 
-describe('createSharedRateLimiter with Redis configured', () => {
-  it('allows requests Redis accepts and keys the limit by client IP', async () => {
+describe("createSharedRateLimiter with Redis configured", () => {
+  it("allows requests Redis accepts and keys the limit by client IP", async () => {
     configureRedis();
-    state.limit.mockResolvedValue({ success: true, remaining: 99, reset: 1_700_000_000_000 });
+    state.limit.mockResolvedValue({
+      success: true,
+      remaining: 99,
+      reset: 1_700_000_000_000,
+    });
     const fallback = makeFallback();
-    const limiter = createSharedRateLimiter('web', 100, 60_000, fallback);
+    const limiter = createSharedRateLimiter("web", 100, 60_000, fallback);
 
-    const result = await limiter.record(requestWith('203.0.113.9'));
+    const result = await limiter.record(requestWith("203.0.113.9"));
 
     expect(result).toEqual({
       ok: true,
@@ -168,14 +189,18 @@ describe('createSharedRateLimiter with Redis configured', () => {
       remaining: 99,
       reset: 1_700_000_000_000,
     });
-    expect(state.limit).toHaveBeenCalledWith('203.0.113.9');
+    expect(state.limit).toHaveBeenCalledWith("203.0.113.9");
     expect(fallback.record).not.toHaveBeenCalled();
   });
 
-  it('passes through rejections from Redis', async () => {
+  it("passes through rejections from Redis", async () => {
     configureRedis();
-    state.limit.mockResolvedValue({ success: false, remaining: 0, reset: 1_700_000_000_000 });
-    const limiter = createSharedRateLimiter('api', 30, 60_000, makeFallback());
+    state.limit.mockResolvedValue({
+      success: false,
+      remaining: 0,
+      reset: 1_700_000_000_000,
+    });
+    const limiter = createSharedRateLimiter("api", 30, 60_000, makeFallback());
 
     const result = await limiter.record(requestWith());
 
@@ -183,14 +208,14 @@ describe('createSharedRateLimiter with Redis configured', () => {
     expect(result.remaining).toBe(0);
   });
 
-  it('fails closed when the Redis call throws', async () => {
+  it("fails closed when the Redis call throws", async () => {
     configureRedis();
-    state.limit.mockRejectedValue(new Error('redis down'));
+    state.limit.mockRejectedValue(new Error("redis down"));
     const fallback = makeFallback();
-    const limiter = createSharedRateLimiter('strict', 10, 60_000, fallback);
+    const limiter = createSharedRateLimiter("strict", 10, 60_000, fallback);
     const before = Date.now();
 
-    const result = await limiter.record(requestWith('198.51.100.7'));
+    const result = await limiter.record(requestWith("198.51.100.7"));
 
     expect(result.ok).toBe(false);
     expect(result.remaining).toBe(0);
@@ -200,82 +225,137 @@ describe('createSharedRateLimiter with Redis configured', () => {
     expect(console.error).toHaveBeenCalled();
   });
 
-  it('records recent Redis errors per limiter for health reporting', async () => {
+  it("records recent Redis errors per limiter for health reporting", async () => {
     configureRedis();
-    state.limit.mockRejectedValue(new Error('redis down'));
-    const limiter = createSharedRateLimiter('login', 5, 60_000, makeFallback());
-    const other = createSharedRateLimiter('web', 100, 60_000, makeFallback());
+    state.limit.mockRejectedValue(new Error("redis down"));
+    const limiter = createSharedRateLimiter("login", 5, 60_000, makeFallback());
+    const other = createSharedRateLimiter("web", 100, 60_000, makeFallback());
 
-    await limiter.record(requestWith('198.51.100.7'));
+    await limiter.record(requestWith("198.51.100.7"));
 
-    expect(limiter.getErrorCounts(Date.now() - 60_000)).toEqual([
-      { ip: '198.51.100.7', errors: 1, lastErrorAt: expect.any(Number) },
+    expect(await limiter.getErrorCounts(Date.now() - 60_000)).toEqual([
+      { ip: "198.51.100.7", errors: 1, lastErrorAt: expect.any(Number) },
     ]);
-    expect(limiter.getErrorCounts(Date.now() + 60_000)).toEqual([]);
-    expect(other.getErrorCounts(0)).toEqual([]);
+    expect(await limiter.getErrorCounts(Date.now() + 60_000)).toEqual([]);
+    expect(await other.getErrorCounts(0)).toEqual([]);
   });
 });
 
-describe('reportRateLimitStoreStatus', () => {
-  it('reports degraded and warns in production when the shared store is missing', () => {
-    state.isProduction = true;
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    // A missing store must never stop the server from booting.
-    expect(() => reportRateLimitStoreStatus()).not.toThrow();
-    expect(reportRateLimitStoreStatus()).toEqual({
-      configured: false,
-      degraded: true,
+describe("shared Redis error counters", () => {
+  it("reports counts written by another instance", async () => {
+    configureRedis();
+    state.hgetall.mockResolvedValue({
+      "203.0.113.4": JSON.stringify({
+        errors: 4,
+        lastErrorAt: Date.now() - 1000,
+      }),
+      "203.0.113.5": { errors: 1, lastErrorAt: Date.now() - 500 },
     });
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('No shared rate-limit store configured')
+    const limiter = createSharedRateLimiter("api", 30, 60_000, makeFallback());
+
+    expect(await limiter.getErrorCounts(0)).toEqual([
+      { ip: "203.0.113.4", errors: 4, lastErrorAt: expect.any(Number) },
+      { ip: "203.0.113.5", errors: 1, lastErrorAt: expect.any(Number) },
+    ]);
+  });
+
+  it("ignores malformed and stale entries", async () => {
+    configureRedis();
+    state.hgetall.mockResolvedValue({
+      bad: "not json",
+      wrongShape: JSON.stringify({ errors: "many", lastErrorAt: "soon" }),
+      old: JSON.stringify({ errors: 2, lastErrorAt: 1 }),
+    });
+    const limiter = createSharedRateLimiter("web", 100, 60_000, makeFallback());
+
+    expect(await limiter.getErrorCounts(Date.now() - 60_000)).toEqual([]);
+  });
+
+  it("keeps local counts when the store cannot be read", async () => {
+    configureRedis();
+    state.hgetall.mockRejectedValue(new Error("down"));
+    state.limit.mockRejectedValue(new Error("redis down"));
+    const limiter = createSharedRateLimiter(
+      "strict",
+      10,
+      60_000,
+      makeFallback()
     );
 
-    warn.mockRestore();
+    await limiter.record(requestWith("198.51.100.9"));
+
+    expect(await limiter.getErrorCounts(0)).toEqual([
+      { ip: "198.51.100.9", errors: 1, lastErrorAt: expect.any(Number) },
+    ]);
   });
 
-  it('reports degraded in production when the Redis URL is not https', () => {
+  it("does not fail a request when the counter write fails", async () => {
+    configureRedis();
+    state.hset.mockRejectedValue(new Error("down"));
+    state.limit.mockRejectedValue(new Error("redis down"));
+    const limiter = createSharedRateLimiter("login", 5, 60_000, makeFallback());
+
+    await expect(limiter.record(requestWith())).resolves.toMatchObject({
+      ok: false,
+    });
+    await Promise.resolve();
+  });
+});
+
+describe("reportRateLimitStoreStatus", () => {
+  it("warns but keeps the server up in production when the shared store is missing", () => {
     state.isProduction = true;
-    state.url = 'http://insecure.example';
-    state.token = 'tok';
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // Boot must survive this: the proxy fails open and /api/health reports
+    // `degraded`, so a missing store costs global limits, not the deployment.
+    expect(reportRateLimitStoreStatus()).toEqual({
+      configured: false,
+      degraded: true,
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Rate limits are per-instance only")
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it("is degraded in production when the Redis URL is not https", () => {
+    state.isProduction = true;
+    state.url = "http://insecure.example";
+    state.token = "tok";
+    vi.spyOn(console, "warn").mockImplementation(() => {});
 
     expect(reportRateLimitStoreStatus()).toEqual({
       configured: false,
       degraded: true,
     });
-
-    warn.mockRestore();
   });
 
-  it('reports degraded in production when the token is missing', () => {
+  it("is degraded in production when the token is missing", () => {
     state.isProduction = true;
-    state.url = 'https://t.upstash.io';
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    state.url = "https://t.upstash.io";
+    vi.spyOn(console, "warn").mockImplementation(() => {});
 
     expect(reportRateLimitStoreStatus()).toEqual({
       configured: false,
       degraded: true,
     });
-
-    warn.mockRestore();
   });
 
-  it('reports configured and not degraded for a complete production configuration', () => {
+  it("reports configured and not degraded for a complete production configuration", () => {
     state.isProduction = true;
     configureRedis();
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     expect(reportRateLimitStoreStatus()).toEqual({
       configured: true,
       degraded: false,
     });
-    expect(warn).not.toHaveBeenCalled();
-
-    warn.mockRestore();
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  it('is not degraded outside production', () => {
+  it("is not degraded outside production (dev/test falls back to in-memory)", () => {
     expect(reportRateLimitStoreStatus()).toEqual({
       configured: false,
       degraded: false,

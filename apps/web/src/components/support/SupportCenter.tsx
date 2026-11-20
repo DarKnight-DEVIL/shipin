@@ -52,11 +52,11 @@ export default function SupportCenter({
   const [partialRefundOffer, setPartialRefundOffer] =
     useState<PartialRefundOffer | null>(null);
 
-  const [partialRefundPreference, setPartialRefundPreference] =
-    useState<"wallet" | "original_payment">("wallet");
+  const [partialRefundPreference, setPartialRefundPreference] = useState<
+    "wallet" | "original_payment"
+  >("wallet");
 
-  const [partialRefundSubmitting, setPartialRefundSubmitting] =
-    useState(false);
+  const [partialRefundSubmitting, setPartialRefundSubmitting] = useState(false);
 
   const [paymentBreakdown, setPaymentBreakdown] = useState({
     walletAmount: 0,
@@ -152,9 +152,7 @@ export default function SupportCenter({
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(
-          result.error || "Unable to accept partial refund."
-        );
+        throw new Error(result.error || "Unable to accept partial refund.");
       }
 
       if (result.offer) {
@@ -186,10 +184,7 @@ export default function SupportCenter({
           : "Partial refund accepted. It is now awaiting processing."
       );
     } catch (error) {
-      console.error(
-        "Unable to accept partial refund:",
-        error
-      );
+      console.error("Unable to accept partial refund:", error);
 
       toast.error(
         error instanceof Error
@@ -245,8 +240,8 @@ export default function SupportCenter({
                 </div>
 
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                  Our support team has offered a full refund for this
-                  order. Please select your preferred refund method.
+                  Our support team has offered a full refund for this order.
+                  Please select your preferred refund method.
                 </p>
 
                 {refundOfferReason && (
@@ -279,8 +274,7 @@ export default function SupportCenter({
                     </p>
 
                     <p className="mt-0.5 text-xs text-slate-500">
-                      Instant credit applied to your balance for future
-                      orders.
+                      Instant credit applied to your balance for future orders.
                     </p>
                   </div>
                 </label>
@@ -291,9 +285,7 @@ export default function SupportCenter({
                     name="refundPreference"
                     value="original_payment"
                     checked={refundPreference === "original_payment"}
-                    onChange={() =>
-                      setRefundPreference("original_payment")
-                    }
+                    onChange={() => setRefundPreference("original_payment")}
                     className="mt-1 text-purple-600 focus:ring-purple-500"
                   />
 
@@ -303,8 +295,7 @@ export default function SupportCenter({
                     </p>
 
                     <p className="mt-0.5 text-xs text-slate-500">
-                      Returned directly to your original method of
-                      payment.
+                      Returned directly to your original method of payment.
                     </p>
                   </div>
                 </label>
@@ -316,12 +307,8 @@ export default function SupportCenter({
                         type="radio"
                         name="refundPreference"
                         value="original_sources"
-                        checked={
-                          refundPreference === "original_sources"
-                        }
-                        onChange={() =>
-                          setRefundPreference("original_sources")
-                        }
+                        checked={refundPreference === "original_sources"}
+                        onChange={() => setRefundPreference("original_sources")}
                         className="mt-1 text-purple-600 focus:ring-purple-500"
                       />
 
@@ -364,16 +351,13 @@ export default function SupportCenter({
 
                     if (!response.ok || !result.success) {
                       throw new Error(
-                        result.error ||
-                          "Unable to submit refund request."
+                        result.error || "Unable to submit refund request."
                       );
                     }
 
                     setRefundOffer(false);
 
-                    toast.success(
-                      "Refund request submitted successfully."
-                    );
+                    toast.success("Refund request submitted successfully.");
                   } catch (error) {
                     toast.error(
                       error instanceof Error
@@ -386,9 +370,7 @@ export default function SupportCenter({
                 }}
                 className="mt-5 w-full rounded-xl bg-red-600 py-3 font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
               >
-                {refundSubmitting
-                  ? "Submitting..."
-                  : "Request Refund"}
+                {refundSubmitting ? "Submitting..." : "Request Refund"}
               </button>
             </div>
           )}
@@ -432,16 +414,15 @@ export default function SupportCenter({
 
                 {partialRefundOffer.status === "offered" && (
                   <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                    Our support team has offered you a partial
-                    refund. Choose how you would like to receive it.
+                    Our support team has offered you a partial refund. Choose
+                    how you would like to receive it.
                   </p>
                 )}
 
                 {partialRefundOffer.status === "accepted" && (
                   <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                    You accepted this partial refund using your
-                    original payment method. Our team will process
-                    the refund manually.
+                    You accepted this partial refund using your original payment
+                    method. Our team will process the refund manually.
                   </p>
                 )}
 
@@ -491,12 +472,8 @@ export default function SupportCenter({
                         type="radio"
                         name="partialRefundPreference"
                         value="wallet"
-                        checked={
-                          partialRefundPreference === "wallet"
-                        }
-                        onChange={() =>
-                          setPartialRefundPreference("wallet")
-                        }
+                        checked={partialRefundPreference === "wallet"}
+                        onChange={() => setPartialRefundPreference("wallet")}
                         className="mt-1 text-purple-600 focus:ring-purple-500"
                       />
 
@@ -506,8 +483,7 @@ export default function SupportCenter({
                         </p>
 
                         <p className="mt-0.5 text-xs text-slate-500">
-                          Instant credit applied to your ShipIN
-                          Wallet.
+                          Instant credit applied to your ShipIN Wallet.
                         </p>
                       </div>
                     </label>
@@ -517,14 +493,9 @@ export default function SupportCenter({
                         type="radio"
                         name="partialRefundPreference"
                         value="original_payment"
-                        checked={
-                          partialRefundPreference ===
-                          "original_payment"
-                        }
+                        checked={partialRefundPreference === "original_payment"}
                         onChange={() =>
-                          setPartialRefundPreference(
-                            "original_payment"
-                          )
+                          setPartialRefundPreference("original_payment")
                         }
                         className="mt-1 text-purple-600 focus:ring-purple-500"
                       />
@@ -535,8 +506,8 @@ export default function SupportCenter({
                         </p>
 
                         <p className="mt-0.5 text-xs text-slate-500">
-                          Our team will process the refund through
-                          your original payment method.
+                          Our team will process the refund through your original
+                          payment method.
                         </p>
                       </div>
                     </label>
@@ -563,9 +534,8 @@ export default function SupportCenter({
                   </p>
 
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    You do not need to take any further action.
-                    Your selected refund method is being processed
-                    by ShipIN.
+                    You do not need to take any further action. Your selected
+                    refund method is being processed by ShipIN.
                   </p>
                 </div>
               )}
@@ -578,8 +548,8 @@ export default function SupportCenter({
                   </p>
 
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    The ${partialRefundOffer.amount.toFixed(2)}{" "}
-                    partial refund has been completed.
+                    The ${partialRefundOffer.amount.toFixed(2)} partial refund
+                    has been completed.
                   </p>
                 </div>
               )}
@@ -631,9 +601,7 @@ export default function SupportCenter({
                   return;
                 }
 
-                await support.resolveTicket(
-                  support.selectedTicket.id
-                );
+                await support.resolveTicket(support.selectedTicket.id);
               }}
               isAdmin={isAdmin}
             />

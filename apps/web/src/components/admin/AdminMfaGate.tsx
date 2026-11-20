@@ -16,7 +16,11 @@ import { ShieldCheck } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
-import { getMfaSessionStatus, startMfaSession, startWebAuthnSession } from "@/lib/mfaSessionClient";
+import {
+  getMfaSessionStatus,
+  startMfaSession,
+  startWebAuthnSession,
+} from "@/lib/mfaSessionClient";
 import {
   assertSecurityKey,
   isWebAuthnSupported,
@@ -40,7 +44,6 @@ type GateStatus =
 const METHOD_LABELS: Record<MfaMethod, string> = {
   totp: "Authenticator app",
   backup: "Backup code",
-  sms: "SMS code",
   webauthn: "Security key",
 };
 
@@ -48,14 +51,17 @@ const METHOD_LABELS: Record<MfaMethod, string> = {
 const METHOD_PLACEHOLDERS: Partial<Record<MfaMethod, string>> = {
   totp: "6-digit code",
   backup: "XXXX-XXXX",
-  sms: "6-digit code",
 };
 
 function isCodeMethod(method: MfaMethod): boolean {
   return method !== "webauthn";
 }
 
-export default function AdminMfaGate({ children }: { children: React.ReactNode }) {
+export default function AdminMfaGate({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [user, setUser] = useState<MfaUser | null>(null);
   const [status, setStatus] = useState<GateStatus>("checking");
   const [methods, setMethods] = useState<MfaMethod[]>([]);
@@ -172,7 +178,7 @@ export default function AdminMfaGate({ children }: { children: React.ReactNode }
     }
   }
 
-  /** Submit a typed code (TOTP, backup, SMS) for an elevated session. */
+  /** Submit a typed code (TOTP or backup) for an elevated session. */
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
 

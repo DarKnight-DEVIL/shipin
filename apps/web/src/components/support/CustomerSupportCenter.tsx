@@ -113,9 +113,7 @@ export default function CustomerSupportCenter({ customerId }: Props) {
       {/* Sidebar */}
       <aside className="border-b border-[var(--border)] lg:col-span-4 lg:border-b-0 lg:border-r">
         <div className="border-b border-[var(--border)] px-4 py-3">
-          <p className="app-kicker">
-            Conversations
-          </p>
+          <p className="app-kicker">Conversations</p>
         </div>
 
         <div className="max-h-[520px] overflow-y-auto p-2">
@@ -179,7 +177,8 @@ export default function CustomerSupportCenter({ customerId }: Props) {
               })}
 
               {refundOnlyRequests.map((request) => {
-                const selected = selectedRequest?.id === request.id && !selectedTicket;
+                const selected =
+                  selectedRequest?.id === request.id && !selectedTicket;
                 return (
                   <button
                     key={request.id}
@@ -366,7 +365,8 @@ export default function CustomerSupportCenter({ customerId }: Props) {
                       {selectedRequest.refundRequest.status === "completed"
                         ? "Refund completed"
                         : "Refund pending"}
-                      {typeof selectedRequest.refundRequest.amount === "number" && (
+                      {typeof selectedRequest.refundRequest.amount ===
+                        "number" && (
                         <span className="ml-1.5 tabular-nums">
                           · ${selectedRequest.refundRequest.amount.toFixed(2)}
                         </span>

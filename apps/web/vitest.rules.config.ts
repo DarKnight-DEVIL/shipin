@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from "vitest/config";
 
 /**
  * Firestore security-rules suite.
@@ -15,8 +15,8 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
   test: {
-    environment: 'node',
-    include: ['tests/rules/**/*.test.ts'],
+    environment: "node",
+    include: ["tests/rules/**/*.test.ts"],
     // One emulator instance holds all state: run files serially, never in
     // parallel, or one file's `clearFirestore()` wipes another's fixtures.
     fileParallelism: false,

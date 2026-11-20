@@ -6,29 +6,19 @@ interface Props {
   tracking?: Tracking;
 }
 
-export default function TrackingCard({
-  tracking,
-}: Props) {
+export default function TrackingCard({ tracking }: Props) {
   if (!tracking) return null;
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8">
-
       <h2 className="text-2xl font-semibold text-white mb-6">
         Tracking Information
       </h2>
 
       <div className="space-y-4">
+        <InfoRow label="Carrier" value={tracking.carrier} />
 
-        <InfoRow
-          label="Carrier"
-          value={tracking.carrier}
-        />
-
-        <InfoRow
-          label="Tracking Number"
-          value={tracking.trackingNumber}
-        />
+        <InfoRow label="Tracking Number" value={tracking.trackingNumber} />
 
         <InfoRow
           label="Estimated Delivery"
@@ -45,31 +35,17 @@ export default function TrackingCard({
             Track Package
           </a>
         )}
-
       </div>
-
     </div>
   );
 }
 
-function InfoRow({
-  label,
-  value,
-}: {
-  label: string;
-  value?: string;
-}) {
+function InfoRow({ label, value }: { label: string; value?: string }) {
   return (
     <div className="flex justify-between border-b border-slate-800 pb-3">
+      <span className="text-slate-400">{label}</span>
 
-      <span className="text-slate-400">
-        {label}
-      </span>
-
-      <span className="text-white font-medium">
-        {value || "-"}
-      </span>
-
+      <span className="text-white font-medium">{value || "-"}</span>
     </div>
   );
 }

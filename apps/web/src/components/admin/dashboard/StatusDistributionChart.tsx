@@ -25,22 +25,16 @@ const COLORS = [
   "#10B981",
 ];
 
-export default function StatusDistributionChart({
-  data,
-}: Props) {
+export default function StatusDistributionChart({ data }: Props) {
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-
       <h2 className="text-2xl font-bold text-white mb-6">
         Request Status Distribution
       </h2>
 
       <div className="h-80">
-
         <ResponsiveContainer width="100%" height="100%">
-
           <PieChart>
-
             <Pie
               data={data}
               dataKey="value"
@@ -48,28 +42,17 @@ export default function StatusDistributionChart({
               outerRadius={110}
               label
             >
-
               {data.map((entry, index) => (
-                <Cell
-                  key={entry.name}
-                  fill={
-                    COLORS[index % COLORS.length]
-                  }
-                />
+                <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
               ))}
-
             </Pie>
 
             <Tooltip />
 
             <Legend />
-
           </PieChart>
-
         </ResponsiveContainer>
-
       </div>
-
     </div>
   );
 }

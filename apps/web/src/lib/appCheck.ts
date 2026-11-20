@@ -8,30 +8,45 @@
  * a token this project issued, proving it came from a real instance of the app.
  */
 
+import "server-only";
+
 import { getAppCheck } from "firebase-admin/app-check";
 
-import { clientEnv, serverEnv } from "@/config/env";
+import { clientEnv, isProduction, serverEnv } from "@/config/env";
+import { childLogger } from "@/lib/logger";
 
 /** Firebase's conventional header for a client-supplied App Check token. */
 export const APP_CHECK_HEADER = "x-firebase-appcheck";
+
+const appCheckLogger = childLogger({ service: "appcheck" });
 
 export type AppCheckOutcome = "ok" | "missing" | "invalid" | "not-enforced";
 
 /**
  * Whether API routes must reject requests without a valid App Check token.
  *
- * Off unless explicitly switched on, so local development and CI never need a
- * registered Firebase project.
+ * Precedence:
+ *   1. An explicit flag wins (`true` enforces, `false` disables).
+ *   2. Unset defaults to ENFORCED in a production build that ships a site key.
+ *      A forgotten variable must not silently disable the check on a live
+ *      deployment; the client already sends X-Firebase-AppCheck whenever a
+ *      site key is configured, so enabling it cannot lock browser clients out.
+ *   3. Unset with no site key (local development, CI, previews) stays off, so
+ *      no Firebase project is needed to run the app.
  */
 export function isAppCheckEnforced(): boolean {
-  return serverEnv.APP_CHECK_ENFORCEMENT === "true";
+  const flag = serverEnv.APP_CHECK_ENFORCEMENT?.trim().toLowerCase();
+
+  if (flag === "true") return true;
+  if (flag === "false") return false;
+
+  return (
+    isProduction && Boolean(clientEnv.NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY)
+  );
 }
 
 export type AppCheckStatus =
-  | "disabled"
-  | "configured"
-  | "enforced"
-  | "misconfigured";
+  "disabled" | "configured" | "enforced" | "misconfigured";
 
 export interface AppCheckConfiguration {
   /** Whether clients hold a site key and can mint tokens at all. */
@@ -65,13 +80,16 @@ export function getAppCheckStatus(): AppCheckConfiguration {
 }
 
 /**
- * Log the App Check configuration at startup. Never throws.
+ * Validate the App Check configuration at startup.
  *
- * Mirrors `reportRateLimitStoreStatus`: a configuration problem is logged once
- * at boot and surfaced as `degraded` by `/api/health`, rather than crashing a
- * deployment that is otherwise serving. Here the problem is total — enforced
- * without a site key rejects every browser request — so the warning says so
- * plainly and names both ways out.
+ * In production:
+ * - If enforcement is ON but no site key is configured → THROW (fail-fast).
+ *   Every browser request would be rejected; this is a hard deployment failure.
+ * - If a site key is configured but enforcement is OFF → WARN.
+ *   Production should enforce; not enforcing means API routes accept requests
+ *   without App Check tokens.
+ *
+ * In dev/test: never throw, only warn if misconfigured.
  *
  * @returns the same configuration object as {@link getAppCheckStatus}.
  */
@@ -79,12 +97,27 @@ export function reportAppCheckStatus(): AppCheckConfiguration {
   const configuration = getAppCheckStatus();
 
   if (configuration.status === "misconfigured") {
-    console.warn(
-      "[AppCheck] APP_CHECK_ENFORCEMENT is on but " +
-        "NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY is empty. Clients cannot mint " +
-        "an App Check token, so every browser API request is rejected with " +
-        "APP_CHECK_FAILED and /api/health reports degraded. Set the site key, " +
-        "or turn enforcement off."
+    // Enforcement without site key = total failure for browser clients.
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "[AppCheck] APP_CHECK_ENFORCEMENT is on but NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY is empty. " +
+          "Clients cannot mint an App Check token, so every browser API request is rejected. " +
+          "Set the site key in production, or turn enforcement off."
+      );
+    }
+    appCheckLogger.warn(
+      "[AppCheck] APP_CHECK_ENFORCEMENT is on but NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY is empty. " +
+        "Clients cannot mint an App Check token. Set the site key, or turn enforcement off."
+    );
+  } else if (
+    configuration.configured &&
+    !configuration.enforced &&
+    process.env.NODE_ENV === "production"
+  ) {
+    // Site key exists but enforcement is off in production - warn but don't fail.
+    appCheckLogger.warn(
+      "[AppCheck] NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY is set but APP_CHECK_ENFORCEMENT is not 'true'. " +
+        "Production deployments should enforce App Check. API routes will accept requests without tokens."
     );
   }
 

@@ -31,6 +31,9 @@ vi.mock("@/config/env", () => ({
   get isProduction() {
     return h.isProduction;
   },
+  get isMfaDenylistOptional() {
+    return h.env.url !== "" && h.env.token !== "";
+  },
 }));
 
 /**
@@ -57,7 +60,9 @@ describe("denyMfaSession", () => {
 
     await denyMfaSession("jti-1", Math.floor(now / 1000) + 900, now);
 
-    expect(h.set).toHaveBeenCalledWith(mfaDenylistKey("jti-1"), "1", { ex: 900 });
+    expect(h.set).toHaveBeenCalledWith(mfaDenylistKey("jti-1"), "1", {
+      ex: 900,
+    });
   });
 
   it("skips a session that has already expired", async () => {
@@ -75,7 +80,9 @@ describe("denyMfaSession", () => {
     const { denyMfaSession } = await load();
 
     // Sign-out is in progress; a failed revocation must not block it.
-    await expect(denyMfaSession("jti-1", Date.now() / 1000 + 600)).resolves.toBeUndefined();
+    await expect(
+      denyMfaSession("jti-1", Date.now() / 1000 + 600)
+    ).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalled();
   });
 });
@@ -120,5 +127,21 @@ describe("isMfaSessionDenied", () => {
     // Local development has no Redis; revocation simply is not available.
     await expect(isMfaSessionDenied("jti-1")).resolves.toBe(false);
     expect(h.exists).not.toHaveBeenCalled();
+  });
+
+  it("honours the E2E opt-out instead of failing closed", async () => {
+    h.env = { url: "", token: "" };
+    h.isProduction = true;
+    process.env["MFA_DENYLIST_OPTIONAL"] = "1";
+
+    try {
+      const { isMfaSessionDenied } = await load();
+
+      // Without this, every elevation on a store-less production build (the
+      // local E2E run) is rejected and the passkey cookie authorizes nothing.
+      await expect(isMfaSessionDenied("jti-1")).resolves.toBe(false);
+    } finally {
+      delete process.env["MFA_DENYLIST_OPTIONAL"];
+    }
   });
 });

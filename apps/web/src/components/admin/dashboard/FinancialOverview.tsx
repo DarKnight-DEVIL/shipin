@@ -11,9 +11,7 @@ interface Props {
   };
 }
 
-export default function FinancialOverview({
-  stats,
-}: Props) {
+export default function FinancialOverview({ stats }: Props) {
   const cards = [
     {
       title: "Gross Revenue",
@@ -49,32 +47,22 @@ export default function FinancialOverview({
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-
-      <h2 className="text-2xl font-bold text-white mb-6">
-        Financial Overview
-      </h2>
+      <h2 className="text-2xl font-bold text-white mb-6">Financial Overview</h2>
 
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
-
         {cards.map((card) => (
           <div
             key={card.title}
             className="bg-slate-950 border border-slate-800 rounded-xl p-5"
           >
-            <p className="text-slate-400">
-              {card.title}
-            </p>
+            <p className="text-slate-400">{card.title}</p>
 
-            <h3
-              className={`text-3xl font-bold mt-3 ${card.color}`}
-            >
+            <h3 className={`text-3xl font-bold mt-3 ${card.color}`}>
               {card.value}
             </h3>
           </div>
         ))}
-
       </div>
-
     </div>
   );
 }

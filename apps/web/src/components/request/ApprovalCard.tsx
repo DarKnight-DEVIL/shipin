@@ -65,9 +65,7 @@ export default function ApprovalCard({ request }: Props) {
             {isApproving ? "Approving…" : "Approve Shipment"}
           </ActionButton>
 
-          <ActionButton className="flex-1">
-            Contact Support
-          </ActionButton>
+          <ActionButton className="flex-1">Contact Support</ActionButton>
         </div>
       </div>
     </Section>

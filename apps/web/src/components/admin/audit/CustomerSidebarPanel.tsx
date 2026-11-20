@@ -9,7 +9,7 @@
 
 import Image from "next/image";
 import { Search, User } from "lucide-react";
-import type { AdminCustomer } from "@/features/admin/services/customers";
+import type { AdminCustomer } from "@/features/admin/services/customersClient";
 import type { Request } from "@/types/request";
 
 interface CustomerSidebarPanelProps {
@@ -71,13 +71,13 @@ export function CustomerSidebarPanel({
               >
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-800">
                   {customer.photoURL ? (
-                  <Image
-                    src={customer.photoURL}
-                    width={44}
-                    height={44}
-                    alt={customer.displayName}
-                    className="h-full w-full rounded-full object-cover"
-                  />
+                    <Image
+                      src={customer.photoURL}
+                      width={44}
+                      height={44}
+                      alt={customer.displayName}
+                      className="h-full w-full rounded-full object-cover"
+                    />
                   ) : (
                     <User size={18} className="text-slate-500" />
                   )}
@@ -92,8 +92,7 @@ export function CustomerSidebarPanel({
                   </p>
                   <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
                     <span>
-                      {requestCount}{" "}
-                      request{requestCount === 1 ? "" : "s"}
+                      {requestCount} request{requestCount === 1 ? "" : "s"}
                     </span>
                     <span>•</span>
                     <span>${customer.walletBalance.toFixed(2)}</span>

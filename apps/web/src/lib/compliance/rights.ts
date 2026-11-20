@@ -2,16 +2,10 @@
  * DPDP Act 2023 - Data Subject Rights Management (Core Types)
  */
 
-export const DATA_SUBJECT_RIGHTS = {
-  ACCESS: 'access',
-  CORRECTION: 'correction',
-  ERASURE: 'erasure',
-  PORTABILITY: 'portability',
-  GRIEVANCE: 'grievance',
-  NOMINEE: 'nominee',
-} as const;
+export { DATA_SUBJECT_RIGHTS } from "./dpdp";
+export type { DataSubjectRight } from "./dpdp";
 
-export type DataSubjectRight = typeof DATA_SUBJECT_RIGHTS[keyof typeof DATA_SUBJECT_RIGHTS];
+import type { DataSubjectRight } from "./dpdp";
 
 /**
  * Response deadlines per DPDP Act (in days)
@@ -29,7 +23,7 @@ export interface RightsRequest {
   id: string;
   userId: string;
   right: DataSubjectRight;
-  status: 'pending' | 'processing' | 'completed' | 'rejected' | 'on_hold';
+  status: "pending" | "processing" | "completed" | "rejected" | "on_hold";
   details?: string;
   response?: string;
   responseDeadline?: Date;

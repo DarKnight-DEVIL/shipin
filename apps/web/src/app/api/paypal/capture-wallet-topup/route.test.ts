@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { NextRequest, NextResponse } from 'next/server';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   requireAuthWithProfile: vi.fn(),
   topupGet: vi.fn(),
+  topupSet: vi.fn(),
   getPayPalAccessToken: vi.fn(),
   fetch: vi.fn(),
   txGet: vi.fn(),
@@ -12,35 +13,47 @@ const mocks = vi.hoisted(() => ({
   runTransaction: vi.fn(),
 }));
 
-vi.mock('@/lib/auth', () => ({ requireAuthWithProfile: mocks.requireAuthWithProfile }));
-vi.mock('@/lib/firebaseAdmin', () => ({
+vi.mock("@/lib/auth", () => ({
+  requireAuthWithProfile: mocks.requireAuthWithProfile,
+}));
+vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
     collection: (name: string) => ({
       doc: (id?: string) => {
-        if (name === 'walletTopupOrders') return { id, __kind: 'topup', get: mocks.topupGet };
-        if (name === 'wallets') return { id, __kind: 'wallet' };
-        return { id, __kind: 'wtx' };
+        if (name === "walletTopupOrders")
+          return {
+            id,
+            __kind: "topup",
+            get: mocks.topupGet,
+            set: mocks.topupSet,
+          };
+        if (name === "wallets") return { id, __kind: "wallet" };
+        return { id, __kind: "wtx" };
       },
     }),
     runTransaction: mocks.runTransaction,
   },
 }));
-vi.mock('@/lib/paypal', () => ({ getPayPalAccessToken: mocks.getPayPalAccessToken }));
-vi.mock('@/config/env', () => ({ serverEnv: { PAYPAL_API_URL: 'https://paypal.test' } }));
-vi.mock('firebase-admin/firestore', () => ({
+vi.mock("@/lib/paypal", () => ({
+  getPayPalAccessToken: mocks.getPayPalAccessToken,
+}));
+vi.mock("@/config/env", () => ({
+  serverEnv: { PAYPAL_API_URL: "https://paypal.test" },
+}));
+vi.mock("firebase-admin/firestore", () => ({
   FieldValue: {
-    serverTimestamp: () => '__SERVER_TS__',
+    serverTimestamp: () => "__SERVER_TS__",
     increment: (value: number) => `__INC_${value}__`,
   },
 }));
 
-import { POST } from './route';
+import { POST } from "./route";
 
 const request = (body: unknown, headers: Record<string, string> = {}) =>
-  new NextRequest('http://localhost/api/paypal/capture-wallet-topup', {
-    method: 'POST',
+  new NextRequest("http://localhost/api/paypal/capture-wallet-topup", {
+    method: "POST",
     headers,
-    body: typeof body === 'string' ? body : JSON.stringify(body),
+    body: typeof body === "string" ? body : JSON.stringify(body),
   });
 
 const snap = (data: Record<string, unknown> | undefined) => ({
@@ -49,29 +62,51 @@ const snap = (data: Record<string, unknown> | undefined) => ({
 });
 
 const completedCapture = {
-  status: 'COMPLETED',
+  status: "COMPLETED",
   purchase_units: [
-    { payments: { captures: [{ id: 'cap-1', amount: { value: '25.00', currency_code: 'USD' } }] } },
+    {
+      payments: {
+        captures: [
+          { id: "cap-1", amount: { value: "25.00", currency_code: "USD" } },
+        ],
+      },
+    },
   ],
 };
 
-const body = { orderID: 'order-1', amount: 25 };
+const body = { orderID: "order-1", amount: 25 };
 
 beforeEach(() => {
-  mocks.requireAuthWithProfile.mockReset().mockResolvedValue({ token: { uid: 'user-1' }, profile: { uid: 'user-1' } });
-  mocks.topupGet.mockReset().mockResolvedValue(snap({ userId: 'user-1', amount: 25 }));
-  mocks.getPayPalAccessToken.mockReset().mockResolvedValue('access-token');
-  mocks.fetch.mockReset().mockResolvedValue({ ok: true, status: 200, json: async () => completedCapture });
-  mocks.txGet.mockReset().mockImplementation(async (ref: { __kind?: string }) =>
-    ref.__kind === 'wallet' ? snap({ balance: 10, currency: 'USD' }) : snap(undefined)
-  );
+  mocks.requireAuthWithProfile.mockReset().mockResolvedValue({
+    token: { uid: "user-1" },
+    profile: { uid: "user-1" },
+  });
+  mocks.topupGet
+    .mockReset()
+    .mockResolvedValue(snap({ userId: "user-1", amount: 25 }));
+  mocks.topupSet.mockReset().mockResolvedValue(undefined);
+  mocks.getPayPalAccessToken.mockReset().mockResolvedValue("access-token");
+  mocks.fetch.mockReset().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => completedCapture,
+  });
+  mocks.txGet
+    .mockReset()
+    .mockImplementation(async (ref: { __kind?: string }) =>
+      ref.__kind === "wallet"
+        ? snap({ balance: 10, currency: "USD" })
+        : snap(undefined)
+    );
   mocks.txSet.mockReset();
   mocks.txUpdate.mockReset();
-  mocks.runTransaction.mockReset().mockImplementation(async (cb: (tx: unknown) => unknown) =>
-    cb({ get: mocks.txGet, set: mocks.txSet, update: mocks.txUpdate })
-  );
-  vi.stubGlobal('fetch', mocks.fetch);
-  vi.spyOn(console, 'error').mockImplementation(() => {});
+  mocks.runTransaction
+    .mockReset()
+    .mockImplementation(async (cb: (tx: unknown) => unknown) =>
+      cb({ get: mocks.txGet, set: mocks.txSet, update: mocks.txUpdate })
+    );
+  vi.stubGlobal("fetch", mocks.fetch);
+  vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -79,51 +114,65 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('POST /api/paypal/capture-wallet-topup', () => {
-  it('rejects requests without authentication headers', async () => {
-    mocks.requireAuthWithProfile.mockResolvedValue(NextResponse.json(
-      { success: false, error: 'Authentication required.', code: 'AUTHENTICATION_REQUIRED' },
-      { status: 401 }
-    ));
+describe("POST /api/paypal/capture-wallet-topup", () => {
+  it("rejects requests without authentication headers", async () => {
+    mocks.requireAuthWithProfile.mockResolvedValue(
+      NextResponse.json(
+        {
+          success: false,
+          error: "Authentication required.",
+          code: "AUTHENTICATION_REQUIRED",
+        },
+        { status: 401 }
+      )
+    );
     const response = await POST(request(body, {}));
 
     expect(response.status).toBe(401);
     expect(mocks.topupGet).not.toHaveBeenCalled();
   });
 
-  it('propagates auth failures from requireAuthWithProfile', async () => {
-    mocks.requireAuthWithProfile.mockResolvedValue(NextResponse.json(
-      { success: false, error: 'Invalid authentication.', code: 'INVALID_AUTHENTICATION' },
-      { status: 401 }
-    ));
+  it("propagates auth failures from requireAuthWithProfile", async () => {
+    mocks.requireAuthWithProfile.mockResolvedValue(
+      NextResponse.json(
+        {
+          success: false,
+          error: "Invalid authentication.",
+          code: "INVALID_AUTHENTICATION",
+        },
+        { status: 401 }
+      )
+    );
 
     const response = await POST(request(body));
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       success: false,
-      code: 'INVALID_AUTHENTICATION',
+      code: "INVALID_AUTHENTICATION",
     });
   });
 
-  it('requires an order id', async () => {
+  it("requires an order id", async () => {
     const response = await POST(request({ amount: 25 }));
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       success: false,
-      error: 'PayPal Order ID is required.',
+      error: "PayPal Order ID is required.",
     });
   });
 
-  it('rejects a non-positive or non-numeric amount', async () => {
-    const notNumber = await POST(request({ orderID: 'order-1', amount: 'abc' }));
-    const zero = await POST(request({ orderID: 'order-1', amount: 0 }));
+  it("rejects a non-positive or non-numeric amount", async () => {
+    const notNumber = await POST(
+      request({ orderID: "order-1", amount: "abc" })
+    );
+    const zero = await POST(request({ orderID: "order-1", amount: 0 }));
 
     expect([notNumber.status, zero.status]).toEqual([400, 400]);
   });
 
-  it('404s for an unknown order', async () => {
+  it("404s for an unknown order", async () => {
     mocks.topupGet.mockResolvedValue(snap(undefined));
 
     const response = await POST(request(body));
@@ -132,7 +181,9 @@ describe('POST /api/paypal/capture-wallet-topup', () => {
   });
 
   it("refuses another customer's order", async () => {
-    mocks.topupGet.mockResolvedValue(snap({ userId: 'someone-else', amount: 25 }));
+    mocks.topupGet.mockResolvedValue(
+      snap({ userId: "someone-else", amount: 25 })
+    );
 
     const response = await POST(request(body));
 
@@ -140,68 +191,137 @@ describe('POST /api/paypal/capture-wallet-topup', () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
-  it('rejects an amount that differs from the stored order', async () => {
+  it("rejects an amount that differs from the stored order", async () => {
     const response = await POST(request({ ...body, amount: 40 }));
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       success: false,
-      error: 'Top-up amount does not match the original order.',
+      error: "Top-up amount does not match the original order.",
     });
   });
 
-  it('returns a gateway error status on PayPal failure', async () => {
-    mocks.fetch.mockResolvedValue({ ok: false, status: 422, json: async () => ({ message: 'Declined' }) });
+  it("returns a gateway error status on PayPal failure", async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({ message: "Declined" }),
+    });
 
     const response = await POST(request(body));
 
     expect(response.status).toBe(422);
-    await expect(response.json()).resolves.toEqual({ success: false, error: 'Unable to process payment. Please try again.' });
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Unable to process payment. Please try again.",
+    });
   });
 
-  it('uses a safe fallback when PayPal provides no details', async () => {
-    mocks.fetch.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
+  it("clears the pending flag when PayPal refuses the capture", async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({ message: "Declined" }),
+    });
+
+    await POST(request(body));
+
+    // No money moved, so the order must not keep looking like an in-flight
+    // charge that needs reconciliation.
+    expect(mocks.topupSet).toHaveBeenCalledWith(
+      { capturePending: false },
+      { merge: true }
+    );
+  });
+
+  it("still reports the decline when clearing the flag fails", async () => {
+    mocks.topupSet.mockImplementation(
+      async (data: { capturePending?: boolean }) => {
+        if (data.capturePending === false) throw new Error("firestore down");
+      }
+    );
+    mocks.fetch.mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({ message: "Declined" }),
+    });
+
+    const response = await POST(request(body));
+
+    // The customer still learns the charge was declined.
+    expect(response.status).toBe(422);
+    expect(console.error).toHaveBeenCalledWith(
+      "Could not clear the pending-capture flag:",
+      expect.any(Error)
+    );
+  });
+
+  it("uses a safe fallback when PayPal provides no details", async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+    });
 
     const response = await POST(request(body));
 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
       success: false,
-      error: 'Unable to process payment. Please try again.',
+      error: "Unable to process payment. Please try again.",
     });
   });
 
-  it('requires a completed PayPal status', async () => {
-    mocks.fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ status: 'PENDING' }) });
+  it("requires a completed PayPal status", async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "PENDING" }),
+    });
 
     const response = await POST(request(body));
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       success: false,
-      error: 'PayPal payment was not completed.',
+      error: "PayPal payment was not completed.",
     });
   });
 
-  it('requires capture details', async () => {
-    mocks.fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ status: 'COMPLETED' }) });
+  it("requires capture details", async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "COMPLETED" }),
+    });
 
     const response = await POST(request(body));
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       success: false,
-      error: 'PayPal capture details were not found.',
+      error: "PayPal capture details were not found.",
     });
   });
 
-  it('rejects an invalid capture amount', async () => {
+  it("rejects an invalid capture amount", async () => {
     mocks.fetch.mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
-        status: 'COMPLETED',
-        purchase_units: [{ payments: { captures: [{ id: 'cap-1', amount: { value: 'nope', currency_code: 'USD' } }] } }],
+        status: "COMPLETED",
+        purchase_units: [
+          {
+            payments: {
+              captures: [
+                {
+                  id: "cap-1",
+                  amount: { value: "nope", currency_code: "USD" },
+                },
+              ],
+            },
+          },
+        ],
       }),
     });
 
@@ -210,17 +330,28 @@ describe('POST /api/paypal/capture-wallet-topup', () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       success: false,
-      error: 'Invalid PayPal capture amount.',
+      error: "Invalid PayPal capture amount.",
     });
   });
 
-  it('rejects a non-USD capture', async () => {
+  it("rejects a non-USD capture", async () => {
     mocks.fetch.mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
-        status: 'COMPLETED',
-        purchase_units: [{ payments: { captures: [{ id: 'cap-1', amount: { value: '25.00', currency_code: 'EUR' } }] } }],
+        status: "COMPLETED",
+        purchase_units: [
+          {
+            payments: {
+              captures: [
+                {
+                  id: "cap-1",
+                  amount: { value: "25.00", currency_code: "EUR" },
+                },
+              ],
+            },
+          },
+        ],
       }),
     });
 
@@ -229,17 +360,28 @@ describe('POST /api/paypal/capture-wallet-topup', () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       success: false,
-      error: 'Unexpected PayPal payment currency.',
+      error: "Unexpected PayPal payment currency.",
     });
   });
 
-  it('rejects a captured amount that does not match', async () => {
+  it("rejects a captured amount that does not match", async () => {
     mocks.fetch.mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
-        status: 'COMPLETED',
-        purchase_units: [{ payments: { captures: [{ id: 'cap-1', amount: { value: '99.00', currency_code: 'USD' } }] } }],
+        status: "COMPLETED",
+        purchase_units: [
+          {
+            payments: {
+              captures: [
+                {
+                  id: "cap-1",
+                  amount: { value: "99.00", currency_code: "USD" },
+                },
+              ],
+            },
+          },
+        ],
       }),
     });
 
@@ -248,11 +390,11 @@ describe('POST /api/paypal/capture-wallet-topup', () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       success: false,
-      error: 'Captured payment amount does not match the wallet top-up.',
+      error: "Captured payment amount does not match the wallet top-up.",
     });
   });
 
-  it('increments an existing wallet and records the transaction', async () => {
+  it("increments an existing wallet and records the transaction", async () => {
     const response = await POST(request(body));
 
     expect(response.status).toBe(200);
@@ -261,61 +403,179 @@ describe('POST /api/paypal/capture-wallet-topup', () => {
       alreadyProcessed: false,
       balance: 35,
       amount: 25,
-      currency: 'USD',
-      captureId: 'cap-1',
+      currency: "USD",
+      captureId: "cap-1",
     });
     expect(mocks.txUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ __kind: 'wallet' }),
-      expect.objectContaining({ balance: '__INC_25__', currency: 'USD' })
+      expect.objectContaining({ __kind: "wallet" }),
+      expect.objectContaining({ balance: "__INC_25__", currency: "USD" })
     );
     expect(mocks.txSet).toHaveBeenCalledWith(
-      expect.objectContaining({ __kind: 'wtx', id: 'cap-1' }),
-      expect.objectContaining({ type: 'deposit', amount: 25, balanceAfter: 35, orderId: 'order-1' })
+      expect.objectContaining({ __kind: "wtx", id: "cap-1" }),
+      expect.objectContaining({
+        type: "deposit",
+        amount: 25,
+        balanceAfter: 35,
+        orderId: "order-1",
+      })
     );
     expect(mocks.txUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ __kind: 'topup' }),
-      expect.objectContaining({ status: 'completed', captureId: 'cap-1' })
+      expect.objectContaining({ __kind: "topup" }),
+      expect.objectContaining({ status: "completed", captureId: "cap-1" })
     );
   });
 
-  it('creates a wallet when the customer has none', async () => {
+  it("marks the capture as pending before calling PayPal", async () => {
+    await POST(request(body));
+
+    expect(mocks.topupSet).toHaveBeenCalledWith(
+      expect.objectContaining({ capturePending: true }),
+      { merge: true }
+    );
+    // Order matters: the flag has to be durable before any money can move, or a
+    // crash between capture and credit leaves no trace of the in-flight charge.
+    expect(mocks.topupSet.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.fetch.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("reconciles an already-captured order instead of reporting failure", async () => {
+    // First call: PayPal says the capture already exists (the crash-after-charge
+    // retry). Second: the order lookup returns the completed capture.
+    mocks.fetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: async () => ({ details: [{ issue: "ORDER_ALREADY_CAPTURED" }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => completedCapture,
+      });
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      captureId: "cap-1",
+      balance: 35,
+    });
+    expect(mocks.fetch).toHaveBeenNthCalledWith(
+      2,
+      "https://paypal.test/v2/checkout/orders/order-1",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  it("returns 409 with the pending code when reconciliation cannot confirm the capture", async () => {
+    mocks.fetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: async () => ({ details: [{ issue: "ORDER_ALREADY_CAPTURED" }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        json: async () => ({}),
+      });
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: "CAPTURE_PENDING_RECONCILIATION",
+    });
+    // Nothing was credited, so the customer must not be told it succeeded.
+    expect(mocks.txSet).not.toHaveBeenCalled();
+  });
+
+  it("creates a wallet when the customer has none", async () => {
     mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
-      ref.__kind === 'wallet' ? snap(undefined) : snap(undefined)
+      ref.__kind === "wallet" ? snap(undefined) : snap(undefined)
     );
 
     const response = await POST(request(body));
 
     expect(response.status).toBe(200);
     expect(mocks.txSet).toHaveBeenCalledWith(
-      expect.objectContaining({ __kind: 'wallet' }),
-      expect.objectContaining({ balance: 25, currency: 'USD' })
+      expect.objectContaining({ __kind: "wallet" }),
+      expect.objectContaining({ balance: 25, currency: "USD" })
     );
     await expect(response.json()).resolves.toEqual(
       expect.objectContaining({ balance: 25 })
     );
   });
 
-  it('does not double-credit an already processed capture', async () => {
+  it("does not double-credit an already processed capture", async () => {
     mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
-      ref.__kind === 'wallet' ? snap({ balance: 10 }) : snap({ balanceAfter: 35 })
+      ref.__kind === "wallet"
+        ? snap({ balance: 10 })
+        : snap({ balanceAfter: 35 })
     );
 
     const response = await POST(request(body));
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({ success: true, alreadyProcessed: true, balance: 35 })
+      expect.objectContaining({
+        success: true,
+        alreadyProcessed: true,
+        balance: 35,
+      })
     );
     expect(mocks.txSet).not.toHaveBeenCalled();
   });
 
-  it('rejects malformed JSON bodies', async () => {
-    const response = await POST(request('not json'));
+  it("rejects malformed JSON bodies", async () => {
+    const response = await POST(request("not json"));
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       success: false,
-      code: 'INVALID_JSON',
+      code: "INVALID_JSON",
     });
+  });
+
+  // PayPal can return a non-COMPLETED status when the order has been approved or
+  // created but never captured (the money did not move). That is not a credit
+  // opportunity: it is a rejection, and nothing must be credited.
+  it("rejects a PayPal order that is only CREATED", async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "CREATED" }),
+    });
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "PayPal payment was not completed.",
+    });
+    expect(mocks.txSet).not.toHaveBeenCalled();
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects a PayPal order that is only APPROVED", async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "APPROVED" }),
+    });
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "PayPal payment was not completed.",
+    });
+    expect(mocks.txSet).not.toHaveBeenCalled();
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 });

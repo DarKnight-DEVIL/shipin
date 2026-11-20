@@ -4,14 +4,8 @@ import { withErrorHandler } from "@/utils/errors";
 import { requireAdmin, getAdminAuthError } from "@/lib/adminAuth";
 import { sendMail } from "@/lib/mailer";
 import { generateEmail } from "@/lib/emailTemplates";
-import {
-  strictRateLimiter,
-  addRateLimitHeaders,
-} from "@/lib/rateLimiter";
-import {
-  sendEmailBodySchema,
-  validateBody,
-} from "@/lib/validation";
+import { strictRateLimiter, addRateLimitHeaders } from "@/lib/rateLimiter";
+import { sendEmailBodySchema, validateBody } from "@/lib/validation";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -31,7 +25,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       {
         success: false,
         error: authError.error,
-        code: authError.status === 401 ? "AUTHENTICATION_REQUIRED" : "AUTHORIZATION_ERROR",
+        code:
+          authError.status === 401
+            ? "AUTHENTICATION_REQUIRED"
+            : "AUTHORIZATION_ERROR",
       },
       { status: authError.status, headers: NO_STORE }
     );
@@ -61,9 +58,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-    const parseResult = validateBody(body, sendEmailBodySchema);
-    if (!parseResult.success) {
-      return NextResponse.json(
+  const parseResult = validateBody(body, sendEmailBodySchema);
+  if (!parseResult.success) {
+    return NextResponse.json(
       {
         success: false,
         error: "Invalid request body.",
@@ -72,31 +69,28 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       },
       { status: 400, headers: NO_STORE }
     );
-    }
+  }
 
-    const {
-      type,
-      email,
-      requestId,
-      amount,
-      trackingNumber,
-      supportMessage,
-    } = parseResult.data;
+  const { type, email, requestId, amount, trackingNumber, supportMessage } =
+    parseResult.data;
 
-    // Keep compatibility with older clients that send "shipment".
-    const emailType = type === "shipment" ? "shipped" : type ?? "shipped";
-    const emailContent = generateEmail(emailType, {
-      requestId: requestId ?? "",
-      amount,
-      trackingNumber,
-      supportMessage,
-    });
+  // Keep compatibility with older clients that send "shipment".
+  const emailType = type === "shipment" ? "shipped" : (type ?? "shipped");
+  const emailContent = generateEmail(emailType, {
+    requestId: requestId ?? "",
+    amount,
+    trackingNumber,
+    supportMessage,
+  });
 
-    await sendMail({
-      to: email,
-      subject: emailContent.subject,
-      html: emailContent.html,
-    });
+  await sendMail({
+    to: email,
+    subject: emailContent.subject,
+    html: emailContent.html,
+  });
 
-    return NextResponse.json({ success: true }, { status: 200, headers: rateHeaders });
+  return NextResponse.json(
+    { success: true },
+    { status: 200, headers: rateHeaders }
+  );
 });

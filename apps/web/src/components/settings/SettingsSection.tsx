@@ -16,7 +16,9 @@ export default function SettingsSection({
           {title}
         </h2>
         {description && (
-          <p className="mt-0.5 text-[12px] text-[var(--muted)]">{description}</p>
+          <p className="mt-0.5 text-[12px] text-[var(--muted)]">
+            {description}
+          </p>
         )}
       </div>
       <div className="p-5">{children}</div>

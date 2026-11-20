@@ -15,66 +15,45 @@ export default function AdminGuard({
   const router = useRouter();
   const pathname = usePathname();
 
-  const [checking, setChecking] =
-    useState(true);
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    const unsubscribe =
-      onAuthStateChanged(
-        auth,
-        async (user) => {
-          try {
-            /*
-             * No Firebase user
-             */
-            if (!user) {
-              router.replace(
-                `/login?next=${encodeURIComponent(
-                  pathname
-                )}`
-              );
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      try {
+        /*
+         * No Firebase user
+         */
+        if (!user) {
+          router.replace(`/login?next=${encodeURIComponent(pathname)}`);
 
-              return;
-            }
-
-            /*
-             * Get ShipIN profile
-             */
-            const profile =
-              await getUserProfile(
-                user.uid
-              );
-
-            /*
-             * User is authenticated but
-             * does not have admin privileges.
-             */
-            if (
-              profile?.role !== "admin"
-            ) {
-              router.replace(
-                "/dashboard"
-              );
-
-              return;
-            }
-
-            /*
-             * User is an admin.
-             */
-            setChecking(false);
-          } catch (error) {
-            console.error(
-              "Admin authorization check failed:",
-              error
-            );
-
-            router.replace(
-              "/dashboard"
-            );
-          }
+          return;
         }
-      );
+
+        /*
+         * Get ShipIN profile
+         */
+        const profile = await getUserProfile(user.uid);
+
+        /*
+         * User is authenticated but
+         * does not have admin privileges.
+         */
+        if (profile?.role !== "admin") {
+          router.replace("/dashboard");
+
+          return;
+        }
+
+        /*
+         * User is an admin.
+         */
+        setChecking(false);
+      } catch (error) {
+        console.error("Admin authorization check failed:", error);
+
+        router.replace("/dashboard");
+      }
+    });
 
     return () => unsubscribe();
   }, [router, pathname]);

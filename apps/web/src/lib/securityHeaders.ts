@@ -5,10 +5,13 @@
  * response headers. All values are conservative and production-ready.
  *
  * Content Security Policy (CSP):
- *   - Default to 'self' and forbid inline scripts/styles (no unsafe-inline,
- *     no eval-based script execution).
- *   - Allow Next.js/React build-time inline scripts only when necessary.
- *   - Restrict image sources, fonts, frames, and connect targets.
+ *   - Default to 'self'; no 'unsafe-eval' in either environment.
+ *   - 'unsafe-inline' IS allowed for scripts and styles. Every route is
+ *     statically prerendered, so Next.js writes the hydration bootstrap into
+ *     the HTML at build time and a per-request nonce could never match it — the
+ *     comment on getProductionCSP below has the full reasoning.
+ *   - Restrict image sources, fonts, frames, and connect targets. Production
+ *     names image hosts instead of carrying a blanket `https:`.
  *   - CSP violation reports are sent to /api/csp-report via report-to.
  *
  * NOTE: If your app legitimately uses inline scripts or third-party
@@ -19,26 +22,113 @@
 import { isProduction } from "@/config/env";
 
 /**
+ * Loopback origins for the local Firebase emulators, or an empty string.
+ *
+ * `connect-src` has no http source, so a local E2E build could not reach
+ * 127.0.0.1:9099 and sign-in failed with `auth/network-request-failed` while
+ * the CSP error was the only clue. These hosts are empty in every deployment
+ * build (the NEXT_PUBLIC_* values are inlined at build time), so this cannot
+ * widen a real deployment's policy.
+ */
+function emulatorConnectSources(): string {
+  const origins = [
+    process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST,
+    process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST,
+  ]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+    .map((host) => `http://${host}`);
+
+  return origins.length > 0 ? ` ${[...new Set(origins)].join(" ")}` : "";
+}
+
+/**
+ * Hosts the development policy may load images from.
+ *
+ * This list replaces a bare `https:`, which let *any* HTTPS host serve an
+ * image — and an image request carries the page URL in `Referer`, so the
+ * blanket was also an outbound channel to anywhere. Every entry is a host the
+ * app really renders:
+ *
+ *   - `*.r2.cloudflarestorage.com` — presigned packing/inspection photos
+ *     (`src/lib/r2.ts` builds the endpoint from `R2_ACCOUNT_ID`, so this is the
+ *     only shape those URLs take)
+ *   - `*.firebasestorage.app`, `firebasestorage.googleapis.com` — avatars and
+ *     uploads that pass through Firebase Storage
+ *   - `lh3.googleusercontent.com` — Google profile photos, the only
+ *     `next/image` remotePattern in `next.config.ts`
+ *   - `*.spline.design`, `cdn.spline.dev`, `www.gstatic.com` — landing-page 3D
+ *     scene assets
+ *   - `www.paypalobjects.com` — the PayPal SDK renders its logo from here on
+ *     `/wallet/topup`, which the narrowed list missed
+ */
+const IMAGE_SOURCES = [
+  "'self'",
+  "blob:",
+  "data:",
+  "https://*.r2.cloudflarestorage.com",
+  "https://*.firebasestorage.app",
+  "https://firebasestorage.googleapis.com",
+  "https://lh3.googleusercontent.com",
+  "https://*.spline.design",
+  "https://cdn.spline.dev",
+  "https://www.gstatic.com",
+  "https://www.paypalobjects.com",
+].join(" ");
+
+/**
+ * Local sockets for the dev server's own HMR channel.
+ *
+ * Turbopack keeps its HMR channel on a WebSocket at the dev server origin, and
+ * `'self'` only covers http(s) sources. The port is wildcarded because it is
+ * chosen at runtime (`PORT`, or 3001 when 3000 is taken); the host is not, so
+ * this stays a loopback-only allowance. Serving dev to another device over a
+ * LAN IP is the one case it does not cover — fast refresh goes quiet there, but
+ * the app still loads, which is a better trade than `ws:` anywhere.
+ */
+const DEV_HMR_SOCKETS =
+  "ws://localhost:* ws://127.0.0.1:* wss://localhost:* wss://127.0.0.1:*";
+
+/**
  * Development CSP: allows inline scripts and styles for Turbopack/Next.js dev server.
  * This is less secure but necessary for development hot-reloading.
+ *
+ * Only the two allowances dev genuinely needs over production are wider here:
+ * `'unsafe-eval'`/`'wasm-unsafe-eval'` for the dev bundle, and loopback HMR
+ * sockets. `img-src` and `connect-src` otherwise name explicit hosts instead of
+ * carrying a blanket `https:`/`wss:`.
  */
 export function getDevCSP(): string {
-  const base = "'self' https://www.gstatic.com https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com";
+  const base =
+    "'self' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/";
   const scriptSrc = `script-src ${base} 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; `;
 
   return (
     "default-src 'self'; " +
     scriptSrc +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com https://cdn.spline.dev; " +
-    "img-src 'self' blob: data: https:; " +
+    `img-src ${IMAGE_SOURCES}; ` +
     "font-src 'self' https://fonts.gstatic.com https://cdn.spline.dev; " +
     "connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com " +
-    "https://graph.facebook.com https://www.google.com https://www.googletagmanager.com " +
+    // The PayPal SDK itself posts to its own origin (`/xoplatform/logger/...`),
+    // not just the `api-m` hosts. Without these the SDK logs CSP refusals on
+    // every render of the top-up button.
+    "https://www.paypal.com https://www.sandbox.paypal.com " +
+    "https://graph.facebook.com https://www.google.com https://www.google.com/recaptcha/ https://www.googletagmanager.com " +
     "https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com " +
-    "https://*.firebasestorage.app https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com https://va.vercel-scripts.com wss: https:; " +
+    "https://*.firebasestorage.app https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com https://va.vercel-scripts.com " +
+    // The landing hero pulls its `.splinecode` scene from here
+    // (`SplineHero.tsx`), and that fetch is `connect-src`, not `script-src`.
+    "https://prod.spline.design " +
+    // Firebase Realtime Database sockets, then the dev-only transports: HMR on
+    // loopback and the local emulator origins.
+    "wss://*.firebaseio.com wss://*.firebasedatabase.app " +
+    DEV_HMR_SOCKETS +
+    emulatorConnectSources() +
+    "; " +
     "worker-src 'self' blob: https://cdn.spline.dev; " +
     "media-src 'self'; " +
-    "frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://spline.dev https://cdn.spline.dev https://accounts.google.com https://apis.google.com https://www.google.com https://*.firebaseapp.com; " +
+    "frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://spline.dev https://cdn.spline.dev https://accounts.google.com https://apis.google.com https://www.google.com https://recaptcha.google.com https://*.firebaseapp.com; " +
     "object-src 'none'; " +
     "base-uri 'self'; " +
     "form-action 'self'; " +
@@ -80,6 +170,13 @@ export const SECURITY_HEADERS: Record<string, string> = {
 
   /**
    * XSS filter in legacy browsers.
+   *
+   * `0` disables the reflected-XSS auditor on purpose: OWASP and every major
+   * browser vendor recommend it, because the auditor itself could be steered
+   * into injecting script into a page (and it was removed from modern
+   * Chromium/Edge/Safari entirely). Leaving the header out is not the safer
+   * choice — old IE/Edge then enable the auditor by default. Real XSS defence
+   * here is the CSP above plus output encoding, not this header.
    */
   "X-XSS-Protection": "0",
 
@@ -96,11 +193,22 @@ export const SECURITY_HEADERS: Record<string, string> = {
    * permissive CSP from getDevCSP(). This is a fallback for requests that
    * bypass the proxy.
    */
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; font-src 'self'; connect-src 'self' https:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to 'csp-endpoint';",
+  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src ${IMAGE_SOURCES}; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com https://*.firebasestorage.app https://cdn.vercel-insights.com https://analytics.vercel.com wss://*.firebaseio.com wss://*.firebasedatabase.app; frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://accounts.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to 'csp-endpoint';`,
+
+  /**
+   * Client Hints are deliberately not requested here.
+   *
+   * `Sec-Ch-Ua` / `Sec-Ch-Ua-Mobile` are REQUEST headers the browser sends;
+   * a server cannot set them on its own responses. It can only opt in to
+   * additional hints with `Accept-CH`, which asks for MORE fingerprinting
+   * material from every visitor — the opposite of the privacy concern. The
+   * browser already sends its default hints on the requests Firebase and
+   * PayPal see, so nothing is missing here.
+   */
 
   /**
    * Discourages search engines from indexing the app.
-   * Public landing pages should override this with getRobotsTag("index").
+   * Public pages opt back in with INDEX_ROBOTS (see src/config/seo.ts).
    * Authenticated/app pages keep noindex to avoid leaking user data.
    */
   "X-Robots-Tag": "noindex, nofollow",
@@ -115,35 +223,38 @@ export const SECURITY_HEADERS: Record<string, string> = {
   /**
    * Permissions Policy (previously Feature-Policy).
    * Restricts powerful browser features.
+   *
+   * `publickey-credentials-get=(self)` is what lets the passkey sign-in
+   * ceremony run: the admin MFA gate calls `navigator.credentials.get`, and the
+   * default of denying it made the security-key button fail instantly.
    */
   "Permissions-Policy":
     "accelerometer=(), camera=(), gyroscope=(), magnetometer=(), microphone=(), " +
-    "payment=(self), publickey-credentials-get=(), usb=(), geolocation=(), " +
+    "payment=(self), publickey-credentials-get=(self), usb=(), geolocation=(), " +
     // `clipboard-write=(self)`: the admin backup-code list copies through
     // navigator.clipboard, and `clipboard-write=()` blocked that outright — the
     // button silently did nothing. Reading the clipboard is still denied.
     "clipboard-read=(), clipboard-write=(self), speaker=(), display-capture=(), " +
     "document-domain=(), cross-origin-isolated=()",
 
-    /**
-     * Reporting Endpoints.
-     *
-     * Defines named endpoints (used by `report-to` in CSP, Permissions-Policy,
-     * and other reporting APIs) so the browser knows where to send violations.
-     * The endpoint is served at /api/csp-report.
-     */
-    "Reporting-Endpoints": "{\"csp-endpoint\":\"/api/csp-report\"}",
-};
+  /**
+   * Reporting Endpoints.
+   *
+   * Defines named endpoints (used by `report-to` in CSP, Permissions-Policy,
+   * and other reporting APIs) so the browser knows where to send violations.
+   * The endpoint is served at /api/csp-report.
+   */
+  "Reporting-Endpoints": '{"csp-endpoint":"/api/csp-report"}',
 
-/**
- * Returns the appropriate robots tag for a given route type.
- *
- * - Public landing pages: "index, follow" (good for SEO)
- * - Authenticated/app pages: "noindex, nofollow" (prevents leaking user data)
- */
-export function getRobotsTag(isPublicPage: boolean = false): string {
-  return isPublicPage ? "index, follow" : "noindex, nofollow";
-}
+  /**
+   * Report-To: the older reporting API, still read by Safari and older
+   * Chromium. Modern browsers use Reporting-Endpoints above; both point at
+   * the same collector so a violation is not dropped just because the
+   * browser predates the newer header.
+   */
+  "Report-To":
+    '{"group":"csp-endpoint","max_age":10886400,"endpoints":[{"url":"/api/csp-report"}]}',
+};
 
 /**
  * Content Security Policy for the production build.
@@ -169,21 +280,34 @@ export function getRobotsTag(isPublicPage: boolean = false): string {
  * `getCSPWithNonce` is in the git history for that day.
  */
 export function getProductionCSP(): string {
-  const scriptSrc = `script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com; `;
+  const scriptSrc = `script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/; `;
 
   return (
     "default-src 'self'; " +
     scriptSrc +
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com https://cdn.spline.dev; ` +
-    "img-src 'self' blob: data: https:; " +
+    `img-src ${IMAGE_SOURCES}; ` +
     "font-src 'self' https://fonts.gstatic.com https://cdn.spline.dev; " +
     "connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com " +
-    "https://graph.facebook.com https://www.google.com https://www.googletagmanager.com " +
+    // The SDK reports to `www.paypal.com` / `www.sandbox.paypal.com`; see the
+    // production policy below for the same pair.
+    "https://www.paypal.com https://www.sandbox.paypal.com " +
+    "https://graph.facebook.com https://www.google.com https://www.google.com/recaptcha/ https://www.googletagmanager.com " +
     "https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com " +
-    "https://*.firebasestorage.app https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com wss: https:; " +
+    "https://*.firebasestorage.app https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com " +
+    // The landing hero fetches its `.splinecode` scene from here
+    // (`SplineHero.tsx`), and that fetch is governed by `connect-src`. Dev had
+    // this host but production did not, so the hero only ever loaded in dev.
+    "https://prod.spline.design " +
+    // Narrowed from a blanket `wss: https:`: every host the app actually
+    // talks to is already listed above, so the wildcard only widened the
+    // exfiltration surface. Firebase Realtime Database sockets stay allowed.
+    "wss://*.firebaseio.com wss://*.firebasedatabase.app" +
+    emulatorConnectSources() +
+    "; " +
     "worker-src 'self' blob: https://cdn.spline.dev; " +
     "media-src 'self'; " +
-    `frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://spline.dev https://cdn.spline.dev https://accounts.google.com https://apis.google.com https://www.google.com https://*.firebaseapp.com; ` +
+    `frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://spline.dev https://cdn.spline.dev https://accounts.google.com https://apis.google.com https://www.google.com https://recaptcha.google.com https://*.firebaseapp.com; ` +
     "object-src 'none'; " +
     "base-uri 'self'; " +
     "form-action 'self'; " +
@@ -192,17 +316,6 @@ export function getProductionCSP(): string {
     "report-uri /api/csp-report; " +
     "upgrade-insecure-requests"
   );
-}
-
-/**
- * Sanitize a Content-Security-Policy value before use.
- *
- * The CSP parser is strict: any backslash/semicolon/quote injection could
- * weaken the policy. This is a paranoid guard, not a substitute for
- * building the policy from trusted configuration.
- */
-export function sanitizeCsp(policy: string): string {
-  return policy.replace(/[;`"\\]/g, "");
 }
 
 /**

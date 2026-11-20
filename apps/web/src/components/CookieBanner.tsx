@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
+import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 
 export default function CookieBanner() {
   const [show, setShow] = useState(false);
@@ -9,7 +9,7 @@ export default function CookieBanner() {
 
   useEffect(() => {
     mountedRef.current = true;
-    const consent = localStorage.getItem('cookie-consent');
+    const consent = localStorage.getItem("cookie-consent");
     if (!consent && mountedRef.current) {
       setShow(true);
     }
@@ -19,12 +19,12 @@ export default function CookieBanner() {
   }, []);
 
   const accept = () => {
-    localStorage.setItem('cookie-consent', 'accepted');
+    localStorage.setItem("cookie-consent", "accepted");
     setShow(false);
   };
 
   const decline = () => {
-    localStorage.setItem('cookie-consent', 'declined');
+    localStorage.setItem("cookie-consent", "declined");
     setShow(false);
   };
 
@@ -44,13 +44,16 @@ export default function CookieBanner() {
               We value your privacy
             </h3>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              We do not use tracking, advertising or analytics cookies, and we never share your data with
-              advertisers. The only cookie we set is an essential sign-in security cookie for administrators.
-              See our{' '}
-              <Link href="/privacy-policy" className="text-orange-600 dark:text-orange-400 hover:underline">
+              We do not use tracking, advertising or analytics cookies, and we
+              never share your data with advertisers. The only cookie we set is
+              an essential sign-in security cookie for administrators. See our{" "}
+              <Link
+                href="/privacy-policy"
+                className="text-orange-600 dark:text-orange-400 hover:underline"
+              >
                 Privacy Policy
-              </Link>
-              {' '}for details.
+              </Link>{" "}
+              for details.
             </p>
           </div>
           <div className="flex gap-3 shrink-0">

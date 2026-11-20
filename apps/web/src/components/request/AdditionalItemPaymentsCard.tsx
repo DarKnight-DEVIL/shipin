@@ -41,18 +41,15 @@ export default function AdditionalItemPaymentsCard({
 
       {itemsAwaitingPayment.map((additionalRequest) => {
         const quote = additionalRequest.quote;
-        const unitPrice =
-          quote?.unitPrice ?? additionalRequest.unitPrice ?? 0;
-        const subtotal =
-          quote?.subtotal ?? additionalRequest.subtotal ?? 0;
+        const unitPrice = quote?.unitPrice ?? additionalRequest.unitPrice ?? 0;
+        const subtotal = quote?.subtotal ?? additionalRequest.subtotal ?? 0;
         const serviceFee =
           quote?.serviceFee ?? additionalRequest.serviceFee ?? 0;
         const repackingFee =
           quote?.repackingFee ?? additionalRequest.repackingFee ?? 0;
         const storageFee =
           quote?.storageFee ?? additionalRequest.storageFee ?? 0;
-        const totalDue =
-          quote?.totalDue ?? additionalRequest.totalDue ?? 0;
+        const totalDue = quote?.totalDue ?? additionalRequest.totalDue ?? 0;
 
         return (
           <div key={additionalRequest.id} className="shipin-surface p-5 sm:p-6">

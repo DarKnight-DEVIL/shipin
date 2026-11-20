@@ -76,8 +76,10 @@ export const useNotificationsStore = create<NotificationsState>((set) => ({
   unreadCount: 0,
 
   setUnreadCount: (count) => set({ unreadCount: Math.max(0, count) }),
-  incrementUnread: () => set((state) => ({ unreadCount: state.unreadCount + 1 })),
-  decrementUnread: () => set((state) => ({ unreadCount: Math.max(0, state.unreadCount - 1) })),
+  incrementUnread: () =>
+    set((state) => ({ unreadCount: state.unreadCount + 1 })),
+  decrementUnread: () =>
+    set((state) => ({ unreadCount: Math.max(0, state.unreadCount - 1) })),
   markAllRead: () => set({ unreadCount: 0 }),
 }));
 

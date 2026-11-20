@@ -8,7 +8,7 @@
  *   4. Clear separation of client vs server-only vars
  */
 
-type NodeEnv = 'development' | 'production' | 'test';
+type NodeEnv = "development" | "production" | "test";
 
 /**
  * True only while `next build` is running (incl. the prerender/collect step).
@@ -18,7 +18,7 @@ type NodeEnv = 'development' | 'production' | 'test';
  * this never leaks leniency into actual runtime.
  */
 function isBuildPhase(): boolean {
-  return process.env.NEXT_PHASE === 'phase-production-build';
+  return process.env.NEXT_PHASE === "phase-production-build";
 }
 
 interface ServerEnv {
@@ -28,11 +28,18 @@ interface ServerEnv {
   FIREBASE_ADMIN_PRIVATE_KEY: string;
   PAYPAL_CLIENT_ID: string;
   PAYPAL_CLIENT_SECRET: string;
-  PAYPAL_ENV: 'live' | 'sandbox';
+  PAYPAL_ENV: "live" | "sandbox";
   PAYPAL_API_URL?: string;
   PAYPAL_WEBHOOK_ID?: string;
   SMTP_EMAIL: string;
   SMTP_PASSWORD: string;
+  /** Non-Gmail SMTP relay. Unset keeps the Gmail service shortcut. */
+  SMTP_HOST?: string;
+  SMTP_PORT?: string;
+  /** `'true'` for implicit TLS (usually port 465). */
+  SMTP_SECURE?: string;
+  /** Nodemailer service name when `SMTP_HOST` is unset, e.g. `gmail`. */
+  SMTP_SERVICE?: string;
   RESEND_API_KEY: string;
   UPSTASH_REDIS_REST_URL?: string;
   UPSTASH_REDIS_REST_TOKEN?: string;
@@ -40,11 +47,15 @@ interface ServerEnv {
   R2_ACCESS_KEY_ID: string;
   R2_SECRET_ACCESS_KEY: string;
   R2_BUCKET_NAME: string;
+  /** S3-compatible region; defaults to `auto` (Cloudflare R2). */
+  R2_REGION?: string;
+  /** Overrides the Cloudflare account endpoint, e.g. for AWS S3 or MinIO. */
+  R2_ENDPOINT?: string;
   APP_URL: string;
   WHATSAPP_ACCESS_TOKEN?: string;
   WHATSAPP_PHONE_NUMBER_ID?: string;
   WHATSAPP_API_VERSION?: string;
-  /** Optional signing key for admin MFA session cookies (min 32 chars). */
+  /** Signing key for admin MFA session cookies (min 32 chars). */
   MFA_SESSION_SECRET?: string;
   /**
    * India Post (CEPT) tracking credentials. Optional on purpose: until all
@@ -54,6 +65,8 @@ interface ServerEnv {
   INDIA_POST_CLIENT_ID?: string;
   INDIA_POST_CLIENT_SECRET?: string;
   CRON_SECRET?: string;
+  /** Slack/incident webhook for critical data breaches (optional). */
+  BREACH_ALERT_WEBHOOK_URL?: string;
   /**
    * `'true'` makes API routes reject requests without a valid App Check token.
    * Off by default so local development and CI need no Firebase project.
@@ -82,9 +95,20 @@ interface ClientEnv {
   NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY: string;
   /** `'true'` registers a local App Check debug token instead of calling reCAPTCHA. */
   NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG: string;
+  /**
+   * `host:port` of a local Firebase Auth emulator. Empty everywhere except a
+   * local E2E run; the client then signs in against the emulator instead of the
+   * real project. Must be NEXT_PUBLIC_* because the browser SDK reads it.
+   */
+  NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: string;
+  /** `host:port` of a local Firestore emulator, same rules as the auth host. */
+  NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST: string;
 }
 
-export function readEnv(key: string, required: boolean = false): string | undefined {
+export function readEnv(
+  key: string,
+  required: boolean = false
+): string | undefined {
   const value = process.env[key];
   if (required && !value) {
     throw new Error(`Missing required environment variable: ${key}`);
@@ -105,19 +129,19 @@ export function readEnv(key: string, required: boolean = false): string | undefi
 
 /** Server-only vars that MUST be present at runtime. */
 const REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
-  'FIREBASE_ADMIN_PROJECT_ID',
-  'FIREBASE_ADMIN_CLIENT_EMAIL',
-  'FIREBASE_ADMIN_PRIVATE_KEY',
-  'PAYPAL_CLIENT_ID',
-  'PAYPAL_CLIENT_SECRET',
-  'SMTP_EMAIL',
-  'SMTP_PASSWORD',
-  'RESEND_API_KEY',
-  'R2_ACCOUNT_ID',
-  'R2_ACCESS_KEY_ID',
-  'R2_SECRET_ACCESS_KEY',
-  'R2_BUCKET_NAME',
-  'APP_URL',
+  "FIREBASE_ADMIN_PROJECT_ID",
+  "FIREBASE_ADMIN_CLIENT_EMAIL",
+  "FIREBASE_ADMIN_PRIVATE_KEY",
+  "PAYPAL_CLIENT_ID",
+  "PAYPAL_CLIENT_SECRET",
+  "SMTP_EMAIL",
+  "SMTP_PASSWORD",
+  "RESEND_API_KEY",
+  "R2_ACCOUNT_ID",
+  "R2_ACCESS_KEY_ID",
+  "R2_SECRET_ACCESS_KEY",
+  "R2_BUCKET_NAME",
+  "APP_URL",
 ]);
 
 /**
@@ -125,35 +149,71 @@ const REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
  * In production, missing these will throw at startup.
  */
 const PRODUCTION_REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
-  'PAYPAL_WEBHOOK_ID',
-  'UPSTASH_REDIS_REST_URL',
-  'UPSTASH_REDIS_REST_TOKEN',
+  "PAYPAL_WEBHOOK_ID",
+  // Admin MFA sessions cannot be signed without it, so a deploy missing this
+  // would 500 every admin request instead of failing at boot.
+  "MFA_SESSION_SECRET",
 ]);
+
+/**
+ * Shared rate-limit store credentials: required in production, because
+ * without them every instance limits on its own and the proxy fails open — a
+ * misconfigured deploy would serve traffic with abuse protection off.
+ *
+ * Only the local/CI E2E suite (a production build against a throwaway
+ * database) may opt out, via {@link RATE_LIMIT_STORE_OPTIONAL_ENV}.
+ */
+const RATE_LIMIT_STORE_SERVER_ENV = [
+  "UPSTASH_REDIS_REST_URL",
+  "UPSTASH_REDIS_REST_TOKEN",
+] as const;
+
+/** Set to exactly "1" to allow booting production with no rate-limit store (E2E only). */
+export const RATE_LIMIT_STORE_OPTIONAL_ENV = "RATE_LIMIT_STORE_OPTIONAL";
+
+/** Any other value, including "true", keeps the store required. */
+export function isRateLimitStoreOptional(): boolean {
+  return process.env[RATE_LIMIT_STORE_OPTIONAL_ENV] === "1";
+}
+
+/** Set to exactly "1" to allow production boot without an MFA denylist store (E2E only). */
+export const MFA_DENYLIST_OPTIONAL_ENV = "MFA_DENYLIST_OPTIONAL";
+
+/** Any other value, including "true", keeps the store required. */
+export function isMfaDenylistOptional(): boolean {
+  return process.env[MFA_DENYLIST_OPTIONAL_ENV] === "1";
+}
 
 /** Server-only vars that fall back to a default when unset. */
 const DEFAULT_SERVER_ENV: Record<string, string> = {
-  NODE_ENV: 'development',
-  PAYPAL_ENV: 'sandbox',
-  WHATSAPP_API_VERSION: 'v25.0',
+  NODE_ENV: "development",
+  PAYPAL_ENV: "sandbox",
+  WHATSAPP_API_VERSION: "v25.0",
+  R2_REGION: "auto",
 };
 
 /** Server-only vars that are optional (no default, no throw). */
 const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
-  'PAYPAL_API_URL',
+  "PAYPAL_API_URL",
   // PAYPAL_WEBHOOK_ID is listed in PRODUCTION_REQUIRED_SERVER_ENV instead:
   // it may be absent in dev/test, but must be set in production.
-  // UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN stay optional so a
-  // missing shared store degrades rate limiting instead of crashing the app:
-  // startup logs a warning (reportRateLimitStoreStatus) and /api/health
-  // reports degraded.
-  'WHATSAPP_ACCESS_TOKEN',
-  'WHATSAPP_PHONE_NUMBER_ID',
-  'MFA_SESSION_SECRET',
-  'APP_CHECK_ENFORCEMENT',
-  'INDIA_POST_TRACKING_URL',
-  'INDIA_POST_CLIENT_ID',
-  'INDIA_POST_CLIENT_SECRET',
-  'CRON_SECRET',
+  // UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are not optional in
+  // production: see RATE_LIMIT_STORE_SERVER_ENV above. When they are absent
+  // with the E2E opt-out set, startup warns and /api/health reports degraded.
+  "WHATSAPP_ACCESS_TOKEN",
+  "WHATSAPP_PHONE_NUMBER_ID",
+  // MFA_SESSION_SECRET is NOT optional: it lives in PRODUCTION_REQUIRED_SERVER_ENV.
+  "APP_CHECK_ENFORCEMENT",
+  "R2_REGION",
+  "R2_ENDPOINT",
+  "SMTP_HOST",
+  "SMTP_PORT",
+  "SMTP_SECURE",
+  "SMTP_SERVICE",
+  "INDIA_POST_TRACKING_URL",
+  "INDIA_POST_CLIENT_ID",
+  "INDIA_POST_CLIENT_SECRET",
+  "CRON_SECRET",
 ]);
 
 // NOTE: the rate-limit store assertion lives in @/lib/redisRateLimiter so
@@ -164,21 +224,67 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
  * Validate that all production-required environment variables are set.
  * Throws if any are missing when running in production.
  * Should be called at application startup.
+ *
+ * In production, this checks every variable in REQUIRED_SERVER_ENV (15 vars)
+ * plus PAYPAL_WEBHOOK_ID (which is not in that set but is production-critical),
+ * plus the rate-limit store vars. Previously only PAYPAL_WEBHOOK_ID was validated,
+ * leaving Firebase Admin, PayPal credentials, SMTP, and R2 to fail lazily at runtime.
  */
+/**
+ * APP_URL drives WebAuthn's relying-party origin and the CORS allowlist, both of
+ * which fail in confusing ways when it is not an absolute URL ("foo" parses as a
+ * relative path and later throws inside the WebAuthn library). Check the shape
+ * while the error can still name the variable.
+ */
+function assertAppUrlShape(): void {
+  const raw = process.env.APP_URL?.trim();
+
+  // Absence is reported by the missing-variable check, with its own message.
+  if (!raw) return;
+
+  let parsed: URL | null = null;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    parsed = null;
+  }
+
+  if (
+    !parsed ||
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+  ) {
+    throw new Error(
+      `[ShipIN] FATAL: APP_URL must be an absolute http(s) URL (for example https://shipin.app); got "${raw}".`
+    );
+  }
+}
+
 export function validateProductionRequiredEnv(): void {
   if (!isProduction) return;
 
-  const missing: string[] = [];
-  for (const key of PRODUCTION_REQUIRED_SERVER_ENV) {
-    if (!process.env[key]) {
-      missing.push(key);
-    }
+  assertAppUrlShape();
+
+  const required: string[] = [
+    ...REQUIRED_SERVER_ENV,
+    ...PRODUCTION_REQUIRED_SERVER_ENV,
+  ];
+
+  if (!isRateLimitStoreOptional()) {
+    required.push(...RATE_LIMIT_STORE_SERVER_ENV);
   }
 
+  const missing = required.filter((key) => !process.env[key]);
+
   if (missing.length > 0) {
+    const optOutHint = missing.some((key) =>
+      (RATE_LIMIT_STORE_SERVER_ENV as readonly string[]).includes(key)
+    )
+      ? ` Rate limiting would be per-instance and fail open; set both, or set ${RATE_LIMIT_STORE_OPTIONAL_ENV}=1 for the E2E suite only.`
+      : "";
+
     throw new Error(
-      `[ShipIN] FATAL: Missing required production environment variables: ${missing.join(', ')}. ` +
-      'These must be set for production deployment.'
+      `[ShipIN] FATAL: Missing required production environment variables: ${missing.join(", ")}. ` +
+        `These must be set for production deployment.${optOutHint}`
     );
   }
 }
@@ -207,7 +313,7 @@ export const serverEnv: ServerEnv = new Proxy({} as ServerEnv, {
         if (isProduction) {
           throw new Error(
             `Missing required production environment variable: ${key}. ` +
-            'This must be set for production deployment.'
+              "This must be set for production deployment."
           );
         }
         // Dev/test: return undefined without throwing
@@ -226,6 +332,7 @@ export const serverEnv: ServerEnv = new Proxy({} as ServerEnv, {
   ownKeys(_target) {
     return [
       ...REQUIRED_SERVER_ENV,
+      ...PRODUCTION_REQUIRED_SERVER_ENV,
       ...Object.keys(DEFAULT_SERVER_ENV),
       ...OPTIONAL_SERVER_ENV,
     ];
@@ -272,30 +379,62 @@ function validateClientEnv(value: string | undefined, key: string): string {
 }
 
 export const clientEnv: ClientEnv = {
-  NODE_ENV: (process.env.NODE_ENV as NodeEnv) ?? 'development',
+  NODE_ENV: (process.env.NODE_ENV as NodeEnv) ?? "development",
   // NOTE: each value must be a static `process.env.NEXT_PUBLIC_X` access so
   // Next.js/Turbopack can inline it into the client bundle. Reading via
   // `process.env[key]` (dynamic key) is never inlined and always yields
   // `undefined` in the browser, even when the variable is set.
-  NEXT_PUBLIC_PAYPAL_CLIENT_ID: validateClientEnv(process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID, 'NEXT_PUBLIC_PAYPAL_CLIENT_ID'),
-  NEXT_PUBLIC_APP_URL: validateClientEnv(process.env.NEXT_PUBLIC_APP_URL, 'NEXT_PUBLIC_APP_URL'),
-  NEXT_PUBLIC_FIREBASE_API_KEY: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_API_KEY, 'NEXT_PUBLIC_FIREBASE_API_KEY'),
-  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'),
-  NEXT_PUBLIC_FIREBASE_PROJECT_ID: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID, 'NEXT_PUBLIC_FIREBASE_PROJECT_ID'),
-  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET, 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'),
-  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID, 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
-  NEXT_PUBLIC_FIREBASE_APP_ID: validateClientEnv(process.env.NEXT_PUBLIC_FIREBASE_APP_ID, 'NEXT_PUBLIC_FIREBASE_APP_ID'),
+  NEXT_PUBLIC_PAYPAL_CLIENT_ID: validateClientEnv(
+    process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID,
+    "NEXT_PUBLIC_PAYPAL_CLIENT_ID"
+  ),
+  NEXT_PUBLIC_APP_URL: validateClientEnv(
+    process.env.NEXT_PUBLIC_APP_URL,
+    "NEXT_PUBLIC_APP_URL"
+  ),
+  NEXT_PUBLIC_FIREBASE_API_KEY: validateClientEnv(
+    process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    "NEXT_PUBLIC_FIREBASE_API_KEY"
+  ),
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: validateClientEnv(
+    process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN"
+  ),
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID: validateClientEnv(
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    "NEXT_PUBLIC_FIREBASE_PROJECT_ID"
+  ),
+  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: validateClientEnv(
+    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET"
+  ),
+  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: validateClientEnv(
+    process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID"
+  ),
+  NEXT_PUBLIC_FIREBASE_APP_ID: validateClientEnv(
+    process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+    "NEXT_PUBLIC_FIREBASE_APP_ID"
+  ),
   // Optional on purpose: an empty value disables App Check instead of failing
   // the build, so a project without enforcement still runs.
-  NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY: process.env.NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY ?? '',
-  NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG: process.env.NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG ?? '',
+  NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY:
+    process.env.NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY ?? "",
+  NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG:
+    process.env.NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG ?? "",
+  // Optional: only a local E2E run sets these, and a deployment must not.
+  NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST:
+    process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ?? "",
+  NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST:
+    process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST ?? "",
 };
 
 /** Whether the app is running in production. */
-export const isProduction = (process.env.NODE_ENV as NodeEnv) === 'production';
+export const isProduction = (process.env.NODE_ENV as NodeEnv) === "production";
 
 /** Whether the app is running in development. */
-export const isDevelopment = (process.env.NODE_ENV as NodeEnv) === 'development';
+export const isDevelopment =
+  (process.env.NODE_ENV as NodeEnv) === "development";
 
 /** Whether the app is running in test. */
-export const isTest = (process.env.NODE_ENV as NodeEnv) === 'test';
+export const isTest = (process.env.NODE_ENV as NodeEnv) === "test";

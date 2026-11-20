@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
 import { toast } from "sonner";
-import { MessageCircle, MessageSquare, DollarSign, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  MessageCircle,
+  MessageSquare,
+  DollarSign,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 
 import type { Request } from "@/types/request";
 import useSupport from "@/hooks/useSupport";
@@ -27,13 +33,16 @@ export default function SupportPanel({ request }: Props) {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [resolving, setResolving] = useState(false);
-  
+
   const [partialRefundOpen, setPartialRefundOpen] = useState(false);
   const [partialRefundAmount, setPartialRefundAmount] = useState("");
   const [partialRefundReason, setPartialRefundReason] = useState("");
   const [partialRefundProcessing, setPartialRefundProcessing] = useState(false);
   const [partialRefundCompleting, setPartialRefundCompleting] = useState(false);
-  const [partialRefundPaypalTransactionId, setPartialRefundPaypalTransactionId] = useState("");
+  const [
+    partialRefundPaypalTransactionId,
+    setPartialRefundPaypalTransactionId,
+  ] = useState("");
 
   const [startingRefund, setStartingRefund] = useState(false);
   const [refundReason, setRefundReason] = useState("");
@@ -70,8 +79,7 @@ export default function SupportPanel({ request }: Props) {
       console.error("Unable to send support reply:", error);
 
       toast.error("Unable to send reply.", {
-        description:
-          error instanceof Error ? error.message : undefined,
+        description: error instanceof Error ? error.message : undefined,
       });
     } finally {
       setSending(false);
@@ -93,8 +101,7 @@ export default function SupportPanel({ request }: Props) {
       console.error("Unable to resolve support ticket:", error);
 
       toast.error("Unable to resolve support ticket.", {
-        description:
-          error instanceof Error ? error.message : undefined,
+        description: error instanceof Error ? error.message : undefined,
       });
     } finally {
       setResolving(false);
@@ -102,10 +109,7 @@ export default function SupportPanel({ request }: Props) {
   }
 
   async function handleAdminRefund() {
-    if (
-      startingRefund ||
-      request.status !== "purchased"
-    ) {
+    if (startingRefund || request.status !== "purchased") {
       return;
     }
 
@@ -144,30 +148,20 @@ export default function SupportPanel({ request }: Props) {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(
-          result.error || "Unable to offer refund."
-        );
+        throw new Error(result.error || "Unable to offer refund.");
       }
 
-      toast.success(
-        "Refund option offered to customer."
-      );
+      toast.success("Refund option offered to customer.");
 
       setRefundReason("");
 
       // Refresh the request so status becomes refund_offered.
       window.location.reload();
-
     } catch (error) {
-      console.error(
-        "Unable to offer refund:",
-        error
-      );
+      console.error("Unable to offer refund:", error);
 
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to offer refund."
+        error instanceof Error ? error.message : "Unable to offer refund."
       );
     } finally {
       setStartingRefund(false);
@@ -195,19 +189,12 @@ export default function SupportPanel({ request }: Props) {
       }
 
       const totalPaid = Number(
-        request.payment?.amountPaid ??
-          request.payment?.amount ??
-          0
+        request.payment?.amountPaid ?? request.payment?.amount ?? 0
       );
 
-      const alreadyRefunded = Number(
-        request.totalRefundedAmount ?? 0
-      );
+      const alreadyRefunded = Number(request.totalRefundedAmount ?? 0);
 
-      const remainingRefundable = Math.max(
-        0,
-        totalPaid - alreadyRefunded
-      );
+      const remainingRefundable = Math.max(0, totalPaid - alreadyRefunded);
 
       if (amount > remainingRefundable) {
         throw new Error(
@@ -241,9 +228,7 @@ export default function SupportPanel({ request }: Props) {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(
-          result.error || "Unable to offer partial refund."
-        );
+        throw new Error(result.error || "Unable to offer partial refund.");
       }
 
       toast.success(
@@ -287,23 +272,16 @@ export default function SupportPanel({ request }: Props) {
 
       const idToken = await currentUser.getIdToken();
 
-      const offerAmount = Number(
-        request.partialRefundOffer.amount ?? 0
-      );
+      const offerAmount = Number(request.partialRefundOffer.amount ?? 0);
 
-      const walletAmount = Number(
-        request.payment?.walletAmount ?? 0
-      );
+      const walletAmount = Number(request.payment?.walletAmount ?? 0);
 
       const paypalAmount = Math.max(
         0,
         Number((offerAmount - walletAmount).toFixed(2))
       );
 
-      if (
-        paypalAmount > 0 &&
-        !partialRefundPaypalTransactionId.trim()
-      ) {
+      if (paypalAmount > 0 && !partialRefundPaypalTransactionId.trim()) {
         toast.error("PayPal refund transaction ID is required.");
         return;
       }
@@ -317,8 +295,7 @@ export default function SupportPanel({ request }: Props) {
             Authorization: `Bearer ${idToken}`,
           },
           body: JSON.stringify({
-            paypalRefundTransactionId:
-              partialRefundPaypalTransactionId.trim(),
+            paypalRefundTransactionId: partialRefundPaypalTransactionId.trim(),
           }),
         }
       );
@@ -326,23 +303,16 @@ export default function SupportPanel({ request }: Props) {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(
-          result.error || "Unable to complete partial refund."
-        );
+        throw new Error(result.error || "Unable to complete partial refund.");
       }
 
-      toast.success(
-        `$${offerAmount.toFixed(2)} partial refund completed.`
-      );
+      toast.success(`$${offerAmount.toFixed(2)} partial refund completed.`);
 
       setPartialRefundPaypalTransactionId("");
 
       window.location.reload();
     } catch (error) {
-      console.error(
-        "Unable to complete partial refund:",
-        error
-      );
+      console.error("Unable to complete partial refund:", error);
 
       toast.error(
         error instanceof Error
@@ -384,7 +354,8 @@ export default function SupportPanel({ request }: Props) {
             </h2>
 
             <p className="mt-1 text-sm text-slate-400">
-              Offer the customer the option to request a refund for this purchased order.
+              Offer the customer the option to request a refund for this
+              purchased order.
             </p>
           </div>
 
@@ -424,8 +395,7 @@ export default function SupportPanel({ request }: Props) {
 
       {/* ADMIN ACTION: PARTIAL REFUND ACCEPTED - ADMIN PROCESSING */}
       {request.partialRefundOffer?.status === "accepted" &&
-        request.partialRefundOffer.selectedMethod ===
-          "original_payment" && (
+        request.partialRefundOffer.selectedMethod === "original_payment" && (
           <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-6">
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">
               Partial Refund
@@ -436,28 +406,21 @@ export default function SupportPanel({ request }: Props) {
             </h2>
 
             <p className="mt-2 text-sm text-slate-400">
-              The customer accepted the partial refund using the
-              original payment method.
+              The customer accepted the partial refund using the original
+              payment method.
             </p>
 
             <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-400">
-                  Refund Amount
-                </span>
+                <span className="text-sm text-slate-400">Refund Amount</span>
 
                 <span className="text-lg font-semibold text-white">
-                  $
-                  {Number(
-                    request.partialRefundOffer.amount ?? 0
-                  ).toFixed(2)}
+                  ${Number(request.partialRefundOffer.amount ?? 0).toFixed(2)}
                 </span>
               </div>
 
               <div className="mt-3">
-                <span className="text-sm text-slate-400">
-                  Reason
-                </span>
+                <span className="text-sm text-slate-400">Reason</span>
 
                 <p className="mt-1 text-sm text-slate-200">
                   {request.partialRefundOffer.reason}
@@ -485,9 +448,7 @@ export default function SupportPanel({ request }: Props) {
 
               const paypalRefund = Math.max(
                 0,
-                Number(
-                  (offerAmount - walletRefund).toFixed(2)
-                )
+                Number((offerAmount - walletRefund).toFixed(2))
               );
 
               return (
@@ -508,36 +469,33 @@ export default function SupportPanel({ request }: Props) {
                     </p>
                   </div>
 
-                  {paypalRefund > 0 &&
-                    originalPaypalAmount > 0 && (
-                      <div>
-                        <label
-                          htmlFor="partial-refund-paypal-id"
-                          className="mb-2 block text-sm font-medium text-slate-300"
-                        >
-                          PayPal Refund Transaction ID
-                        </label>
+                  {paypalRefund > 0 && originalPaypalAmount > 0 && (
+                    <div>
+                      <label
+                        htmlFor="partial-refund-paypal-id"
+                        className="mb-2 block text-sm font-medium text-slate-300"
+                      >
+                        PayPal Refund Transaction ID
+                      </label>
 
-                        <input
-                          id="partial-refund-paypal-id"
-                          type="text"
-                          value={partialRefundPaypalTransactionId}
-                          onChange={(e) =>
-                            setPartialRefundPaypalTransactionId(
-                              e.target.value
-                            )
-                          }
-                          placeholder="Enter the PayPal refund transaction ID"
-                          disabled={partialRefundCompleting}
-                          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                        />
+                      <input
+                        id="partial-refund-paypal-id"
+                        type="text"
+                        value={partialRefundPaypalTransactionId}
+                        onChange={(e) =>
+                          setPartialRefundPaypalTransactionId(e.target.value)
+                        }
+                        placeholder="Enter the PayPal refund transaction ID"
+                        disabled={partialRefundCompleting}
+                        className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
 
-                        <p className="mt-2 text-xs text-slate-500">
-                          Complete the PayPal refund manually through
-                          PayPal, then enter its transaction ID here.
-                        </p>
-                      </div>
-                    )}
+                      <p className="mt-2 text-xs text-slate-500">
+                        Complete the PayPal refund manually through PayPal, then
+                        enter its transaction ID here.
+                      </p>
+                    </div>
+                  )}
 
                   <button
                     type="button"
@@ -674,7 +632,9 @@ export default function SupportPanel({ request }: Props) {
                   </div>
 
                   <div className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-2 text-right">
-                    <p className="text-xs text-slate-500">Total partial refunded</p>
+                    <p className="text-xs text-slate-500">
+                      Total partial refunded
+                    </p>
                     <p className="text-lg font-bold text-amber-400">
                       ${alreadyRefunded.toFixed(2)}
                     </p>

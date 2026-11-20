@@ -3,8 +3,8 @@
  * Tests for the axe-core accessibility scan hook.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render } from "@testing-library/react";
 
 const mocks = vi.hoisted(() => ({
   run: vi.fn(),
@@ -12,17 +12,27 @@ const mocks = vi.hoisted(() => ({
   debug: vi.fn(),
 }));
 
-vi.mock('axe-core', () => ({ default: { run: mocks.run } }));
+vi.mock("axe-core", () => ({ default: { run: mocks.run } }));
 
-vi.mock('./logger', () => ({
-  logger: { warn: mocks.warn, debug: mocks.debug, info: vi.fn(), error: vi.fn() },
-  childLogger: () => ({ warn: vi.fn(), debug: vi.fn(), info: vi.fn(), error: vi.fn() }),
+vi.mock("./logger", () => ({
+  logger: {
+    warn: mocks.warn,
+    debug: mocks.debug,
+    info: vi.fn(),
+    error: vi.fn(),
+  },
+  childLogger: () => ({
+    warn: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    error: vi.fn(),
+  }),
 }));
 
 // Imported per file instead of statically: with a shared module registry the
 // first importer fixes which mocks this module binds to, so a static import
 // can inherit another file's stub.
-let useAxeScan: typeof import('./axeScan').useAxeScan;
+let useAxeScan: typeof import("./axeScan").useAxeScan;
 
 type Options = Parameters<typeof useAxeScan>[0];
 
@@ -33,11 +43,11 @@ function Harness({ options }: { options?: Options }) {
 
 function violation(overrides: Record<string, unknown> = {}) {
   return {
-    id: 'color-contrast',
-    description: 'Elements must meet minimum contrast',
-    impact: 'serious',
-    helpUrl: 'https://dequeuniversity.com/rules/color-contrast',
-    nodes: [{ html: '<p>text</p>', target: ['p.text'] }],
+    id: "color-contrast",
+    description: "Elements must meet minimum contrast",
+    impact: "serious",
+    helpUrl: "https://dequeuniversity.com/rules/color-contrast",
+    nodes: [{ html: "<p>text</p>", target: ["p.text"] }],
     ...overrides,
   };
 }
@@ -49,13 +59,13 @@ async function renderAndWait(options?: Options) {
 
 beforeEach(async () => {
   vi.resetModules();
-  ({ useAxeScan } = await import('./axeScan'));
-  delete (globalThis as Record<string, unknown>)['__AXE_SCAN_RUN'];
+  ({ useAxeScan } = await import("./axeScan"));
+  delete (globalThis as Record<string, unknown>)["__AXE_SCAN_RUN"];
   mocks.run.mockReset();
   mocks.warn.mockReset();
   mocks.debug.mockReset();
   mocks.run.mockResolvedValue({ violations: [] });
-  vi.stubGlobal('requestIdleCallback', (callback: () => void) => {
+  vi.stubGlobal("requestIdleCallback", (callback: () => void) => {
     callback();
     return 1;
   });
@@ -63,47 +73,49 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  delete (globalThis as Record<string, unknown>)['__AXE_SCAN_RUN'];
+  delete (globalThis as Record<string, unknown>)["__AXE_SCAN_RUN"];
 });
 
-describe('useAxeScan', () => {
-  it('scans document.body with the default WCAG tag set', async () => {
+describe("useAxeScan", () => {
+  it("scans document.body with the default WCAG tag set", async () => {
     await renderAndWait();
 
     expect(mocks.run).toHaveBeenCalledWith(document.body, {
-      runOnly: { type: 'tag', values: ['wcag2aa', 'best-practice'] },
+      runOnly: { type: "tag", values: ["wcag2aa", "best-practice"] },
     });
   });
 
-  it('switches to the AAA ruleset when requested', async () => {
-    await renderAndWait({ level: 'aaa' });
+  it("switches to the AAA ruleset when requested", async () => {
+    await renderAndWait({ level: "aaa" });
 
     expect(mocks.run).toHaveBeenCalledWith(document.body, {
-      runOnly: { type: 'tag', values: ['wcag2a-2.2.1'] },
+      runOnly: { type: "tag", values: ["wcag2a-2.2.1"] },
     });
   });
 
-  it('logs a debug message when the page is clean', async () => {
+  it("logs a debug message when the page is clean", async () => {
     await renderAndWait();
 
     await vi.waitFor(() =>
-      expect(mocks.debug).toHaveBeenCalledWith('[AxeScan] No accessibility violations found.')
+      expect(mocks.debug).toHaveBeenCalledWith(
+        "[AxeScan] No accessibility violations found."
+      )
     );
   });
 
-  it('warns with violation details when none exceed the threshold', async () => {
+  it("warns with violation details when none exceed the threshold", async () => {
     mocks.run.mockResolvedValue({ violations: [violation()] });
 
     await renderAndWait({ maxViolations: 5 });
 
     await vi.waitFor(() =>
       expect(mocks.warn).toHaveBeenCalledWith(
-        '[AxeScan] 1 accessibility violations detected.',
+        "[AxeScan] 1 accessibility violations detected.",
         {
           violations: [
             expect.objectContaining({
-              id: 'color-contrast',
-              nodes: [{ html: '<p>text</p>', target: 'p.text' }],
+              id: "color-contrast",
+              nodes: [{ html: "<p>text</p>", target: "p.text" }],
             }),
           ],
         }
@@ -111,29 +123,42 @@ describe('useAxeScan', () => {
     );
   });
 
-  it('reports threshold breaches separately', async () => {
+  it("reports threshold breaches separately", async () => {
     mocks.run.mockResolvedValue({
-      violations: [violation({ nodes: [{ html: '<a>', target: ['a'] }, { html: '<b>', target: ['b'] }] })],
+      violations: [
+        violation({
+          nodes: [
+            { html: "<a>", target: ["a"] },
+            { html: "<b>", target: ["b"] },
+          ],
+        }),
+      ],
     });
 
     await renderAndWait({ maxViolations: 1 });
 
     await vi.waitFor(() =>
       expect(mocks.warn).toHaveBeenCalledWith(
-        '[AxeScan] 2 violations exceed threshold (1).',
+        "[AxeScan] 2 violations exceed threshold (1).",
         {
           violations: [
-            { id: 'color-contrast', impact: 'serious', helpUrl: violation().helpUrl },
+            {
+              id: "color-contrast",
+              impact: "serious",
+              helpUrl: violation().helpUrl,
+            },
           ],
         }
       )
     );
   });
 
-  it('only scans once per page load', async () => {
+  it("only scans once per page load", async () => {
     await renderAndWait();
 
-    expect((globalThis as Record<string, unknown>)['__AXE_SCAN_RUN']).toBe(true);
+    expect((globalThis as Record<string, unknown>)["__AXE_SCAN_RUN"]).toBe(
+      true
+    );
 
     render(<Harness />);
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -141,15 +166,15 @@ describe('useAxeScan', () => {
     expect(mocks.run).toHaveBeenCalledTimes(1);
   });
 
-  it('logs and swallows axe failures', async () => {
-    mocks.run.mockRejectedValue(new Error('axe crashed'));
+  it("logs and swallows axe failures", async () => {
+    mocks.run.mockRejectedValue(new Error("axe crashed"));
 
     await renderAndWait();
 
     await vi.waitFor(() =>
       expect(mocks.debug).toHaveBeenCalledWith(
-        '[AxeScan] Skipped — axe-core unavailable or failed.',
-        { reason: 'axe crashed' }
+        "[AxeScan] Skipped — axe-core unavailable or failed.",
+        { reason: "axe crashed" }
       )
     );
     expect(mocks.warn).not.toHaveBeenCalled();

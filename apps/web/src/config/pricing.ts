@@ -15,14 +15,17 @@ export const PRICING = {
       name: "No Inspection",
       description: "Package will not be opened before shipping.",
       price: 0,
+      /** Rendered instead of a price; a zero here means "nothing added". */
+      priceLabel: "Free",
     },
 
     standard: {
       id: "standard",
       name: "Standard Inspection",
-      description:
-        "Verify correct item and check for visible damage.",
+      description: "Verify correct item and check for visible damage.",
       price: 0,
+      /** Included in the service, not a zero-dollar add-on. */
+      priceLabel: "Included",
     },
 
     detailed: {
@@ -47,8 +50,7 @@ export const PRICING = {
     approval: {
       id: "approval",
       name: "Wait For Approval",
-      description:
-        "Inspection photos will be uploaded before shipping.",
+      description: "Inspection photos will be uploaded before shipping.",
       price: 0,
     },
 
@@ -61,10 +63,9 @@ export const PRICING = {
     },
   },
 
-  // Storage fees
-  storage: {
-    graceHours: 48,
-
-    extendedStoragePerDay: 3,
-  },
+  // Storage fees are not priced here: the free window depends on the shipping
+  // preference (auto 3 / approval 7 / hold 14 days) and the daily fine lives
+  // with the size tiers in
+  // `@/features/requests/services/warehousePolicy`. Keeping a second table here
+  // is what let a 48-hour grace period contradict the 14-day policy.
 } as const;

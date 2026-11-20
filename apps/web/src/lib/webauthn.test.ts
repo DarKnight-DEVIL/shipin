@@ -5,7 +5,6 @@ import type { StoredWebAuthnCredential } from "./webauthn";
 // Re-imported per file rather than statically: with a shared module registry
 // the first importer decides which @simplewebauthn/server stub this module
 // keeps, so a static import can inherit another file's mock.
-let CANONICAL_APP_ORIGIN: typeof import("./webauthn").CANONICAL_APP_ORIGIN;
 let resolveAppOrigin: typeof import("./webauthn").resolveAppOrigin;
 let WEBAUTHN_CHALLENGE_TTL_MS: typeof import("./webauthn").WEBAUTHN_CHALLENGE_TTL_MS;
 let challengeFields: typeof import("./webauthn").challengeFields;
@@ -19,7 +18,6 @@ let verifyRegistration: typeof import("./webauthn").verifyRegistration;
 beforeAll(async () => {
   vi.resetModules();
   ({
-    CANONICAL_APP_ORIGIN,
     resolveAppOrigin,
     WEBAUTHN_CHALLENGE_TTL_MS,
     challengeFields,
@@ -44,9 +42,13 @@ const CREDENTIAL: StoredWebAuthnCredential = {
 };
 
 describe("resolveAppOrigin", () => {
-  it("falls back to the canonical Vercel origin in production", () => {
-    expect(resolveAppOrigin(undefined, true)).toBe(CANONICAL_APP_ORIGIN);
-    expect(CANONICAL_APP_ORIGIN).toBe("https://shipin-psi.vercel.app");
+  it("refuses to guess an origin in production", () => {
+    // A passkey is bound to one RP ID for life, so a silent fallback to a
+    // hard-coded host would register unusable credentials instead of making
+    // the misconfiguration visible.
+    expect(() => resolveAppOrigin(undefined, true)).toThrow(
+      /APP_URL must be an absolute URL in production/
+    );
   });
 
   it("falls back to localhost outside production", () => {
@@ -54,13 +56,19 @@ describe("resolveAppOrigin", () => {
   });
 
   it("honours an explicitly configured origin and strips any path", () => {
-    expect(resolveAppOrigin("https://shipin-9576a.web.app/verify-email", true)).toBe(
-      "https://shipin-9576a.web.app"
+    expect(
+      resolveAppOrigin("https://shipin-9576a.web.app/verify-email", true)
+    ).toBe("https://shipin-9576a.web.app");
+  });
+
+  it("rejects an unparseable value in production", () => {
+    expect(() => resolveAppOrigin("not a url", true)).toThrow(
+      /APP_URL must be an absolute URL in production/
     );
   });
 
-  it("ignores an unparseable value instead of throwing", () => {
-    expect(resolveAppOrigin("not a url", true)).toBe(CANONICAL_APP_ORIGIN);
+  it("ignores an unparseable value outside production", () => {
+    expect(resolveAppOrigin("not a url", false)).toBe("http://localhost:3000");
   });
 });
 

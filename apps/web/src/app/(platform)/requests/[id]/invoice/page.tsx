@@ -20,9 +20,7 @@ const PayPalCheckout = dynamic(
 );
 import ApprovalCard from "@/components/request/ApprovalCard";
 
-import {
-  buildInvoiceSummary,
-} from "@/components/invoice/InvoiceSummary";
+import { buildInvoiceSummary } from "@/components/invoice/InvoiceSummary";
 
 import type { Request } from "@/types/request";
 
@@ -102,16 +100,13 @@ export default function InvoicePage() {
   const invoice = buildInvoiceSummary(request);
 
   // Step 1: Extract service selections safely after loading the request
-  const inspection =
-    request.serviceSelections?.inspection ?? "standard";
+  const inspection = request.serviceSelections?.inspection ?? "standard";
   const shippingPreference =
     request.serviceSelections?.shippingPreference ?? "approval";
 
   // Step 2: Calculate the charges context
-  const inspectionFee =
-    inspection === "detailed" ? 5 : 0;
-  const holdFee =
-    shippingPreference === "hold" ? 5 : 0;
+  const inspectionFee = inspection === "detailed" ? 5 : 0;
+  const holdFee = shippingPreference === "hold" ? 5 : 0;
 
   return (
     <div className="app-page">

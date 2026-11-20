@@ -24,7 +24,6 @@ export function calculateProcessingFee({
   fixedFee,
   absorbFee,
 }: Params): ProcessingFeeResult {
-
   if (absorbFee) {
     return {
       fee: 0,
@@ -36,14 +35,19 @@ export function calculateProcessingFee({
    * Reverse PayPal fee calculation
    */
 
-  const total =
-    (amount + fixedFee) /
-    (1 - percentage);
+  const total = (amount + fixedFee) / (1 - percentage);
 
-  const fee = total - amount;
+  /*
+   * Round UP, never to nearest: rounding down would leave the fee one cent
+   * short of the amount ShipIN has to net, and the customer would silently
+   * absorb the difference. The epsilon strips binary-float noise so an exact
+   * cent (103.30 * 100 = 10330.000000000002) does not become 103.31.
+   */
+  const cents = Math.ceil(Math.round(total * 100 * 1e6) / 1e6);
+  const totalToCharge = cents / 100;
 
   return {
-    fee: Number(fee.toFixed(2)),
-    totalToCharge: Number(total.toFixed(2)),
+    fee: Number((totalToCharge - amount).toFixed(2)),
+    totalToCharge,
   };
 }

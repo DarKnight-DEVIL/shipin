@@ -1,7 +1,11 @@
 import "server-only";
 
+import { childLogger } from "../../../lib/logger";
+
 import { adminDb } from "@/lib/firebaseAdmin";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
+import { isKnownWhatsAppTemplate } from "@/features/notifications/templates";
+import { allowNotification } from "@/lib/notificationRateLimit";
 import { sendMail } from "@/lib/mailer";
 
 import {
@@ -16,8 +20,7 @@ interface NotificationChannels {
   whatsapp?: boolean;
 }
 
-type NotificationCategory =
-  keyof NotificationCategoryPreferences;
+type NotificationCategory = keyof NotificationCategoryPreferences;
 
 export type { NotificationCategory };
 
@@ -70,21 +73,14 @@ interface UserData {
  */
 async function getUserData(userId: string): Promise<UserData | null> {
   try {
-    const snapshot =
-      await adminDb
-        .collection("users")
-        .doc(userId)
-        .get();
+    const snapshot = await adminDb.collection("users").doc(userId).get();
 
     if (!snapshot.exists) {
       return null;
     }
     return snapshot.data() as UserData;
   } catch (error) {
-    console.error(
-      "Failed to load user data:",
-      error
-    );
+    console.error("Failed to load user data:", error);
     return null;
   }
 }
@@ -92,8 +88,7 @@ async function getUserData(userId: string): Promise<UserData | null> {
 async function resolvePreferences(
   userData: UserData | null
 ): Promise<NotificationPreferences> {
-  const saved =
-    userData?.preferences?.notifications;
+  const saved = userData?.preferences?.notifications;
 
   if (!saved) {
     return DEFAULT_NOTIFICATION_PREFERENCES;
@@ -147,11 +142,23 @@ export async function sendNotification({
    * First check whether the customer
    * wants this TYPE of notification.
    */
-  if (
-    !preferences.categories[
-      category
-    ]
-  ) {
+  if (!preferences.categories[category]) {
+    return;
+  }
+
+  /*
+   * PER-USER RATE LIMIT
+   *
+   * A tracking sync touching every open parcel can emit hundreds of events for
+   * one customer in a minute. Beyond the hourly budget the notification is
+   * dropped rather than queued: the events are already visible in the app, and
+   * the limit exists to protect the customer from the flood.
+   */
+  if (!(await allowNotification(userId))) {
+    const notificationLogger = childLogger({ service: "notification" });
+    notificationLogger.warn(
+      `Notification rate limit reached for user ${userId}; dropping "${type}".`
+    );
     return;
   }
 
@@ -162,32 +169,23 @@ export async function sendNotification({
    * 1. Event supports in-app
    * 2. Customer enabled in-app
    */
-  if (
-    channels.inApp !== false &&
-    preferences.channels.inApp
-  ) {
+  if (channels.inApp !== false && preferences.channels.inApp) {
     try {
-      await adminDb
-        .collection("notifications")
-        .add({
-          userId,
-          requestId,
+      await adminDb.collection("notifications").add({
+        userId,
+        requestId,
 
-          title,
-          message,
-          type,
-          category,
+        title,
+        message,
+        type,
+        category,
 
-          read: false,
+        read: false,
 
-          createdAt:
-            new Date(),
-        });
+        createdAt: new Date(),
+      });
     } catch (error) {
-      console.error(
-        "In-app notification failed:",
-        error
-      );
+      console.error("In-app notification failed:", error);
     }
   }
 
@@ -207,29 +205,41 @@ export async function sendNotification({
     preferences.whatsapp.phone &&
     whatsapp
   ) {
-    try {
-      await sendWhatsAppTemplate({
-        to: preferences.whatsapp.phone,
+    const templateName = whatsapp.templateName;
 
-        templateName:
-          whatsapp.templateName,
-
-        languageCode:
-          whatsapp.languageCode ??
-          "en_US",
-
-        components:
-          whatsapp.components ?? [],
-      });
-    } catch (error) {
+    if (!isKnownWhatsAppTemplate(templateName)) {
       /*
-       * WhatsApp failure must not fail
-       * the order/status operation.
+       * An unregistered name means one of two things: a typo, or a template
+       * that was never submitted for Meta approval. Either way Meta rejects
+       * the send, so say so plainly instead of letting the notification vanish.
+       *
+       * Only WhatsApp is skipped: this used to `return`, which also silently
+       * dropped the email the customer had asked for.
        */
       console.error(
-        "WhatsApp notification failed:",
-        error
+        `WhatsApp notification skipped: "${templateName}" is not a registered template. Add it to WHATSAPP_TEMPLATES and get it approved in Meta Business Manager before sending.`
       );
+    } else {
+      try {
+        await sendWhatsAppTemplate({
+          to: preferences.whatsapp.phone,
+
+          templateName,
+
+          languageCode: whatsapp.languageCode ?? "en_US",
+
+          components: whatsapp.components ?? [],
+        });
+      } catch (error) {
+        /*
+         * WhatsApp failure must not fail
+         * the order/status operation.
+         */
+        console.error(
+          `WhatsApp notification failed for template "${templateName}" (check Meta approval and language code):`,
+          error
+        );
+      }
     }
   }
 
@@ -241,11 +251,7 @@ export async function sendNotification({
    * 2. Customer enabled email
    * 3. Customer has an email address
    */
-  if (
-    channels.email === true &&
-    preferences.channels.email &&
-    userEmail
-  ) {
+  if (channels.email === true && preferences.channels.email && userEmail) {
     try {
       await sendMail({
         to: userEmail,
@@ -293,10 +299,7 @@ export async function sendNotification({
        * Email failure must not fail the
        * underlying ShipIN operation.
        */
-      console.error(
-        "Email notification failed:",
-        error
-      );
+      console.error("Email notification failed:", error);
     }
   }
 }

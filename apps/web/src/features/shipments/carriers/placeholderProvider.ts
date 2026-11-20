@@ -3,16 +3,22 @@ import type { CarrierEvent, CarrierSnapshot, TrackingProvider } from "./types";
 /**
  * Synthetic tracking feed used until the India Post UAT credentials are live.
  *
- * The data is a pure function of the carrier number, anchored to a fixed epoch:
- * calling it twice returns byte-identical events, so the sync layer's dedupe
- * works and repeated page views cannot grow the stored history. Nothing here
+ * The data is a pure function of the carrier number and the current UTC day:
+ * two calls on the same day return byte-identical events, so the sync layer's
+ * dedupe works and repeated page views cannot grow the stored history, while
+ * the feed keeps moving instead of fossilising at one fixed date. Nothing here
  * is presented as real — the provider is flagged `placeholder` and the UI says
  * the carrier feed is not connected yet.
  */
 
-const BASE_EPOCH_MS = Date.UTC(2026, 0, 1);
-const HOUR_MS = 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
+
+/** Midnight UTC today: the anchor that advances once per day. */
+function rollingEpochMs(nowMs: number): number {
+  return Math.floor(nowMs / DAY_MS) * DAY_MS;
+}
 
 const STAGES = [
   {
@@ -43,14 +49,28 @@ function hash(value: string): number {
   return result;
 }
 
-export function createPlaceholderProvider(): TrackingProvider {
+export interface PlaceholderProviderOptions {
+  /** Injectable clock, for tests that need a fixed day. */
+  now?: () => number;
+}
+
+export function createPlaceholderProvider(
+  options: PlaceholderProviderOptions = {}
+): TrackingProvider {
+  const now = options.now ?? Date.now;
+
   return {
     id: "placeholder",
     placeholder: true,
 
     async fetchTracking(carrierNumber: string): Promise<CarrierSnapshot> {
       const seed = hash(carrierNumber);
-      const start = BASE_EPOCH_MS + (seed % 180) * DAY_MS;
+      // Three to five days ago: the scans have happened, the parcel is still
+      // moving, so nothing looks stale and nothing is dated in the future.
+      // One to four days back, varied by the number, so different parcels
+      // do not share a timeline and no scan is dated in the future.
+      const start =
+        rollingEpochMs(now()) - MINUTE_MS * (24 * 60 + (seed % 3000));
       const stageCount = 2 + (seed % 2);
 
       const events: CarrierEvent[] = STAGES.slice(0, stageCount).map(
@@ -65,7 +85,7 @@ export function createPlaceholderProvider(): TrackingProvider {
       return {
         carrierStatus: "in_transit",
         events,
-        estimatedDelivery: new Date(start + 12 * DAY_MS)
+        estimatedDelivery: new Date(start + 8 * DAY_MS)
           .toISOString()
           .slice(0, 10),
       };

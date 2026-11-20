@@ -2,10 +2,7 @@
 
 import { MessageSquare } from "lucide-react";
 
-import {
-  SupportTicket,
-  SupportMessage,
-} from "@/types/support";
+import { SupportTicket, SupportMessage } from "@/types/support";
 import EmptyState from "@/components/ui/EmptyState";
 
 import IndividualSupportMessage from "./SupportMessage";
@@ -30,19 +27,14 @@ export default function SupportConversation({
   onResolve,
   isAdmin = false,
 }: Props) {
-  const resolved =
-    ticket.status === "resolved";
+  const resolved = ticket.status === "resolved";
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
-
       {/* HEADER */}
       <div className="border-b border-slate-200 p-6 dark:border-slate-800">
-
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-
           <div className="min-w-0">
-
             <h2 className="break-words text-2xl font-bold text-slate-950 dark:text-white">
               {ticket.subject}
             </h2>
@@ -54,7 +46,6 @@ export default function SupportConversation({
             <p className="mt-2 text-slate-600 dark:text-slate-400">
               {ticket.category}
             </p>
-
           </div>
 
           {/* STATUS */}
@@ -65,18 +56,13 @@ export default function SupportConversation({
                 : "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400"
             }`}
           >
-            {resolved
-              ? "Resolved"
-              : "Open"}
+            {resolved ? "Resolved" : "Open"}
           </span>
-
         </div>
-
       </div>
 
       {/* MESSAGES */}
       <div className="max-h-[500px] min-h-[250px] space-y-4 overflow-y-auto bg-slate-50/50 p-6 dark:bg-slate-950/30">
-
         {messages.length === 0 ? (
           <EmptyState
             icon={<MessageSquare size={26} />}
@@ -85,20 +71,14 @@ export default function SupportConversation({
           />
         ) : (
           messages.map((message) => (
-            <IndividualSupportMessage
-              key={message.id}
-              message={message}
-            />
+            <IndividualSupportMessage key={message.id} message={message} />
           ))
         )}
-
       </div>
 
       {/* REPLY */}
       <div className="border-t border-slate-200 p-6 dark:border-slate-800">
-
         <div className="space-y-4">
-
           <ReplyBox
             value={reply}
             onChange={onReplyChange}
@@ -109,19 +89,14 @@ export default function SupportConversation({
           {isAdmin && !resolved && (
             <button
               type="button"
-              onClick={() =>
-                onResolve?.()
-              }
+              onClick={() => onResolve?.()}
               className="w-full rounded-xl bg-green-600 py-3 font-semibold text-white transition hover:bg-green-700"
             >
               Mark Resolved
             </button>
           )}
-
         </div>
-
       </div>
-
     </div>
   );
 }

@@ -31,9 +31,7 @@ export default function InspectionPhotos({
       const currentUser = auth.currentUser;
 
       if (!currentUser) {
-        throw new Error(
-          "You must be signed in to upload inspection photos."
-        );
+        throw new Error("You must be signed in to upload inspection photos.");
       }
 
       const idToken = await currentUser.getIdToken();
@@ -57,9 +55,7 @@ export default function InspectionPhotos({
         const result = await response.json();
 
         if (!response.ok || !result.success || !result.key) {
-          throw new Error(
-            result.error || "Unable to upload inspection photo."
-          );
+          throw new Error(result.error || "Unable to upload inspection photo.");
         }
 
         objectKeys.push(result.key);
@@ -78,7 +74,7 @@ export default function InspectionPhotos({
             body: {
               id: crypto.randomUUID(),
               url: key,
-              caption: '',
+              caption: "",
             },
           }
         );
@@ -95,10 +91,7 @@ export default function InspectionPhotos({
       console.error("Inspection photo upload failed:", error);
 
       toast.error("Unable to upload inspection photos.", {
-        description:
-          error instanceof Error
-            ? error.message
-            : undefined,
+        description: error instanceof Error ? error.message : undefined,
       });
     } finally {
       setUploading(false);
@@ -116,9 +109,7 @@ export default function InspectionPhotos({
           type="file"
           accept="image/jpeg,image/png,image/webp"
           disabled={uploading}
-          onChange={(e) =>
-            setFiles(Array.from(e.target.files || []))
-          }
+          onChange={(e) => setFiles(Array.from(e.target.files || []))}
         />
 
         {files.length > 0 && (
@@ -134,10 +125,7 @@ export default function InspectionPhotos({
           </div>
         )}
 
-        <ActionButton
-          onClick={uploadPhotos}
-          disabled={uploading}
-        >
+        <ActionButton onClick={uploadPhotos} disabled={uploading}>
           {uploading ? "Uploading..." : "Upload Photos"}
         </ActionButton>
       </div>

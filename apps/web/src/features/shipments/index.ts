@@ -13,7 +13,4 @@ export {
   removeRequestFromShipment,
   saveConsolidatedPackage,
   finalizeShipment,
-} from './services/shipments';
-
-export { generateTrackingId } from './services/tracking';
-
+} from "./services/shipments";

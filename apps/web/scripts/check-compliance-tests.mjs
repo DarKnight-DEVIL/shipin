@@ -73,9 +73,15 @@ if (modules.length === 0) {
 const results = modules.map((module) => {
   const absolute = path.join(COMPLIANCE_DIR, module);
   const withoutExtension = absolute.replace(/\.(ts|tsx)$/, "");
-  const candidates = [`${withoutExtension}.test.ts`, `${withoutExtension}.test.tsx`];
+  const candidates = [
+    `${withoutExtension}.test.ts`,
+    `${withoutExtension}.test.tsx`,
+  ];
 
-  return { module, test: candidates.find((candidate) => existsSync(candidate)) };
+  return {
+    module,
+    test: candidates.find((candidate) => existsSync(candidate)),
+  };
 });
 
 for (const { module, test } of results) {

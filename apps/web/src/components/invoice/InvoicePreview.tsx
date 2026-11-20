@@ -139,66 +139,74 @@ export default function InvoicePreview({ invoice }: InvoicePreviewProps) {
             </div>
 
             <div className="space-y-4">
-              {additionalPurchases.map((purchase: InvoiceLineItem, index: number) => (
-                <div
-                  key={purchase.id ?? index}
-                  className="rounded-[14px] border border-[var(--border)] p-5"
-                >
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--muted)]">
-                        Additional item
-                      </span>
+              {additionalPurchases.map(
+                (purchase: InvoiceLineItem, index: number) => (
+                  <div
+                    key={purchase.id ?? index}
+                    className="rounded-[14px] border border-[var(--border)] p-5"
+                  >
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--muted)]">
+                          Additional item
+                        </span>
 
-                      <p className="mt-2.5 text-[14px] font-semibold text-[var(--foreground)]">
-                        {purchase.name}
-                      </p>
-                      <p className="mt-0.5 text-[12px] text-[var(--muted)]">
-                        Quantity: {purchase.quantity}
-                      </p>
+                        <p className="mt-2.5 text-[14px] font-semibold text-[var(--foreground)]">
+                          {purchase.name}
+                        </p>
+                        <p className="mt-0.5 text-[12px] text-[var(--muted)]">
+                          Quantity: {purchase.quantity}
+                        </p>
+                      </div>
+
+                      <div className="shrink-0 sm:text-right">
+                        <p className="app-kicker">Product subtotal</p>
+                        <p className="mt-1 text-[16px] font-semibold tabular-nums text-[var(--foreground)]">
+                          ${(purchase.subtotal || 0).toFixed(2)}
+                        </p>
+                      </div>
                     </div>
 
-                    <div className="shrink-0 sm:text-right">
-                      <p className="app-kicker">Product subtotal</p>
-                      <p className="mt-1 text-[16px] font-semibold tabular-nums text-[var(--foreground)]">
-                        ${(purchase.subtotal || 0).toFixed(2)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 rounded-[14px] bg-[var(--surface-2)] p-4">
-                    <div className="space-y-2.5">
-                      <Row
-                        title={`Unit price × ${purchase.quantity}`}
-                        value={purchase.subtotal}
-                      />
-                      {purchase.serviceFee && purchase.serviceFee > 0 && (
-                        <Row title="Service fee" value={purchase.serviceFee} />
-                      )}
-                      {purchase.repackingFee && purchase.repackingFee > 0 && (
+                    <div className="mt-4 rounded-[14px] bg-[var(--surface-2)] p-4">
+                      <div className="space-y-2.5">
                         <Row
-                          title="Repacking fee"
-                          value={purchase.repackingFee}
+                          title={`Unit price × ${purchase.quantity}`}
+                          value={purchase.subtotal}
                         />
-                      )}
-                      {purchase.storageFee && purchase.storageFee > 0 && (
-                        <Row title="Storage fee" value={purchase.storageFee} />
-                      )}
+                        {purchase.serviceFee && purchase.serviceFee > 0 && (
+                          <Row
+                            title="Service fee"
+                            value={purchase.serviceFee}
+                          />
+                        )}
+                        {purchase.repackingFee && purchase.repackingFee > 0 && (
+                          <Row
+                            title="Repacking fee"
+                            value={purchase.repackingFee}
+                          />
+                        )}
+                        {purchase.storageFee && purchase.storageFee > 0 && (
+                          <Row
+                            title="Storage fee"
+                            value={purchase.storageFee}
+                          />
+                        )}
 
-                      <div className="border-t border-[var(--border)] pt-3">
-                        <div className="flex items-center justify-between gap-4 text-[13px]">
-                          <span className="font-semibold text-[var(--foreground)]">
-                            Amount paid
-                          </span>
-                          <span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
-                            ${(purchase.totalPaid || 0).toFixed(2)}
-                          </span>
+                        <div className="border-t border-[var(--border)] pt-3">
+                          <div className="flex items-center justify-between gap-4 text-[13px]">
+                            <span className="font-semibold text-[var(--foreground)]">
+                              Amount paid
+                            </span>
+                            <span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                              ${(purchase.totalPaid || 0).toFixed(2)}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              )}
             </div>
           </div>
         )}
@@ -276,7 +284,9 @@ function InvoiceItemsTable({ items }: { items: InvoiceLineItem[] }) {
               Product
             </th>
             <th className="app-kicker pb-2.5 text-center font-semibold">Qty</th>
-            <th className="app-kicker pb-2.5 text-center font-semibold">Unit</th>
+            <th className="app-kicker pb-2.5 text-center font-semibold">
+              Unit
+            </th>
             <th className="app-kicker pb-2.5 text-right font-semibold">
               Total
             </th>

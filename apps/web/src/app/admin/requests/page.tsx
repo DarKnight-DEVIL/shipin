@@ -8,7 +8,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import {
   getAdminRequestQueue,
   type AdminRequestFilter,
-} from "@/features/admin/services/requestQueue";
+} from "@/features/admin/services/requestQueueClient";
 import type { Request } from "@/types/request";
 
 /**
@@ -55,7 +55,9 @@ export default function AdminRequestsPage() {
       } catch (loadError) {
         if (cancelled) return;
         console.error("Failed to load the request queue:", loadError);
-        setError("Unable to load requests. Check your connection and try again.");
+        setError(
+          "Unable to load requests. Check your connection and try again."
+        );
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -108,7 +110,10 @@ export default function AdminRequestsPage() {
           disabled={loading}
           className="inline-flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <RefreshCw size={16} className={loading ? "animate-spin" : undefined} />
+          <RefreshCw
+            size={16}
+            className={loading ? "animate-spin" : undefined}
+          />
           Refresh
         </button>
       </header>

@@ -28,9 +28,50 @@ Set these in your Vercel project settings → Environment Variables:
 | `SMTP_EMAIL` / `SMTP_PASSWORD` | Fallback | SMTP fallback |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Yes | Cloudflare R2 uploads |
 | `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | Optional | WhatsApp Business API |
-| `MFA_SESSION_SECRET` | Optional | Admin MFA session signing (min 32 chars) |
-| `UPSTASH_REDIS_REST_URL` | **Critical** | **Upstash Redis for global rate limiting** |
-| `UPSTASH_REDIS_REST_TOKEN` | **Critical** | **Upstash Redis for global rate limiting** |
+| `MFA_SESSION_SECRET` | **Yes** | Signs admin MFA session cookies (min 32 chars). Production boot fails without it |
+| `BREACH_ALERT_WEBHOOK_URL` | Optional | Slack/incident webhook pinged for a critical data breach |
+| `UPSTASH_REDIS_REST_URL` | **Yes** | **Global rate limiting. The server refuses to start without it** |
+| `UPSTASH_REDIS_REST_TOKEN` | **Yes** | **Global rate limiting. The server refuses to start without it** |
+
+### Retention cleanup
+
+`executeRetentionCleanup()` deletes documents past their processing-register
+retention period, and defaults to a dry run. Schedule the handler with
+`?dryRun=false` only after reading one dry-run report: it skips anything under a
+legal/litigation/audit hold, anything whose owner has an open rights request,
+any `users` document whose account is not closed, and it deletes the Firebase
+Auth account before the profile so no sign-in is ever left without a record. If
+Auth refuses, the profile is kept for the next run and an entry is written to
+`retentionFailures/{uid}` (attempts, last error). Clear that collection's entries
+only after fixing the cause. `deleteOrphanedAuthAccounts()` covers the reverse
+case — an Auth account with no profile — and also defaults to a dry run, skipping
+accounts younger than seven days so a signup is never raced. Deletions are batched
+(100 per collection per run) and the result lists every document with the
+reason it expired.
+
+### Pre-deploy checks
+
+These are deliberately not CI steps: each needs production credentials that CI
+does not hold. Run them before promoting a deploy.
+
+1. **App Check is actually on.** Production must set
+   `NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY` and `APP_CHECK_ENFORCEMENT=true`.
+   With enforcement off, `requireAdmin` skips the App Check check and the admin
+   API gate is inert; locally `/api/health` reports
+   `appCheck: { configured: false, enforced: false }`, which is expected. After
+   deploying, `/api/health` must report both as `true`. The production host also
+   has to be registered on the reCAPTCHA v3 key in Google Cloud Console, or the
+   client cannot mint a token and requests fail with `APP_CHECK_FAILED`.
+2. **Firebase authorized domains.** Google sign-in only works on hosts listed in
+   Firebase Auth. Run `npm run check:authorized-domains` with the production
+   `FIREBASE_ADMIN_PROJECT_ID` / `FIREBASE_ADMIN_CLIENT_EMAIL` /
+   `FIREBASE_ADMIN_PRIVATE_KEY` and confirm the canonical host appears. The
+   script mints a Google access token from that service account, which is why it
+   is a pre-deploy step rather than a workflow.
+3. **Cron alerting.** `ALERT_WEBHOOK_URL` is optional, but without it a failed
+   hourly quote-expiry run only writes a job summary. The workflow now also
+   emits an `::error::` annotation in that case, so configure the repository
+   secret if anyone is expected to react to a missed sweep.
 
 ### Domains and origins
 
@@ -39,7 +80,8 @@ explicit rather than wildcarded:
 
 | Host | Role |
 |------|------|
-| `https://shipin-psi.vercel.app` | **Canonical** — use for `NEXT_PUBLIC_APP_URL`, `APP_URL`, links and passkeys |
+| `https://shipin-psi.vercel.app` | **Canonical** — use for `NEXT_PUBLIC_APP_URL`, `APP_URL`, links and passkeys. Also the code fallback (`SITE_URL_FALLBACK`) when the variable is unset |
+| `https://shipin.co` | Intended long-term domain, but it answers **410 Gone** today. Do not make it canonical, and do not use it as a fallback, until hosting is live |
 | `https://shipin-9576a.web.app` | Firebase Hosting alias (secondary, API access only) |
 | `https://shipin-9576a.firebaseapp.com` | Firebase Hosting alias (secondary, API access only) |
 | `http://localhost:3000`, `http://127.0.0.1:3000` | Local development |
@@ -145,6 +187,45 @@ Two adjacent settings are separate from this list:
   `APP_CHECK_ENFORCEMENT=true`, a preview host must be added there too, or the
   client cannot mint a token and requests fail with `APP_CHECK_FAILED`.
 
+### SMS MFA (Identity Platform)
+
+SMS second factors are issued and verified by Firebase Identity Platform, not
+by this app. The server trusts the `firebase.sign_in_second_factor` claim on a
+verified ID token, so no SMS secret, hashed code, or delivery provider lives in
+this codebase.
+
+Setup, once per Firebase project:
+
+1. Upgrade the project to Identity Platform (Firebase console → Authentication
+   → Identity Platform → Upgrade). Identity Platform requires the Blaze
+   (pay-as-you-go) plan.
+2. Authentication → Sign-in method → Phone: enable it.
+3. Authentication → Settings → SMS region policy: the default denies every
+   region. Allow only the countries you actually deliver to.
+4. Authentication → Settings → Authorized domains: list every origin that serves
+   the app, including preview domains that should be able to enrol or sign in
+   with SMS.
+5. Accounts using SMS need a verified email; the app already requires one for
+   admins.
+
+What to expect operationally:
+
+- Google sends the message, so delivery failures show up as Firebase errors
+  (`auth/quota-exceeded`, `auth/too-many-requests`), not in app logs.
+- The invisible reCAPTCHA is rendered by the SDK. The CSP already allows
+  `https://www.google.com/recaptcha/`, `https://recaptcha.google.com` and
+  `https://www.gstatic.com`; keep them if the CSP is edited.
+- Default quotas are 10 SMS per phone number per hour and 50 enrolment starts
+  per minute per IP. Message pricing applies after the first 10 messages per day
+  per project; check the Firebase pricing page before launch.
+- Authentication → Phone numbers for testing registers fake numbers for QA
+  without sending real SMS or spending quota.
+- `POST /api/admin/users/[uid]/mfa/reset` clears Firebase factors as well as the
+  Firestore ones, so a locked-out admin can re-enrol.
+
+Local development can exercise the UI and the server-side 401/403 paths, but a
+real end-to-end SMS sign-in has to be verified on a deployed origin.
+
 ### Enabling Global Rate Limiting (Upstash Redis)
 
 1. **Create an Upstash Redis database**:
@@ -158,8 +239,11 @@ Two adjacent settings are separate from this list:
 
 3. **Verify it works**:
    - Deploy to Vercel
-   - Check logs: `[ShipIN] WARNING: Running in production with in-memory rate limiting` should **NOT** appear
+   - The deploy should stay up: a production build with either variable missing now exits at startup with `[ShipIN] FATAL: Missing required production environment variables: UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN`, because a deployment that cannot enforce global limits must not serve traffic.
    - Rate limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`) should appear on responses
+   - `/api/health` should report the store as configured, not `degraded`
+
+   `RATE_LIMIT_STORE_OPTIONAL=1` bypasses that startup check. It exists only for the local/CI E2E suite, which builds production and runs against a throwaway database. Never set it on Production or Preview.
 
 ### Verifying Rate Limiting
 
@@ -189,10 +273,20 @@ This opens an interactive treemap. Look for:
 
 ### E2E Test Coverage
 
-| Test File | Coverage |
-|-----------|----------|
-| `smoke.spec.ts` | Public pages, API health, security headers, auth redirects |
-| `auth-flow.spec.ts` | Login page, protected route redirects, support flow redirects |
+`apps/web/scripts/e2e-local.mjs` (`npm run test:e2e:local`) is the reference local spec set,
+and the CI `e2e` job runs the same files, so a documented suite cannot rot unexecuted.
+
+| Test File | Coverage | Runs |
+|-----------|----------|------|
+| `smoke.spec.ts` | Public pages, API health, security headers, auth redirects | local + CI |
+| `hydration.spec.ts` | The production build actually hydrates | local + CI |
+| `sitemap-check.spec.ts` | `robots.txt` and `sitemap.xml` | local + CI |
+| `checkout-flow.spec.ts` | PayPal order routes: anonymous 401, validation 400 | local + CI |
+| `wallet-topup.spec.ts` | Wallet top-up routes: anonymous 401, bad amount 400, unknown id 404 | local + CI |
+| `admin-refund-local.spec.ts` | Refund authorization on the emulators: 401 / 403 / 404, no money moved | local + CI |
+| `signed-in-smoke.spec.ts` | Signed-in admin area and dashboard reads | `test:e2e:signed-in` + CI staging |
+| `admin-refund.spec.ts` | Full refund chain, real PayPal sandbox | CI staging only |
+| `auth-flow.spec.ts` | Public auth pages | Manual only — its 45s wait exceeds Playwright's 30s default timeout, so it is not wired into a runner yet |
 
 ### Integration Test Coverage
 
@@ -208,9 +302,11 @@ This opens an interactive treemap. Look for:
 Required Vercel Environment Variables:
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NEXT_PUBLIC_SENTRY_DSN` | Yes | Sentry DSN for client-side tracking |
-| `SENTRY_DSN` | Yes | Sentry DSN for server-side tracking |
-| `SENTRY_AUTH_TOKEN` | Yes | Auth token for source map upload |
+| `NEXT_PUBLIC_SENTRY_DSN` | Yes for error capture | Sentry DSN; the browser SDK is initialised from `instrumentation-client.ts` and the server/edge SDKs from `sentry.server.config.ts` / `sentry.edge.config.ts` via `instrumentation.ts`. Without it the SDK stays disabled and errors are only logged. |
+| `SENTRY_DSN` | Optional | Server-side override; falls back to `NEXT_PUBLIC_SENTRY_DSN`. |
+| `SENTRY_AUTH_TOKEN` | Optional (build) | Only for source-map upload. Build-time only: `sentry.config.ts` skips `withSentryConfig` when it is absent, so a build without it still succeeds. Also set `SENTRY_ORG` and `SENTRY_PROJECT` for the upload to resolve. |
+
+Runtime capture does not depend on the auth token — a deployment with only the DSN reports errors, just without readable stack traces.
 
 ### Docker Deployment
 
@@ -253,4 +349,4 @@ npm run build
 
 ---
 
-*Last updated: P0/P1/P2 hardening complete*
+*Last updated: P0/P1/P2 hardening complete (audit gate, dead code, App Check and authorized-domain pre-deploy checks)*

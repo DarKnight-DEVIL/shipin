@@ -1,16 +1,11 @@
-import type {
-  SupportMessage as SupportMessageType,
-} from "@/types/support";
+import type { SupportMessage as SupportMessageType } from "@/types/support";
 
 interface Props {
   message: SupportMessageType;
 }
 
-export default function SupportMessage({
-  message,
-}: Props) {
-  const customer =
-    message.sender === "customer";
+export default function SupportMessage({ message }: Props) {
+  const customer = message.sender === "customer";
 
   return (
     <div

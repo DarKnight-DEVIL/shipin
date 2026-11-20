@@ -63,7 +63,9 @@ export default function PlatformShell({
   }
 
   return (
-    <main className={`shipin-app ${display.variable} min-h-screen bg-[var(--background)] text-[var(--foreground)]`}>
+    <main
+      className={`shipin-app ${display.variable} min-h-screen bg-[var(--background)] text-[var(--foreground)]`}
+    >
       <Sidebar
         pathname={pathname}
         unreadCount={unreadCount}

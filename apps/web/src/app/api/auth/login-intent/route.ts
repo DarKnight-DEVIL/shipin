@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { childLogger } from "../../../../lib/logger";
+
 import { withErrorHandler } from "@/utils/errors";
 
 import {
@@ -26,7 +28,8 @@ export const POST = withErrorHandler(async (request: Request) => {
   // whenever the limiter backend was unavailable, so allow the attempt and log
   // it instead. Firebase Auth still applies its own abuse protection.
   if (isRateLimited(result) && result.unavailable) {
-    console.warn(
+    const loginLogger = childLogger({ service: "login-intent" });
+    loginLogger.warn(
       "[login-intent] rate-limit store unavailable; allowing sign-in attempt."
     );
 

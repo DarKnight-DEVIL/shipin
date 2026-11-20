@@ -21,10 +21,10 @@
  *   BASE_URL=http://localhost:3000 PLAYWRIGHT_WEBSERVER_COMMAND="npm start" \
  *     npx playwright test playwright-test/tests/hydration.spec.ts
  */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from "@playwright/test";
 
 /** Prerendered routes that need no session. */
-const PUBLIC_ROUTES = ['/', '/login', '/track'];
+const PUBLIC_ROUTES = ["/", "/login", "/track"];
 
 /**
  * Routes under the `(platform)` layout. They render signed-out too — the layout
@@ -34,13 +34,13 @@ const PUBLIC_ROUTES = ['/', '/login', '/track'];
  * the page.
  */
 const PLATFORM_ROUTES = [
-  '/addresses',
-  '/notifications',
-  '/requests',
-  '/requests/new',
-  '/settings',
-  '/support',
-  '/wallet',
+  "/addresses",
+  "/notifications",
+  "/requests",
+  "/requests/new",
+  "/settings",
+  "/support",
+  "/wallet",
 ];
 
 const CSP_VIOLATION_PATTERNS = [
@@ -54,8 +54,8 @@ const CSP_VIOLATION_PATTERNS = [
 function watchForCspViolations(page: Page): string[] {
   const violations: string[] = [];
 
-  page.on('console', (message) => {
-    if (message.type() !== 'error') return;
+  page.on("console", (message) => {
+    if (message.type() !== "error") return;
     const text = message.text();
     if (CSP_VIOLATION_PATTERNS.some((pattern) => pattern.test(text))) {
       violations.push(text);
@@ -68,8 +68,8 @@ function watchForCspViolations(page: Page): string[] {
 /** Reads the same hydration signals a human would check by hand. */
 async function hydrationState(page: Page) {
   return page.evaluate(() => {
-    const hydratedNodes = [...document.querySelectorAll('*')].filter((node) =>
-      Object.keys(node).some((key) => key.startsWith('__reactFiber$'))
+    const hydratedNodes = [...document.querySelectorAll("*")].filter((node) =>
+      Object.keys(node).some((key) => key.startsWith("__reactFiber$"))
     ).length;
 
     return {
@@ -94,22 +94,25 @@ async function expectHydrated(page: Page, route: string) {
   // document request through the proxy, and the web rate limiter allows 100 per
   // minute per IP — a dozen routes in one run would trip it, and the resulting
   // 429 would look like a hydration bug. Prefetch is irrelevant to this test.
-  await page.route('**/*', (routeRequest) => {
-    if (routeRequest.request().url().includes('_rsc=')) return routeRequest.abort();
+  await page.route("**/*", (routeRequest) => {
+    if (routeRequest.request().url().includes("_rsc="))
+      return routeRequest.abort();
     return routeRequest.continue();
   });
 
-  page.on('pageerror', (error) => pageErrors.push(error.message.split('\n')[0]));
-  page.on('console', (message) => {
-    if (message.type() !== 'error') return;
+  page.on("pageerror", (error) =>
+    pageErrors.push(error.message.split("\n")[0])
+  );
+  page.on("console", (message) => {
+    if (message.type() !== "error") return;
     const text = message.text();
     // Vercel Analytics/Speed Insights 404 outside Vercel; ignore those.
     if (/_vercel\/(insights|speed-insights)/.test(text)) return;
-    if (text.includes('Failed to load resource')) return;
-    consoleErrors.push(text.split('\n')[0]);
+    if (text.includes("Failed to load resource")) return;
+    consoleErrors.push(text.split("\n")[0]);
   });
 
-  await page.goto(route, { waitUntil: 'networkidle' });
+  await page.goto(route, { waitUntil: "networkidle" });
   await page.waitForTimeout(500);
 
   const bodyText = await page.evaluate(() => document.body.innerText);
@@ -118,25 +121,28 @@ async function expectHydrated(page: Page, route: string) {
   expect(
     state.nextFlight,
     `${route}: Next's inline bootstrap never ran — the CSP is blocking it`
-  ).toBe('object');
+  ).toBe("object");
 
   expect(
     state.hydratedNodes,
     `${route}: no DOM node has a React fiber, so the page is static HTML`
   ).toBeGreaterThan(0);
 
-  expect(violations, `${route}: Content-Security-Policy blocked a request`).toEqual([]);
+  expect(
+    violations,
+    `${route}: Content-Security-Policy blocked a request`
+  ).toEqual([]);
   expect(pageErrors, `${route}: uncaught error during hydration`).toEqual([]);
   expect(consoleErrors, `${route}: console errors after hydration`).toEqual([]);
   expect(
     bodyText,
     `${route}: the error boundary replaced the page`
-  ).not.toContain('Something went wrong');
+  ).not.toContain("Something went wrong");
 
   return state;
 }
 
-test.describe('Production hydration', () => {
+test.describe("Production hydration", () => {
   for (const route of PUBLIC_ROUTES) {
     test(`${route} hydrates without CSP violations`, async ({ page }) => {
       await expectHydrated(page, route);
@@ -152,12 +158,36 @@ test.describe('Production hydration', () => {
   // Guards the third-party allowlists in the policy. The PayPal SDK frames from
   // www.paypal.com live and www.sandbox.paypal.com in sandbox mode; when the
   // sandbox host was missing, the buttons silently never rendered.
-  test('/wallet/topup loads the PayPal SDK without CSP refusals', async ({ page }) => {
+  test("/wallet/topup loads the PayPal SDK without CSP refusals", async ({
+    page,
+  }) => {
     const violations = watchForCspViolations(page);
 
-    await page.goto('/wallet/topup', { waitUntil: 'networkidle' });
+    await page.goto("/wallet/topup", { waitUntil: "domcontentloaded" });
+
+    // The SDK's script URL is built from NEXT_PUBLIC_PAYPAL_CLIENT_ID at render
+    // time. Detect it from the PAGE, not from this process's environment: the
+    // app may have been built with .env.local or with a CI secret, and the test
+    // process sees neither. No script means no id is configured, so there is
+    // nothing to assert about the policy — skip instead of failing.
+    const sdkScript = page.locator('script[src*="paypal.com/sdk/js"]');
+    const requested = await sdkScript
+      .first()
+      // Generous on purpose: the provider injects the tag after hydration, and
+      // under a full-suite run that step is slower than `-g PayPal` alone.
+      .waitFor({ state: "attached", timeout: 30_000 })
+      .then(() => true)
+      .catch(() => false);
+
+    test.skip(
+      !requested,
+      "NEXT_PUBLIC_PAYPAL_CLIENT_ID is not configured, so the page never requests the PayPal SDK."
+    );
+
+    // A script tag the policy blocked would still exist in the DOM, so also
+    // require the SDK to have executed.
     await page.waitForFunction(
-      () => typeof (window as { paypal?: unknown }).paypal !== 'undefined',
+      () => typeof (window as { paypal?: unknown }).paypal !== "undefined",
       undefined,
       { timeout: 20_000 }
     );
@@ -171,53 +201,80 @@ test.describe('Production hydration', () => {
   // proof — the page is prerendered in its loading skeleton, so the only thing
   // that can replace the skeleton with "No requests yet" is the dashboard's own
   // JavaScript calling `auth.onAuthStateChanged`.
-  test('/dashboard hydrates and its data hook settles', async ({ page }) => {
+  test("/dashboard hydrates and its data hook settles", async ({ page }) => {
     const violations = watchForCspViolations(page);
     const consoleErrors: string[] = [];
-    page.on('console', (message) => {
-      if (message.type() === 'error') consoleErrors.push(message.text());
+    page.on("console", (message) => {
+      // "Failed to load resource" carries its URL only in `location()`, so the
+      // Vercel rule below can't match on text alone. Appending it also makes a
+      // real 404 name the resource.
+      if (message.type() === "error") {
+        consoleErrors.push(`${message.text()} ${message.location().url}`);
+      }
     });
 
-    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
 
-    await expect(page.getByText('No requests yet')).toBeVisible({ timeout: 20_000 });
-    expect(page.url(), 'dashboard should not redirect a signed-out visitor').toContain(
-      '/dashboard'
-    );
+    await expect(page.getByText("No requests yet")).toBeVisible({
+      timeout: 20_000,
+    });
+    expect(
+      page.url(),
+      "dashboard should not redirect a signed-out visitor"
+    ).toContain("/dashboard");
 
     const state = await hydrationState(page);
 
-    expect(state.nextFlight, 'dashboard: inline bootstrap never ran').toBe('object');
+    expect(state.nextFlight, "dashboard: inline bootstrap never ran").toBe(
+      "object"
+    );
     expect(
       state.hydratedNodes,
-      'dashboard: no React fibers, so the route never hydrated'
+      "dashboard: no React fibers, so the route never hydrated"
     ).toBeGreaterThan(0);
 
-    expect(violations, 'dashboard: Content-Security-Policy blocked scripts').toEqual([]);
+    expect(
+      violations,
+      "dashboard: Content-Security-Policy blocked scripts"
+    ).toEqual([]);
 
     // Vercel Analytics/Speed Insights scripts 404 outside Vercel; ignore those.
     const unexpected = consoleErrors.filter(
-      (text) => !/_vercel\/(insights|speed-insights)/.test(text)
+      (entry) => !/_vercel\/(insights|speed-insights)/.test(entry)
     );
-    expect(unexpected, 'dashboard logged console errors').toEqual([]);
+    expect(unexpected, "dashboard logged console errors").toEqual([]);
   });
 
-  test('landing page routes client-side, not by full page load', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'networkidle' });
-    await page.waitForFunction(() => (window as { __next_f?: unknown }).__next_f !== undefined);
+  test("landing page routes client-side, not by full page load", async ({
+    page,
+  }) => {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await page.waitForFunction(
+      () => (window as { __next_f?: unknown }).__next_f !== undefined
+    );
 
     // A full document load would clear this; a client-side route change keeps it.
     await page.evaluate(() => {
-      (window as { __shipinHydrationProbe?: string }).__shipinHydrationProbe = 'kept';
+      (window as { __shipinHydrationProbe?: string }).__shipinHydrationProbe =
+        "kept";
     });
 
-    await page.getByRole('link', { name: 'Sign in' }).first().click();
-    await expect(page).toHaveURL(/\/login/);
+    await page.getByRole("link", { name: "Sign in" }).first().click();
+    // 20s, not the 5s default: the dev server compiles `/login` on the first
+    // request for it, which under a parallel full-suite run outlasts 5s. The
+    // probe below is what proves the navigation was client-side, so a longer
+    // wait does not weaken this test.
+    await expect(page).toHaveURL(/\/login/, { timeout: 20_000 });
 
     const survived = await page.evaluate(
-      () => (window as { __shipinHydrationProbe?: string }).__shipinHydrationProbe === 'kept'
+      () =>
+        (window as { __shipinHydrationProbe?: string })
+          .__shipinHydrationProbe === "kept"
     );
 
-    expect(survived, 'link click did a full reload — the app is not hydrated').toBe(true);
+    expect(
+      survived,
+      "link click did a full reload — the app is not hydrated"
+    ).toBe(true);
   });
 });

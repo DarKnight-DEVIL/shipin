@@ -152,9 +152,7 @@ export default function AddItemRequest({ request }: Props) {
               type="number"
               min={1}
               value={quantity}
-              onChange={(e) =>
-                setQuantity(Math.max(1, Number(e.target.value)))
-              }
+              onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
               className="shipin-input"
             />
           </div>

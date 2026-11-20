@@ -15,7 +15,7 @@
  * backslash in the value is escaping, however many times it was escaped.
  */
 
-const PEM_BEGIN = '-----BEGIN';
+const PEM_BEGIN = "-----BEGIN";
 
 function stripWrappingQuotes(value: string): string {
   // Strip however many layers of quoting a secret store added. Each pass
@@ -35,15 +35,49 @@ function stripWrappingQuotes(value: string): string {
   }
 }
 
+/**
+ * Remove surrounding double-quotes that wrap the entire .env.local value.
+ * .env.local often stores the key as:
+ *   FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n..."
+ * This must be stripped BEFORE newline unescaping, otherwise the trailing
+ * quote ends up inside the PEM and breaks parsing.
+ * Also handles trailing commas that some tools erroneously append.
+ */
+function stripEnvValueQuotes(value: string): string {
+  let trimmed = value.trim();
+
+  // Strip trailing comma if present (some secret stores append one)
+  if (trimmed.endsWith(",")) {
+    trimmed = trimmed.slice(0, -1).trim();
+  }
+
+  if (
+    trimmed.length >= 2 &&
+    trimmed[0] === '"' &&
+    trimmed[trimmed.length - 1] === '"'
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+/**
+ * A base64-encoded RSA/EC PEM is well over a kilobyte. The character-class
+ * check alone also matches short opaque values such as "abc123", so anything
+ * this short is left alone instead of being handed to the decoder.
+ */
+const MIN_BASE64_KEY_LENGTH = 100;
+
 function decodeIfBase64(value: string): string {
   if (value.includes(PEM_BEGIN)) return value;
+  if (value.length < MIN_BASE64_KEY_LENGTH) return value;
   // Standard or URL-safe base64, with or without padding.
   if (!/^[A-Za-z0-9+/=_-]+$/.test(value)) return value;
 
   const decoded = Buffer.from(
-    value.replace(/-/g, '+').replace(/_/g, '/'),
-    'base64'
-  ).toString('utf8');
+    value.replace(/-/g, "+").replace(/_/g, "/"),
+    "base64"
+  ).toString("utf8");
 
   // Only trust the decode when it actually produced a key; anything else means
   // the variable was some other opaque string, not an encoded PEM.
@@ -55,7 +89,7 @@ function unescapeNewlines(value: string): string {
   // one — the natural `\n` pass — leaves a stray backslash at the end of every
   // line, which is exactly the shape that makes OpenSSL say "unsupported"
   // instead of naming the problem.
-  return value.replace(/\\+r\\+n/g, '\n').replace(/\\+[rn]/g, '\n');
+  return value.replace(/\\+r\\+n/g, "\n").replace(/\\+[rn]/g, "\n");
 }
 
 /**
@@ -63,17 +97,20 @@ function unescapeNewlines(value: string): string {
  * nothing was supplied. Escaped newlines, wrapping quotes, trailing spaces and
  * base64 storage are all tolerated; the key material is never altered.
  */
-export function normalizePrivateKey(
-  raw: string | null | undefined
-): string {
-  if (!raw) return '';
+export function normalizePrivateKey(raw: string | null | undefined): string {
+  if (!raw) return "";
 
   const trimmed = raw.trim();
-  if (!trimmed) return '';
+  if (!trimmed) return "";
 
-  return unescapeNewlines(decodeIfBase64(stripWrappingQuotes(trimmed)))
-    // Copy-paste often leaves a trailing space on wrapped lines; OpenSSL
-    // rejects the key for it, and no PEM line legitimately ends in whitespace.
-    .replace(/[ \t]+\n/g, '\n')
-    .trim();
+  // Strip .env.local value wrapping quotes FIRST, before any unescaping.
+  const withoutEnvQuotes = stripEnvValueQuotes(trimmed);
+
+  return (
+    unescapeNewlines(decodeIfBase64(stripWrappingQuotes(withoutEnvQuotes)))
+      // Copy-paste often leaves a trailing space on wrapped lines; OpenSSL
+      // rejects the key for it, and no PEM line legitimately ends in whitespace.
+      .replace(/[ \t]+\n/g, "\n")
+      .trim()
+  );
 }

@@ -39,7 +39,9 @@ const vitestBin =
     : vitestManifest.bin?.vitest;
 
 if (!vitestBin) {
-  console.error("run-coverage: could not locate the vitest CLI in its package.json.");
+  console.error(
+    "run-coverage: could not locate the vitest CLI in its package.json."
+  );
   process.exit(1);
 }
 
@@ -52,7 +54,11 @@ const run = (command, args) =>
     env: process.env,
   });
 
-const coverage = run(vitestCli, ["run", "--coverage", ...process.argv.slice(2)]);
+const coverage = run(vitestCli, [
+  "run",
+  "--coverage",
+  ...process.argv.slice(2),
+]);
 
 if (coverage.status !== 0) {
   // Explain only when there is coverage data to explain; test failures still

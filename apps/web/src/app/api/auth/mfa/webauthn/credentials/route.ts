@@ -21,17 +21,6 @@ export const DELETE = withErrorHandler(async (request: NextRequest) => {
 
   if (auth instanceof NextResponse) return auth;
 
-  if (auth.profile.role !== "admin") {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Administrator access required.",
-        code: "ADMIN_ACCESS_REQUIRED",
-      },
-      { status: 403, headers: NO_STORE }
-    );
-  }
-
   const body = await request.json().catch(() => null);
   const id = (body as { id?: unknown } | null)?.id;
 
@@ -63,7 +52,9 @@ export const DELETE = withErrorHandler(async (request: NextRequest) => {
   const data = snapshot.data() ?? {};
   const record = (data.mfa?.webauthn ?? {}) as WebAuthnRecord;
   const credentials = readStoredCredentials(record);
-  const remaining = credentials.filter((credential) => credential.credentialID !== id);
+  const remaining = credentials.filter(
+    (credential) => credential.credentialID !== id
+  );
 
   if (remaining.length === credentials.length) {
     return NextResponse.json(

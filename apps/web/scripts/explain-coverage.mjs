@@ -38,10 +38,14 @@ const err = (line = "") => process.stderr.write(`${line}\n`);
  */
 export function fileMetrics(fileCoverage) {
   const statementEntries = Object.entries(fileCoverage.s ?? {});
-  const coveredStatements = statementEntries.filter(([, count]) => count > 0).length;
+  const coveredStatements = statementEntries.filter(
+    ([, count]) => count > 0
+  ).length;
 
   const functionEntries = Object.entries(fileCoverage.f ?? {});
-  const coveredFunctions = functionEntries.filter(([, count]) => count > 0).length;
+  const coveredFunctions = functionEntries.filter(
+    ([, count]) => count > 0
+  ).length;
 
   const branchEntries = Object.entries(fileCoverage.b ?? {});
   const branchArms = branchEntries.flatMap(([, counts]) => counts);
@@ -53,7 +57,8 @@ export function fileMetrics(fileCoverage) {
     if (!statement) continue;
 
     const { start, end } = statement;
-    const lastLine = end?.line && end.line >= start.line ? end.line : start.line;
+    const lastLine =
+      end?.line && end.line >= start.line ? end.line : start.line;
 
     for (let line = start.line; line <= lastLine; line += 1) {
       lineHits.set(line, (lineHits.get(line) ?? false) || count > 0);
@@ -89,7 +94,8 @@ export function fileMetrics(fileCoverage) {
   };
 }
 
-const percent = (covered, total) => (total === 0 ? 100 : (covered / total) * 100);
+const percent = (covered, total) =>
+  total === 0 ? 100 : (covered / total) * 100;
 
 /**
  * Files inside one glob, worst contributor first.
@@ -119,10 +125,7 @@ export function loadMetrics(coverageFile = COVERAGE_FILE) {
   const raw = JSON.parse(readFileSync(coverageFile, "utf8"));
 
   return Object.entries(raw).map(([absolutePath, fileCoverage]) => ({
-    file: path
-      .relative(ROOT, absolutePath)
-      .split(path.sep)
-      .join("/"),
+    file: path.relative(ROOT, absolutePath).split(path.sep).join("/"),
     metrics: fileMetrics(fileCoverage),
   }));
 }
@@ -148,8 +151,14 @@ function main() {
       const floor = floors[metric];
       if (typeof floor !== "number") continue;
 
-      const covered = inGlob.reduce((sum, entry) => sum + entry.metrics.covered[metric], 0);
-      const total = inGlob.reduce((sum, entry) => sum + entry.metrics.total[metric], 0);
+      const covered = inGlob.reduce(
+        (sum, entry) => sum + entry.metrics.covered[metric],
+        0
+      );
+      const total = inGlob.reduce(
+        (sum, entry) => sum + entry.metrics.total[metric],
+        0
+      );
       const actual = percent(covered, total);
 
       if (actual < floor) missed.push({ metric, actual, floor });
@@ -159,7 +168,9 @@ function main() {
   }
 
   if (failures.length === 0) {
-    out("explain-coverage: every payment and compliance subtree meets its floor.");
+    out(
+      "explain-coverage: every payment and compliance subtree meets its floor."
+    );
     return 0;
   }
 
@@ -190,15 +201,22 @@ function main() {
       const ranked = rankOffenders(inGlob, metric);
       if (ranked.length > MAX_FILES) {
         const rest = ranked.slice(MAX_FILES);
-        const restUncovered = rest.reduce((sum, entry) => sum + entry.uncovered, 0);
-        out(`      … ${rest.length} more file(s), ${restUncovered} uncovered ${metric}`);
+        const restUncovered = rest.reduce(
+          (sum, entry) => sum + entry.uncovered,
+          0
+        );
+        out(
+          `      … ${rest.length} more file(s), ${restUncovered} uncovered ${metric}`
+        );
       }
     }
 
     out("");
   }
 
-  out("Each line above is one file, not one test: add tests there, or delete code");
+  out(
+    "Each line above is one file, not one test: add tests there, or delete code"
+  );
   out("that cannot run. Do not lower the floor — that is the gate.");
 
   return 1;
@@ -206,6 +224,9 @@ function main() {
 
 // Only run as a CLI: the helpers above are imported by nothing yet, but keeping
 // the guard means a future test can import them without triggering output.
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
   process.exitCode = main();
 }

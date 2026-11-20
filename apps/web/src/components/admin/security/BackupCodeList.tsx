@@ -50,8 +50,8 @@ export default function BackupCodeList({ codes }: { codes: string[] }) {
         Save these backup codes now
       </p>
       <p className="mt-1 text-xs text-amber-200/80">
-        They are shown once. Each code works a single time if you lose access
-        to your authenticator.
+        They are shown once. Each code works a single time if you lose access to
+        your authenticator.
       </p>
 
       <ul className="mt-4 grid grid-cols-2 gap-2 font-mono text-sm text-white sm:grid-cols-3">

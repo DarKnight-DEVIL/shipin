@@ -71,26 +71,20 @@ export default function PayPalCheckout({
                * Therefore we explicitly pass `amount`.
                */
 
-              const order =
-                await paymentService.createPayPalOrder(
-                  requestId,
-                  amount,
-                  paymentType,
-                  additionalItemRequestId
-                );
+              const order = await paymentService.createPayPalOrder(
+                requestId,
+                amount,
+                paymentType,
+                additionalItemRequestId
+              );
 
               if (!order?.id) {
-                throw new Error(
-                  "PayPal did not return an order ID."
-                );
+                throw new Error("PayPal did not return an order ID.");
               }
 
               return order.id;
             } catch (err) {
-              console.error(
-                "PayPal create order error:",
-                err
-              );
+              console.error("PayPal create order error:", err);
 
               throw err;
             }
@@ -118,18 +112,12 @@ export default function PayPalCheckout({
                 await onSuccess();
               }
             } catch (err) {
-              console.error(
-                "PayPal capture error:",
-                err
-              );
+              console.error("PayPal capture error:", err);
 
-              toast.error(
-                "Payment completed, but we couldn't finalize it.",
-                {
-                  description:
-                    "Please refresh the page. If the issue persists, contact support.",
-                }
-              );
+              toast.error("Payment completed, but we couldn't finalize it.", {
+                description:
+                  "Please refresh the page. If the issue persists, contact support.",
+              });
 
               if (onError) {
                 onError(err);
@@ -137,21 +125,15 @@ export default function PayPalCheckout({
             }
           }}
           onError={(err) => {
-            console.error(
-              "PayPal checkout error:",
-              err
-            );
+            console.error("PayPal checkout error:", err);
 
             if (onError) {
               onError(err);
             } else {
-              toast.error(
-                "Unable to process PayPal payment.",
-                {
-                  description:
-                    "Please try again or choose another payment method.",
-                }
-              );
+              toast.error("Unable to process PayPal payment.", {
+                description:
+                  "Please try again or choose another payment method.",
+              });
             }
           }}
         />

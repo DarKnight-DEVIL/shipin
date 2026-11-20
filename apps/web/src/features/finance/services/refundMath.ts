@@ -14,9 +14,7 @@
  * Round to 2 decimal places (currency).
  */
 export function roundMoney(value: number | undefined): number {
-  return Number(
-    (Number.isFinite(value ?? 0) ? value ?? 0 : 0).toFixed(2)
-  );
+  return Number((Number.isFinite(value ?? 0) ? (value ?? 0) : 0).toFixed(2));
 }
 
 export interface PaymentSources {
@@ -53,28 +51,17 @@ export function computeRefundSplit(
   amount: number,
   payment: PaymentSources | undefined | null
 ): RefundSplit {
-  const walletAmount = roundMoney(
-    Number(payment?.walletAmount ?? 0)
-  );
+  const walletAmount = roundMoney(Number(payment?.walletAmount ?? 0));
 
-  const paypalAmount = roundMoney(
-    Number(payment?.paypalAmount ?? 0)
-  );
+  const paypalAmount = roundMoney(Number(payment?.paypalAmount ?? 0));
 
   const roundedAmount = roundMoney(amount);
 
-  const walletRefund =
-    Math.min(
-      roundedAmount,
-      Math.max(0, walletAmount)
-    );
+  const walletRefund = Math.min(roundedAmount, Math.max(0, walletAmount));
 
-  const paypalRefund = roundMoney(
-    roundedAmount - walletRefund
-  );
+  const paypalRefund = roundMoney(roundedAmount - walletRefund);
 
-  const exceedsOriginalSources =
-    paypalRefund > paypalAmount + 0.01;
+  const exceedsOriginalSources = paypalRefund > paypalAmount + 0.01;
 
   return {
     walletRefund,
@@ -99,9 +86,7 @@ export function remainingRefundable(
   totalPaid: number,
   totalRefunded: number
 ): number {
-  return roundMoney(
-    roundMoney(totalPaid) - roundMoney(totalRefunded)
-  );
+  return roundMoney(roundMoney(totalPaid) - roundMoney(totalRefunded));
 }
 
 /*
@@ -113,7 +98,5 @@ export function walletBalanceAfterCredit(
   currentBalance: number,
   creditAmount: number
 ): number {
-  return roundMoney(
-    roundMoney(currentBalance) + roundMoney(creditAmount)
-  );
+  return roundMoney(roundMoney(currentBalance) + roundMoney(creditAmount));
 }

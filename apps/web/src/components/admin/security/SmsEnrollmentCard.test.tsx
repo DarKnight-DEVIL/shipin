@@ -2,16 +2,24 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { MfaApiError } from "@/lib/mfaApi";
 import type { MfaConfigStatus } from "@/lib/mfaSetupClient";
 import SmsEnrollmentCard from "./SmsEnrollmentCard";
 
-vi.mock("@/lib/mfaSetupClient", () => ({
-  sendSmsCode: vi.fn(),
-  confirmSmsCode: vi.fn(),
+const mocks = vi.hoisted(() => ({
+  start: vi.fn(),
+  confirm: vi.fn(),
 }));
 
-const { sendSmsCode, confirmSmsCode } = await import("@/lib/mfaSetupClient");
+vi.mock("@/lib/firebase", () => ({
+  auth: { currentUser: { uid: "admin-1" } },
+}));
+
+vi.mock("@/lib/firebaseMfa", () => ({
+  FirebaseMfaError: class FirebaseMfaError extends Error {},
+  RECAPTCHA_CONTAINER_ID: "mfa-recaptcha",
+  startSmsEnrollment: mocks.start,
+  confirmSmsEnrollment: mocks.confirm,
+}));
 
 const STATUS: MfaConfigStatus = {
   totp: { enabled: true, pending: false },
@@ -21,18 +29,16 @@ const STATUS: MfaConfigStatus = {
 };
 
 function renderCard(onChanged = vi.fn()) {
-  return render(
-    <SmsEnrollmentCard idToken="token" status={STATUS} onChanged={onChanged} />
-  );
+  return render(<SmsEnrollmentCard status={STATUS} onChanged={onChanged} />);
 }
 
 beforeEach(() => {
-  vi.mocked(sendSmsCode).mockReset();
-  vi.mocked(confirmSmsCode).mockReset();
+  mocks.start.mockReset();
+  mocks.confirm.mockReset();
 });
 
 describe("SmsEnrollmentCard", () => {
-  it("rejects a phone number that is not E.164 without calling the API", () => {
+  it("rejects a phone number that is not E.164 without starting a ceremony", () => {
     renderCard();
 
     fireEvent.change(screen.getByLabelText("Phone number"), {
@@ -43,13 +49,11 @@ describe("SmsEnrollmentCard", () => {
     expect(
       screen.getByText("Use international format, for example +15551234567.")
     ).toBeInTheDocument();
-    expect(sendSmsCode).not.toHaveBeenCalled();
+    expect(mocks.start).not.toHaveBeenCalled();
   });
 
-  it("sends a code and moves to the confirmation step", async () => {
-    vi.mocked(sendSmsCode).mockResolvedValue(
-      "Verification code sent to +15551234567. Expires in 5 minutes."
-    );
+  it("starts the Identity Platform ceremony and moves to the confirmation step", async () => {
+    mocks.start.mockResolvedValue("verification-id");
 
     renderCard();
 
@@ -59,15 +63,19 @@ describe("SmsEnrollmentCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send code" }));
 
     expect(
-      await screen.findByText(/Verification code sent/)
+      await screen.findByText(/Google sent a code to/)
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Enter the code we sent")).toBeInTheDocument();
-    expect(sendSmsCode).toHaveBeenCalledWith("token", "+15551234567");
+    expect(mocks.start).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ uid: "admin-1" }),
+      "+15551234567"
+    );
   });
 
   it("enables SMS after a valid code and refreshes the caller", async () => {
-    vi.mocked(sendSmsCode).mockResolvedValue("Code sent.");
-    vi.mocked(confirmSmsCode).mockResolvedValue("SMS MFA enabled successfully.");
+    mocks.start.mockResolvedValue("verification-id");
+    mocks.confirm.mockResolvedValue(undefined);
 
     const onChanged = vi.fn();
     renderCard(onChanged);
@@ -84,21 +92,21 @@ describe("SmsEnrollmentCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Verify and enable" }));
 
     expect(
-      await screen.findByText("SMS MFA enabled successfully.")
+      await screen.findByText(
+        "SMS enabled. You will be asked for a code at every sign-in."
+      )
     ).toBeInTheDocument();
-    expect(confirmSmsCode).toHaveBeenCalledWith("token", "654321");
+    expect(mocks.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ uid: "admin-1" }),
+      "verification-id",
+      "654321"
+    );
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
-  it("reports an expired code and stays on the confirmation step", async () => {
-    vi.mocked(sendSmsCode).mockResolvedValue("Code sent.");
-    vi.mocked(confirmSmsCode).mockRejectedValue(
-      new MfaApiError(
-        "Verification code expired.",
-        "SMS_VERIFICATION_EXPIRED",
-        400
-      )
-    );
+  it("reports a rejected code and stays on the confirmation step", async () => {
+    mocks.start.mockResolvedValue("verification-id");
+    mocks.confirm.mockRejectedValue(new Error("invalid-code"));
 
     renderCard();
 
@@ -114,7 +122,7 @@ describe("SmsEnrollmentCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Verify and enable" }));
 
     expect(
-      await screen.findByText("Verification code expired.")
+      await screen.findByText("Could not verify that code.")
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Enter the code we sent")).toBeInTheDocument();
   });

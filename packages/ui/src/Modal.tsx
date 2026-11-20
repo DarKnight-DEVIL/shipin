@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { ReactNode, useEffect } from 'react';
-import { X } from 'lucide-react';
-import { clsx } from 'clsx';
-import { createPortal } from 'react-dom';
+import { ReactNode, useEffect } from "react";
+import { X } from "lucide-react";
+import { clsx } from "clsx";
+import { createPortal } from "react-dom";
 
 export interface ModalProps {
   isOpen: boolean;
@@ -11,7 +11,7 @@ export interface ModalProps {
   title?: string;
   description?: string;
   children: ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  size?: "sm" | "md" | "lg" | "xl" | "full";
   showCloseButton?: boolean;
   closeOnOverlayClick?: boolean;
   closeOnEscape?: boolean;
@@ -23,7 +23,7 @@ export const Modal = ({
   title,
   description,
   children,
-  size = 'md',
+  size = "md",
   showCloseButton = true,
   closeOnOverlayClick = true,
   closeOnEscape = true,
@@ -32,61 +32,67 @@ export const Modal = ({
     if (!isOpen) return;
 
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && closeOnEscape) onClose();
+      if (e.key === "Escape" && closeOnEscape) onClose();
     };
 
-    document.addEventListener('keydown', handleEscape);
-    document.body.style.overflow = 'hidden';
+    document.addEventListener("keydown", handleEscape);
+    document.body.style.overflow = "hidden";
 
     return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'unset';
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "unset";
     };
   }, [isOpen, closeOnEscape, onClose]);
 
   if (!isOpen) return null;
 
   const sizes = {
-    sm: 'max-w-sm',
-    md: 'max-w-md',
-    lg: 'max-w-lg',
-    xl: 'max-w-xl',
-    full: 'max-w-4xl',
+    sm: "max-w-sm",
+    md: "max-w-md",
+    lg: "max-w-lg",
+    xl: "max-w-xl",
+    full: "max-w-4xl",
   };
 
   const modalContent = (
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events
     <div
       className={clsx(
-        'fixed inset-0 z-50 flex items-center justify-center p-4',
-        'bg-black/50 backdrop-blur-sm'
+        "fixed inset-0 z-50 flex items-center justify-center p-4",
+        "bg-black/50 backdrop-blur-sm"
       )}
       onClick={closeOnOverlayClick ? onClose : undefined}
       role="dialog"
       aria-modal="true"
-      aria-labelledby={title ? 'modal-title' : undefined}
-      aria-describedby={description ? 'modal-description' : undefined}
+      aria-labelledby={title ? "modal-title" : undefined}
+      aria-describedby={description ? "modal-description" : undefined}
     >
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         className={clsx(
-          'relative w-full bg-white rounded-xl shadow-xl',
-          'transform transition-all',
-          'max-h-[90vh] overflow-hidden flex flex-col',
+          "relative w-full bg-white rounded-xl shadow-xl",
+          "transform transition-all",
+          "max-h-[90vh] overflow-hidden flex flex-col",
           sizes[size]
         )}
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         {(title || showCloseButton) && (
           <div className="flex items-start justify-between p-4 border-b border-gray-100">
             <div>
               {title && (
-                <h2 id="modal-title" className="text-lg font-semibold text-gray-900">
+                <h2
+                  id="modal-title"
+                  className="text-lg font-semibold text-gray-900"
+                >
                   {title}
                 </h2>
               )}
               {description && (
-                <p id="modal-description" className="mt-1 text-sm text-gray-500">
+                <p
+                  id="modal-description"
+                  className="mt-1 text-sm text-gray-500"
+                >
                   {description}
                 </p>
               )}
@@ -107,20 +113,20 @@ export const Modal = ({
     </div>
   );
 
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
 
   return createPortal(modalContent, document.body);
-}
+};
 
 export const ConfirmModal = ({
   isOpen,
   onClose,
   onConfirm,
-  title = 'Confirm',
+  title = "Confirm",
   message,
-  confirmText = 'Confirm',
-  cancelText = 'Cancel',
-  variant = 'danger',
+  confirmText = "Confirm",
+  cancelText = "Cancel",
+  variant = "danger",
   loading = false,
 }: {
   isOpen: boolean;
@@ -130,7 +136,7 @@ export const ConfirmModal = ({
   message: string;
   confirmText?: string;
   cancelText?: string;
-  variant?: 'danger' | 'primary';
+  variant?: "danger" | "primary";
   loading?: boolean;
 }) => (
   <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
@@ -148,14 +154,15 @@ export const ConfirmModal = ({
         disabled={loading}
         className={`
           px-4 py-2 text-sm font-medium rounded-lg
-          ${variant === 'danger'
-            ? 'text-white bg-red-600 hover:bg-red-700'
-            : 'text-white bg-blue-600 hover:bg-blue-700'
+          ${
+            variant === "danger"
+              ? "text-white bg-red-600 hover:bg-red-700"
+              : "text-white bg-blue-600 hover:bg-blue-700"
           }
           disabled:opacity-50 disabled:cursor-not-allowed
         `}
       >
-        {loading ? 'Processing...' : confirmText}
+        {loading ? "Processing..." : confirmText}
       </button>
     </div>
   </Modal>

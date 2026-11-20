@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { describe, expect, it } from "vitest";
 
-import { generateBackupCodes, generateTotpSecret, hashBackupCode, hashSmsCode } from "./mfa";
+import { generateBackupCodes, generateTotpSecret, hashBackupCode } from "./mfa";
 import {
   availableMfaMethods,
   hasAnyMfaMethod,
@@ -53,7 +53,15 @@ function totpAt(secret: string, timeMs: number): string {
 }
 
 function totpProfile(secret: string, withBackup = false): MfaProfile {
-  return { mfa: { totp: { enabled: true, secret, backupCodes: withBackup ? [hashBackupCode("AAAA-BBBB")] : [] } } };
+  return {
+    mfa: {
+      totp: {
+        enabled: true,
+        secret,
+        backupCodes: withBackup ? [hashBackupCode("AAAA-BBBB")] : [],
+      },
+    },
+  };
 }
 
 describe("availableMfaMethods / hasAnyMfaMethod", () => {
@@ -63,15 +71,14 @@ describe("availableMfaMethods / hasAnyMfaMethod", () => {
     expect(hasAnyMfaMethod({})).toBe(false);
   });
 
-  it("lists TOTP, backup codes and SMS", () => {
+  it("lists TOTP and backup codes", () => {
     const profile: MfaProfile = {
       mfa: {
         totp: { enabled: true, secret: "SECRET", backupCodes: ["hash"] },
-        sms: { enabled: true, phoneNumber: "+15551234567", pendingCode: "hash", pendingExpires: Date.now() + 60000 },
       },
     };
 
-    expect(availableMfaMethods(profile)).toEqual(["totp", "backup", "sms"]);
+    expect(availableMfaMethods(profile)).toEqual(["totp", "backup"]);
   });
 
   it("offers WebAuthn when a credential with a public key is stored", () => {
@@ -79,7 +86,18 @@ describe("availableMfaMethods / hasAnyMfaMethod", () => {
       mfa: {
         webauthn: {
           enabled: true,
-          credentials: [{ credentialID: "cred-1", publicKey: "pk-1", counter: 0, transports: [], name: "key", createdAt: Date.now(), deviceType: "singleDevice", backedUp: false }],
+          credentials: [
+            {
+              credentialID: "cred-1",
+              publicKey: "pk-1",
+              counter: 0,
+              transports: [],
+              name: "key",
+              createdAt: Date.now(),
+              deviceType: "singleDevice",
+              backedUp: false,
+            },
+          ],
         },
       },
     };
@@ -90,7 +108,9 @@ describe("availableMfaMethods / hasAnyMfaMethod", () => {
 
   it("does not offer unverifiable legacy WebAuthn ids but still counts them", () => {
     const profile: MfaProfile = {
-      mfa: { webauthn: { enabled: true, credentials: [], credentialIds: ["cred-1"] } },
+      mfa: {
+        webauthn: { enabled: true, credentials: [], credentialIds: ["cred-1"] },
+      },
     };
 
     expect(availableMfaMethods(profile)).toEqual([]);
@@ -99,7 +119,9 @@ describe("availableMfaMethods / hasAnyMfaMethod", () => {
 
   it("will not accept a webauthn proof as a code", () => {
     const profile: MfaProfile = {
-      mfa: { webauthn: { enabled: true, credentials: [], credentialIds: ["cred-1"] } },
+      mfa: {
+        webauthn: { enabled: true, credentials: [], credentialIds: ["cred-1"] },
+      },
     };
 
     // A code cannot stand in for an assertion; the session route verifies the
@@ -117,14 +139,16 @@ describe("verifyMfaProof — TOTP", () => {
     const code = totpAt(secret, Date.now());
     const result = verifyMfaProof(totpProfile(secret, true), { totp: code });
 
-    expect(result).toEqual({ ok: true, method: "totp", consumeSmsChallenge: false });
+    expect(result).toEqual({ ok: true, method: "totp" });
   });
 
   it("accepts the previous step to tolerate clock drift", () => {
     const secret = generateTotpSecret();
     const code = totpAt(secret, Date.now() - 30_000);
 
-    expect(verifyMfaProof(totpProfile(secret, true), { totp: code }).ok).toBe(true);
+    expect(verifyMfaProof(totpProfile(secret, true), { totp: code }).ok).toBe(
+      true
+    );
   });
 
   it("rejects a wrong code", () => {
@@ -148,67 +172,33 @@ describe("verifyMfaProof — backup codes", () => {
   it("accepts a stored backup code", () => {
     const [plain] = generateBackupCodes(3);
     const profile: MfaProfile = {
-      mfa: { totp: { enabled: true, secret: "", backupCodes: [hashBackupCode(plain)] } },
+      mfa: {
+        totp: {
+          enabled: true,
+          secret: "",
+          backupCodes: [hashBackupCode(plain)],
+        },
+      },
     };
 
     expect(verifyMfaProof(profile, { backup: plain })).toEqual({
       ok: true,
       method: "backup",
-      consumeSmsChallenge: false,
     });
   });
 
   it("rejects an unknown backup code", () => {
     const profile: MfaProfile = {
-      mfa: { totp: { enabled: true, secret: "", backupCodes: [hashBackupCode("AAAA-BBBB")] } },
-    };
-
-    expect(verifyMfaProof(profile, { backup: "CCCC-DDDD" }).ok).toBe(false);
-  });
-});
-
-describe("verifyMfaProof — SMS", () => {
-  const code = "123456";
-
-  function smsProfile(expiresInMs: number): MfaProfile {
-    return {
       mfa: {
-        sms: {
+        totp: {
           enabled: true,
-          phoneNumber: "+15551234567",
-          pendingCode: hashSmsCode(code),
-          pendingExpires: Date.now() + expiresInMs,
+          secret: "",
+          backupCodes: [hashBackupCode("AAAA-BBBB")],
         },
       },
     };
-  }
 
-  it("accepts a matching, unexpired challenge and asks the caller to consume it", () => {
-    expect(verifyMfaProof(smsProfile(60_000), { sms: code })).toEqual({
-      ok: true,
-      method: "sms",
-      consumeSmsChallenge: true,
-    });
-  });
-
-  it("rejects an expired challenge", () => {
-    expect(verifyMfaProof(smsProfile(-1), { sms: code })).toEqual({
-      ok: false,
-      reason: "INVALID_CODE",
-    });
-  });
-
-  it("rejects a code that is not six digits", () => {
-    expect(verifyMfaProof(smsProfile(60_000), { sms: "12345" }).ok).toBe(false);
-    expect(verifyMfaProof(smsProfile(60_000), { sms: "abcdef" }).ok).toBe(false);
-  });
-
-  it("ignores an SMS code when SMS is disabled", () => {
-    const profile: MfaProfile = {
-      mfa: { totp: { enabled: true, secret: generateTotpSecret(), backupCodes: [] } },
-    };
-
-    expect(verifyMfaProof(profile, { sms: code }).ok).toBe(false);
+    expect(verifyMfaProof(profile, { backup: "CCCC-DDDD" }).ok).toBe(false);
   });
 });
 

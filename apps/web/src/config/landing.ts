@@ -26,8 +26,7 @@ export const plans: Plan[] = [
     name: "Standard",
     price: "$0",
     unit: "per request",
-    description:
-      "For a first order or a single item you cannot get shipped.",
+    description: "For a first order or a single item you cannot get shipped.",
     features: [
       "Standard inspection at the hub",
       "Up to 3 SKUs per request",
@@ -78,7 +77,11 @@ export interface Corridor {
 export const corridors: Corridor[] = [
   { route: "Mumbai to London", transit: "5 to 7 days", cutoff: "Tue, Fri" },
   { route: "Mumbai to Dubai", transit: "3 to 4 days", cutoff: "Daily" },
-  { route: "Mumbai to Singapore", transit: "3 to 5 days", cutoff: "Mon, Wed, Fri" },
+  {
+    route: "Mumbai to Singapore",
+    transit: "3 to 5 days",
+    cutoff: "Mon, Wed, Fri",
+  },
   { route: "Mumbai to Berlin", transit: "6 to 8 days", cutoff: "Wed, Sat" },
   { route: "Mumbai to New York", transit: "7 to 9 days", cutoff: "Tue, Thu" },
   { route: "Mumbai to Toronto", transit: "8 to 10 days", cutoff: "Thu" },
@@ -201,8 +204,10 @@ export const footerColumns: FooterColumn[] = [
 
 export const companyInfo = {
   name: "ShipIN Logistics",
-  tagline: "Procurement, warehousing and freight from India, run by one team in Mumbai.",
-  address: "ShipIN, 4th Floor, Trade Center, Andheri East, Mumbai 400069, India",
+  tagline:
+    "Procurement, warehousing and freight from India, run by one team in Mumbai.",
+  address:
+    "ShipIN, 4th Floor, Trade Center, Andheri East, Mumbai 400069, India",
   hours: "Mon to Sat, 09:00 to 19:00 IST",
   email: "support@shipin.co",
   phone: "+91 22 6823 4567",

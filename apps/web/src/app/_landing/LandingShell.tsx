@@ -88,7 +88,11 @@ const plans: Plan[] = [
 const corridors = [
   { route: "Mumbai to London", transit: "5 to 7 days", cutoff: "Tue, Fri" },
   { route: "Mumbai to Dubai", transit: "3 to 4 days", cutoff: "Daily" },
-  { route: "Mumbai to Singapore", transit: "3 to 5 days", cutoff: "Mon, Wed, Fri" },
+  {
+    route: "Mumbai to Singapore",
+    transit: "3 to 5 days",
+    cutoff: "Mon, Wed, Fri",
+  },
   { route: "Mumbai to Berlin", transit: "6 to 8 days", cutoff: "Wed, Sat" },
   { route: "Mumbai to New York", transit: "7 to 9 days", cutoff: "Tue, Thu" },
   { route: "Mumbai to Toronto", transit: "8 to 10 days", cutoff: "Thu" },
@@ -350,7 +354,9 @@ export default function Home() {
     const panel = menuRef.current;
     const getFocusable = () =>
       Array.from(
-        panel?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])') ?? []
+        panel?.querySelectorAll<HTMLElement>(
+          "a[href], button:not([disabled])"
+        ) ?? []
       ).filter((element) => element.offsetParent !== null);
 
     const focusTimer = window.setTimeout(() => getFocusable()[0]?.focus(), 60);
@@ -402,7 +408,10 @@ export default function Home() {
 
     const onScroll = () => {
       const max = document.documentElement.scrollHeight - window.innerHeight;
-      root.style.setProperty("--sp", String(max > 0 ? window.scrollY / max : 0));
+      root.style.setProperty(
+        "--sp",
+        String(max > 0 ? window.scrollY / max : 0)
+      );
       root.style.setProperty("--sy", String(window.scrollY));
     };
     onScroll();
@@ -437,8 +446,14 @@ export default function Home() {
     };
     const onMove = (event: PointerEvent) => {
       if (!calm) {
-        root.style.setProperty("--px", String(event.clientX / window.innerWidth - 0.5));
-        root.style.setProperty("--py", String(event.clientY / window.innerHeight - 0.5));
+        root.style.setProperty(
+          "--px",
+          String(event.clientX / window.innerWidth - 0.5)
+        );
+        root.style.setProperty(
+          "--py",
+          String(event.clientY / window.innerHeight - 0.5)
+        );
       }
       const card = (event.target as HTMLElement).closest<HTMLElement>(
         ".step, .plan, .metric, .telemetry"
@@ -485,7 +500,14 @@ export default function Home() {
           <Link href="/" className="brand" aria-label="ShipIN home">
             <span className="brand__mark" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
-                <rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="currentColor" />
+                <rect
+                  x="1.5"
+                  y="1.5"
+                  width="21"
+                  height="21"
+                  rx="5"
+                  fill="currentColor"
+                />
                 <path
                   d="M7 14.5h8.5M12 10.5l4 4-4 4"
                   stroke="var(--paper)"
@@ -525,7 +547,12 @@ export default function Home() {
               aria-label={menuOpen ? "Close menu" : "Open menu"}
               onClick={() => setMenuOpen((open) => !open)}
             >
-              <span className={menuOpen ? "menu-button__bars is-open" : "menu-button__bars"} aria-hidden="true">
+              <span
+                className={
+                  menuOpen ? "menu-button__bars is-open" : "menu-button__bars"
+                }
+                aria-hidden="true"
+              >
                 <span />
                 <span />
               </span>
@@ -558,14 +585,24 @@ export default function Home() {
             </a>
           </nav>
           <div className="mobile-menu__foot">
-            <Link href={accountHref} className="btn btn--ghost" onClick={closeMenu}>
+            <Link
+              href={accountHref}
+              className="btn btn--ghost"
+              onClick={closeMenu}
+            >
               {accountLabel}
             </Link>
-            <Link href={startHref} className="btn btn--primary" onClick={closeMenu}>
+            <Link
+              href={startHref}
+              className="btn btn--primary"
+              onClick={closeMenu}
+            >
               Start a request
               <ArrowUpRight />
             </Link>
-            <p className="mono-note">Mumbai hub · Replies within one business day</p>
+            <p className="mono-note">
+              Mumbai hub · Replies within one business day
+            </p>
           </div>
         </div>
       )}
@@ -577,13 +614,17 @@ export default function Home() {
             <span className="scene__ring" />
             <span className="scene__ring scene__ring--b" />
             <div className="scene__card scene__card--a">
-              <div className="scene__k">Manifest SH-2048 <i>In transit</i></div>
+              <div className="scene__k">
+                Manifest SH-2048 <i>In transit</i>
+              </div>
               <strong>Mumbai → Berlin</strong>
               <small>ETA 20 Oct · Frankfurt handoff</small>
               <div className="scene__bar" />
             </div>
             <div className="scene__card scene__card--b">
-              <div className="scene__k">Checked at hub <i>QA</i></div>
+              <div className="scene__k">
+                Checked at hub <i>QA</i>
+              </div>
               <strong>4 of 4 units matched</strong>
               <div className="hub">
                 <div className="hub__ring">
@@ -600,9 +641,30 @@ export default function Home() {
                   <span className="hub__num" />
                 </div>
                 <ul className="hub__list">
-                  <li><span className="hub__tick"><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" pathLength={1} /></svg></span>Item count</li>
-                  <li><span className="hub__tick"><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" pathLength={1} /></svg></span>Condition</li>
-                  <li><span className="hub__tick"><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" pathLength={1} /></svg></span>Photos taken</li>
+                  <li>
+                    <span className="hub__tick">
+                      <svg viewBox="0 0 10 10">
+                        <path d="M2 5.2l2 2L8 3" pathLength={1} />
+                      </svg>
+                    </span>
+                    Item count
+                  </li>
+                  <li>
+                    <span className="hub__tick">
+                      <svg viewBox="0 0 10 10">
+                        <path d="M2 5.2l2 2L8 3" pathLength={1} />
+                      </svg>
+                    </span>
+                    Condition
+                  </li>
+                  <li>
+                    <span className="hub__tick">
+                      <svg viewBox="0 0 10 10">
+                        <path d="M2 5.2l2 2L8 3" pathLength={1} />
+                      </svg>
+                    </span>
+                    Photos taken
+                  </li>
                 </ul>
               </div>
             </div>
@@ -632,28 +694,48 @@ export default function Home() {
                 </h1>
 
                 <p className="hero__lede">
-                  ShipIN buys on your behalf from any Indian store, inspects what
-                  arrives, packs it into one manifest, and forwards it to your
-                  address. You send a link. We handle the rest.
+                  ShipIN buys on your behalf from any Indian store, inspects
+                  what arrives, packs it into one manifest, and forwards it to
+                  your address. You send a link. We handle the rest.
                 </p>
 
-                <div className="hero__cta-group" style={{ display: 'flex', gap: '12px', marginTop: '16px', flexWrap: 'wrap' }}>
-                  <Link href={startHref} className="btn btn--primary btn--lg" style={{ minWidth: '200px' }}>
+                <div
+                  className="hero__cta-group"
+                  style={{
+                    display: "flex",
+                    gap: "12px",
+                    marginTop: "16px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Link
+                    href={startHref}
+                    className="btn btn--primary btn--lg"
+                    style={{ minWidth: "200px" }}
+                  >
                     <span>Start a request</span>
                     <ArrowUpRight className="ml-2" />
                   </Link>
-                  <Link href="#platform" className="btn btn--ghost btn--lg" style={{ minWidth: '180px' }}>
+                  <Link
+                    href="#platform"
+                    className="btn btn--ghost btn--lg"
+                    style={{ minWidth: "180px" }}
+                  >
                     See how it works
                   </Link>
                 </div>
 
-                <a href="#platform" className="text-link text-link--arrow hero__more">
+                <a
+                  href="#platform"
+                  className="text-link text-link--arrow hero__more"
+                >
                   See how the pipeline runs
                   <span aria-hidden="true">↓</span>
                 </a>
 
                 <p className="mono-note hero__note">
-                  No account needed for a quote · Average reply in 1 business day
+                  No account needed for a quote · Average reply in 1 business
+                  day
                 </p>
               </div>
 
@@ -711,7 +793,11 @@ export default function Home() {
           <div className="market-strip" aria-label="Destinations we ship to">
             <div className="market-strip__track">
               {[...marketTicker, ...marketTicker].map((market, index) => (
-                <span className="market-strip__item" key={`${market}-${index}`} aria-hidden={index >= marketTicker.length}>
+                <span
+                  className="market-strip__item"
+                  key={`${market}-${index}`}
+                  aria-hidden={index >= marketTicker.length}
+                >
                   {market}
                 </span>
               ))}
@@ -779,8 +865,8 @@ export default function Home() {
               </div>
               <p className="lede">
                 Every request gets a manifest ID and an event log. Watch the
-                parcel move from the seller&apos;s counter to your address without
-                emailing an account manager for an update.
+                parcel move from the seller&apos;s counter to your address
+                without emailing an account manager for an update.
               </p>
             </div>
 
@@ -868,7 +954,9 @@ export default function Home() {
                     <span className="timeline__dot" aria-hidden="true" />
                     <div>
                       <p className="timeline__title">In transit</p>
-                      <p className="timeline__meta">17 Oct, 22:10 · Frankfurt</p>
+                      <p className="timeline__meta">
+                        17 Oct, 22:10 · Frankfurt
+                      </p>
                       <p className="timeline__detail">
                         Handed to the last mile partner. Duties prepaid.
                       </p>
@@ -951,7 +1039,9 @@ export default function Home() {
             </div>
 
             <div className="pricing__note">
-              <span>Duties, taxes and freight are quoted before you approve.</span>
+              <span>
+                Duties, taxes and freight are quoted before you approve.
+              </span>
               <span>Cancel free before procurement starts.</span>
             </div>
           </div>
@@ -1011,10 +1101,21 @@ export default function Home() {
         <div className="shell">
           <div className="footer__grid">
             <div className="footer__brand">
-              <Link href="/" className="brand brand--light" aria-label="ShipIN home">
+              <Link
+                href="/"
+                className="brand brand--light"
+                aria-label="ShipIN home"
+              >
                 <span className="brand__mark" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none">
-                    <rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="currentColor" />
+                    <rect
+                      x="1.5"
+                      y="1.5"
+                      width="21"
+                      height="21"
+                      rx="5"
+                      fill="currentColor"
+                    />
                     <path
                       d="M7 14.5h8.5M12 10.5l4 4-4 4"
                       stroke="var(--ink)"
@@ -1087,8 +1188,12 @@ export default function Home() {
               All corridors operational
             </span>
             <span>Designed and run in Mumbai</span>
-            <a href="/privacy-policy" className="footer__link">Privacy Policy</a>
-            <a href="/terms" className="footer__link">Terms of Service</a>
+            <a href="/privacy-policy" className="footer__link">
+              Privacy Policy
+            </a>
+            <a href="/terms" className="footer__link">
+              Terms of Service
+            </a>
           </div>
         </div>
       </footer>
@@ -1121,7 +1226,16 @@ export default function Home() {
                 onClick={closePlan}
                 aria-label="Close plan details"
               >
-                <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+                <svg
+                  viewBox="0 0 16 16"
+                  width="16"
+                  height="16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
                   <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
                 </svg>
               </button>

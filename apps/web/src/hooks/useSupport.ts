@@ -2,17 +2,24 @@
 
 import { useEffect, useState } from "react";
 
-import { createSupportTicket, resolveSupportTicket, subscribeToSupportMessages, subscribeToSupportTickets, markSupportTicketRead } from "@/features/support/services";
-
 import {
-  SupportMessage,
-  SupportTicket,
-} from "@/types/support";
+  createSupportTicket,
+  resolveSupportTicket,
+  subscribeToSupportMessages,
+  subscribeToSupportTickets,
+  markSupportTicketRead,
+} from "@/features/support/services";
 
-export default function useSupport(requestId: string, isAdmin: boolean = false) {
+import { SupportMessage, SupportTicket } from "@/types/support";
+
+export default function useSupport(
+  requestId: string,
+  isAdmin: boolean = false
+) {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [selectedTicket, setSelectedTicket] =
-    useState<SupportTicket | null>(null);
+  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(
+    null
+  );
 
   const [messages, setMessages] = useState<SupportMessage[]>([]);
 
@@ -21,28 +28,19 @@ export default function useSupport(requestId: string, isAdmin: boolean = false) 
   useEffect(() => {
     if (!requestId) return;
 
-    const unsubscribe =
-      subscribeToSupportTickets(
-        requestId,
-        (data) => {
-          setTickets(data);
+    const unsubscribe = subscribeToSupportTickets(requestId, (data) => {
+      setTickets(data);
 
-          setSelectedTicket((current) => {
-            if (!current && data.length)
-              return data[0];
+      setSelectedTicket((current) => {
+        if (!current && data.length) return data[0];
 
-            if (!current) return null;
+        if (!current) return null;
 
-            return (
-              data.find(
-                (t) => t.id === current.id
-              ) || null
-            );
-          });
+        return data.find((t) => t.id === current.id) || null;
+      });
 
-          setLoading(false);
-        }
-      );
+      setLoading(false);
+    });
 
     return unsubscribe;
   }, [requestId]);
@@ -57,11 +55,10 @@ export default function useSupport(requestId: string, isAdmin: boolean = false) 
     const role = isAdmin ? "admin" : "customer";
     markSupportTicketRead(selectedTicket.id, role);
 
-    const unsubscribe =
-      subscribeToSupportMessages(
-        selectedTicket.id,
-        setMessages
-      );
+    const unsubscribe = subscribeToSupportMessages(
+      selectedTicket.id,
+      setMessages
+    );
 
     return unsubscribe;
   }, [selectedTicket, isAdmin]);
@@ -89,34 +86,28 @@ export default function useSupport(requestId: string, isAdmin: boolean = false) 
       return await createSupportTicket(data);
     },
 
-    sendMessage: async (data: { ticketId: string; sender: "customer" | "admin"; message: string }) => {
-      const response = await fetch(
-        `/api/support/${data.ticketId}/message`,
-        {
-          method: "POST",
+    sendMessage: async (data: {
+      ticketId: string;
+      sender: "customer" | "admin";
+      message: string;
+    }) => {
+      const response = await fetch(`/api/support/${data.ticketId}/message`, {
+        method: "POST",
 
-          headers: {
-            "Content-Type": "application/json",
-          },
+        headers: {
+          "Content-Type": "application/json",
+        },
 
-          body: JSON.stringify({
-            sender: data.sender,
-            message: data.message,
-          }),
-        }
-      );
+        body: JSON.stringify({
+          sender: data.sender,
+          message: data.message,
+        }),
+      });
 
-      const result =
-        await response.json();
+      const result = await response.json();
 
-      if (
-        !response.ok ||
-        !result.success
-      ) {
-        throw new Error(
-          result.error ||
-            "Unable to send support message."
-        );
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Unable to send support message.");
       }
 
       return result;

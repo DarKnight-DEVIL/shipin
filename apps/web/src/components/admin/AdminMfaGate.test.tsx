@@ -27,9 +27,8 @@ vi.mock("@/lib/webauthnClient", () => ({
 
 const { getMfaSessionStatus, startWebAuthnSession, startMfaSession } =
   await import("@/lib/mfaSessionClient");
-const { assertSecurityKey, isWebAuthnSupported } = await import(
-  "@/lib/webauthnClient"
-);
+const { assertSecurityKey, isWebAuthnSupported } =
+  await import("@/lib/webauthnClient");
 
 const BASE_STATUS = {
   elevated: false,
@@ -64,7 +63,9 @@ describe("AdminMfaGate", () => {
     renderGate();
 
     await screen.findByText("admin content");
-    expect(screen.queryByRole("button", { name: "Verify" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Verify" })
+    ).not.toBeInTheDocument();
   });
 
   it("elevates with a security key assertion", async () => {
@@ -87,7 +88,9 @@ describe("AdminMfaGate", () => {
 
     // No code field for a security key, just the ceremony button.
     expect(screen.getByText("Security key")).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("6-digit code")).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("6-digit code")
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Use security key" }));
 
@@ -167,6 +170,8 @@ describe("AdminMfaGate", () => {
     expect(
       await screen.findByText(/this browser does not support WebAuthn/i)
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Verify" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Verify" })
+    ).not.toBeInTheDocument();
   });
 });

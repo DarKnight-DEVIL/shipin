@@ -8,11 +8,11 @@ This report documents the security hardening applied to the ShipIN website to ad
 ### 1. Rate Limiting
 - Per-IP request caps: 100 req/min (web), 30 req/min (API), 10 req/min (strict)
 - Proxy-based enforcement via `src/proxy.ts` (Next.js 16 renamed the `middleware` file convention to `proxy`)
-- In-memory store; for global limits, use Redis or edge/CDN rate limiting
+- Redis-backed (Upstash) sliding windows, shared across serverless instances; the in-memory implementation is only the development/test fallback. Production boot requires `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` — see Remaining Items
 
 ### 2. Security Headers
 All responses include:
-- **Content-Security-Policy**: Strict policy blocking inline scripts, allowing trusted sources (PayPal, Google, Vercel analytics)
+- **Content-Security-Policy**: Served by `src/proxy.ts` from `getProductionCSP()` — explicit host allowlists for the third-party SDKs actually loaded (PayPal, Google, Vercel analytics, Spline; `img-src` deliberately stays `https:` because R2 photo URLs are presigned per request), `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`, and violation reporting to `/api/csp-report`. `'unsafe-eval'` is **not** allowed. `'unsafe-inline'` **is** still allowed in `script-src` and `style-src`: every route is statically prerendered, so Next.js writes its hydration bootstrap inline at build time and a per-request nonce can never match it
 - **X-Frame-Options**: DENY (clickjacking protection)
 - **Strict-Transport-Security**: max-age=31536000; includeSubDomains; preload
 - **X-Content-Type-Options**: nosniff (MIME sniffing prevention)
@@ -24,7 +24,7 @@ All responses include:
 ### 3. CORS Configuration
 - Origin allowlist enforcement (production domains only)
 - Credentials support for cookie/XHR auth flows
-- Public API routes whitelisted for broader access
+- No public-route allowlist: every API route is same-origin and authenticated, so the origin check is the only CORS decision
 
 ### 4. Authentication Layer (`src/lib/auth.ts`)
 - `requireAuth`: Verifies Firebase ID token for any authenticated user
@@ -32,6 +32,52 @@ All responses include:
 - `requireAdmin`: Verified admin only (wrapped to return NextResponse with proper error codes)
 - Token caching to reduce repeated verification calls
 - Safe `extractAuth` helper that parses Authorization headers
+
+### 4b. Second Factors (Firebase Identity Platform SMS)
+
+- SMS moved from an app-managed, WhatsApp-delivered OTP to a Firebase-managed
+  second factor. Google sends and verifies the code; the app stores no SMS
+  secret, hashed code, or attempt counter.
+- `requireAdmin` and `GET /api/auth/mfa/session` trust only a verified ID token
+  carrying `firebase.sign_in_second_factor`; the removed `X-MFA-SMS` header and
+  `/api/auth/mfa/sms/*` routes no longer exist.
+- Enrolment and sign-in challenges run entirely in the client SDK, which owns the
+  reCAPTCHA verifier; there is no server route that can send a code.
+- Admin MFA reset clears Firebase-enrolled factors through `adminAuth.updateUser`
+  in addition to the Firestore fields, so support cannot leave an account locked
+  behind a factor Firestore does not show.
+- TOTP, backup codes and WebAuthn remain app-managed and are unchanged.
+- Not verified locally: real SMS delivery and reCAPTCHA require a deployed
+  origin and a Blaze project.
+
+### 4c. Compliance and Operations Follow-up
+
+- **Retention:** `executeRetentionCleanup()` now deletes through Firestore batches
+  instead of only logging intent. It is dry-run by default, refuses documents
+  under a hold or with an open rights request, and only removes `users` records
+  for closed accounts. A closed profile's Firebase Auth account is deleted first,
+  so a sweep cannot leave a live login with no profile; a refusal keeps the
+  profile for the next run and lists it in `retentionFailures`. Profiles with
+  `deletionRequestedAt` or `anonymizedAt` are blocked at authentication, so a
+  closed account cannot be used while it waits for cleanup. An orphan sweep
+  deletes Auth accounts that have no profile (dry run by default).
+- **Parental consent:** OTPs are six CSPRNG digits stored as a salted scrypt hash
+  with a 10-minute expiry and a five-attempt limit. The code is emailed to the
+  parent address recorded on the request; a failed send deletes the pending
+  request instead of leaving an unusable one.
+- **MFA sessions:** signing requires `MFA_SESSION_SECRET` (min 32 chars). The old
+  derivation from the Firebase Admin private key is gone, and production startup
+  fails when the secret is missing.
+- **Breach escalation:** a critical breach is logged at error level and posted to
+  `BREACH_ALERT_WEBHOOK_URL` when configured; a failed page never fails the
+  breach record.
+- **Money constants:** PayPal percentage and fixed fee come from
+  `config/constants.ts` only; the duplicate config module and the inline copies
+  are gone. `check-money-globs.mjs` now also honours a `@money-path` marker.
+- **Transport:** the shared API client aborts requests after 15s instead of
+  waiting indefinitely.
+- **Webhooks:** PayPal deliveries are deduplicated by event id, so a provider
+  retry cannot process the same capture twice.
 
 ### 5. Input Validation (`src/lib/validation.ts`)
 Zod schemas for all untrusted inputs:
@@ -72,22 +118,22 @@ Zod schemas for all untrusted inputs:
 
 ## Remaining Items
 - ~~Create `firestore.rules` and `storage.rules` for Firebase Security Rules~~ ✅ Done
-- ~~Upgrade Next.js from 16.3.8 to 16.4.3 (audit reports critical RCE vulnerabilities)~~ ✅ Already at 16.4.3
-- Run `npm audit fix` for moderate/vulnerable packages ✅ Done (removed 11 deps, remaining are dev-only)
+- ~~Upgrade Next.js from 16.3.8 to 16.4.3 (audit reports critical RCE vulnerabilities)~~ ✅ Already current (16.4.6)
+- Dependency audit is a real gate: `npm run audit:gate` (CI `security-audit` job) runs `npm audit --omit=dev` at high/critical and fails on anything not on the dated allowlist in `scripts/audit-gate.mjs`. The full `npm audit` currently reports **21 high, 0 critical**, all reached through build/test tooling (`vite`, `vitest`, `@sentry/nextjs` → `@rollup/plugin-commonjs`, `tinyglobby`/`fdir`, `micromatch` via `eslint-config-next`). The only production-view advisory is `GHSA-fc5q-39xc-vjpf` in `picomatch`, and `4.0.7` is the latest published release, so `npm audit fix` has nothing to install
 - Some customer-facing request routes may need auth (quote, refund, etc.) — see P1 below
-- Add CSP nonce support if inline scripts are used — **CSP now applied in the request proxy** ✅ Done
-- Enable Redis-backed rate limiting in production by setting `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` — **✅ DONE**: Now a hard failure at startup in production (see `assertRateLimitStoreAvailable()`). Per-instance in-memory limits cannot enforce global limits across serverless regions.
+- Add CSP nonce support if inline scripts are used — **not possible in the current build**: all routes are statically prerendered, so the inline hydration bootstrap exists before any request and no per-request nonce can match it. `'unsafe-inline'` therefore stays in `script-src`/`style-src`; `getCSPWithNonce` remains in git history for the day the app moves to dynamic rendering
+- Enable Redis-backed rate limiting in production by setting `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`. **Current behaviour:** both are required in production and `validateProductionRequiredEnv()` (called from `src/instrumentation.ts`) throws at startup when they are missing, naming both variables and explaining that the deployment would otherwise run with per-instance limits and fail open — so a misconfigured deploy cannot serve traffic with rate limiting silently off. When they are configured, limits are global across serverless regions. If the configured store becomes *unreachable at runtime*, requests are still served (the limiter falls open — an outage must not lock everyone out of signing in) and `/api/health` reports `degraded` so the gap stays visible. The only way to boot a production build without a store is the explicit `RATE_LIMIT_STORE_OPTIONAL=1` opt-out, which exists for the local/CI E2E suite (`scripts/e2e-local.mjs` and the `e2e` CI job) that runs a production build against a throwaway database; nothing else sets it, and `true`/`yes`/any other value still fails the check.
 
 ## Recommendations
-1. **✅ DONE**: CSP is now applied in the request proxy for all non-excluded routes — production uses strict policy (no unsafe-inline/eval)
+1. **✅ DONE**: CSP is now applied in the request proxy for all non-excluded routes — production uses `getProductionCSP()`: no `'unsafe-eval'`, a narrowed `connect-src`, explicit script/style/frame host allowlists, and the non-nonce lockdown directives (`object-src`, `base-uri`, `form-action`, `frame-ancestors`). `'unsafe-inline'` is still required for `script-src`/`style-src` — see Remaining Items
 2. **✅ DONE**: Rate limiting is now enforced at the proxy layer across all web/API routes
-3. **✅ DONE**: `npm audit fix` removed 11 vulnerable transitive dependencies; no critical/high remain
+3. **✅ DONE**: dependency audit is enforced, not advisory — `npm run audit:gate` fails on any high/critical production advisory outside the dated allowlist (see Remaining Items for the current counts and the one unresolved advisory)
 4. **P0**: Deploy with `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` to enable global Redis-backed rate limiting on Vercel
 5. **✅ DONE**: Added 75 new unit tests covering payment fee math, money precision, support message validation, MFA status shaping, and axe-core contract
 6. **✅ DONE**: Bundle analyzer integrated (`@next/bundle-analyzer`) — run `npm run analyze` to inspect bundle composition
 7. **✅ DONE**: Playwright E2E smoke tests added (`playwright-test/tests/smoke.spec.ts`) — 7 tests covering pages, API health, headers, and auth redirects
-8. **✅ DONE**: CI enhanced with multi-Node matrix (18/20/22), coverage reporting, E2E job, and a11y audit job
-9. **✅ DONE**: Node.js version pinned to >=20 via `.nvmrc` and `engines` field
+8. **✅ DONE**: CI enhanced with a Node 22/24 matrix, coverage reporting, E2E job, rules job, and a11y audit job
+9. **✅ DONE**: Node 24 pinned in `.nvmrc`, the Dockerfile and CI; `engines` requires >=22.12, which the matrix still tests
 10. **✅ DONE**: ESLint accessibility rules enabled (`jsx-a11y/*`) — alt text, anchor content, ARIA props, heading content
 11. **✅ DONE**: Production startup warning emits if Redis rate limit store is missing
 12. **✅ DONE**: Removed 18MB `file_list.txt` artifact from repository root
@@ -101,19 +147,19 @@ Zod schemas for all untrusted inputs:
 
 ## Files Modified
 - `src/proxy.ts` — **Updated**: applies the full `SECURITY_HEADERS` map (CSP, HSTS, Permissions-Policy) + rate limiting for all web/API routes via the request proxy
-- `src/lib/securityHeaders.ts` — **Updated**: tightened production CSP from permissive (`unsafe-inline`, `unsafe-eval`) to strict policy with explicit allowlisted domains
+- `src/lib/securityHeaders.ts` — **Updated**: production CSP drops `'unsafe-eval'`, narrows `connect-src` from a blanket `wss: https:` to the Firebase socket hosts plus named API origins, allowlists the third-party script/style/frame hosts explicitly, and adds the non-nonce lockdown directives. `'unsafe-inline'` remains in `script-src`/`style-src` because prerendered pages ship their hydration bootstrap inline (pinned by `securityHeaders.test.ts`)
 - `src/lib/csrf.ts` — **Fixed**: replaced forbidden `require()` calls with proper ES module imports
 - `src/hooks/useSupport.ts` — **Fixed**: added eslint-disable for legitimate early-return setState pattern
 - `src/hooks/useCustomerSupport.ts` — **Fixed**: added eslint-disable for legitimate state-sync in effect
 - `next.config.ts` — **Updated**: added `@next/bundle-analyzer` integration (enabled via `ANALYZE=true`)
-- `tsconfig.json` — **Updated**: excluded `playwright.config.ts` from type-checking (not part of app bundle)
+- `tsconfig.json` — **Updated**: type-checks the app, the shared packages and `playwright.config.ts` (an earlier revision excluded the Playwright config; that exclusion was removed)
 - `eslint.config.mjs` — **Updated**: added accessibility rules (`jsx-a11y/*`) on top of next's built-in a11y integration
-- `package.json` — Added scripts: `analyze`, `test:e2e`, `test:e2e:ui`; pinned Node >= 20 via `engines` field
-- `.nvmrc` — **New**: pinned Node.js v20.18.0 for consistent local/CI environments
+- `package.json` — Added scripts: `analyze`, `test:e2e`, `test:e2e:ui`; `engines` requires Node >= 22.12
+- `.nvmrc` — **New**: pinned Node.js v24 for consistent local/CI environments
 - `SECURITY_AUDIT.md` — Updated status and recommendations
 - `.github/workflows/ci.yml` — Enhanced: test coverage reporting, multi-Node matrix (18/20/22), E2E Playwright job
 - `playwright.config.ts` — **New**: Playwright config with Chromium project and webServer auto-start
-- `playwright-test/tests/smoke.spec.ts` — **New**: 7 E2E smoke tests (page loads, API health, security headers, auth redirects, login page)
+- `playwright-test/tests/` — E2E specs: smoke, hydration, sitemap, signed-in smoke, checkout/wallet/admin-refund contracts (money-path authorization and validation), plus the staging-only refund chain
 - `src/config/env/index.ts` — **Updated**: added `warnOnMissingRateLimitStore()` startup warning for production without Redis
 - `src/app/api/support/[ticketId]/message/route.ts` — **Updated**: message trimmed once before validation; `rawMessage` variable used consistently
 - `CONTRIBUTING.md` — **New**: contribution guidelines, dev setup, testing docs, PR standards, security reminders
@@ -124,5 +170,24 @@ Zod schemas for all untrusted inputs:
 - `src/lib/supportRoute.test.ts` — **New**: 11 tests for support message validation and role checks
 - `src/lib/mfaStatus.test.ts` — **New**: 9 tests for MFA credential reading, TOTP detection, and phone masking
 
+## Hardening pass (current)
+
+Fixes applied after the original report, with the tests that now lock them in:
+
+| Area | Was | Now |
+|------|-----|-----|
+| Route classification | `validateRouteClassification()` was an empty stub; `/api/auth/login-intent`, `/api/auth/password-leak-check`, `/api/csp-report`, `/api/send-email`, `/api/whatsapp` and `/api/compliance` were unclassified, so anonymous sign-in was 401, CSP reports were dropped and admin routes answered 500 `ROUTE_UNCLASSIFIED` | Table lives in `src/config/routeAuth.ts`; `src/config/routeClassification.ts` enumerates every `route.ts` and throws at boot (`routeClassification.test.ts`) |
+| Right to erasure | `adminAuth.deleteUser` was commented out and `requests` were never touched, so an erased user could still sign in and their name/email/address stayed queryable | Auth user deleted last, requests anonymised, real audit id threaded through, failures recorded and returned as 500 (`user/erase/route.test.ts`) |
+| Wallet top-up | A capture could succeed while the credit failed; every retry returned ORDER_ALREADY_CAPTURED and the customer was told the payment failed | `capturePending` written before PayPal, duplicate captures reconciled from the order, 409 `CAPTURE_PENDING_RECONCILIATION` when the lookup fails |
+| R2 inspection photos | Any signed-in account could upload into another customer's request folder or exchange a leaked key for a signed URL | `src/lib/r2Access.ts`: owner or admin only, same 404 for missing and not-owned (`r2Access.test.ts`, `tests/rules` suite) |
+| Firestore rules | `supportTickets` create accepted any payload with the caller's customerId (born-resolved, self-assigned); `notifications` create accepted any type and size; `supportMessages` create required a field the client never sends, so every customer message was denied; `refundRequests` had a rule for a collection nothing uses | Creates pinned to the documented payloads with `createdAt == request.time`, ownership derived from the parent ticket, `refundRequests` removed (default deny) — verified by the emulator suite |
+| CSP reporting | `/api/csp-report` was customer-classified despite browsers sending no Authorization header | `public`, with a bounded body and Sentry forwarding |
+| Image hosts | No `images.remotePatterns`, so Google avatars from Firebase `photoURL` were refused at render time | `lh3.googleusercontent.com` allowed; presigned R2 URLs marked `unoptimized` instead |
+| Observability | Sentry configs existed but nothing initialised them | Server/edge/client init via instrumentation, `onRequestError`, build wrapper gated on DSN + auth token |
+| Dead workflow | `expire-quotes-cron.yml` was UTF-16, which GitHub cannot parse — the hourly job never ran | Re-encoded UTF-8/LF, and `npm run check:workflows` (CI) rejects BOMs, NUL bytes and invalid UTF-8 |
+| Runtimes | Docker image pinned Node 22 while `.nvmrc` and CI used 24 | Dockerfile on `node:24-alpine`; `engines` >=22.12 documents the floor CI still tests |
+| Dependency audit | CI ran `npm audit --audit-level=moderate`, which is red on 21 highs with no fix available — an unpassable gate | `scripts/audit-gate.mjs` gates the production view at high/critical with a dated, reasoned allowlist and fails once an entry expires (`npm run audit:gate`) |
+| Dead money writers | Client-side wallet and request writers that `firestore.rules` denies were still exported, and feature barrels re-exported `server-only` modules | Writers, their tests and the mixed barrels removed; feature services are imported directly (`features/README.md`) |
+
 ---
-*Last updated: Security hardening completed for ShipIN v0.1.0*
+*Last updated: hardening pass on route classification, erasure, wallet capture, R2 access, Firestore rules, Sentry, workflow encoding, the CI audit gate and dead-code removal.*

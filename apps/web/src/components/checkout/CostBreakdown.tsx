@@ -39,25 +39,15 @@ export default function CostBreakdown({ payment }: Props) {
 
         {breakdown.inspectionFee !== undefined &&
           breakdown.inspectionFee > 0 && (
-            <PriceRow
-              title="Inspection fee"
-              value={breakdown.inspectionFee}
-            />
+            <PriceRow title="Inspection fee" value={breakdown.inspectionFee} />
           )}
 
         {breakdown.holdFee !== undefined && breakdown.holdFee > 0 && (
-          <PriceRow
-            title="Storage / hold fee"
-            value={breakdown.holdFee}
-          />
+          <PriceRow title="Storage / hold fee" value={breakdown.holdFee} />
         )}
 
         {walletApplied > 0 && (
-          <PriceRow
-            title="Wallet applied"
-            value={-walletApplied}
-            credit
-          />
+          <PriceRow title="Wallet applied" value={-walletApplied} credit />
         )}
       </div>
 
@@ -98,7 +88,9 @@ function PriceRow({
       <span className="text-[var(--muted)]">{title}</span>
       <span
         className={`font-semibold tabular-nums ${
-          credit ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--foreground)]"
+          credit
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-[var(--foreground)]"
         }`}
       >
         {value < 0 ? "-" : ""}${Math.abs(value).toFixed(2)}

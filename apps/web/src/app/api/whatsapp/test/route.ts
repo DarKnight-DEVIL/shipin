@@ -2,14 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { withErrorHandler } from "@/utils/errors";
 
 import { requireAuthWithProfile } from "@/lib/auth";
-import {
-  sendWhatsAppTemplate,
-} from "@/lib/whatsapp";
+import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 
-import {
-  whatsappTestBodySchema,
-  validateBody,
-} from "@/lib/validation";
+import { whatsappTestBodySchema, validateBody } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
@@ -48,7 +43,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   }
 
   // --- 2. Validate input with strict schema ---
-  const parseResult = validateBody(await request.json(), whatsappTestBodySchema);
+  const parseResult = validateBody(
+    await request.json(),
+    whatsappTestBodySchema
+  );
   if (!parseResult.success) {
     return NextResponse.json(
       {
@@ -77,7 +75,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   } catch (error) {
     // Log the real error server-side; do not leak third-party API details.
-    console.error("WhatsApp test failed:", error instanceof Error ? error.message : error);
+    console.error(
+      "WhatsApp test failed:",
+      error instanceof Error ? error.message : error
+    );
 
     return NextResponse.json(
       {

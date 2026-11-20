@@ -39,7 +39,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     );
   }
 
-  const requestId = typeof body.requestId === "string" ? body.requestId.trim() : "";
+  const requestId =
+    typeof body.requestId === "string" ? body.requestId.trim() : "";
   const amount = Number(body.amount);
 
   if (!requestId) {
@@ -107,4 +108,3 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     );
   }
 });
-  

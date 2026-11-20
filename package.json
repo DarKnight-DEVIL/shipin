@@ -7,25 +7,38 @@
     "packages/*"
   ],
   "scripts": {
+    "preinstall": "node scripts/check-package-manager.mjs",
     "dev": "turbo run dev",
     "build": "turbo run build",
     "start": "npm run start --workspace=@shipin/web",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "gen:api-routes": "npm run gen:api-routes --workspace=@shipin/web",
     "test": "turbo run test",
     "test:watch": "npm run test:watch --workspace=@shipin/web",
     "test:coverage": "npm run test:coverage --workspace=@shipin/web",
     "test:shuffle": "npm run test:shuffle --workspace=@shipin/web",
     "test:security": "npm run test:security --workspace=@shipin/web",
     "test:rules": "npm run test:rules --workspace=@shipin/web",
+    "emulators": "npx --yes firebase-tools@15.36.0 --config firebase.json emulators:exec --ui --only firestore,auth \"npm run dev\"",
     "test:e2e": "npm run test:e2e --workspace=@shipin/web",
+    "test:e2e:local": "npm run test:e2e:local --workspace=@shipin/web --",
+    "test:e2e:signed-in": "npm run test:e2e:signed-in --workspace=@shipin/web --",
+    "migrate": "npm run migrate --workspace=@shipin/web --",
+    "analyze": "npm run analyze --workspace=@shipin/web",
     "check:bundle-budget": "npm run check:bundle-budget --workspace=@shipin/web",
     "check:coverage-globs": "npm run check:coverage-globs --workspace=@shipin/web",
     "check:compliance-tests": "npm run check:compliance-tests --workspace=@shipin/web",
     "check:money-globs": "npm run check:money-globs --workspace=@shipin/web",
-    "check:authorized-domains": "npm run check:authorized-domains --workspace=@shipin/web"
+    "check:authorized-domains": "npm run check:authorized-domains --workspace=@shipin/web",
+    "check:firestore-indexes": "npm run check:firestore-indexes --workspace=@shipin/web",
+    "check:workflows": "node scripts/check-workflow-encoding.mjs",
+    "audit:gate": "node scripts/audit-gate.mjs"
   },
   "devDependencies": {
+    "prettier": "^3.10.1",
     "turbo": "^2.5.6"
   },
   "engines": {
@@ -35,9 +48,6 @@
     "@grpc/grpc-js": "^1.14.5",
     "@typescript-eslint/typescript-estree": {
       "minimatch": "^11.0.7"
-    },
-    "jwks-rsa": {
-      "jose": "^4.15.9"
     }
   },
   "packageManager": "npm@12.2.2"

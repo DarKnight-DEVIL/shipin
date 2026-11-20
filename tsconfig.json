@@ -1,5 +1,21 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
+  // Base config only. Every workspace extends this for compilerOptions and
+  // declares its own `include`, so nothing here ever compiles on its own.
+  //
+  // `files: []` is deliberate. It used to be `include: ["packages/*/src/**/*"]`,
+  // which made a bare `tsc -p .` at the repo root check the packages and exit 0
+  // while silently ignoring apps/web — a green result that proved very little.
+  // Widening the include instead is not an option: apps/web needs its own
+  // `paths` (@/*), Next's tsconfig plugin and `.next/types`, so a root-wide
+  // project would drown in false unresolved-import errors.
+  //
+  // The project-wide check is `npm run typecheck` → `turbo run typecheck`,
+  // which runs `tsc --noEmit` in all five workspaces (verified: config, shared,
+  // UI, utils, web). CI runs exactly that. A bare root `tsc` now fails with
+  // TS18002 ("The 'files' list in config file is empty") instead of reporting a
+  // partial pass.
+  "files": [],
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["dom", "dom.iterable", "esnext"],
@@ -14,7 +30,14 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
+    // `types` replaces the automatic inclusion of every @types package, and
+    // that restriction is the point: without it each workspace would pull the
+    // ambient declarations of every dependency in the tree (three, qrcode,
+    // testing-library, ...) into code that never loads them. DOM globals do
+    // not come from @types at all — they come from `lib` above — so client
+    // code is unaffected. An ambient package a workspace does rely on has to
+    // be named there: `apps/web` adds `vitest/globals` because its vitest
+    // config sets `globals: true`.
     "types": ["node"]
-  },
-  "include": ["packages/*/src/**/*"]
+  }
 }

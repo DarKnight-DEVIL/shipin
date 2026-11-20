@@ -187,11 +187,7 @@ export interface AdditionalPayment {
 
   currency?: string;
 
-  status:
-    | "pending"
-    | "completed"
-    | "failed"
-    | "refunded";
+  status: "pending" | "completed" | "failed" | "refunded";
 
   createdAt?: Timestamp;
   paidAt?: Timestamp;
@@ -253,15 +249,10 @@ export interface Consolidation {
   shipmentId?: string;
 }
 
-export type RefundPreference =
-  | "wallet"
-  | "original_payment";
+export type RefundPreference = "wallet" | "original_payment";
 
 export interface RefundRequest {
-  status:
-    | "requested"
-    | "processing"
-    | "completed";
+  status: "requested" | "processing" | "completed";
 
   preference: RefundPreference;
 
@@ -358,9 +349,7 @@ export interface PartialRefund {
 
   reason: string;
 
-  method:
-    | "wallet"
-    | "original_payment";
+  method: "wallet" | "original_payment";
 
   paypalRefundTransactionId?: string;
 
@@ -398,6 +387,9 @@ export interface Request {
   userId: string;
   email: string;
   customerName?: string;
+
+  /** Document schema version for migrations. Default: 1 */
+  schemaVersion?: number;
 
   status: RequestStatus;
 
@@ -454,17 +446,17 @@ export interface Request {
   };
 
   partialRefundOffer?: {
-  id: string;
-  amount: number;
-  reason: string;
-  status: "offered" | "accepted" | "completed" | "declined";
-  createdAt?: Timestamp;
-  createdBy: string;
-  createdByEmail?: string | null;
-  selectedMethod?: "wallet" | "original_payment";
-  selectedAt?: Timestamp;
+    id: string;
+    amount: number;
+    reason: string;
+    status: "offered" | "accepted" | "completed" | "declined";
+    createdAt?: Timestamp;
+    createdBy: string;
+    createdByEmail?: string | null;
+    selectedMethod?: "wallet" | "original_payment";
+    selectedAt?: Timestamp;
   };
-  
+
   refundRequest?: RefundRequest;
 
   tracking?: Tracking;

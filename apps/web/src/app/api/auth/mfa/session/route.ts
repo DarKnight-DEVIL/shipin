@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
 
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import {
@@ -21,7 +20,12 @@ import {
   getMfaSession,
   revokeMfaSession,
 } from "@/lib/mfaSession";
-import { addRateLimitHeaders, isRateLimited, loginRateLimiter } from "@/lib/rateLimiter";
+import {
+  addRateLimitHeaders,
+  isRateLimited,
+  loginRateLimiter,
+} from "@/lib/rateLimiter";
+import { verifyAppCheckRequest } from "@/lib/appCheck";
 import { withErrorHandler } from "@/utils/errors";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
@@ -66,6 +70,8 @@ interface CallerContext {
   uid: string;
   email?: string;
   profile: Record<string, unknown> | undefined;
+  /** True when Firebase already completed a second factor for this token. */
+  secondFactorVerified: boolean;
 }
 
 /**
@@ -90,6 +96,21 @@ async function resolveAdminCaller(
 
   const token = authorization.slice("Bearer ".length).trim();
 
+  // This route mints the elevated admin session, so it is the one MFA endpoint
+  // that does not go through `requireAuthWithProfile` and therefore has to run
+  // the App Check gate itself.
+  const appCheck = await verifyAppCheckRequest(request);
+  if (appCheck === "missing" || appCheck === "invalid") {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "App verification failed. Reload the page and try again.",
+        code: "APP_CHECK_FAILED",
+      },
+      { status: 401, headers: NO_STORE }
+    );
+  }
+
   let decoded;
 
   try {
@@ -102,6 +123,18 @@ async function resolveAdminCaller(
         code: "INVALID_AUTHENTICATION",
       },
       { status: 401, headers: NO_STORE }
+    );
+  }
+
+  if (decoded.email_verified !== true) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Please verify your email address before accessing this resource.",
+        code: "EMAIL_VERIFICATION_REQUIRED",
+      },
+      { status: 403, headers: NO_STORE }
     );
   }
 
@@ -131,7 +164,17 @@ async function resolveAdminCaller(
     );
   }
 
-  return { uid: decoded.uid, email: decoded.email, profile };
+  const secondFactorVerified = Boolean(
+    (decoded as { firebase?: { sign_in_second_factor?: string } }).firebase
+      ?.sign_in_second_factor
+  );
+
+  return {
+    uid: decoded.uid,
+    email: decoded.email,
+    profile,
+    secondFactorVerified,
+  };
 }
 
 /**
@@ -146,14 +189,17 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   if (caller instanceof NextResponse) return caller;
 
   const session = await getMfaSession(request);
-  const elevated = Boolean(session && session.uid === caller.uid);
+  const elevated = Boolean(
+    caller.secondFactorVerified || (session && session.uid === caller.uid)
+  );
   const methods = availableMfaMethods(caller.profile as never);
 
   return NextResponse.json(
     {
       success: true,
       elevated,
-      expiresAt: elevated ? session!.expiresAt : null,
+      expiresAt:
+        session && session.uid === caller.uid ? session.expiresAt : null,
       methods,
       sessionTtlMs: MFA_SESSION_TTL_MS,
     },
@@ -177,7 +223,10 @@ interface SessionRequestBody {
 export const POST = withErrorHandler(async (request: NextRequest) => {
   const limit = await loginRateLimiter.record(request);
 
-  if (isRateLimited(limit)) {
+  // Infrastructure failure, not abuse — the rule the proxy and login-intent
+  // apply. Failing closed here answered 429 for every elevation on a
+  // store-less deployment (which is every local E2E run).
+  if (isRateLimited(limit) && !limit.unavailable) {
     const response = NextResponse.json(
       {
         success: false,
@@ -253,7 +302,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     }
 
     const presented = (assertion as { id: string }).id;
-    const stored = credentials.find((credential) => credential.credentialID === presented);
+    const stored = credentials.find(
+      (credential) => credential.credentialID === presented
+    );
 
     // The challenge is single-use no matter how verification goes.
     const clearChallenge = () =>
@@ -279,6 +330,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       response: assertion,
       expectedChallenge: record.pendingChallenge,
       credential: stored,
+      // Same origin rule as the verify route: the ceremony is bound to the
+      // origin that served the page, which is not necessarily APP_URL in dev.
+      requestOrigin: request.nextUrl.origin,
     });
 
     if (!result.verified) {
@@ -309,7 +363,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const code = typeof body.code === "string" ? body.code.trim() : "";
   const method: MfaMethod | undefined =
-    body.method === "totp" || body.method === "backup" || body.method === "sms"
+    body.method === "totp" || body.method === "backup"
       ? body.method
       : undefined;
 
@@ -327,7 +381,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const verification = verifyMfaProof(caller.profile as never, {
     totp: method === "totp" ? code : undefined,
     backup: method === "backup" ? code : undefined,
-    sms: method === "sms" ? code : undefined,
   });
 
   if (!verification.ok) {
@@ -353,14 +406,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  if (verification.consumeSmsChallenge) {
-    // Single-use: delete the pending SMS challenge that was just accepted.
-    await adminDb.collection("users").doc(caller.uid).update({
-      "mfa.sms.pendingCode": FieldValue.delete(),
-      "mfa.sms.pendingExpires": FieldValue.delete(),
-    });
-  }
-
   return elevatedResponse(caller.uid, verification.method);
 });
 
@@ -378,6 +423,18 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
  * request.
  */
 export const DELETE = withErrorHandler(async (request: NextRequest) => {
+  const appCheck = await verifyAppCheckRequest(request);
+  if (appCheck === "missing" || appCheck === "invalid") {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "App verification failed. Reload the page and try again.",
+        code: "APP_CHECK_FAILED",
+      },
+      { status: 401, headers: NO_STORE }
+    );
+  }
+
   const authorization = request.headers.get("authorization");
 
   if (!authorization?.startsWith("Bearer ")) {

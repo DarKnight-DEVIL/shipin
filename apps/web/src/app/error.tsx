@@ -17,19 +17,24 @@ export default function Error({
   }, [error]);
 
   return (
-    <div style={{
-      fontFamily: "system-ui, sans-serif",
-      textAlign: "center",
-      padding: "2rem",
-      maxWidth: "600px",
-      margin: "2rem auto",
-      background: "white",
-      borderRadius: "12px",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-    }}>
-      <h1 style={{ color: "#dc2626", marginBottom: "1rem" }}>Something went wrong</h1>
+    <div
+      style={{
+        fontFamily: "system-ui, sans-serif",
+        textAlign: "center",
+        padding: "2rem",
+        maxWidth: "600px",
+        margin: "2rem auto",
+        background: "white",
+        borderRadius: "12px",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+      }}
+    >
+      <h1 style={{ color: "#dc2626", marginBottom: "1rem" }}>
+        Something went wrong
+      </h1>
       <p style={{ color: "#6b7280", marginBottom: "1.5rem" }}>
-        An error occurred while loading this page. Please try again or contact support if the problem persists.
+        An error occurred while loading this page. Please try again or contact
+        support if the problem persists.
       </p>
       <button
         onClick={() => reset()}

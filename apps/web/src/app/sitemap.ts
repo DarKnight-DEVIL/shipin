@@ -1,34 +1,54 @@
-import type { MetadataRoute } from 'next';
-import { siteConfig } from '@/config/site';
+import type { MetadataRoute } from "next";
+import { siteConfig } from "@/config/site";
+import { INDEXABLE_ROUTES, type IndexableRoute } from "@/config/seo";
 
-type ChangeFrequency = 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never';
+type ChangeFrequency =
+  "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
+
+/**
+ * Crawl hints per public route. The list itself lives in `@/config/seo` so the
+ * sitemap cannot advertise a URL the proxy marks `noindex` — that mismatch is
+ * reported by Search Console as "Excluded by noindex tag" for URLs the sitemap
+ * keeps submitting.
+ */
+const ROUTE_META: Record<
+  IndexableRoute,
+  { changeFrequency: ChangeFrequency; priority: number; lastModified: string }
+> = {
+  "/": { changeFrequency: "weekly", priority: 1, lastModified: "2026-11-01" },
+  "/track": {
+    changeFrequency: "weekly",
+    priority: 0.8,
+    lastModified: "2026-11-01",
+  },
+  "/privacy-policy": {
+    changeFrequency: "monthly",
+    priority: 0.7,
+    lastModified: "2026-09-01",
+  },
+  "/terms": {
+    changeFrequency: "monthly",
+    priority: 0.7,
+    lastModified: "2026-09-01",
+  },
+};
+
+/**
+ * `lastModified` is a fixed per-route date, bumped when that page's content
+ * changes. `new Date()` stamped every build, so every deploy claimed all four
+ * pages had changed — noise, and crawlers discount lastmod values that move
+ * without content changes.
+ */
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = siteConfig.url;
-  const now = new Date();
 
-  const routes: Array<{
-    url: string;
-    lastModified: Date;
-    changeFrequency: ChangeFrequency;
-    priority: number;
-  }> = [
-    { url: `${base}/`, lastModified: now, changeFrequency: 'weekly', priority: 1 },
-    { url: `${base}/login`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
-    { url: `${base}/track`, lastModified: now, changeFrequency: 'weekly', priority: 0.8 },
-    { url: `${base}/privacy-policy`, lastModified: now, changeFrequency: 'monthly', priority: 0.7 },
-    { url: `${base}/terms`, lastModified: now, changeFrequency: 'monthly', priority: 0.7 },
-    { url: `${base}/support`, lastModified: now, changeFrequency: 'weekly', priority: 0.7 },
-    { url: `${base}/requests`, lastModified: now, changeFrequency: 'weekly', priority: 0.8 },
-    { url: `${base}/wallet`, lastModified: now, changeFrequency: 'weekly', priority: 0.7 },
-    { url: `${base}/addresses`, lastModified: now, changeFrequency: 'weekly', priority: 0.5 },
-    { url: `${base}/settings`, lastModified: now, changeFrequency: 'monthly', priority: 0.5 },
-    { url: `${base}/notifications`, lastModified: now, changeFrequency: 'weekly', priority: 0.5 },
-  ];
-
-  // Admin routes are intentionally excluded: robots.ts disallows /admin/, and
-  // listing a robots-blocked URL in the sitemap produces "blocked by robots.txt"
-  // errors in Search Console instead of indexing anything.
-
-  return routes;
+  // Private pages (`/login`, `/requests`, `/wallet`, `/addresses`, `/settings`,
+  // `/notifications`, `/support`) are deliberately absent: the proxy and their
+  // metadata both mark them `noindex`, and `robots.txt` blocks `/admin/`.
+  return INDEXABLE_ROUTES.map((route) => ({
+    url: `${base}${route}`,
+    ...ROUTE_META[route],
+    lastModified: new Date(`${ROUTE_META[route].lastModified}T00:00:00.000Z`),
+  }));
 }

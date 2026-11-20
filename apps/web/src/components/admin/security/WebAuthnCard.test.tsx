@@ -60,9 +60,12 @@ describe("WebAuthnCard", () => {
 
     const { onChanged } = renderCard();
 
-    fireEvent.change(screen.getByPlaceholderText("Key name (e.g. YubiKey 5C)"), {
-      target: { value: "YubiKey" },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText("Key name (e.g. YubiKey 5C)"),
+      {
+        target: { value: "YubiKey" },
+      }
+    );
     fireEvent.click(screen.getByRole("button", { name: "Add security key" }));
 
     expect(await screen.findByText("YubiKey registered.")).toBeInTheDocument();
@@ -76,10 +79,16 @@ describe("WebAuthnCard", () => {
   });
 
   it("lists registered keys with their name and date", () => {
-    renderCard(statusWith([
-      { id: "cred-1", name: "YubiKey 5C", createdAt: 1_700_000_000_000 },
-      { id: "cred-2", name: "MacBook Touch ID", createdAt: 1_710_000_000_000 },
-    ]));
+    renderCard(
+      statusWith([
+        { id: "cred-1", name: "YubiKey 5C", createdAt: 1_700_000_000_000 },
+        {
+          id: "cred-2",
+          name: "MacBook Touch ID",
+          createdAt: 1_710_000_000_000,
+        },
+      ])
+    );
 
     expect(screen.getByText("YubiKey 5C")).toBeInTheDocument();
     expect(screen.getByText("MacBook Touch ID")).toBeInTheDocument();
@@ -90,9 +99,12 @@ describe("WebAuthnCard", () => {
     vi.mocked(removeSecurityKey).mockResolvedValue(0);
 
     const onChanged = vi.fn();
-    renderCard(statusWith([
-      { id: "cred-1", name: "YubiKey", createdAt: 1_700_000_000_000 },
-    ]), onChanged);
+    renderCard(
+      statusWith([
+        { id: "cred-1", name: "YubiKey", createdAt: 1_700_000_000_000 },
+      ]),
+      onChanged
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
 
@@ -101,7 +113,9 @@ describe("WebAuthnCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Yes" }));
 
-    expect(await screen.findByText("Security key removed.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Security key removed.")
+    ).toBeInTheDocument();
     expect(removeSecurityKey).toHaveBeenCalledWith("token", "cred-1");
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
@@ -117,16 +131,16 @@ describe("WebAuthnCard", () => {
       )
     );
 
-    renderCard(statusWith([
-      { id: "cred-1", name: "YubiKey", createdAt: 1_700_000_000_000 },
-    ]));
+    renderCard(
+      statusWith([
+        { id: "cred-1", name: "YubiKey", createdAt: 1_700_000_000_000 },
+      ])
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     fireEvent.click(screen.getByRole("button", { name: "Yes" }));
 
-    expect(
-      await screen.findByText(/only second factor/i)
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/only second factor/i)).toBeInTheDocument();
   });
 
   it("tells the user when the browser has no WebAuthn support", () => {

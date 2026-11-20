@@ -1,41 +1,25 @@
 import { NextResponse } from "next/server";
-import { withErrorHandler } from '@/utils/errors';
+import { withErrorHandler } from "@/utils/errors";
 
-import {
-  PutObjectCommand,
-} from "@aws-sdk/client-s3";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
 
-import {
-  getR2Client,
-  getR2BucketName,
-} from "@/lib/r2";
+import { getR2Client, getR2BucketName } from "@/lib/r2";
 
 import { adminAuth } from "@/lib/firebaseAdmin";
 
+import { authorizeInspectionAccess } from "@/lib/r2Access";
+
 export const runtime = "nodejs";
 
-const MAX_FILE_SIZE =
-  10 * 1024 * 1024; // 10 MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
-const ALLOWED_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-];
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export const POST = withErrorHandler(async (request: Request) => {
-
   try {
-    const authorization =
-      request.headers.get(
-        "authorization"
-      );
+    const authorization = request.headers.get("authorization");
 
-    if (
-      !authorization?.startsWith(
-        "Bearer "
-      )
-    ) {
+    if (!authorization?.startsWith("Bearer ")) {
       return NextResponse.json(
         {
           success: false,
@@ -47,19 +31,19 @@ export const POST = withErrorHandler(async (request: Request) => {
       );
     }
 
-    const idToken =
-      authorization.slice(7);
+    const idToken = authorization.slice(7);
+
+    let uid: string;
 
     try {
-      await adminAuth.verifyIdToken(
-        idToken
-      );
+      const decoded = await adminAuth.verifyIdToken(idToken);
+
+      uid = decoded.uid;
     } catch {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Invalid authentication token.",
+          error: "Invalid authentication token.",
         },
         {
           status: 401,
@@ -67,21 +51,17 @@ export const POST = withErrorHandler(async (request: Request) => {
       );
     }
 
-    const formData =
-      await request.formData();
+    const formData = await request.formData();
 
-    const file =
-      formData.get("file");
+    const file = formData.get("file");
 
-    const requestId =
-      formData.get("requestId");
+    const requestId = formData.get("requestId");
 
     if (!(file instanceof File)) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "No image file provided.",
+          error: "No image file provided.",
         },
         {
           status: 400,
@@ -89,15 +69,11 @@ export const POST = withErrorHandler(async (request: Request) => {
       );
     }
 
-    if (
-      typeof requestId !== "string" ||
-      !requestId.trim()
-    ) {
+    if (typeof requestId !== "string" || !requestId.trim()) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Request ID is required.",
+          error: "Request ID is required.",
         },
         {
           status: 400,
@@ -105,16 +81,11 @@ export const POST = withErrorHandler(async (request: Request) => {
       );
     }
 
-    if (
-      !ALLOWED_TYPES.includes(
-        file.type
-      )
-    ) {
+    if (!ALLOWED_TYPES.includes(file.type)) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Only JPG, PNG and WebP images are allowed.",
+          error: "Only JPG, PNG and WebP images are allowed.",
         },
         {
           status: 400,
@@ -126,8 +97,7 @@ export const POST = withErrorHandler(async (request: Request) => {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Image must be 10 MB or smaller.",
+          error: "Image must be 10 MB or smaller.",
         },
         {
           status: 400,
@@ -139,42 +109,44 @@ export const POST = withErrorHandler(async (request: Request) => {
      * Remove characters that could create
      * undesirable object paths.
      */
-    const safeRequestId =
-      requestId.replace(
-        /[^a-zA-Z0-9_-]/g,
-        ""
+    const safeRequestId = requestId.replace(/[^a-zA-Z0-9_-]/g, "");
+
+    /*
+     * Ownership: without this, any signed-in account could write objects into
+     * another customer's request folder — warehouse evidence is shown to that
+     * customer and to admins.
+     */
+    const denial = await authorizeInspectionAccess(uid, safeRequestId);
+
+    if (denial) {
+      return NextResponse.json(
+        { success: false, error: denial.error, code: denial.code },
+        { status: denial.status }
       );
+    }
 
     const extension =
       file.type === "image/png"
         ? "png"
-        : file.type ===
-          "image/webp"
-        ? "webp"
-        : "jpg";
+        : file.type === "image/webp"
+          ? "webp"
+          : "jpg";
 
-    const objectKey =
-      `inspection/${safeRequestId}/${crypto.randomUUID()}.${extension}`;
+    const objectKey = `inspection/${safeRequestId}/${crypto.randomUUID()}.${extension}`;
 
-    const arrayBuffer =
-      await file.arrayBuffer();
+    const arrayBuffer = await file.arrayBuffer();
 
-    const body =
-      Buffer.from(arrayBuffer);
+    const body = Buffer.from(arrayBuffer);
 
     await getR2Client().send(
       new PutObjectCommand({
-        Bucket:
-          getR2BucketName(),
+        Bucket: getR2BucketName(),
 
-        Key:
-          objectKey,
+        Key: objectKey,
 
-        Body:
-          body,
+        Body: body,
 
-        ContentType:
-          file.type,
+        ContentType: file.type,
 
         /*
          * These files contain warehouse
@@ -183,8 +155,7 @@ export const POST = withErrorHandler(async (request: Request) => {
          * publicly accessible.
          */
         Metadata: {
-          requestid:
-            safeRequestId,
+          requestid: safeRequestId,
         },
       })
     );
@@ -199,21 +170,16 @@ export const POST = withErrorHandler(async (request: Request) => {
       key: objectKey,
     });
   } catch (error) {
-    console.error(
-      "R2 upload error:",
-      error
-    );
+    console.error("R2 upload error:", error);
 
     return NextResponse.json(
       {
         success: false,
-        error:
-          "Unable to upload image.",
+        error: "Unable to upload image.",
       },
       {
         status: 500,
       }
     );
   }
-
 });

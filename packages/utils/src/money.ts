@@ -1,10 +1,10 @@
 export const formatCurrency = (
   amount: number,
-  currency = 'USD',
-  locale = 'en-US'
+  currency = "USD",
+  locale = "en-US"
 ): string => {
   return new Intl.NumberFormat(locale, {
-    style: 'currency',
+    style: "currency",
     currency,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -12,7 +12,7 @@ export const formatCurrency = (
 };
 
 export const parseCurrency = (value: string): number => {
-  const num = parseFloat(value.replace(/[^0-9.-]/g, ''));
+  const num = parseFloat(value.replace(/[^0-9.-]/g, ""));
   return isNaN(num) ? 0 : num;
 };
 

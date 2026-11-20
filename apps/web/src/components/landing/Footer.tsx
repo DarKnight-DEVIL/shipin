@@ -16,10 +16,7 @@ interface FooterProps {
   };
 }
 
-export default function Footer({
-  columns,
-  companyInfo,
-}: FooterProps) {
+export default function Footer({ columns, companyInfo }: FooterProps) {
   const currentYear = new Date().getFullYear();
 
   return (
@@ -27,7 +24,11 @@ export default function Footer({
       <div className="shell">
         <div className="footer__grid">
           <div className="footer__brand">
-            <Link href="/" className="footer__logo" aria-label={`${companyInfo.name} home`}>
+            <Link
+              href="/"
+              className="footer__logo"
+              aria-label={`${companyInfo.name} home`}
+            >
               <span className="footer__name">
                 {companyInfo.name.replace("IN", "<span>IN</span>")}
               </span>
@@ -39,7 +40,11 @@ export default function Footer({
           </div>
 
           {columns.map((column) => (
-            <nav key={column.title} className="footer__nav" aria-label={column.title}>
+            <nav
+              key={column.title}
+              className="footer__nav"
+              aria-label={column.title}
+            >
               <h2>{column.title}</h2>
               <ul>
                 {column.links.map((link) => (
@@ -71,7 +76,9 @@ export default function Footer({
         </div>
 
         <div className="footer__base">
-          <span>© {currentYear} {companyInfo.name}</span>
+          <span>
+            © {currentYear} {companyInfo.name}
+          </span>
           <span className="status status--footer" aria-live="polite">
             <span className="status__dot" aria-hidden="true" />
             {companyInfo.status}

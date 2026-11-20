@@ -1,6 +1,8 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
 import type { AppCheck } from "firebase/app-check";
+
+import { childLogger } from "@/lib/logger";
 
 import { clientEnv } from "@/config/env";
 
@@ -43,7 +45,8 @@ function startAppCheck(firebaseApp: FirebaseApp): void {
 
   if (!siteKey) {
     if (clientEnv.NODE_ENV === "production") {
-      console.warn(
+      const fbcLogger = childLogger({ service: "app-check" });
+      fbcLogger.warn(
         "[app-check] NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY is not set. " +
           "Sign-in and API calls will fail while this Firebase project enforces App Check."
       );
@@ -59,7 +62,9 @@ function startAppCheck(firebaseApp: FirebaseApp): void {
         // Must be assigned before initializeAppCheck: the SDK then exchanges a
         // locally generated debug token instead of calling reCAPTCHA. The token
         // still has to be registered under App Check → Debug tokens.
-        (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+        (
+          self as unknown as Record<string, unknown>
+        ).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
       }
 
       appCheck = initializeAppCheck(firebaseApp, {
@@ -123,6 +128,22 @@ export function ensureFirebaseApp(): { app: FirebaseApp; auth: Auth } {
     };
     app = getApps().length ? getApp() : initializeApp(firebaseConfig);
     _auth = getAuth(app);
+
+    // Local E2E only. Without this the sign-in specs need a real staging
+    // account; with it they sign in against the Auth emulator, whose tokens the
+    // Admin SDK also accepts (FIREBASE_AUTH_EMULATOR_HOST). Browser-only: the
+    // emulator connection has no meaning in a server render.
+    // Optional, and `undefined` at runtime when the build set no value: the
+    // bundler leaves a runtime `process.env` read for it instead of inlining
+    // the `''` default from `clientEnv`. See the same guard in `./firebaseDb`.
+    const authEmulatorHost =
+      clientEnv.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST?.trim() ?? "";
+    if (authEmulatorHost && typeof window !== "undefined") {
+      connectAuthEmulator(_auth, `http://${authEmulatorHost}`, {
+        disableWarnings: true,
+      });
+    }
+
     startAppCheck(app);
   }
 
@@ -136,4 +157,36 @@ export function ensureFirebaseApp(): { app: FirebaseApp; auth: Auth } {
 
 export const getFirebaseAuth = () => ensureFirebaseApp().auth;
 
-export const auth: Auth = ensureFirebaseApp().auth;
+/**
+ * Lazy `Auth` handle.
+ *
+ * Constructing the proxy does not touch Firebase, so importing this module no
+ * longer initializes the client and validates every `NEXT_PUBLIC_*` variable at
+ * module load. Build-time page-data collection and server routes that import
+ * shared helpers stay free of client env; the first property access creates the
+ * app.
+ *
+ * `_delegate` is special-cased because Firebase's public auth functions
+ * normalize their argument with `auth._delegate ?? auth`; without it they would
+ * keep operating on the proxy rather than the real instance.
+ */
+export const auth: Auth = new Proxy({} as Auth, {
+  get(_target, property) {
+    const instance = ensureFirebaseApp().auth;
+    if (property === "_delegate") return instance;
+
+    const value = (instance as unknown as Record<PropertyKey, unknown>)[
+      property
+    ];
+    return typeof value === "function" ? value.bind(instance) : value;
+  },
+  set(_target, property, value) {
+    (ensureFirebaseApp().auth as unknown as Record<PropertyKey, unknown>)[
+      property
+    ] = value;
+    return true;
+  },
+  has(_target, property) {
+    return property in (ensureFirebaseApp().auth as object);
+  },
+});

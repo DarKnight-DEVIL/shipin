@@ -7,7 +7,11 @@
  * and any extra headers it attaches.
  */
 
-import { clearAppCheckFailure, notifyAppCheckFailure } from "@/lib/appCheckFailure";
+import {
+  clearAppCheckFailure,
+  notifyAppCheckFailure,
+} from "@/lib/appCheckFailure";
+import { HTTP_TIMEOUT_MS } from "@/config/constants";
 import { beginRetryNotice, endRetryNotice } from "@/lib/requestRetry";
 import { auth, getAppCheckToken } from "@/lib/firebase";
 
@@ -55,7 +59,6 @@ function createError(
   code: string,
   status: number
 ): ApiError {
-   
   return new errorClass(message, code, status);
 }
 
@@ -92,6 +95,47 @@ const RETRY_DELAY_MS = 300;
 /** Cap so an upstream `Retry-After: 300` cannot stall the page for minutes. */
 const MAX_RETRY_DELAY_MS = 2000;
 
+/** Spread retries out so every tab does not hit a recovering upstream at once. */
+const RETRY_JITTER_MS = 150;
+
+/**
+ * Circuit breaker for retries.
+ *
+ * The retry exists for a transient blip. An upstream that fails continuously
+ * turns every page into a retry storm that keeps the failing service down, so
+ * after a few consecutive transient failures the client stops retrying for a
+ * cooldown and returns the error immediately. The first request always goes out.
+ */
+const CIRCUIT_FAILURE_THRESHOLD = 3;
+const CIRCUIT_COOLDOWN_MS = 30_000;
+
+let consecutiveTransientFailures = 0;
+let circuitOpenUntil = 0;
+
+/** Test hook: forget breaker state between cases. */
+export function resetApiCircuit(): void {
+  consecutiveTransientFailures = 0;
+  circuitOpenUntil = 0;
+}
+
+function circuitAllowsRetry(now: number = Date.now()): boolean {
+  return now >= circuitOpenUntil;
+}
+
+function noteTransientFailure(now: number = Date.now()): void {
+  consecutiveTransientFailures += 1;
+
+  if (consecutiveTransientFailures >= CIRCUIT_FAILURE_THRESHOLD) {
+    circuitOpenUntil = now + CIRCUIT_COOLDOWN_MS;
+    consecutiveTransientFailures = 0;
+  }
+}
+
+function noteHealthyResponse(): void {
+  consecutiveTransientFailures = 0;
+  circuitOpenUntil = 0;
+}
+
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -109,6 +153,10 @@ function retryDelay(response: Response): number {
   if (!Number.isFinite(seconds) || seconds < 0) return RETRY_DELAY_MS;
 
   return Math.min(seconds * 1000, MAX_RETRY_DELAY_MS);
+}
+
+function jittered(ms: number): number {
+  return ms + Math.random() * RETRY_JITTER_MS;
 }
 
 interface ProfileRepairUser {
@@ -176,7 +224,9 @@ async function refreshIdToken(user: ProfileRepairUser): Promise<string | null> {
   }
 }
 
-async function readPayload(response: Response): Promise<Record<string, unknown>> {
+async function readPayload(
+  response: Response
+): Promise<Record<string, unknown>> {
   try {
     return (await response.json()) as Record<string, unknown>;
   } catch {
@@ -197,7 +247,12 @@ export async function apiFetch<T>(
   const user = auth.currentUser;
 
   if (!user) {
-    throw createError(errorClass, "You are signed out. Sign in again.", "AUTHENTICATION_REQUIRED", 401);
+    throw createError(
+      errorClass,
+      "You are signed out. Sign in again.",
+      "AUTHENTICATION_REQUIRED",
+      401
+    );
   }
 
   let idToken = await user.getIdToken();
@@ -211,8 +266,13 @@ export async function apiFetch<T>(
     ? { "X-Firebase-AppCheck": appCheckToken }
     : {};
 
-  const send = () =>
-    fetch(path, {
+  // Without a deadline a stalled upstream leaves the tab waiting forever, and
+  // a serverless invocation billable for its whole duration.
+  const send = () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
+
+    return fetch(path, {
       method,
       headers: {
         Authorization: `Bearer ${idToken}`,
@@ -224,7 +284,9 @@ export async function apiFetch<T>(
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: "same-origin",
       cache: "no-store",
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer));
+  };
 
   const networkError = () =>
     createError(errorClass, "Could not reach the server.", "NETWORK_ERROR", 0);
@@ -242,10 +304,16 @@ export async function apiFetch<T>(
   } catch {
     if (!isIdempotent) throw networkError();
 
+    noteTransientFailure();
+
+    // A store that has been failing continuously gets no retry: the caller sees
+    // the error at once instead of another doomed round trip.
+    if (!circuitAllowsRetry()) throw networkError();
+
     // Published so the page can say it is retrying: the backoff is invisible
     // otherwise, and a slow one reads as a frozen screen.
     beginRetryNotice();
-    await wait(RETRY_DELAY_MS);
+    await wait(jittered(RETRY_DELAY_MS));
     try {
       response = await send();
     } catch {
@@ -260,17 +328,24 @@ export async function apiFetch<T>(
   // One retry, then stop: a second transient failure means the caller should
   // see the error rather than wait through a longer backoff.
   if (isIdempotent && RETRYABLE_STATUSES.has(response.status)) {
-    beginRetryNotice();
-    await wait(retryDelay(response));
-    try {
-      response = await send();
-    } catch {
-      throw networkError();
-    } finally {
-      endRetryNotice();
+    noteTransientFailure();
+
+    // Breaker open: fall through to the normal error path below.
+    if (circuitAllowsRetry()) {
+      beginRetryNotice();
+      await wait(jittered(retryDelay(response)));
+      try {
+        response = await send();
+      } catch {
+        throw networkError();
+      } finally {
+        endRetryNotice();
+      }
+      payload = await readPayload(response);
     }
-    payload = await readPayload(response);
   }
+
+  if (response.ok) noteHealthyResponse();
 
   // One recovery attempt, then one retry. Deliberately not a loop: the same
   // error coming back means the recovery did not take effect, and the caller
@@ -302,7 +377,12 @@ export async function apiFetch<T>(
       try {
         response = await send();
       } catch {
-        throw createError(errorClass, "Could not reach the server.", "NETWORK_ERROR", 0);
+        throw createError(
+          errorClass,
+          "Could not reach the server.",
+          "NETWORK_ERROR",
+          0
+        );
       }
       payload = await readPayload(response);
     }

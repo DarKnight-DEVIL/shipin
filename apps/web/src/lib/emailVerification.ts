@@ -111,6 +111,9 @@ export async function refreshVerifiedToken(user: {
   try {
     await user.getIdToken(true);
   } catch (error) {
-    console.error("[auth] Could not refresh the ID token after verification:", error);
+    console.error(
+      "[auth] Could not refresh the ID token after verification:",
+      error
+    );
   }
 }

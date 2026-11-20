@@ -2,6 +2,7 @@ import type { usePasswordSettings } from "@/features/auth/hooks/usePasswordSetti
 import SettingsSection from "./SettingsSection";
 import { PrimaryButton } from "./SettingsButtons";
 import { inputClass, labelClass } from "./settingsStyles";
+import CustomerMfaSection from "./CustomerMfaSection";
 
 interface SecuritySectionProps {
   settings: ReturnType<typeof usePasswordSettings>;
@@ -31,7 +32,7 @@ export default function SecuritySection({
     <SettingsSection
       id="security"
       title="Security"
-      description="Password and sign-in methods"
+      description="Password, sign-in methods and two-factor authentication"
     >
       <div className="mb-4 flex flex-wrap gap-2">
         {hasPasswordProvider && (
@@ -102,6 +103,8 @@ export default function SecuritySection({
           account.
         </p>
       )}
+
+      <CustomerMfaSection />
     </SettingsSection>
   );
 }

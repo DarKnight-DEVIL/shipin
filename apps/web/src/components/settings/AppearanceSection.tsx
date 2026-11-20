@@ -18,7 +18,11 @@ export default function AppearanceSection({
   setTheme,
 }: AppearanceSectionProps) {
   return (
-    <SettingsSection id="appearance" title="Appearance" description="Color theme">
+    <SettingsSection
+      id="appearance"
+      title="Appearance"
+      description="Color theme"
+    >
       <div className="flex flex-wrap gap-2">
         {THEME_OPTIONS.map((option) => (
           <button

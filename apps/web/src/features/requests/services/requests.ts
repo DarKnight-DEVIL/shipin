@@ -11,31 +11,38 @@ import {
   onSnapshot,
   orderBy,
   limit,
-} from 'firebase/firestore';
+} from "firebase/firestore";
 import { db } from "@/lib/firebaseDb";
-import type { Request, AdditionalItemRequest, AdditionalItemRequestStatus } from '@/types/request';
-import type { Address } from '@/types/address';
-import type { RequestStatus } from '@/features/requests/services/requestStatus';
-import { toShipINError } from '@/utils/errors';
-import { quoteExpiresAt } from './quoteTtl';
+import type {
+  Request,
+  AdditionalItemRequest,
+  AdditionalItemRequestStatus,
+} from "@/types/request";
+import type { Address } from "@/types/address";
+import type { RequestStatus } from "@/features/requests/services/requestStatus";
+import { toShipINError } from "@/utils/errors";
+import { quoteExpiresAt } from "./quoteTtl";
 
 /** Default shape used when snapshot.data() is missing (e.g. edge-case fallback). */
 const EMPTY_REQUEST = {
-  userId: '',
-  email: '',
-  status: 'submitted' as RequestStatus,
-  items: [] as Request['items'],
-  warehouseOptions: { inspection: 'standard' as const, shippingPreference: 'approval' as const },
-  additionalItemRequests: [] as Request['additionalItemRequests'],
+  userId: "",
+  email: "",
+  status: "submitted" as RequestStatus,
+  items: [] as Request["items"],
+  warehouseOptions: {
+    inspection: "standard" as const,
+    shippingPreference: "approval" as const,
+  },
+  additionalItemRequests: [] as Request["additionalItemRequests"],
 };
 
 export interface CreateRequestData {
   customerName: string;
   email: string;
-  items: Request['items'];
+  items: Request["items"];
   shippingAddress: Address;
   notes?: string;
-  serviceSelections?: Request['serviceSelections'];
+  serviceSelections?: Request["serviceSelections"];
 }
 
 export async function createRequest(
@@ -43,18 +50,19 @@ export async function createRequest(
   userId: string
 ): Promise<string> {
   try {
-    const docRef = await addDoc(collection(db, 'requests'), {
+    const docRef = await addDoc(collection(db, "requests"), {
       userId,
       customerName: data.customerName,
       email: data.email,
       items: data.items,
       shippingAddress: data.shippingAddress,
-      notes: data.notes ?? '',
+      notes: data.notes ?? "",
       serviceSelections: {
-        inspection: data.serviceSelections?.inspection ?? 'standard',
-        shippingPreference: data.serviceSelections?.shippingPreference ?? 'approval',
+        inspection: data.serviceSelections?.inspection ?? "standard",
+        shippingPreference:
+          data.serviceSelections?.shippingPreference ?? "approval",
       },
-      status: 'submitted',
+      status: "submitted",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -64,14 +72,29 @@ export async function createRequest(
   }
 }
 
+/**
+ * Sortable columns.
+ *
+ * A closed set on purpose: each field/direction pair below needs its own
+ * composite index, and `npm run check:firestore-indexes` can only prove an
+ * index exists for a literal `orderBy(field, direction)`. Free-form sorts
+ * failed at runtime with FAILED_PRECONDITION the first time a new column was
+ * requested.
+ */
+export const REQUEST_SORT_FIELDS = ["createdAt", "updatedAt"] as const;
+export type RequestSortField = (typeof REQUEST_SORT_FIELDS)[number];
+
+/** Newest-N cap for the live listener (see subscribeToRequests). */
+export const REQUEST_SUBSCRIPTION_LIMIT = 200;
+
 export interface GetRequestsOptions {
   limit?: number;
   /** Firestore DocumentSnapshot to start after (for cursor pagination). */
   startAfter?: import("firebase/firestore").DocumentSnapshot;
-  /** Sort field (default: 'createdAt'). */
-  sortField?: string;
+  /** Sort field (default: 'createdAt'). Anything else is ignored. */
+  sortField?: RequestSortField;
   /** Sort direction (default: 'desc'). */
-  sortDirection?: 'asc' | 'desc';
+  sortDirection?: "asc" | "desc";
 }
 
 export interface PaginatedRequests {
@@ -90,18 +113,36 @@ export async function getRequests(
     const {
       limit: pageSize = 20,
       startAfter,
-      sortField = 'createdAt',
-      sortDirection = 'desc',
+      sortDirection = "desc",
     } = options;
 
-    let q = query(
-      collection(db, 'requests'),
-      where('userId', '==', userId)
-    );
+    // Validated, not merely typed: the value can arrive from a URL parameter.
+    const sortField: RequestSortField = REQUEST_SORT_FIELDS.includes(
+      options.sortField as RequestSortField
+    )
+      ? (options.sortField as RequestSortField)
+      : "createdAt";
+    const direction = sortDirection === "asc" ? "asc" : "desc";
 
-    // Apply ordering and cursor
-    // Note: Firestore requires a composite index for orderBy + where
-    q = query(q, orderBy(sortField, sortDirection));
+    let q = query(collection(db, "requests"), where("userId", "==", userId));
+
+    // Literal field + direction pairs so each one maps to a declared composite
+    // index in firestore.indexes.json (checked in CI).
+    if (sortField === "updatedAt") {
+      q = query(
+        q,
+        direction === "asc"
+          ? orderBy("updatedAt", "asc")
+          : orderBy("updatedAt", "desc")
+      );
+    } else {
+      q = query(
+        q,
+        direction === "asc"
+          ? orderBy("createdAt", "asc")
+          : orderBy("createdAt", "desc")
+      );
+    }
 
     if (startAfter) {
       const { startAfter: startAfterFn } = await import("firebase/firestore");
@@ -120,7 +161,7 @@ export async function getRequests(
     return {
       requests: results.map((doc) => ({
         id: doc.id,
-        ...(doc.data() as Omit<Request, 'id'>),
+        ...(doc.data() as Omit<Request, "id">),
       })),
       lastDoc,
       hasMore,
@@ -130,27 +171,13 @@ export async function getRequests(
   }
 }
 
-export async function getRequestById(requestId: string): Promise<Request | null> {
+export async function getRequestById(
+  requestId: string
+): Promise<Request | null> {
   try {
-    const snapshot = await getDoc(doc(db, 'requests', requestId));
+    const snapshot = await getDoc(doc(db, "requests", requestId));
     if (!snapshot.exists()) return null;
-    return { id: snapshot.id, ...(snapshot.data() as Omit<Request, 'id'>) };
-  } catch (error) {
-    throw toShipINError(error);
-  }
-}
-
-export async function updateRequestStatus(
-  requestId: string,
-  status: string,
-  extra?: Record<string, unknown>
-): Promise<void> {
-  try {
-    await updateDoc(doc(db, 'requests', requestId), {
-      status,
-      ...extra,
-      updatedAt: serverTimestamp(),
-    });
+    return { id: snapshot.id, ...(snapshot.data() as Omit<Request, "id">) };
   } catch (error) {
     throw toShipINError(error);
   }
@@ -158,17 +185,33 @@ export async function updateRequestStatus(
 
 export function subscribeToRequests(
   userId: string,
-  callback: (requests: Request[]) => void
+  callback: (requests: Request[]) => void,
+  onError?: (error: Error) => void
 ): () => void {
-  const q = query(collection(db, 'requests'), where('userId', '==', userId));
-  return onSnapshot(q, (snapshot) => {
-    callback(
-      snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Request, 'id'>),
-      }))
-    );
-  });
+  // Bounded and ordered: this feeds /requests and the customer support card,
+  // and an unbounded listener re-downloads every request the customer has ever
+  // filed on every change. Newest 200 is far more than either view shows, and
+  // the error callback keeps a permission failure from becoming an unhandled
+  // rejection inside onSnapshot.
+  const q = query(
+    collection(db, "requests"),
+    where("userId", "==", userId),
+    orderBy("createdAt", "desc"),
+    limit(REQUEST_SUBSCRIPTION_LIMIT)
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      callback(
+        snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...(doc.data() as Omit<Request, "id">),
+        }))
+      );
+    },
+    onError
+  );
 }
 
 export function subscribeToRequest(
@@ -176,112 +219,20 @@ export function subscribeToRequest(
   callback: (request: Request | null) => void,
   onError?: (error: Error) => void
 ): () => void {
-  return onSnapshot(doc(db, 'requests', requestId), (snapshot) => {
-    if (!snapshot.exists()) {
-      callback(null);
-      return;
-    }
-    callback({ id: snapshot.id, ...(snapshot.data() as Omit<Request, 'id'>) });
-  }, onError);
-}
-
-/** Add a new request (convenience alias for createRequest). */
-export async function addRequest(data: CreateRequestData, userId: string): Promise<string> {
-  return createRequest(data, userId);
-}
-
-export async function rejectRequest(requestId: string, reason: string): Promise<void> {
-  try {
-    const requestRef = doc(db, 'requests', requestId);
-    const snapshot = await getDoc(requestRef);
-    const userId = snapshot.exists() ? snapshot.data()?.userId : null;
-    await updateDoc(requestRef, {
-      status: 'rejected',
-      rejectionReason: reason,
-      rejectedAt: serverTimestamp(),
-      [`statusHistory.rejected`]: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    if (userId) {
-      await addDoc(collection(db, 'notifications'), {
-        userId,
-        requestId,
-        title: 'Request Rejected',
-        message: `Your request has been rejected. Reason: ${reason}`,
-        type: 'rejection',
-        read: false,
-        createdAt: serverTimestamp(),
+  return onSnapshot(
+    doc(db, "requests", requestId),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        callback(null);
+        return;
+      }
+      callback({
+        id: snapshot.id,
+        ...(snapshot.data() as Omit<Request, "id">),
       });
-    }
-  } catch (error) {
-    throw toShipINError(error);
-  }
-}
-
-export async function requestQuoteRegeneration(requestId: string): Promise<number> {
-  try {
-    const requestRef = doc(db, 'requests', requestId);
-    const current = await getDoc(requestRef);
-    const currentVersion = (current.data()?.quote?.version as number) ?? 0;
-    const newVersion = currentVersion + 1;
-    await updateDoc(requestRef, {
-      quote: { ...current.data()?.quote, version: newVersion, regeneratedCount: (current.data()?.quote?.regeneratedCount ?? 0) + 1, createdAt: serverTimestamp() },
-      quoteRegenerationRequested: false,
-      updatedAt: serverTimestamp(),
-    });
-    return newVersion;
-  } catch (error) {
-    throw toShipINError(error);
-  }
-}
-
-export async function recordPayment(
-  requestId: string,
-  paymentData: { provider: 'paypal' | 'wallet'; amount: number; orderId: string; captureId?: string }
-): Promise<void> {
-  try {
-    const requestRef = doc(db, 'requests', requestId);
-    const snapshot = await getDoc(requestRef);
-    if (!snapshot.exists()) throw new Error('Request not found');
-    const request = snapshot.data();
-    const previousPaid = request.payment?.amountPaid ?? 0;
-    const grandTotal = request.quote?.breakdown?.grandTotal ?? 0;
-    const totalPaid = previousPaid + paymentData.amount;
-    const isFullyPaid = totalPaid >= grandTotal - 0.01;
-    await updateDoc(requestRef, {
-      payment: { provider: paymentData.provider, orderId: paymentData.orderId, captureId: paymentData.captureId ?? null, amountPaid: totalPaid, paidAt: serverTimestamp() },
-      status: isFullyPaid ? 'paid' : 'awaiting_payment',
-      updatedAt: serverTimestamp(),
-    });
-  } catch (error) {
-    throw toShipINError(error);
-  }
-}
-
-export async function markRequestPaid(
-  requestId: string,
-  paymentData: { provider: 'paypal' | 'wallet'; amount: number; orderId: string; captureId?: string }
-): Promise<void> {
-  try {
-    const requestRef = doc(db, 'requests', requestId);
-    const snapshot = await getDoc(requestRef);
-    if (!snapshot.exists()) throw new Error('Request not found');
-    const userId = snapshot.data()?.userId;
-    const previousPaid = snapshot.data()?.payment?.amountPaid ?? 0;
-    const grandTotal = snapshot.data()?.quote?.breakdown?.grandTotal ?? 0;
-    const totalPaid = previousPaid + paymentData.amount;
-    const isFullyPaid = totalPaid >= grandTotal - 0.01;
-    await updateDoc(requestRef, {
-      payment: { provider: paymentData.provider, orderId: paymentData.orderId, captureId: paymentData.captureId ?? null, amountPaid: totalPaid, paidAt: serverTimestamp() },
-      status: isFullyPaid ? 'paid' : 'awaiting_payment',
-      updatedAt: serverTimestamp(),
-    });
-    if (userId) {
-      await addDoc(collection(db, 'notifications'), { userId, requestId, title: 'Payment Received', message: 'Your payment has been successfully recorded.', type: 'payment', read: false, createdAt: serverTimestamp() });
-    }
-  } catch (error) {
-    throw toShipINError(error);
-  }
+    },
+    onError
+  );
 }
 
 export async function addAdditionalItemRequest(
@@ -289,9 +240,11 @@ export async function addAdditionalItemRequest(
   item: { name: string; url: string; quantity: number }
 ): Promise<void> {
   try {
-    const requestRef = doc(db, 'requests', requestId);
+    const requestRef = doc(db, "requests", requestId);
     const snapshot = await getDoc(requestRef);
-    const latestRequest = snapshot.exists() ? (snapshot.data() as Request) : ({ ...EMPTY_REQUEST, id: '' } as Request);
+    const latestRequest = snapshot.exists()
+      ? (snapshot.data() as Request)
+      : ({ ...EMPTY_REQUEST, id: "" } as Request);
 
     const newItemId = crypto.randomUUID();
     const newItem = {
@@ -299,7 +252,7 @@ export async function addAdditionalItemRequest(
       name: item.name,
       url: item.url,
       quantity: item.quantity,
-      status: 'pending' as const,
+      status: "pending" as const,
       repackingFee: 0,
       storageFee: 0,
       amountPaid: 0,
@@ -308,11 +261,14 @@ export async function addAdditionalItemRequest(
     };
 
     await updateDoc(requestRef, {
-      additionalItemRequests: [...(latestRequest.additionalItemRequests || []), newItem],
+      additionalItemRequests: [
+        ...(latestRequest.additionalItemRequests || []),
+        newItem,
+      ],
       orderChange: {
         active: true,
-        requiresRepacking: latestRequest.status === 'packed',
-        repackingFee: latestRequest.status === 'packed' ? 2 : 0,
+        requiresRepacking: latestRequest.status === "packed",
+        repackingFee: latestRequest.status === "packed" ? 2 : 0,
         storageFee: 0,
         storageFeeApplied: false,
         startedAt: serverTimestamp(),
@@ -330,15 +286,19 @@ export async function approveAdditionalItem(
   price: number
 ): Promise<void> {
   try {
-    const requestRef = doc(db, 'requests', requestId);
+    const requestRef = doc(db, "requests", requestId);
     const snapshot = await getDoc(requestRef);
-    const latestRequest = snapshot.exists() ? (snapshot.data() as Request) : ({ ...EMPTY_REQUEST, id: '' } as Request);
+    const latestRequest = snapshot.exists()
+      ? (snapshot.data() as Request)
+      : ({ ...EMPTY_REQUEST, id: "" } as Request);
 
-    const updatedAdditionalRequests = (latestRequest.additionalItemRequests || []).map((item: AdditionalItemRequest) => {
+    const updatedAdditionalRequests = (
+      latestRequest.additionalItemRequests || []
+    ).map((item: AdditionalItemRequest) => {
       if (item.id === additionalItemId) {
         return {
           ...item,
-          status: 'awaiting_payment' as const,
+          status: "awaiting_payment" as const,
           unitPrice: price,
           subtotal: price,
           serviceFee: 0,
@@ -376,13 +336,17 @@ export async function rejectAdditionalItem(
   additionalItemId: string
 ): Promise<void> {
   try {
-    const requestRef = doc(db, 'requests', requestId);
+    const requestRef = doc(db, "requests", requestId);
     const snapshot = await getDoc(requestRef);
-    const latestRequest = snapshot.exists() ? (snapshot.data() as Request) : ({ ...EMPTY_REQUEST, id: '' } as Request);
+    const latestRequest = snapshot.exists()
+      ? (snapshot.data() as Request)
+      : ({ ...EMPTY_REQUEST, id: "" } as Request);
 
-    const updatedAdditionalRequests = (latestRequest.additionalItemRequests || []).map((item: AdditionalItemRequest) => {
+    const updatedAdditionalRequests = (
+      latestRequest.additionalItemRequests || []
+    ).map((item: AdditionalItemRequest) => {
       if (item.id === additionalItemId) {
-        return { ...item, status: 'rejected' as const };
+        return { ...item, status: "rejected" as const };
       }
       return item;
     });
@@ -402,11 +366,15 @@ export async function updateAdditionalItemStatus(
   status: AdditionalItemRequestStatus
 ): Promise<void> {
   try {
-    const requestRef = doc(db, 'requests', requestId);
+    const requestRef = doc(db, "requests", requestId);
     const snapshot = await getDoc(requestRef);
-    const latestRequest = snapshot.exists() ? (snapshot.data() as Request) : ({ ...EMPTY_REQUEST, id: '' } as Request);
+    const latestRequest = snapshot.exists()
+      ? (snapshot.data() as Request)
+      : ({ ...EMPTY_REQUEST, id: "" } as Request);
 
-    const updatedAdditionalRequests = (latestRequest.additionalItemRequests || []).map((item: AdditionalItemRequest) => {
+    const updatedAdditionalRequests = (
+      latestRequest.additionalItemRequests || []
+    ).map((item: AdditionalItemRequest) => {
       if (item.id === additionalItemId) {
         return { ...item, status };
       }

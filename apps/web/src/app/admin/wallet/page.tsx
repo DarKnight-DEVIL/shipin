@@ -11,13 +11,24 @@ import { Wallet } from "lucide-react";
 import dynamic from "next/dynamic";
 
 const CustomerListPanel = dynamic(
-  () => import("@/components/admin/wallet/CustomerListPanel").then((mod) => mod.CustomerListPanel),
+  () =>
+    import("@/components/admin/wallet/CustomerListPanel").then(
+      (mod) => mod.CustomerListPanel
+    ),
   { ssr: false, loading: () => <div className="h-full animate-pulse" /> }
 );
 
 const CreditFormPanel = dynamic(
-  () => import("@/components/admin/wallet/CreditFormPanel").then((mod) => mod.CreditFormPanel),
-  { ssr: false, loading: () => <div className="h-64 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  () =>
+    import("@/components/admin/wallet/CreditFormPanel").then(
+      (mod) => mod.CreditFormPanel
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-64 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 import { useAdminWallet } from "@/features/admin/hooks/useAdminWallet";

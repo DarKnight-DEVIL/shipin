@@ -8,7 +8,7 @@
 "use client";
 
 import { Search } from "lucide-react";
-import type { AdminCustomer } from "@/features/admin/services/customers";
+import type { AdminCustomer } from "@/features/admin/services/customersClient";
 
 interface CustomerListPanelProps {
   customers: AdminCustomer[];

@@ -39,10 +39,7 @@ interface Props {
   partialRefunds?: PartialRefund[];
 }
 
-type TimelineStep =
-  | RequestStatus
-  | "refund_requested"
-  | "refund_offered";
+type TimelineStep = RequestStatus | "refund_requested" | "refund_offered";
 
 const TIMELINE: TimelineStep[] = [
   REQUEST_STATUS.submitted,
@@ -114,8 +111,7 @@ export default function RequestTimeline({
   const refundProcessing = refundRequest?.status === "processing";
 
   const refundCompleted =
-    status === REQUEST_STATUS.refunded ||
-    refundRequest?.status === "completed";
+    status === REQUEST_STATUS.refunded || refundRequest?.status === "completed";
 
   let timeline: TimelineStep[];
 
@@ -159,11 +155,9 @@ export default function RequestTimeline({
   }
 
   function stepClasses(index: number, step: TimelineStep) {
-    const completed =
-      index < currentIndex || (isRejected && index === 0);
+    const completed = index < currentIndex || (isRejected && index === 0);
     const active = index === currentIndex;
-    const rejectedStep =
-      isRejected && step === REQUEST_STATUS.rejected;
+    const rejectedStep = isRejected && step === REQUEST_STATUS.rejected;
     const refundStep = step === "refund_requested";
     const refundedStep = step === REQUEST_STATUS.refunded;
     const deliveredStep =
@@ -247,8 +241,8 @@ export default function RequestTimeline({
       {/* Alert banners */}
       {isRejected && (
         <div className="mb-5 rounded-lg border border-rose-200/80 bg-rose-50/70 px-3.5 py-2.5 text-[12px] text-rose-800 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200">
-          This purchase request could not be processed. See the rejection
-          reason above.
+          This purchase request could not be processed. See the rejection reason
+          above.
         </div>
       )}
 
@@ -287,10 +281,8 @@ export default function RequestTimeline({
       <ol className="hidden md:flex md:items-start">
         {timeline.map((step, index) => {
           const c = stepClasses(index, step);
-          const completed =
-            index < currentIndex || (isRejected && index === 0);
-          const rejectedStep =
-            isRejected && step === REQUEST_STATUS.rejected;
+          const completed = index < currentIndex || (isRejected && index === 0);
+          const rejectedStep = isRejected && step === REQUEST_STATUS.rejected;
           const refundStep = step === "refund_requested";
           const refundedStep = step === REQUEST_STATUS.refunded;
 
@@ -332,11 +324,9 @@ export default function RequestTimeline({
       <ol className="md:hidden">
         {timeline.map((step, index) => {
           const c = stepClasses(index, step);
-          const completed =
-            index < currentIndex || (isRejected && index === 0);
+          const completed = index < currentIndex || (isRejected && index === 0);
           const active = index === currentIndex;
-          const rejectedStep =
-            isRejected && step === REQUEST_STATUS.rejected;
+          const rejectedStep = isRejected && step === REQUEST_STATUS.rejected;
           const refundStep = step === "refund_requested";
           const refundedStep = step === REQUEST_STATUS.refunded;
 
@@ -361,9 +351,7 @@ export default function RequestTimeline({
               {index < timeline.length - 1 && (
                 <div
                   className={`absolute bottom-0 left-[9px] top-6 w-px ${
-                    index < currentIndex
-                      ? c.line
-                      : "bg-[var(--border)]"
+                    index < currentIndex ? c.line : "bg-[var(--border)]"
                   }`}
                 />
               )}
@@ -386,9 +374,7 @@ export default function RequestTimeline({
                 </p>
 
                 {formatted && (
-                  <p className="text-[11px] text-[var(--muted)]">
-                    {formatted}
-                  </p>
+                  <p className="text-[11px] text-[var(--muted)]">{formatted}</p>
                 )}
 
                 {active &&

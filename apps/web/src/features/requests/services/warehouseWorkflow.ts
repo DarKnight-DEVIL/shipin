@@ -21,9 +21,8 @@ export type WarehouseChecklistEntry = {
 export function warehouseShippingPreference(
   request: Request
 ): "auto" | "approval" | "hold" {
-  return (
-    request.serviceSelections?.shippingPreference ?? "approval"
-  ) as "auto" | "approval" | "hold";
+  return (request.serviceSelections?.shippingPreference ?? "approval") as
+    "auto" | "approval" | "hold";
 }
 
 /**
@@ -62,9 +61,6 @@ export async function applyWarehouseChecklistSideEffects(
   }
 
   if (key === "readyForShipment" && value && !previousValue) {
-    await updateShipmentStatus(
-      request.id,
-      "ready_for_international_shipping"
-    );
+    await updateShipmentStatus(request.id, "ready_for_international_shipping");
   }
 }

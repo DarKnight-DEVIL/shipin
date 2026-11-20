@@ -18,11 +18,7 @@ interface Props {
   onRefresh: () => Promise<void>;
 }
 
-export default function AddressCard({
-  address,
-  onEdit,
-  onRefresh,
-}: Props) {
+export default function AddressCard({ address, onEdit, onRefresh }: Props) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -103,7 +99,10 @@ export default function AddressCard({
           {menuOpen && (
             <>
               {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+              <div
+                className="fixed inset-0 z-10"
+                onClick={() => setMenuOpen(false)}
+              />
               <div className="absolute right-0 z-20 mt-1 w-40 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg shadow-slate-950/10 dark:shadow-black/40">
                 {!address.isDefault && (
                   <button
@@ -151,9 +150,7 @@ export default function AddressCard({
         </p>
         <p>{address.country}</p>
         {address.phone && (
-          <p className="pt-1.5 text-[var(--muted-soft)]">
-            {address.phone}
-          </p>
+          <p className="pt-1.5 text-[var(--muted-soft)]">{address.phone}</p>
         )}
       </div>
 

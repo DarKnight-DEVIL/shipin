@@ -6,33 +6,81 @@ import { LayoutDashboard } from "lucide-react";
 import dynamic from "next/dynamic";
 
 const RevenueChart = dynamic(
-  () => import("@/components/admin/dashboard/RevenueChart").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-64 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  () =>
+    import("@/components/admin/dashboard/RevenueChart").then(
+      (mod) => mod.default
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-64 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 const StatusDistributionChart = dynamic(
-  () => import("@/components/admin/dashboard/StatusDistributionChart").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-64 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  () =>
+    import("@/components/admin/dashboard/StatusDistributionChart").then(
+      (mod) => mod.default
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-64 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 const OperationsOverview = dynamic(
-  () => import("@/components/admin/dashboard/OperationsOverview").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-48 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  () =>
+    import("@/components/admin/dashboard/OperationsOverview").then(
+      (mod) => mod.default
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-48 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 const FinancialOverview = dynamic(
-  () => import("@/components/admin/dashboard/FinancialOverview").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-48 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  () =>
+    import("@/components/admin/dashboard/FinancialOverview").then(
+      (mod) => mod.default
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-48 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 const RecentActivity = dynamic(
-  () => import("@/components/admin/dashboard/RecentActivity").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-64 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  () =>
+    import("@/components/admin/dashboard/RecentActivity").then(
+      (mod) => mod.default
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-64 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 const TopCustomers = dynamic(
-  () => import("@/components/admin/dashboard/TopCustomers").then((mod) => mod.default),
-  { ssr: false, loading: () => <div className="h-64 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" /> }
+  () =>
+    import("@/components/admin/dashboard/TopCustomers").then(
+      (mod) => mod.default
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-64 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
 );
 
 import {
@@ -53,17 +101,24 @@ import {
 
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyRevenuePoint[]>([]);
-  const [statusDistribution, setStatusDistribution] =
-    useState<StatusDistributionPoint[]>([]);
+  const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyRevenuePoint[]>(
+    []
+  );
+  const [statusDistribution, setStatusDistribution] = useState<
+    StatusDistributionPoint[]
+  >([]);
   const [recentActivity, setRecentActivity] = useState<RecentActivityEntry[]>(
     []
   );
   const [topCustomers, setTopCustomers] = useState<
     Awaited<ReturnType<typeof getTopCustomers>>
   >([]);
-  const [operations, setOperations] = useState<OperationsOverviewData | null>(null);
-  const [financials, setFinancials] = useState<FinancialOverviewData | null>(null);
+  const [operations, setOperations] = useState<OperationsOverviewData | null>(
+    null
+  );
+  const [financials, setFinancials] = useState<FinancialOverviewData | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,9 +146,7 @@ export default function AdminDashboardPage() {
         setFinancials(finance);
       } catch (err) {
         setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load dashboard data."
+          err instanceof Error ? err.message : "Failed to load dashboard data."
         );
       } finally {
         setLoading(false);
@@ -138,11 +191,8 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="min-h-full bg-slate-950 p-8 space-y-8 text-white">
-
       <div>
-        <h1 className="text-4xl font-bold text-white">
-          Admin Dashboard
-        </h1>
+        <h1 className="text-4xl font-bold text-white">Admin Dashboard</h1>
         <p className="text-slate-400 mt-2">
           Real-time overview of ShipIN operations
         </p>
@@ -160,7 +210,8 @@ export default function AdminDashboardPage() {
             </h2>
 
             <p className="mt-2 max-w-md text-sm text-slate-400">
-              There is currently no activity or data available for the selected view.
+              There is currently no activity or data available for the selected
+              view.
             </p>
           </div>
         </div>
@@ -168,14 +219,11 @@ export default function AdminDashboardPage() {
         <>
           {/* TOP-LEVEL METRIC CARDS */}
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-5">
-
             <Link
               href="/admin/requests"
               className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-green-500/40 hover:bg-slate-800"
             >
-              <h2 className="text-slate-400">
-                Revenue
-              </h2>
+              <h2 className="text-slate-400">Revenue</h2>
               <p className="mt-2 text-4xl font-bold text-white">
                 ${stats.revenue.toFixed(2)}
               </p>
@@ -185,9 +233,7 @@ export default function AdminDashboardPage() {
               href="/admin/requests"
               className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-slate-600 hover:bg-slate-800"
             >
-              <h2 className="text-slate-400">
-                Total Requests
-              </h2>
+              <h2 className="text-slate-400">Total Requests</h2>
               <p className="mt-2 text-4xl font-bold text-white">
                 {stats.total}
               </p>
@@ -197,9 +243,7 @@ export default function AdminDashboardPage() {
               href="/admin/requests?status=awaiting_payment"
               className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-amber-500/40 hover:bg-slate-800"
             >
-              <h2 className="text-slate-400">
-                Awaiting Payment
-              </h2>
+              <h2 className="text-slate-400">Awaiting Payment</h2>
               <p className="mt-2 text-4xl font-bold text-white">
                 {stats.awaitingPayment}
               </p>
@@ -209,9 +253,7 @@ export default function AdminDashboardPage() {
               href="/admin/requests?status=warehouse_received"
               className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-blue-500/40 hover:bg-slate-800"
             >
-              <h2 className="text-slate-400">
-                Warehouse
-              </h2>
+              <h2 className="text-slate-400">Warehouse</h2>
               <p className="mt-2 text-4xl font-bold text-white">
                 {stats.warehouse}
               </p>
@@ -221,9 +263,7 @@ export default function AdminDashboardPage() {
               href="/admin/requests?status=submitted"
               className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-blue-500/40 hover:bg-slate-800"
             >
-              <h2 className="text-slate-400">
-                Submitted
-              </h2>
+              <h2 className="text-slate-400">Submitted</h2>
               <p className="mt-2 text-4xl font-bold text-white">
                 {stats.submitted}
               </p>
@@ -233,9 +273,7 @@ export default function AdminDashboardPage() {
               href="/admin/requests?status=review"
               className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-blue-500/40 hover:bg-slate-800"
             >
-              <h2 className="text-slate-400">
-                Under Review
-              </h2>
+              <h2 className="text-slate-400">Under Review</h2>
               <p className="mt-2 text-4xl font-bold text-white">
                 {stats.review}
               </p>
@@ -245,9 +283,7 @@ export default function AdminDashboardPage() {
               href="/admin/requests?status=review"
               className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-green-500/40 hover:bg-slate-800"
             >
-              <h2 className="text-slate-400">
-                Quotes Ready
-              </h2>
+              <h2 className="text-slate-400">Quotes Ready</h2>
               <p className="mt-2 text-4xl font-bold text-white">
                 {stats.quoteReady}
               </p>
@@ -257,9 +293,7 @@ export default function AdminDashboardPage() {
               href="/admin/requests?status=quote_requested"
               className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-amber-500/50 hover:bg-slate-800"
             >
-              <h2 className="text-slate-400">
-                Quote Updates
-              </h2>
+              <h2 className="text-slate-400">Quote Updates</h2>
               <p className="mt-2 text-4xl font-bold text-white">
                 {stats.quoteUpdates}
               </p>
@@ -269,9 +303,7 @@ export default function AdminDashboardPage() {
               href="/admin/requests?status=refund_requested"
               className="block rounded-2xl border border-red-500/30 bg-slate-900 p-6 transition hover:border-red-500/60 hover:bg-red-950/20"
             >
-              <h2 className="text-red-400">
-                Refund Requests
-              </h2>
+              <h2 className="text-red-400">Refund Requests</h2>
 
               <p className="mt-2 text-4xl font-bold text-white">
                 {stats.refundRequested}
@@ -286,9 +318,7 @@ export default function AdminDashboardPage() {
               href="/admin/requests?status=shipped"
               className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-purple-500/50 hover:bg-slate-800"
             >
-              <h2 className="text-slate-400">
-                Shipped
-              </h2>
+              <h2 className="text-slate-400">Shipped</h2>
               <p className="mt-2 text-4xl font-bold text-white">
                 {stats.shipped}
               </p>
@@ -298,27 +328,16 @@ export default function AdminDashboardPage() {
               href="/admin/requests?status=delivered"
               className="block rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-green-500/50 hover:bg-slate-800"
             >
-              <h2 className="text-slate-400">
-                Delivered
-              </h2>
+              <h2 className="text-slate-400">Delivered</h2>
               <p className="mt-2 text-4xl font-bold text-white">
                 {stats.delivered}
               </p>
             </Link>
-
           </div>
 
-          {operations && (
-            <OperationsOverview
-              stats={operations}
-            />
-          )}
+          {operations && <OperationsOverview stats={operations} />}
 
-          {financials && (
-            <FinancialOverview
-              stats={financials}
-            />
-          )}
+          {financials && <FinancialOverview stats={financials} />}
 
           <div className="grid xl:grid-cols-2 gap-6">
             <RevenueChart data={monthlyRevenue} />
@@ -329,7 +348,6 @@ export default function AdminDashboardPage() {
           <TopCustomers customers={topCustomers} />
         </>
       )}
-
     </div>
   );
 }

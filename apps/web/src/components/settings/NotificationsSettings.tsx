@@ -119,7 +119,10 @@ export default function NotificationsSettings({
                     <span className="tabular-nums text-[var(--muted)]">
                       {whatsappCountryCode}
                     </span>
-                    <ChevronDown size={13} className="text-[var(--muted-soft)]" />
+                    <ChevronDown
+                      size={13}
+                      className="text-[var(--muted-soft)]"
+                    />
                   </button>
 
                   {whatsappCountryOpen && (
@@ -201,7 +204,10 @@ export default function NotificationsSettings({
                 {whatsappCountryCode}
                 {whatsappLocalNumber}
               </p>
-              <GhostButton type="button" onClick={() => setWhatsappEditing(true)}>
+              <GhostButton
+                type="button"
+                onClick={() => setWhatsappEditing(true)}
+              >
                 Change
               </GhostButton>
             </div>

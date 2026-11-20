@@ -17,9 +17,8 @@ vi.mock("@/lib/mfaSetupClient", () => ({
   confirmTotpEnrollment: vi.fn(),
 }));
 
-const { beginTotpEnrollment, confirmTotpEnrollment } = await import(
-  "@/lib/mfaSetupClient"
-);
+const { beginTotpEnrollment, confirmTotpEnrollment } =
+  await import("@/lib/mfaSetupClient");
 
 const DISABLED: MfaConfigStatus = {
   totp: { enabled: false, pending: false },
@@ -71,7 +70,9 @@ describe("TotpEnrollmentCard", () => {
     });
 
     renderCard(DISABLED);
-    fireEvent.click(screen.getByRole("button", { name: "Set up authenticator" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Set up authenticator" })
+    );
 
     expect(await screen.findByText("JBSWY3DPEHPK3PXP")).toBeInTheDocument();
     expect(screen.getByTestId("qr")).toBeInTheDocument();
@@ -91,7 +92,9 @@ describe("TotpEnrollmentCard", () => {
 
     const { onChanged } = renderCard(DISABLED);
 
-    fireEvent.click(screen.getByRole("button", { name: "Set up authenticator" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Set up authenticator" })
+    );
     await screen.findByText("JBSWY3DPEHPK3PXP");
 
     fireEvent.change(screen.getByPlaceholderText("123456"), {
@@ -117,7 +120,9 @@ describe("TotpEnrollmentCard", () => {
 
     renderCard(DISABLED);
 
-    fireEvent.click(screen.getByRole("button", { name: "Set up authenticator" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Set up authenticator" })
+    );
     await screen.findByText("JBSWY3DPEHPK3PXP");
 
     fireEvent.change(screen.getByPlaceholderText("123456"), {

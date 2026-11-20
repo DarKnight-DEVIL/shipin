@@ -10,7 +10,10 @@ import {
   RESERVED_STATUSES,
   canTransition,
 } from "@/features/requests/services/requestWorkflow";
-import { REQUEST_STATUS, type RequestStatus } from "@/features/requests/services/requestStatus";
+import {
+  REQUEST_STATUS,
+  type RequestStatus,
+} from "@/features/requests/services/requestStatus";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -120,7 +123,13 @@ export const PATCH = withErrorHandler(
       );
     }
 
-    if (!canTransition(ADMIN_STATUS_TRANSITIONS, currentStatus as RequestStatus, nextStatus)) {
+    if (
+      !canTransition(
+        ADMIN_STATUS_TRANSITIONS,
+        currentStatus as RequestStatus,
+        nextStatus
+      )
+    ) {
       return NextResponse.json(
         {
           success: false,

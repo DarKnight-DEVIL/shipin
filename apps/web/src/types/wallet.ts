@@ -6,6 +6,9 @@ export interface Wallet {
   currency: "USD";
 
   updatedAt?: Timestamp;
+
+  /** Document schema version for migrations. Default: 1 */
+  schemaVersion?: number;
 }
 
 export interface WalletTransaction {
@@ -13,12 +16,7 @@ export interface WalletTransaction {
 
   userId: string;
 
-  type:
-    | "deposit"
-    | "payment"
-    | "refund"
-    | "credit"
-    | "adjustment";
+  type: "deposit" | "payment" | "refund" | "credit" | "adjustment";
 
   amount: number;
 

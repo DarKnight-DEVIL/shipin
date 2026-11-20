@@ -30,25 +30,15 @@ export default function WarehousePanel({ request }: Props) {
   const shippingPreference =
     request.serviceSelections?.shippingPreference ?? "approval";
 
-  const [weight, setWeight] = useState(
-    warehouse?.weight?.toString() ?? ""
-  );
+  const [weight, setWeight] = useState(warehouse?.weight?.toString() ?? "");
 
-  const [length, setLength] = useState(
-    warehouse?.length?.toString() ?? ""
-  );
+  const [length, setLength] = useState(warehouse?.length?.toString() ?? "");
 
-  const [width, setWidth] = useState(
-    warehouse?.width?.toString() ?? ""
-  );
+  const [width, setWidth] = useState(warehouse?.width?.toString() ?? "");
 
-  const [height, setHeight] = useState(
-    warehouse?.height?.toString() ?? ""
-  );
+  const [height, setHeight] = useState(warehouse?.height?.toString() ?? "");
 
-  const [condition, setCondition] = useState(
-    warehouse?.condition ?? "Good"
-  );
+  const [condition, setCondition] = useState(warehouse?.condition ?? "Good");
 
   const [checklist, setChecklist] = useState({
     packageReceived: warehouse?.checklist?.packageReceived ?? false,
@@ -70,7 +60,8 @@ export default function WarehousePanel({ request }: Props) {
     if (!request.warehouse) return;
     setChecklist({
       packageReceived: request.warehouse.checklist?.packageReceived ?? false,
-      inspectionCompleted: request.warehouse.checklist?.inspectionCompleted ?? false,
+      inspectionCompleted:
+        request.warehouse.checklist?.inspectionCompleted ?? false,
       photosUploaded: request.warehouse.checklist?.photosUploaded ?? false,
       measured: request.warehouse.checklist?.measured ?? false,
       readyForShipment: request.warehouse.checklist?.readyForShipment ?? false,
@@ -130,16 +121,19 @@ export default function WarehousePanel({ request }: Props) {
         value &&
         shippingPreference === "approval"
       ) {
-        await startStorageTimer(request.id);
+        await startStorageTimer(request.id, {
+          shippingPreference,
+          storageType:
+            (request.warehouse as { storageType?: string } | undefined)
+              ?.storageType ?? null,
+        });
       }
 
       /*
        * Ready for shipment moves workflow to packed.
        */
       if (key === "readyForShipment" && value) {
-        await updateShipmentStatusServer(
-          "ready_for_international_shipping"
-        );
+        await updateShipmentStatusServer("ready_for_international_shipping");
       }
 
       toast.success("Checklist updated successfully.");
@@ -155,8 +149,7 @@ export default function WarehousePanel({ request }: Props) {
       }));
 
       toast.error("Failed to update warehouse checklist.", {
-        description:
-          error instanceof Error ? error.message : undefined,
+        description: error instanceof Error ? error.message : undefined,
       });
     } finally {
       setUpdatingChecklist(false);
@@ -198,8 +191,7 @@ export default function WarehousePanel({ request }: Props) {
       console.error("Save inspection failed:", error);
 
       toast.error("Failed to save warehouse inspection.", {
-        description:
-          error instanceof Error ? error.message : undefined,
+        description: error instanceof Error ? error.message : undefined,
       });
     } finally {
       setSaving(false);
@@ -222,8 +214,7 @@ export default function WarehousePanel({ request }: Props) {
       console.error("Failed to update photo checklist:", error);
 
       toast.error("Failed to update photo checklist.", {
-        description:
-          error instanceof Error ? error.message : undefined,
+        description: error instanceof Error ? error.message : undefined,
       });
     }
   }
@@ -242,8 +233,8 @@ export default function WarehousePanel({ request }: Props) {
               {inspection === "none"
                 ? "No Inspection"
                 : inspection === "standard"
-                ? "Standard Inspection"
-                : "Detailed Inspection"}
+                  ? "Standard Inspection"
+                  : "Detailed Inspection"}
             </p>
           </div>
 
@@ -254,8 +245,8 @@ export default function WarehousePanel({ request }: Props) {
               {shippingPreference === "auto"
                 ? "Auto Ship"
                 : shippingPreference === "approval"
-                ? "Wait For Approval"
-                : "Hold Package"}
+                  ? "Wait For Approval"
+                  : "Hold Package"}
             </p>
           </div>
         </div>

@@ -52,8 +52,6 @@
  * | `/api/auth/mfa/session` | GET, DELETE | Start / end admin elevated session |
  * | `/api/auth/mfa/totp/setup` | POST | Initiate TOTP enrollment |
  * | `/api/auth/mfa/totp/verify` | POST | Verify TOTP code |
- * | `/api/auth/mfa/sms/setup` | POST | Initiate SMS enrollment |
- * | `/api/auth/mfa/sms/verify` | POST | Verify SMS code |
  * | `/api/auth/mfa/webauthn/register/start` | POST | Begin WebAuthn registration |
  * | `/api/auth/mfa/webauthn/register/complete` | POST | Complete WebAuthn |
  * | `/api/auth/mfa/webauthn/credentials` | DELETE | Remove credential |

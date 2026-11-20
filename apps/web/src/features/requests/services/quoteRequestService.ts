@@ -23,12 +23,12 @@ export async function requestNewQuoteToRequest({
   const snapshot = await requestRef.get();
 
   if (!snapshot.exists) {
-    throw new NotFoundError('Request');
+    throw new NotFoundError("Request");
   }
 
   const requestData = snapshot.data();
   if (!requestData) {
-    throw new NotFoundError('Request data');
+    throw new NotFoundError("Request data");
   }
 
   await requestRef.update({
@@ -83,4 +83,3 @@ export async function requestNewQuoteAndNotify({
 
   return context;
 }
-

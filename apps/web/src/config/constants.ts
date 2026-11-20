@@ -30,7 +30,7 @@ export const SMTP_SOCKET_TIMEOUT_MS = 15_000;
 export const PAYPAL_PERCENTAGE = 0.044;
 
 /** PayPal fixed processing fee ($0.30). */
-export const PAYPAL_FIXED_FEE = 0.30;
+export const PAYPAL_FIXED_FEE = 0.3;
 
 /** PayPal currency code for all transactions. */
 export const PAYPAL_CURRENCY = "USD" as const;

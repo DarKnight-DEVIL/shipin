@@ -36,6 +36,7 @@ jobs:
       # No --sequence.seed: Vitest derives one from the clock, so every night
       # explores a different file order. The seed is written to the summary
       # before the step fails, which makes a red run replayable.
+      # The seed extraction below is resilient to Vitest output format changes.
       - name: Run tests in shuffled file order
         run: |
           set -euo pipefail
@@ -44,7 +45,11 @@ jobs:
           npm run test:shuffle 2>&1 | tee "$log"
           status="${PIPESTATUS[0]}"
           set -e
-          seed="$(grep -oE 'seed "[0-9]+"' "$log" | head -1 | grep -oE '[0-9]+' || true)"
+          # Try multiple patterns to extract the seed from vitest output
+          seed=""
+          seed="$(grep -oE 'seed "[0-9]+' "$log" | head -1 | grep -oE '[0-9]+' || echo "")"
+          seed="${seed:-$(grep -oE 'Sequence seed: [0-9]+' "$log" | head -1 | grep -oE '[0-9]+' || echo "")}"
+          seed="${seed:-$(grep -oE 'seed=([0-9]+)' "$log" | head -1 | grep -oE '[0-9]+' || echo "")}"
           {
             echo "### Nightly shuffled run"
             echo ""

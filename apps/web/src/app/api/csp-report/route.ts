@@ -14,9 +14,22 @@ import { withErrorHandler } from "@/utils/errors";
  * in production so violations surface in your existing alerting pipeline.
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
+  // Bounded read: a real CSP report is a few hundred bytes, and this endpoint
+  // is unauthenticated, so an oversized body is rejected before it is parsed
+  // rather than after. The proxy's API limiter bounds volume, not size.
+  const MAX_REPORT_CHARS = 8_000;
+  const raw = await request.text();
+
+  if (raw.length > MAX_REPORT_CHARS) {
+    return NextResponse.json(
+      { success: false, error: "Report too large.", code: "PAYLOAD_TOO_LARGE" },
+      { status: 413 }
+    );
+  }
+
   let report: unknown;
   try {
-    report = await request.json();
+    report = JSON.parse(raw) as unknown;
   } catch {
     return NextResponse.json(
       { success: false, error: "Invalid JSON body." },
@@ -45,11 +58,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   });
 
   // Forward to Sentry in production so violations surface in alerts.
-  if (process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_SENTRY_DSN) {
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.NEXT_PUBLIC_SENTRY_DSN
+  ) {
     try {
-      // Lazy require avoids bundling Sentry into non-production bundles.
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const Sentry = require("@sentry/nextjs") as typeof import("@sentry/nextjs");
+      // A dynamic import keeps Sentry out of the module graph unless this
+      // branch runs. It also survives formatting: a `require()` had to sit on
+      // the same line as its `eslint-disable-next-line`, which Prettier moved.
+      const Sentry = await import("@sentry/nextjs");
       Sentry.captureMessage("CSP violation reported", {
         level: "warning",
         extra: { violatedDirective, blockedUri, report },

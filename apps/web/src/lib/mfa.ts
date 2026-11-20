@@ -35,7 +35,11 @@ export function generateTotpSecret(): string {
  * @param window - Number of 30-second time steps to tolerate (default 1)
  * @returns true if the code is valid
  */
-export function verifyTotp(secret: string, code: string, window: number = 1): boolean {
+export function verifyTotp(
+  secret: string,
+  code: string,
+  window: number = 1
+): boolean {
   const token = code.trim();
 
   if (!/^\d{6}$/.test(token)) return false;
@@ -57,35 +61,48 @@ export function verifyTotp(secret: string, code: string, window: number = 1): bo
 /**
  * Generate backup codes.
  *
+ * 8 random bytes per code (64 bits), not 4: a 32-bit code space is small enough
+ * to brute-force against an online endpoint.
+ *
  * @param count - Number of backup codes to generate
  * @returns Array of backup codes (plain text, to be shown once)
  */
-export function generateBackupCodes(count: number = BACKUP_CODE_COUNT): string[] {
+export function generateBackupCodes(
+  count: number = BACKUP_CODE_COUNT
+): string[] {
   const codes: string[] = [];
   for (let i = 0; i < count; i++) {
-    const code = crypto.randomBytes(4).toString("hex").toUpperCase();
-    codes.push(`${code.slice(0, 4)}-${code.slice(4, 8)}`);
+    const code = crypto.randomBytes(8).toString("hex").toUpperCase();
+    codes.push(
+      `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}-${code.slice(12, 16)}`
+    );
   }
   return codes;
 }
 
 /**
  * Hash a backup code for storage.
- */
+ *
+ * Uses scrypt (slow, memory-hard function) to prevent brute-force attacks.
+ * Output is salt (16 bytes = 32 hex chars) + derived key (64 bytes = 128 hex chars) = 160 hex chars total. * The salt is prepended to the derived key so it can be extracted during verification. */
 export function hashBackupCode(code: string): string {
-  return crypto.createHash("sha256").update(code.trim().toUpperCase()).digest("hex");
+  const salt = crypto.randomBytes(16);
+  const derivedKey = crypto.scryptSync(code.trim().toUpperCase(), salt, 64, { N: 16384, r: 8, p: 1 });
+  // Salt is 16 bytes (32 hex chars), derived key is 64 bytes (128 hex chars)  return Buffer.from(salt).toString("hex") + derivedKey.toString("hex");
 }
 
 /**
  * Verify a backup code against stored hashes.
  *
+ * Each stored hash is format: saltHex (32 chars) + derivedKeyHex (128 chars) = 160 chars total. * The salt is extracted and used with scrypt for constant-time comparison. *
  * @param code - The backup code to verify
- * @param hashedCodes - Array of SHA-256 hashed backup codes
- * @returns Index of the matched code, or -1 if not found
+ * @param hashedCodes - Array of scrypt-hashed backup codes (salt+derivedKey format) * @returns Index of the matched code, or -1 if not found
  */
 export function verifyBackupCode(code: string, hashedCodes: string[]): number {
-  const hash = hashBackupCode(code);
-  return hashedCodes.indexOf(hash);
+  for (let i = 0; i < hashedCodes.length; i++) {
+    // Salt is first 32 hex chars (16 bytes), derived key is last 128 hex chars (64 bytes)    const storedHash = hashedCodes[i];    if (storedHash.length !== 160) continue;    const storedSalt = Buffer.from(storedHash.slice(0, 32), "hex");    const storedDerivedKey = Buffer.from(storedHash.slice(32), "hex");        // Derive key from code using the stored salt for constant-time comparison    const derivedKey = crypto.scryptSync(code.trim().toUpperCase(), storedSalt, 64, { N: 16384, r: 8, p: 1 });    const derivedKeyBuf = Buffer.from(derivedKey);        // Use constant-time comparison for both length and content    if (derivedKeyBuf.length === storedDerivedKey.length && crypto.timingSafeEqual(derivedKeyBuf, storedDerivedKey)) {
+      return i;
+    }  }  return -1;
 }
 
 /**
@@ -120,25 +137,4 @@ export async function renderTotpQrDataUrl(otpauthUrl: string): Promise<string> {
     margin: 1,
     width: 336,
   });
-}
-
-/**
- * SMS MFA helpers.
- */
-
-/** SMS code validity window in seconds (5 minutes). */
-export const SMS_CODE_TTL_MS = 5 * 60 * 1000;
-
-/**
- * Generate a 6-digit SMS verification code.
- */
-export function generateSmsCode(): string {
-  return crypto.randomInt(100000, 1000000).toString();
-}
-
-/**
- * Hash an SMS code for storage.
- */
-export function hashSmsCode(code: string): string {
-  return crypto.createHash("sha256").update(code).digest("hex");
 }

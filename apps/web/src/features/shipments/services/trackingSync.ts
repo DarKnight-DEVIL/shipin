@@ -32,7 +32,11 @@ export const TRACKING_CACHE_TTL_MS = 15 * 60 * 1000;
 export const MAX_STORED_EVENTS = 40;
 
 /** Request statuses that mean the parcel's journey is over. */
-const TERMINAL_REQUEST_STATUSES = new Set(["delivered", "refunded", "rejected"]);
+const TERMINAL_REQUEST_STATUSES = new Set([
+  "delivered",
+  "refunded",
+  "rejected",
+]);
 
 /** Carrier statuses that mean the parcel is delivered. */
 const DELIVERED_CARRIER_STATUSES = new Set([
@@ -50,10 +54,7 @@ export interface PublicTrackingEvent {
 }
 
 export type SyncPauseReason =
-  | "delivered"
-  | "terminal_status"
-  | "no_carrier_number"
-  | null;
+  "delivered" | "terminal_status" | "no_carrier_number" | null;
 
 export interface PublicTracking {
   trackingId: string;
@@ -160,20 +161,22 @@ function normalizeEvents(raw: unknown): PublicTrackingEvent[] {
  * dedupe is what keeps the document from growing.
  */
 export function mergeEvents(
-  stored: PublicTrackingEvent[],
-  incoming: CarrierEvent[],
+  /** Absent on a first sync; a single call site can hand one over. */
+  stored: PublicTrackingEvent[] | undefined,
+  incoming: CarrierEvent[] | undefined,
   limit: number = MAX_STORED_EVENTS
 ): PublicTrackingEvent[] {
   const merged = new Map<string, PublicTrackingEvent>();
 
-  for (const event of [...stored, ...normalizeEvents(incoming)]) {
+  for (const event of [...(stored ?? []), ...normalizeEvents(incoming)]) {
     const key = `${event.code}|${event.occurredAt}|${event.location ?? ""}`;
     if (!merged.has(key)) merged.set(key, event);
   }
 
   return [...merged.values()]
     .sort(
-      (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+      (a, b) =>
+        new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
     )
     .slice(0, limit);
 }
@@ -199,7 +202,10 @@ async function findRequest(trackingId: string): Promise<FoundRequest | null> {
 
   if (!byInternalId.empty) {
     const snapshot = byInternalId.docs[0];
-    return { id: snapshot.id, data: (snapshot.data() ?? {}) as Record<string, unknown> };
+    return {
+      id: snapshot.id,
+      data: (snapshot.data() ?? {}) as Record<string, unknown>,
+    };
   }
 
   const direct = await adminDb.collection("requests").doc(trackingId).get();
@@ -246,7 +252,9 @@ function project(
     statusHistory: asRecord(data.statusHistory) ?? {},
     events,
     carrierStatus:
-      typeof tracking.carrierStatus === "string" ? tracking.carrierStatus : null,
+      typeof tracking.carrierStatus === "string"
+        ? tracking.carrierStatus
+        : null,
     lastSyncedAt: toIso(tracking.lastSyncedAt),
     syncPaused: options.syncPaused,
     syncPauseReason: options.syncPauseReason,
@@ -275,7 +283,8 @@ export async function resolveTracking(
   const tracking = asRecord(data.tracking) ?? {};
   const storedEvents = normalizeEvents(tracking.events);
 
-  const requestStatus = typeof data.status === "string" ? data.status : "unknown";
+  const requestStatus =
+    typeof data.status === "string" ? data.status : "unknown";
   const terminalStatus = TERMINAL_REQUEST_STATUSES.has(requestStatus);
   const alreadyDelivered =
     tracking.syncPaused === true || Boolean(tracking.deliveredAt);
@@ -325,7 +334,8 @@ export async function resolveTracking(
       return project(id, data, storedEvents, "cache", {
         syncPaused: false,
         syncPauseReason: null,
-        notice: "Live updates are temporarily unavailable. Showing the last known status.",
+        notice:
+          "Live updates are temporarily unavailable. Showing the last known status.",
       });
     }
 
@@ -380,12 +390,18 @@ export async function resolveTracking(
   // longer reports it delivered; a closed request stays closed.
   const paused = delivered || terminalStatus;
 
-  return project(id, nextData, events, provider.placeholder ? "placeholder" : "carrier", {
-    syncPaused: paused,
-    syncPauseReason: delivered
-      ? "delivered"
-      : terminalStatus
-        ? "terminal_status"
-        : null,
-  });
+  return project(
+    id,
+    nextData,
+    events,
+    provider.placeholder ? "placeholder" : "carrier",
+    {
+      syncPaused: paused,
+      syncPauseReason: delivered
+        ? "delivered"
+        : terminalStatus
+          ? "terminal_status"
+          : null,
+    }
+  );
 }

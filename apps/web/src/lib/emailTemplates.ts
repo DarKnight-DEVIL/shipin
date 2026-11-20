@@ -27,10 +27,7 @@ function escapeHtml(input: string): string {
     .replace(/'/g, "&#039;");
 }
 
-const baseTemplate = (
-  title: string,
-  body: string
-) => `
+const baseTemplate = (title: string, body: string) => `
 <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden">
 
 <div style="background:#7c3aed;padding:24px;text-align:center;">
@@ -56,10 +53,7 @@ Thank you for choosing ShipIN ❤️
 </div>
 `;
 
-export function generateEmail(
-  type: EmailType,
-  data: EmailData
-) {
+export function generateEmail(type: EmailType, data: EmailData) {
   switch (type) {
     case "quote":
       return {
@@ -71,9 +65,7 @@ export function generateEmail(
 
 <p><strong>Request:</strong> #${escapeHtml(data.requestId.slice(0, 6))}</p>
 
-<p><strong>Total:</strong> $${Number(
-            data.amount
-          ).toFixed(2)}</p>
+<p><strong>Total:</strong> $${Number(data.amount).toFixed(2)}</p>
 
 <p>Please log in to review and accept your quote.</p>
 `
@@ -90,9 +82,7 @@ export function generateEmail(
 
 <p><strong>Request:</strong> #${escapeHtml(data.requestId.slice(0, 6))}</p>
 
-<p><strong>Amount:</strong> $${Number(
-            data.amount
-          ).toFixed(2)}</p>
+<p><strong>Amount:</strong> $${Number(data.amount).toFixed(2)}</p>
 
 <p>Our purchasing team will now begin buying your items.</p>
 `

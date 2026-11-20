@@ -102,7 +102,8 @@ export async function completeSecurityKeyRegistration(
 
   return {
     id: typeof body.credential?.id === "string" ? body.credential.id : "",
-    name: typeof body.credential?.name === "string" ? body.credential.name : name,
+    name:
+      typeof body.credential?.name === "string" ? body.credential.name : name,
   };
 }
 

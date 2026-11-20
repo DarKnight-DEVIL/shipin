@@ -51,12 +51,9 @@ type TotpSetupResponse = {
   qrDataUrl?: unknown;
 };
 type BackupCodesResponse = { backupCodes?: unknown };
-type MessageResponse = { message?: unknown };
 
 function readBackupCodes(body: BackupCodesResponse): string[] {
-  return Array.isArray(body.backupCodes)
-    ? (body.backupCodes as string[])
-    : [];
+  return Array.isArray(body.backupCodes) ? (body.backupCodes as string[]) : [];
 }
 
 /** Which factors are configured for the signed-in admin. */
@@ -75,12 +72,9 @@ export async function getMfaConfigStatus(
     sms: {
       enabled: Boolean(body.sms?.enabled),
       phoneNumber:
-        typeof body.sms?.phoneNumber === "string"
-          ? body.sms.phoneNumber
-          : null,
+        typeof body.sms?.phoneNumber === "string" ? body.sms.phoneNumber : null,
     },
-    backupCodes:
-      typeof body.backupCodes === "number" ? body.backupCodes : 0,
+    backupCodes: typeof body.backupCodes === "number" ? body.backupCodes : 0,
     webauthn: {
       enabled: Boolean(body.webauthn?.enabled),
       credentials: readSecurityKeys(body.webauthn?.credentials),
@@ -117,10 +111,11 @@ export async function confirmTotpEnrollment(
   idToken: string,
   code: string
 ): Promise<string[]> {
-  const body = await mfaApi<BackupCodesResponse>(
-    "/api/auth/mfa/totp/verify",
-    { idToken, method: "POST", body: { code } }
-  );
+  const body = await mfaApi<BackupCodesResponse>("/api/auth/mfa/totp/verify", {
+    idToken,
+    method: "POST",
+    body: { code },
+  });
 
   return readBackupCodes(body);
 }
@@ -136,32 +131,4 @@ export async function regenerateBackupCodes(
   );
 
   return readBackupCodes(body);
-}
-
-/** Send an SMS verification code to an E.164 phone number. */
-export async function sendSmsCode(
-  idToken: string,
-  phoneNumber: string
-): Promise<string> {
-  const body = await mfaApi<MessageResponse>("/api/auth/mfa/sms/setup", {
-    idToken,
-    method: "POST",
-    body: { phoneNumber },
-  });
-
-  return typeof body.message === "string" ? body.message : "Code sent.";
-}
-
-/** Confirm the SMS code and enable SMS as a second factor. */
-export async function confirmSmsCode(
-  idToken: string,
-  code: string
-): Promise<string> {
-  const body = await mfaApi<MessageResponse>("/api/auth/mfa/sms/verify", {
-    idToken,
-    method: "POST",
-    body: { code },
-  });
-
-  return typeof body.message === "string" ? body.message : "SMS enabled.";
 }

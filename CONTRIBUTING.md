@@ -3,7 +3,7 @@
 ## Getting Started
 
 ### Prerequisites
-- Node.js >= 20.0.0 (see `.nvmrc`)
+- Node.js >= 22.12 (engines field); `.nvmrc` set to 24
 - npm >= 10
 
 ### Local Setup
@@ -15,7 +15,7 @@ cd shipin
 npm install
 
 # Copy environment template and fill in secrets
-cp .env.example .env.local
+cp apps/web/.env.example apps/web/.env.local
 
 # Start dev server
 npm run dev
@@ -29,11 +29,12 @@ Visit `http://localhost:3000` to see the app.
 |--------|-------------|
 | `npm run dev` | Start development server |
 | `npm run build` | Production build |
-| `npm start` | Run production build |
+| `npm start` | Serve the production build (standalone server) |
 | `npm run lint` | ESLint checks |
 | `npm test` | Run Vitest unit tests |
 | `npm run test:watch` | Watch mode for tests |
 | `npm run test:coverage` | Tests with coverage report |
+| `npm run emulators` | Emulators + Emulator UI (`localhost:4000`) + dev server |
 | `npm run analyze` | Build with bundle size analysis |
 | `npx playwright test` | Run Playwright E2E smoke tests |
 | `npx playwright test --ui` | Interactive E2E test runner |

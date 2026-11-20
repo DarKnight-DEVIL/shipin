@@ -8,18 +8,20 @@
  * string that is not a declared right (which nothing ever reads).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 
-import { DATA_SUBJECT_RIGHTS, RIGHTS_DEADLINES } from './rights';
+import { DATA_SUBJECT_RIGHTS, RIGHTS_DEADLINES } from "./rights";
 
 const declaredRights = Object.values(DATA_SUBJECT_RIGHTS);
 
-describe('RIGHTS_DEADLINES', () => {
-  it('has an entry for every declared right', () => {
-    expect(Object.keys(RIGHTS_DEADLINES).sort()).toEqual([...declaredRights].sort());
+describe("RIGHTS_DEADLINES", () => {
+  it("has an entry for every declared right", () => {
+    expect(Object.keys(RIGHTS_DEADLINES).sort()).toEqual(
+      [...declaredRights].sort()
+    );
   });
 
-  it('gives every right a positive, whole-day window', () => {
+  it("gives every right a positive, whole-day window", () => {
     for (const right of declaredRights) {
       const days = RIGHTS_DEADLINES[right];
       expect(Number.isInteger(days)).toBe(true);
@@ -27,7 +29,7 @@ describe('RIGHTS_DEADLINES', () => {
     }
   });
 
-  it('uses the statutory 30-day response window', () => {
+  it("uses the statutory 30-day response window", () => {
     // DPDP Act 2023 expects a response within 30 days. Changing one entry here
     // is a legal decision, not a refactor, so it should break a test.
     for (const right of declaredRights) {
@@ -35,7 +37,7 @@ describe('RIGHTS_DEADLINES', () => {
     }
   });
 
-  it('declares each right identifier exactly once', () => {
+  it("declares each right identifier exactly once", () => {
     expect(new Set(declaredRights).size).toBe(declaredRights.length);
     for (const value of declaredRights) {
       expect(value).toMatch(/^[a-z_]+$/);

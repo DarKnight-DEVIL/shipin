@@ -44,7 +44,8 @@ export const moneySchema = z
   .positive("Amount must be greater than zero.")
   .max(999999999, "Amount exceeds maximum allowed.")
   .refine(
-    (n) => Number.isFinite(n) && Math.round((n + Number.EPSILON) * 100) / 100 === n,
+    (n) =>
+      Number.isFinite(n) && Math.round((n + Number.EPSILON) * 100) / 100 === n,
     "Amount must have at most 2 decimal places."
   );
 
@@ -130,7 +131,17 @@ export const requestStatusSchema = z.enum([
 
 /** POST /api/send-email and universal email wrapper. */
 export const sendEmailBodySchema = z.object({
-  type: z.enum(["quote", "payment", "shipment", "shipped", "delivered", "refunded", "support"]).optional(),
+  type: z
+    .enum([
+      "quote",
+      "payment",
+      "shipment",
+      "shipped",
+      "delivered",
+      "refunded",
+      "support",
+    ])
+    .optional(),
   email: emailSchema,
   requestId: idSchema.optional(),
   amount: moneySchema.optional(),
@@ -149,7 +160,12 @@ export const adminCreditBodySchema = z.object({
   customerId: idSchema,
   amount: moneySchema,
   type: z.enum(["credit", "refund"]).optional(),
-  description: z.string().trim().max(200).optional().default("Credit issued by admin"),
+  description: z
+    .string()
+    .trim()
+    .max(200)
+    .optional()
+    .default("Credit issued by admin"),
   requestId: idSchema.optional().nullable(),
 });
 
@@ -237,7 +253,10 @@ export const quoteBreakdownSchema = z.object({
 export const quoteBodySchema = z.object({
   requestId: idSchema.optional(),
   quote: z.object({
-    items: z.array(quoteItemSchema).min(1, "A quote needs at least one item.").max(100),
+    items: z
+      .array(quoteItemSchema)
+      .min(1, "A quote needs at least one item.")
+      .max(100),
     breakdown: quoteBreakdownSchema,
     serviceFeeRule: z.string().trim().max(200).optional(),
   }),

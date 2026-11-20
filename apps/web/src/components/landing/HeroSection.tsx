@@ -34,10 +34,11 @@ export default function HeroSection({ onPlanSelect }: HeroSectionProps) {
 
       <div className="hero__content shell">
         <header className="hero__head">
-          <div className="hero__badge">New: Express tier — priority queue + photo QA</div>
+          <div className="hero__badge">
+            New: Express tier — priority queue + photo QA
+          </div>
           <h1 id="hero-title" className="hero__title">
-            Ship from India to{" "}
-            <span className="hero__highlight">anywhere</span>
+            Ship from India to <span className="hero__highlight">anywhere</span>
             . No local address. No local payment.
           </h1>
           <p className="hero__lede">
@@ -45,7 +46,11 @@ export default function HeroSection({ onPlanSelect }: HeroSectionProps) {
             Transparent quote upfront. No subscription.
           </p>
 
-          <div className="hero__cta-group" role="group" aria-label="Choose a plan">
+          <div
+            className="hero__cta-group"
+            role="group"
+            aria-label="Choose a plan"
+          >
             <button
               type="button"
               className="btn btn--ghost hero__cta"

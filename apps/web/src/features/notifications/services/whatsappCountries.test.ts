@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 
-import { WHATSAPP_COUNTRIES } from './whatsappCountries';
+import { WHATSAPP_COUNTRIES } from "./whatsappCountries";
 
-describe('WHATSAPP_COUNTRIES', () => {
-  it('contains flag, name and dialling code for every entry', () => {
+describe("WHATSAPP_COUNTRIES", () => {
+  it("contains flag, name and dialling code for every entry", () => {
     for (const [flag, name, code] of WHATSAPP_COUNTRIES) {
       expect(flag.length).toBeGreaterThan(0);
       expect(name.length).toBeGreaterThan(0);
@@ -11,15 +11,20 @@ describe('WHATSAPP_COUNTRIES', () => {
     }
   });
 
-  it('includes the destinations ShipIN ships to most', () => {
+  it("includes the destinations ShipIN ships to most", () => {
     const names = WHATSAPP_COUNTRIES.map(([, name]) => name);
 
     expect(names).toEqual(
-      expect.arrayContaining(['India', 'United States', 'United Kingdom', 'United Arab Emirates'])
+      expect.arrayContaining([
+        "India",
+        "United States",
+        "United Kingdom",
+        "United Arab Emirates",
+      ])
     );
   });
 
-  it('has no duplicate country names', () => {
+  it("has no duplicate country names", () => {
     const names = WHATSAPP_COUNTRIES.map(([, name]) => name);
 
     expect(new Set(names).size).toBe(names.length);

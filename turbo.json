@@ -16,7 +16,7 @@
     "SENTRY_*",
     "CRON_SECRET"
   ],
-  "globalDependencies": ["**/.env", "**/.env.local", "tsconfig.json"],
+  "globalDependencies": [".env*", "apps/*/.env*", "tsconfig.json"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

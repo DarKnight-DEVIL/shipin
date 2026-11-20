@@ -1,7 +1,4 @@
-import {
-  doc,
-  getDoc,
-} from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 
 import { db } from "@/lib/firebaseDb";
 import { customerApi } from "@/lib/customerApiClient";
@@ -18,9 +15,7 @@ export interface UserPreferences {
   dashboardMetrics: DashboardMetricId[];
 }
 
-const validMetricIds = new Set(
-  dashboardMetrics.map((metric) => metric.id)
-);
+const validMetricIds = new Set(dashboardMetrics.map((metric) => metric.id));
 
 export async function getUserPreferences(
   userId: string
@@ -38,8 +33,7 @@ export async function getUserPreferences(
 
     const data = snapshot.data();
 
-    const savedMetrics =
-      data.preferences?.dashboardMetrics;
+    const savedMetrics = data.preferences?.dashboardMetrics;
 
     /*
      * Validate Firestore data before using it.
@@ -47,29 +41,21 @@ export async function getUserPreferences(
      * invalid metric ID exists in Firestore.
      */
     if (Array.isArray(savedMetrics)) {
-      const validSavedMetrics =
-        savedMetrics.filter(
-          (metric): metric is DashboardMetricId =>
-            typeof metric === "string" &&
-            validMetricIds.has(
-              metric as DashboardMetricId
-            )
-        );
+      const validSavedMetrics = savedMetrics.filter(
+        (metric): metric is DashboardMetricId =>
+          typeof metric === "string" &&
+          validMetricIds.has(metric as DashboardMetricId)
+      );
 
-      if (
-        validSavedMetrics.length >=
-        MIN_DASHBOARD_METRICS
-      ) {
+      if (validSavedMetrics.length >= MIN_DASHBOARD_METRICS) {
         return {
-          dashboardMetrics:
-            validSavedMetrics,
+          dashboardMetrics: validSavedMetrics,
         };
       }
     }
 
     return {
-      dashboardMetrics:
-        DEFAULT_DASHBOARD_METRICS,
+      dashboardMetrics: DEFAULT_DASHBOARD_METRICS,
     };
   } catch (error) {
     throw toShipINError(error);
@@ -83,28 +69,16 @@ export async function saveDashboardMetrics(
   try {
     void userId;
 
-    if (
-      metrics.length <
-      MIN_DASHBOARD_METRICS
-    ) {
+    if (metrics.length < MIN_DASHBOARD_METRICS) {
       throw new ValidationError(
         `Select at least ${MIN_DASHBOARD_METRICS} dashboard cards.`
       );
     }
 
-    const validMetrics =
-      metrics.filter(
-        (metric) =>
-          validMetricIds.has(metric)
-      );
+    const validMetrics = metrics.filter((metric) => validMetricIds.has(metric));
 
-    if (
-      validMetrics.length !==
-      metrics.length
-    ) {
-      throw new ValidationError(
-        "One or more dashboard metrics are invalid."
-      );
+    if (validMetrics.length !== metrics.length) {
+      throw new ValidationError("One or more dashboard metrics are invalid.");
     }
 
     await customerApi<{ success: boolean }>("/api/profile/preferences", {

@@ -1,5 +1,5 @@
-import type { Metadata } from 'next';
-import { siteConfig } from '@/config/site';
+import type { Metadata } from "next";
+import { siteConfig } from "@/config/site";
 import { Suspense } from "react";
 import LoginClient from "./LoginClient";
 import "@/styles/login.css";
@@ -9,14 +9,14 @@ import "@/styles/login.css";
  */
 
 export const metadata: Metadata = {
-  title: 'Sign in',
+  title: "Sign in",
   description:
-    'Sign in to your ShipIN account to manage requests, track shipments, and access your forwarding dashboard.',
+    "Sign in to your ShipIN account to manage requests, track shipments, and access your forwarding dashboard.",
   openGraph: {
-    title: 'Sign in to ShipIN',
+    title: "Sign in to ShipIN",
     description:
-      'Sign in to your ShipIN account to manage requests, track shipments, and access your forwarding dashboard.',
-    type: 'website',
+      "Sign in to your ShipIN account to manage requests, track shipments, and access your forwarding dashboard.",
+    type: "website",
     url: `${siteConfig.url}/login`,
     siteName: siteConfig.name,
     images: [
@@ -24,15 +24,15 @@ export const metadata: Metadata = {
         url: siteConfig.ogImage,
         width: 1200,
         height: 630,
-        alt: 'ShipIN — Sign in',
+        alt: "ShipIN — Sign in",
       },
     ],
   },
   twitter: {
-    card: 'summary_large_image',
-    title: 'Sign in to ShipIN',
+    card: "summary_large_image",
+    title: "Sign in to ShipIN",
     description:
-      'Sign in to your ShipIN account to manage requests, track shipments, and access your forwarding dashboard.',
+      "Sign in to your ShipIN account to manage requests, track shipments, and access your forwarding dashboard.",
     images: [siteConfig.ogImage],
     creator: siteConfig.twitterHandle,
   },
@@ -42,7 +42,9 @@ export default function LoginPage() {
   // The fallback is just the themed dark background, so there is no flash of a
   // different style while the client component loads.
   return (
-    <Suspense fallback={<main className="login login--boot" aria-busy="true" />}>
+    <Suspense
+      fallback={<main className="login login--boot" aria-busy="true" />}
+    >
       <LoginClient />
     </Suspense>
   );

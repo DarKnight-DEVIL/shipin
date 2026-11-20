@@ -3,12 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import {
-  Wallet,
-  CreditCard,
-  AlertTriangle,
-  CheckCircle2,
-} from "lucide-react";
+import { Wallet, CreditCard, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 import { AdminApiError, adminApi } from "@/lib/adminApiClient";
 import type { Request } from "@/types/request";
@@ -17,9 +12,7 @@ interface Props {
   request: Request;
 }
 
-type RefundPreference =
-  | "wallet"
-  | "original_payment";
+type RefundPreference = "wallet" | "original_payment";
 
 export default function RequestDetailsView({ request }: Props) {
   return (
@@ -80,9 +73,7 @@ function RefundActionCard({ request }: Props) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.error || "Unable to offer partial refund."
-        );
+        throw new Error(data.error || "Unable to offer partial refund.");
       }
 
       toast.success(
@@ -95,10 +86,7 @@ function RefundActionCard({ request }: Props) {
 
       router.refresh();
     } catch (error) {
-      console.error(
-        "Partial refund offer error:",
-        error
-      );
+      console.error("Partial refund offer error:", error);
 
       toast.error(
         error instanceof Error
@@ -110,10 +98,8 @@ function RefundActionCard({ request }: Props) {
     }
   }
 
-  const [
-    paypalRefundTransactionId,
-    setPaypalRefundTransactionId,
-  ] = useState("");
+  const [paypalRefundTransactionId, setPaypalRefundTransactionId] =
+    useState("");
   /*
    * Only display this card when a customer
    * has actually requested a refund.
@@ -124,9 +110,7 @@ function RefundActionCard({ request }: Props) {
 
   const refundRequest = request.refundRequest;
 
-  const preference = refundRequest.preference as
-    | RefundPreference
-    | undefined;
+  const preference = refundRequest.preference as RefundPreference | undefined;
 
   const payment = request.payment as
     | {
@@ -139,10 +123,7 @@ function RefundActionCard({ request }: Props) {
     | undefined;
 
   const totalPaid = Number(
-    payment?.amountPaid ??
-      payment?.amount ??
-      refundRequest.amount ??
-      0
+    payment?.amountPaid ?? payment?.amount ?? refundRequest.amount ?? 0
   );
 
   const originalWalletAmount = Number(payment?.walletAmount ?? 0);
@@ -214,23 +195,17 @@ function RefundActionCard({ request }: Props) {
     try {
       setProcessing(true);
 
-      await adminApi<void>(
-        `/api/admin/requests/${request.id}/refund/paypal`,
-        {
-          method: "POST",
-          body: {
-            amount: paypalRefund,
-            transactionId,
-          },
-        }
-      );
+      await adminApi<void>(`/api/admin/requests/${request.id}/refund/paypal`, {
+        method: "POST",
+        body: {
+          amount: paypalRefund,
+          transactionId,
+        },
+      });
 
       toast.success("PayPal refund recorded.");
     } catch (error) {
-      console.error(
-        "Failed to record PayPal refund:",
-        error
-      );
+      console.error("Failed to record PayPal refund:", error);
 
       toast.error(
         error instanceof AdminApiError
@@ -285,9 +260,7 @@ function RefundActionCard({ request }: Props) {
     }
   }
 
-  
-
-    /*
+  /*
    * ========================================
    * PREFERENCE LABEL
    * ========================================
@@ -297,10 +270,10 @@ function RefundActionCard({ request }: Props) {
     preference === "wallet"
       ? "ShipIN Wallet"
       : preference === "original_payment"
-      ? "Original Payment Method"
-      : preference === "original_sources"
-      ? "Original Payment Sources"
-      : "Not recorded";
+        ? "Original Payment Method"
+        : preference === "original_sources"
+          ? "Original Payment Sources"
+          : "Not recorded";
 
   /*
    * ========================================
@@ -843,9 +816,7 @@ function RefundActionCard({ request }: Props) {
                   disabled:opacity-50
                 "
               >
-                {processing
-                  ? "Offering..."
-                  : "Offer Partial Refund"}
+                {processing ? "Offering..." : "Offer Partial Refund"}
               </button>
             </div>
           </div>
@@ -948,10 +919,3 @@ function RefundDetail({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-
-
-
-
-
-
-

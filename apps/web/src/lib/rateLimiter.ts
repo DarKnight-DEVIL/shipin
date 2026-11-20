@@ -8,20 +8,29 @@
  * configured.
  */
 
+import {
+  API_RATE_LIMIT,
+  LOGIN_RATE_LIMIT,
+  RATE_LIMIT_WINDOW_MS,
+  STRICT_RATE_LIMIT,
+  WEB_RATE_LIMIT,
+} from "@/config/constants";
+
 import { createSharedRateLimiter } from "./redisRateLimiter";
 import type { RateLimitResult } from "./redisRateLimiter";
+import { getClientIp } from "./clientIp";
 
 export interface RateLimitPolicy {
   maxRequests: number;
   windowMs: number;
   message: string;
-  /** Exact pathname values that should bypass this limiter. */
-  skipRoutes?: string[];
-}
+}
 
 export interface SharedRateLimiter {
   record(request: Request): Promise<RateLimitResult>;
-  getErrorCounts(since: number): Array<{ ip: string; errors: number; lastErrorAt: number }>;
+  getErrorCounts(
+    since: number
+  ): Promise<Array<{ ip: string; errors: number; lastErrorAt: number }>>;
 }
 
 export class InMemoryRateLimiter {
@@ -30,22 +39,25 @@ export class InMemoryRateLimiter {
 
   constructor(policy: RateLimitPolicy) {
     this.policy = policy;
+
+    // record() prunes, so a busy limiter stays small. A limiter that goes
+    // quiet keeps its last buckets forever in a long-lived process, so sweep
+    // once per window as well. unref keeps the timer from holding the process
+    // open at shutdown.
+    const timer = setInterval(() => this.prune(Date.now()), policy.windowMs);
+    timer.unref?.();
   }
 
-  private getClientIp(request: Request): string {
-    // Only trust headers set by your hosting proxy. Do NOT trust
-    // X-Real-Ip or any other header that a client can set directly —
-    // doing so allows IP spoofing and rate-limit bypass.
-    const cfIp = request.headers.get("cf-connecting-ip")?.trim();
-    if (cfIp) return cfIp;
+  /** Number of address buckets currently held; used by tests and diagnostics. */
+  get trackedBuckets(): number {
+    return Object.keys(this.store).length;
+  }
 
-    const forwarded = request.headers.get("x-forwarded-for");
-    if (forwarded) {
-      const first = forwarded.split(",")[0]?.trim();
-      if (first) return first;
-    }
-
-    return "127.0.0.1";
+  private resolveClientIp(request: Request): string {
+    // See clientIp.ts: only headers the deployment platform sanitises are
+    // trusted, so a client cannot mint a fresh bucket per request. Without one
+    // every caller shares the loopback bucket rather than escaping the limit.
+    return getClientIp(request) ?? "127.0.0.1";
   }
 
   private prune(now: number): void {
@@ -58,20 +70,12 @@ export class InMemoryRateLimiter {
     }
   }
 
-  async record(request: Request): Promise<import("./redisRateLimiter").RateLimitResult> {
+  async record(
+    request: Request
+  ): Promise<import("./redisRateLimiter").RateLimitResult> {
     const now = Date.now();
-    const pathname = new URL(request.url).pathname;
-    if (this.policy.skipRoutes?.includes(pathname)) {
-      return {
-        ok: true,
-        limit: this.policy.maxRequests,
-        remaining: this.policy.maxRequests,
-        reset: now + this.policy.windowMs,
-      };
-    }
-
-    this.prune(now);
-    const ip = this.getClientIp(request);
+    this.prune(now);
+    const ip = this.resolveClientIp(request);
     const history = (this.store[ip] ??= []).filter(
       (entry) => now - entry.timestamp < this.policy.windowMs
     );
@@ -79,7 +83,10 @@ export class InMemoryRateLimiter {
 
     const limit = this.policy.maxRequests;
     const oldest = history[0]?.timestamp;
-    const reset = oldest === undefined ? now + this.policy.windowMs : oldest + this.policy.windowMs;
+    const reset =
+      oldest === undefined
+        ? now + this.policy.windowMs
+        : oldest + this.policy.windowMs;
 
     if (history.length >= limit) {
       return { ok: false, limit, remaining: 0, reset };
@@ -90,28 +97,38 @@ export class InMemoryRateLimiter {
   }
 }
 
+// Every budget comes from `@/config/constants`, which documents itself as the
+// one place limits live. The literals here used to repeat those numbers, so a
+// change in the constants left the real limiter enforcing the old value.
 const DEFAULT_POLICY: RateLimitPolicy = {
-  maxRequests: 100,
-  windowMs: 60_000,
+  maxRequests: WEB_RATE_LIMIT,
+  windowMs: RATE_LIMIT_WINDOW_MS,
   message: "Too many requests, please try again later.",
 };
 
 // In-memory instances (used as fallback when Redis is not configured)
 const webLimiterMemory = new InMemoryRateLimiter(DEFAULT_POLICY);
 const apiLimiterMemory = new InMemoryRateLimiter({
-  maxRequests: 30,
-  windowMs: 60_000,
+  maxRequests: API_RATE_LIMIT,
+  windowMs: RATE_LIMIT_WINDOW_MS,
   message: "Too many requests, please try again later.",
 });
 const strictLimiterMemory = new InMemoryRateLimiter({
-  maxRequests: 10,
-  windowMs: 60_000,
+  maxRequests: STRICT_RATE_LIMIT,
+  windowMs: RATE_LIMIT_WINDOW_MS,
   message: "Too many requests, please try again later.",
 });
 const loginLimiterMemory = new InMemoryRateLimiter({
-  maxRequests: 5,
-  windowMs: 60_000,
+  maxRequests: LOGIN_RATE_LIMIT,
+  windowMs: RATE_LIMIT_WINDOW_MS,
   message: "Too many sign-in attempts, please wait a moment and try again.",
+});
+const authEntryLimiterMemory = new InMemoryRateLimiter({
+  // The entry pages share the API budget: generous for a person retrying a
+  // sign-in, tight enough to meter a scripted flood.
+  maxRequests: API_RATE_LIMIT,
+  windowMs: RATE_LIMIT_WINDOW_MS,
+  message: "Too many requests, please try again later.",
 });
 
 // Shared (Redis-backed) wrappers — fall back to in-memory if no Redis config
@@ -124,15 +141,15 @@ export const webRateLimiter = createSharedRateLimiter(
 
 export const apiRateLimiter = createSharedRateLimiter(
   "api",
-  30,
-  60_000,
+  API_RATE_LIMIT,
+  RATE_LIMIT_WINDOW_MS,
   apiLimiterMemory
 );
 
 export const strictRateLimiter = createSharedRateLimiter(
   "strict",
-  10,
-  60_000,
+  STRICT_RATE_LIMIT,
+  RATE_LIMIT_WINDOW_MS,
   strictLimiterMemory
 );
 
@@ -146,16 +163,38 @@ export const strictRateLimiter = createSharedRateLimiter(
  */
 export const loginRateLimiter = createSharedRateLimiter(
   "login",
-  5,
-  60_000,
+  LOGIN_RATE_LIMIT,
+  RATE_LIMIT_WINDOW_MS,
   loginLimiterMemory
 );
 
-export function isRateLimited(result: import("./redisRateLimiter").RateLimitResult): boolean {
+/**
+ * Sign-in entry page limiter (/login, /verify-email).
+ *
+ * These pages used to skip rate limiting entirely, which left the cheapest
+ * paths for credential spraying and email enumeration completely unmetered.
+ * They now share a generous budget — a person retrying a failing sign-in is
+ * never blocked, a scripted flood is — while the fail-open path below still
+ * applies when the shared store itself is unreachable, so an outage cannot
+ * lock everyone out of signing in.
+ */
+export const authEntryRateLimiter = createSharedRateLimiter(
+  "auth-entry",
+  API_RATE_LIMIT,
+  RATE_LIMIT_WINDOW_MS,
+  authEntryLimiterMemory
+);
+
+export function isRateLimited(
+  result: import("./redisRateLimiter").RateLimitResult
+): boolean {
   return !result.ok;
 }
 
-export function addRateLimitHeaders(headers: Headers, result: import("./redisRateLimiter").RateLimitResult): void {
+export function addRateLimitHeaders(
+  headers: Headers,
+  result: import("./redisRateLimiter").RateLimitResult
+): void {
   headers.set("X-RateLimit-Limit", String(result.limit));
   headers.set("X-RateLimit-Remaining", String(result.remaining));
   headers.set("X-RateLimit-Reset", String(Math.floor(result.reset / 1000)));

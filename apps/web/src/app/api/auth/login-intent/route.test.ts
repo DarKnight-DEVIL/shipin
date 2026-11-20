@@ -2,10 +2,10 @@
  * Integration tests for the login-intent API route.
  * Tests the rate limiting and response structure.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock dependencies
-vi.mock('@/lib/rateLimiter', () => ({
+vi.mock("@/lib/rateLimiter", () => ({
   loginRateLimiter: {
     record: vi.fn(),
   },
@@ -13,12 +13,16 @@ vi.mock('@/lib/rateLimiter', () => ({
   addRateLimitHeaders: vi.fn(),
 }));
 
-vi.mock('@/utils/errors', () => ({
+vi.mock("@/utils/errors", () => ({
   withErrorHandler: (handler: unknown) => handler,
 }));
 
-import { loginRateLimiter, isRateLimited, addRateLimitHeaders } from '@/lib/rateLimiter';
-import { POST } from './route';
+import {
+  loginRateLimiter,
+  isRateLimited,
+  addRateLimitHeaders,
+} from "@/lib/rateLimiter";
+import { POST } from "./route";
 
 const mockLoginRateLimiter = vi.mocked(loginRateLimiter);
 const mockIsRateLimited = vi.mocked(isRateLimited);
@@ -32,7 +36,7 @@ function createMockRequest(headers: Record<string, string> = {}): Request {
   } as unknown as Request;
 }
 
-describe('POST /api/auth/login-intent', () => {
+describe("POST /api/auth/login-intent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Mirror the real helper so the route's header contract is exercised;
@@ -42,9 +46,12 @@ describe('POST /api/auth/login-intent', () => {
         headers: Headers,
         result: { limit: number; remaining: number; reset: number }
       ) => {
-        headers.set('X-RateLimit-Limit', String(result.limit));
-        headers.set('X-RateLimit-Remaining', String(result.remaining));
-        headers.set('X-RateLimit-Reset', String(Math.floor(result.reset / 1000)));
+        headers.set("X-RateLimit-Limit", String(result.limit));
+        headers.set("X-RateLimit-Remaining", String(result.remaining));
+        headers.set(
+          "X-RateLimit-Reset",
+          String(Math.floor(result.reset / 1000))
+        );
       }
     );
   });
@@ -53,7 +60,7 @@ describe('POST /api/auth/login-intent', () => {
     vi.resetAllMocks();
   });
 
-  it('allows request when under rate limit', async () => {
+  it("allows request when under rate limit", async () => {
     mockLoginRateLimiter.record.mockResolvedValue({
       ok: true,
       limit: 5,
@@ -62,16 +69,16 @@ describe('POST /api/auth/login-intent', () => {
     });
     mockIsRateLimited.mockReturnValue(false);
 
-    const request = createMockRequest({ 'cf-connecting-ip': '1.2.3.4' });
+    const request = createMockRequest({ "x-vercel-forwarded-for": "1.2.3.4" });
     const response = await POST(request);
 
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.allowed).toBe(true);
-    expect(typeof body.reset).toBe('number');
+    expect(typeof body.reset).toBe("number");
   });
 
-  it('returns 429 when rate limited', async () => {
+  it("returns 429 when rate limited", async () => {
     mockLoginRateLimiter.record.mockResolvedValue({
       ok: false,
       limit: 5,
@@ -80,17 +87,17 @@ describe('POST /api/auth/login-intent', () => {
     });
     mockIsRateLimited.mockReturnValue(true);
 
-    const request = createMockRequest({ 'cf-connecting-ip': '1.2.3.4' });
+    const request = createMockRequest({ "x-vercel-forwarded-for": "1.2.3.4" });
     const response = await POST(request);
 
     expect(response.status).toBe(429);
     const body = await response.json();
     expect(body.success).toBe(false);
-    expect(body.code).toBe('RATE_LIMIT_ERROR');
-    expect(body.error).toContain('sign-in attempts');
+    expect(body.code).toBe("RATE_LIMIT_ERROR");
+    expect(body.error).toContain("sign-in attempts");
   });
 
-  it('includes rate limit headers in response', async () => {
+  it("includes rate limit headers in response", async () => {
     mockLoginRateLimiter.record.mockResolvedValue({
       ok: true,
       limit: 5,
@@ -99,12 +106,34 @@ describe('POST /api/auth/login-intent', () => {
     });
     mockIsRateLimited.mockReturnValue(false);
 
-    const request = createMockRequest({ 'cf-connecting-ip': '1.2.3.4' });
+    const request = createMockRequest({ "x-vercel-forwarded-for": "1.2.3.4" });
     const response = await POST(request);
 
-    expect(response.headers.get('X-RateLimit-Limit')).toBe('5');
-    expect(response.headers.get('X-RateLimit-Remaining')).toBe('4');
+    expect(response.headers.get("X-RateLimit-Limit")).toBe("5");
+    expect(response.headers.get("X-RateLimit-Remaining")).toBe("4");
     // The helper emits the reset as epoch seconds, not milliseconds.
-    expect(response.headers.get('X-RateLimit-Reset')).toBe('1234567');
+    expect(response.headers.get("X-RateLimit-Reset")).toBe("1234567");
+  });
+
+  it("allows the attempt and says so when the store is unavailable", async () => {
+    // A missing store or a Redis outage must not lock every customer out of
+    // signing in; the route allows the attempt and marks the response degraded.
+    mockLoginRateLimiter.record.mockResolvedValue({
+      ok: false,
+      unavailable: true,
+      limit: 5,
+      remaining: 0,
+      reset: Date.now() + 60000,
+    } as never);
+    mockIsRateLimited.mockReturnValue(true);
+
+    const request = createMockRequest({ "x-vercel-forwarded-for": "1.2.3.4" });
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      allowed: true,
+      degraded: true,
+    });
   });
 });

@@ -10,8 +10,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { Request } from "@/types/request";
-import { type AdminCustomer, getCustomersWithWallets } from "@/features/admin/services/customers";
-import { getAllRequests } from "@/features/admin/services/requestQueue";
+import {
+  type AdminCustomer,
+  getCustomersWithWallets,
+} from "@/features/admin/services/customersClient";
+import { getAllRequests } from "@/features/admin/services/requestQueueClient";
 
 export interface AdminAuditState {
   customers: AdminCustomer[];
@@ -33,7 +36,9 @@ export interface AdminAuditActions {
 export function useAdminAudit(): AdminAuditState & AdminAuditActions {
   const [customers, setCustomers] = useState<AdminCustomer[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
+    null
+  );
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -89,7 +94,8 @@ export function useAdminAudit(): AdminAuditState & AdminAuditActions {
   }, [customers, search]);
 
   const selectedCustomer = useMemo(
-    () => customers.find((customer) => customer.id === selectedCustomerId) || null,
+    () =>
+      customers.find((customer) => customer.id === selectedCustomerId) || null,
     [customers, selectedCustomerId]
   );
 
@@ -98,8 +104,10 @@ export function useAdminAudit(): AdminAuditState & AdminAuditActions {
     return requests
       .filter((request) => request.userId === selectedCustomerId)
       .sort((a, b) => {
-        const aTime = a.updatedAt?.toMillis?.() ?? a.createdAt?.toMillis?.() ?? 0;
-        const bTime = b.updatedAt?.toMillis?.() ?? b.createdAt?.toMillis?.() ?? 0;
+        const aTime =
+          a.updatedAt?.toMillis?.() ?? a.createdAt?.toMillis?.() ?? 0;
+        const bTime =
+          b.updatedAt?.toMillis?.() ?? b.createdAt?.toMillis?.() ?? 0;
         return bTime - aTime;
       });
   }, [requests, selectedCustomerId]);

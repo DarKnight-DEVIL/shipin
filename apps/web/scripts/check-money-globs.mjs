@@ -20,14 +20,14 @@
  * `src/app/api/paypal/webhook/route.ts` therefore cannot slip past the stricter
  * floor.
  *
- * Known limit: the match is on the filename and path, so a money module with an
- * abstract name (`src/lib/ledger.ts`) is not caught. That is a deliberate trade
- * — a name list is reviewable, and the alternative was 151 exemptions.
+ * A file whose name carries no money word can opt in with a `@money-path`
+ * comment anywhere in its first 2 KB, which covers modules such as
+ * `src/lib/ledger.ts` that the name regex cannot infer.
  *
  * Usage:
  *   node scripts/check-money-globs.mjs
  */
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -43,7 +43,11 @@ const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const INCLUDE_ROOTS = ["src/lib", "src/features", "src/app/api"];
 
 /** Path fragments that mark a file as money-path or compliance code. */
-const PROTECTED_NAME = /(paypal|payment|refund|wallet|payout|billing|invoice|compliance)/i;
+const PROTECTED_NAME =
+  /(paypal|payment|refund|wallet|payout|billing|invoice|compliance)/i;
+
+/** Explicit opt-in for money modules whose filename says nothing. */
+const MONEY_MARKER = "@money-path";
 
 const SKIP_DIRS = new Set(["node_modules", ".next", "coverage"]);
 
@@ -55,6 +59,10 @@ function collectFiles(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
       if (SKIP_DIRS.has(entry.name)) continue;
+      // `coverage.exclude` in vitest.config.ts drops fixture trees, so those
+      // files are never measured and cannot carry a coverage floor. Scanning
+      // them here only flagged test data that no glob is meant to cover.
+      if (entry.name === "__fixtures__") continue;
       files.push(...collectFiles(path.join(dir, entry.name)));
       continue;
     }
@@ -77,7 +85,9 @@ function collectFiles(dir) {
 }
 
 if (typeof path.matchesGlob !== "function") {
-  console.error("check-money-globs: this script needs Node 22.5+ (path.matchesGlob).");
+  console.error(
+    "check-money-globs: this script needs Node 22.5+ (path.matchesGlob)."
+  );
   process.exit(1);
 }
 
@@ -96,13 +106,27 @@ if (missingRoots.length > 0) {
 }
 
 const globs = Object.keys(COVERAGE_GLOB_THRESHOLDS);
-const files = INCLUDE_ROOTS.flatMap((root) => collectFiles(path.join(ROOT, root)));
+const files = INCLUDE_ROOTS.flatMap((root) =>
+  collectFiles(path.join(ROOT, root))
+);
+
+const marksItself = (file) => {
+  try {
+    return readFileSync(path.join(ROOT, file), "utf8")
+      .slice(0, 2048)
+      .includes(MONEY_MARKER);
+  } catch {
+    return false;
+  }
+};
+
+const isProtected = (file) => PROTECTED_NAME.test(file) || marksItself(file);
 
 const escapes = files
-  .filter((file) => PROTECTED_NAME.test(file))
+  .filter(isProtected)
   .filter((file) => !globs.some((glob) => path.matchesGlob(file, glob)));
 
-const protectedCount = files.filter((file) => PROTECTED_NAME.test(file)).length;
+const protectedCount = files.filter(isProtected).length;
 
 out(`${protectedCount} money-path files, ${globs.length} threshold globs`);
 
@@ -125,4 +149,6 @@ if (escapes.length > 0) {
   process.exit(1);
 }
 
-out(`All ${protectedCount} money-path files fall inside a stricter coverage glob.`);
+out(
+  `All ${protectedCount} money-path files fall inside a stricter coverage glob.`
+);

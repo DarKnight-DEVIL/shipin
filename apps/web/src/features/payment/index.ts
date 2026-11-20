@@ -2,4 +2,4 @@
  * @fileoverview Payment feature – barrel export.
  */
 
-export { paymentService } from './services/paymentService';
+export { paymentService } from "./services/paymentService";

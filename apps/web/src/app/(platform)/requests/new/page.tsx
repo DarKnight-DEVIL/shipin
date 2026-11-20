@@ -21,7 +21,10 @@ import Modal from "@/components/ui/Modal";
 import PageHeader from "@/components/ui/PageHeader";
 import { auth } from "@/lib/firebase";
 import { customerApi } from "@/lib/customerApiClient";
-import { getAddresses, addAddress } from "@/features/addresses/services/addresses";
+import {
+  getAddresses,
+  addAddress,
+} from "@/features/addresses/services/addresses";
 import type { Address } from "@/types/address";
 
 // The address form carries the country/flag dataset and the phone-input stack
@@ -54,8 +57,12 @@ export default function NewRequestPage() {
   const [showAddAddress, setShowAddAddress] = useState(false);
   const [showEditAddress, setShowEditAddress] = useState(false);
   const [notes, setNotes] = useState("");
-  const [inspection, setInspection] = useState<"none" | "standard" | "detailed">("standard");
-  const [shippingPreference, setShippingPreference] = useState<"auto" | "approval" | "hold">("approval");
+  const [inspection, setInspection] = useState<
+    "none" | "standard" | "detailed"
+  >("standard");
+  const [shippingPreference, setShippingPreference] = useState<
+    "auto" | "approval" | "hold"
+  >("approval");
   const [submitting, setSubmitting] = useState(false);
   const [loadingAddresses, setLoadingAddresses] = useState(true);
 
@@ -87,7 +94,11 @@ export default function NewRequestPage() {
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const updateItem = (index: number, field: keyof ItemDraft, value: string | number) => {
+  const updateItem = (
+    index: number,
+    field: keyof ItemDraft,
+    value: string | number
+  ) => {
     setItems((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
@@ -214,7 +225,9 @@ export default function NewRequestPage() {
                       <Field label="Product name">
                         <input
                           value={item.name}
-                          onChange={(e) => updateItem(index, "name", e.target.value)}
+                          onChange={(e) =>
+                            updateItem(index, "name", e.target.value)
+                          }
                           placeholder="e.g. Sony WH-1000XM5"
                           className="shipin-input"
                         />
@@ -228,7 +241,9 @@ export default function NewRequestPage() {
                           />
                           <input
                             value={item.url}
-                            onChange={(e) => updateItem(index, "url", e.target.value)}
+                            onChange={(e) =>
+                              updateItem(index, "url", e.target.value)
+                            }
                             placeholder="https://amazon.in/..."
                             className="shipin-input pl-10"
                           />
@@ -297,9 +312,12 @@ export default function NewRequestPage() {
                     </p>
                     <p className="mt-0.5 text-[12px] leading-5 text-[var(--muted)]">
                       {selectedAddress.addressLine1}
-                      {selectedAddress.addressLine2 ? `, ${selectedAddress.addressLine2}` : ""}
+                      {selectedAddress.addressLine2
+                        ? `, ${selectedAddress.addressLine2}`
+                        : ""}
                       <br />
-                      {selectedAddress.city}, {selectedAddress.state} {selectedAddress.postalCode}
+                      {selectedAddress.city}, {selectedAddress.state}{" "}
+                      {selectedAddress.postalCode}
                       <br />
                       {selectedAddress.country}
                     </p>
@@ -391,11 +409,15 @@ export default function NewRequestPage() {
               <dl className="mt-3.5 space-y-2.5 text-[12px]">
                 <div className="flex justify-between">
                   <dt className="text-[var(--muted)]">Products</dt>
-                  <dd className="font-medium tabular-nums text-[var(--foreground)]">{items.length}</dd>
+                  <dd className="font-medium tabular-nums text-[var(--foreground)]">
+                    {items.length}
+                  </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-[var(--muted)]">Total qty</dt>
-                  <dd className="font-medium tabular-nums text-[var(--foreground)]">{totalItems}</dd>
+                  <dd className="font-medium tabular-nums text-[var(--foreground)]">
+                    {totalItems}
+                  </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-[var(--muted)]">Inspection</dt>
@@ -406,7 +428,9 @@ export default function NewRequestPage() {
                 <div className="flex justify-between">
                   <dt className="text-[var(--muted)]">Shipping</dt>
                   <dd className="font-medium capitalize text-[var(--foreground)]">
-                    {shippingPreference === "approval" ? "Wait for approval" : shippingPreference}
+                    {shippingPreference === "approval"
+                      ? "Wait for approval"
+                      : shippingPreference}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4">
@@ -450,7 +474,8 @@ export default function NewRequestPage() {
         <div className="mx-auto flex max-w-lg items-center gap-3">
           <div className="min-w-0 flex-1 text-[12px]">
             <p className="font-medium text-[var(--foreground)]">
-              {items.length} item{items.length === 1 ? "" : "s"} · {totalItems} qty
+              {items.length} item{items.length === 1 ? "" : "s"} · {totalItems}{" "}
+              qty
             </p>
             <p className="truncate text-[var(--muted)]">
               {selectedAddress
@@ -507,7 +532,9 @@ export default function NewRequestPage() {
             const updated = await getAddresses(user.uid);
             setAddresses(updated);
 
-            const newlyCreated = updated.find((item) => item.id === newAddressId);
+            const newlyCreated = updated.find(
+              (item) => item.id === newAddressId
+            );
             if (newlyCreated) setSelectedAddress(newlyCreated);
             setShowAddAddress(false);
           }}

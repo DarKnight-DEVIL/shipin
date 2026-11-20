@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 export const EmailSchema = z.string().email();
 export const PhoneSchema = z.string().regex(/^\+?[1-9]\d{1,14}$/);

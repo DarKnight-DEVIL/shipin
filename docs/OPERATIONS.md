@@ -26,11 +26,14 @@ Firestore is schema-less, so the schema is whatever the code and
 | `requests` | admin + customer | order lifecycle, quote, payment, shipment refs |
 | `quotes` | admin | expiring price quotes |
 | `paypalPaymentOrders` | server only | order → capture bookkeeping |
-| `refundRequests` | admin | refund workflow state |
 | `notifications` | server + client read | per-user fan-out |
-| `addresses` | customer | saved shipping addresses |
+| `users/{uid}/addresses` | customer | saved shipping addresses — a subcollection, not top-level |
 | `shipments` | admin | carrier/tracking data |
 | `supportTickets` / `supportMessages` | customer + admin | support thread |
+
+There is no `refundRequests` collection. Refund state lives on `requests`
+(`refund*` fields and `statusHistory`) and on `walletTransactions`; the rule
+for the old collection was removed.
 
 ### Rules for every schema change
 
@@ -47,15 +50,26 @@ Firestore is schema-less, so the schema is whatever the code and
 5. **Migrations are idempotent, resumable and dry-runnable.** Running one twice
    must not double-apply (e.g. `increment` guarded by a `migratedAt` marker).
 
-### Status: not yet versioned
+### Status: runner exists, documents are not yet versioned
 
-Today **no document carries `schemaVersion`, and there is no migration
-runner.** Any breaking shape change currently needs a manual backfill. The
-first schema-affecting change should introduce both:
+The runner is `apps/web/scripts/migrations/migration-runner.ts`, wrapped by
+`npm run migrate`. It loads `NNN-<name>.ts` from that directory, records each
+applied migration in the `migrations` collection, and supports `--dry-run`.
+Today **no document carries `schemaVersion`**; a breaking shape change still
+needs the four-step procedure below.
 
-- add `schemaVersion: 1` to documents as they are rewritten (no bulk write
-  needed);
-- add `scripts/migrations/` with the runner below.
+```bash
+npm run migrate -- 002-normalize-quote-expiry --dry-run   # report only
+npm run migrate -- 002-normalize-quote-expiry             # apply
+```
+
+**Required once for quote expiry.** `/api/admin/requests/quotes/expire` can
+only match rows that have `quote.expired == false` and a Timestamp
+`quote.expiresAt`, and Firestore cannot filter on a missing field. Quotes
+written before that invariant existed are invisible to the sweep, so they never
+expire and the hourly cron keeps reporting `expired: 0`. Run migration 002 once
+against the production project (dry run first); after that every writer
+produces the shape the sweep needs.
 
 ### Migration procedure (four steps, two deploys minimum)
 
@@ -71,7 +85,7 @@ Backfill template (idempotent, batched, safe to re-run):
 
 ```ts
 // scripts/migrations/NNN-<name>.ts
-// Usage: node --env-file=.env.local scripts/migrations/NNN-<name>.ts [--dry-run]
+// Usage: npm run migrate -- NNN-<name> [--dry-run]
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
@@ -228,8 +242,8 @@ A code rollback does **not** undo a backfill. Therefore:
 |---|---|
 | Errors after deploy, data intact | `vercel rollback`, then fix forward |
 | New code wrote bad data | Rollback + PITR restore to the pre-deploy timestamp |
-| Health `unhealthy` / 503 | Check `UPSTASH_*` env vars; rollback if a deploy changed them |
-| Health `degraded` | Upstash outage — requests fail closed; check status page |
+| Health `degraded` | Read the response body: recent limiter errors, a store-less production boot (`RATE_LIMIT_STORE_OPTIONAL=1`), or App Check enforced without a site key. Requests are still served — the limiter fails **open** — so check the Upstash status page and Sentry, and fix the configuration |
+| `/api/health` does not answer 200 | The deployment itself is unavailable (boot crash or platform outage): `vercel logs shipin --since 30m`, then `vercel rollback`. There is no `unhealthy` body state to look for — see §4 |
 | Rules reject legitimate writes | Roll back `firestore.rules` alone |
 
 ---
@@ -251,12 +265,27 @@ Public, unauthenticated, and safe for uptime monitors.
 
 | `status` | HTTP | Meaning | Should page? |
 |---|---|---|---|
-| `healthy` | 200 | Shared rate-limit store configured, no recent limiter errors | no |
-| `degraded` | 200 | Limiter failing recently; requests fail closed with 429 | **yes** |
-| `unhealthy` | 503 | Production without `UPSTASH_REDIS_REST_URL`/`_TOKEN` | **yes** |
+| `healthy` | 200 | Shared store configured, no recent limiter errors, App Check as configured | no |
+| `degraded` | 200 | No shared store in production, recent limiter errors, or App Check enforced without a site key | **yes** |
+
+There is no `503` response. The route always answers 200 with the status in the
+body: a 503 made load balancers pull a still-serving deployment out of rotation.
+A production build without a store refuses to start (`validateProductionRequiredEnv`,
+see §5), so a missing store cannot reach this endpoint in a healthy deployment.
 
 `degraded` returns 200 because the site still serves traffic, but a monitor
 must inspect the body — alert when `status !== "healthy"`.
+
+### Scheduled jobs
+
+| Job | Schedule | Failure signal |
+|---|---|---|
+| Quote expiry (`expire-quotes-cron.yml` → `POST /api/admin/requests/quotes/expire`) | hourly, GitHub Actions | the run goes red; it posts to the optional `ALERT_WEBHOOK_URL` secret and writes a job summary |
+
+GitHub schedules are best-effort: a run can be delayed or skipped under load, so
+`expired: 0` from one run is not proof the sweep is broken — check the run
+history. The sweep drains itself (each expired quote leaves the query), so a
+missed hour is picked up by the next run without a cursor.
 
 ### Uptime monitor to configure
 
@@ -291,18 +320,20 @@ These are the gaps that Sentry alone will not catch. Add in this order:
 
 ---
 
-## 5. Rate limiting is fail-closed in production
+## 5. Rate limiting in production
 
-This is a deliberate contract, not a bug:
+Two guards, and they behave differently on purpose:
 
-- **Startup:** `src/instrumentation.ts` → `assertRateLimitStoreAvailable()`
-  throws if `UPSTASH_REDIS_REST_URL` is missing, not `https://`, or the token
-  is empty. A misconfigured production deploy fails to boot rather than
-  silently limiting per instance.
-- **Runtime:** `createSharedRateLimiter().record()` rejects (429) when no Redis
-  client can be created in production and increments the error counter that
-  `/api/health` exposes. It never falls back to per-instance limits, because on
-  serverless that multiplies the effective quota by the number of regions.
+- **Boot:** `validateProductionRequiredEnv()` (called from
+  `src/instrumentation.ts`) exits 1 when the shared store is missing in
+  production, so a deployment that would limit per instance never starts.
+  `RATE_LIMIT_STORE_OPTIONAL=1` is the only opt-out; only the local/CI E2E
+  runner sets it.
+- **Runtime:** if the configured store becomes unreachable, requests are still
+  served — the limiter falls open and counts the error — because an Upstash
+  outage must not lock every user out of signing in. `/api/health` reports
+  `degraded` (HTTP 200) so the gap stays visible. It never falls back to
+  per-instance limits.
 - **Development/test:** without Redis the in-memory limiter is used, so local
   work needs no Upstash account.
 

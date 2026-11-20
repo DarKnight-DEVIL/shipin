@@ -1,31 +1,23 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import type { FormEvent } from 'react';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { renderHook, act } from "@testing-library/react";
+import type { FormEvent } from "react";
 
 const mocks = vi.hoisted(() => ({
-  credential: vi.fn((email: string, password: string) => ({ email, password })),
-  reauthenticate: vi.fn(),
-  updatePassword: vi.fn(),
-  auth: { currentUser: null as null | { uid: string; email: string } },
+  changePassword: vi.fn(),
 }));
 
-vi.mock('firebase/auth', () => ({
-  EmailAuthProvider: { credential: mocks.credential },
-  reauthenticateWithCredential: mocks.reauthenticate,
-  updatePassword: mocks.updatePassword,
+vi.mock("@/lib/customerApiClient", () => ({
+  customerApi: mocks.changePassword,
 }));
-vi.mock('@/lib/firebase', () => ({ auth: mocks.auth }));
 
-import { usePasswordSettings } from './usePasswordSettings';
+import { usePasswordSettings } from "./usePasswordSettings";
 
 const event = () => ({ preventDefault: vi.fn() }) as unknown as FormEvent;
 
 beforeEach(() => {
-  mocks.reauthenticate.mockReset().mockResolvedValue(undefined);
-  mocks.updatePassword.mockReset().mockResolvedValue(undefined);
-  mocks.auth.currentUser = { uid: 'user-1', email: 'ada@example.com' };
-  vi.spyOn(console, 'error').mockImplementation(() => {});
+  mocks.changePassword.mockReset().mockResolvedValue({ success: true });
+  vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -37,142 +29,165 @@ async function fill(
   values: { current?: string; next?: string; confirm?: string }
 ) {
   await act(async () => {
-    if (values.current !== undefined) result.current.setCurrentPassword(values.current);
+    if (values.current !== undefined)
+      result.current.setCurrentPassword(values.current);
     if (values.next !== undefined) result.current.setNewPassword(values.next);
-    if (values.confirm !== undefined) result.current.setConfirmPassword(values.confirm);
+    if (values.confirm !== undefined)
+      result.current.setConfirmPassword(values.confirm);
   });
 }
 
-describe('usePasswordSettings — validation', () => {
-  it('requires the current password', async () => {
+describe("usePasswordSettings — validation", () => {
+  it("requires the current password for an account that has one", async () => {
     const { result } = renderHook(() => usePasswordSettings(true));
 
-    await fill(result, { next: 'newpass', confirm: 'newpass' });
+    await fill(result, { next: "newpass1", confirm: "newpass1" });
     await act(async () => {
       await result.current.submit(event());
     });
 
-    expect(result.current.error).toBe('Enter your current password.');
-    expect(mocks.updatePassword).not.toHaveBeenCalled();
+    expect(result.current.error).toBe("Enter your current password.");
+    expect(mocks.changePassword).not.toHaveBeenCalled();
   });
 
-  it('requires six characters for the new password', async () => {
+  it("applies the shared password policy", async () => {
     const { result } = renderHook(() => usePasswordSettings(true));
 
-    await fill(result, { current: 'oldpass', next: 'short', confirm: 'short' });
+    await fill(result, {
+      current: "oldpass1",
+      next: "short",
+      confirm: "short",
+    });
     await act(async () => {
       await result.current.submit(event());
     });
 
-    expect(result.current.error).toBe('New password must be at least 6 characters.');
+    expect(result.current.error).toBe("Use at least 8 characters.");
   });
 
-  it('rejects reusing the current password', async () => {
+  it("rejects reusing the current password", async () => {
     const { result } = renderHook(() => usePasswordSettings(true));
 
-    await fill(result, { current: 'samepass', next: 'samepass', confirm: 'samepass' });
+    await fill(result, {
+      current: "samepass1",
+      next: "samepass1",
+      confirm: "samepass1",
+    });
     await act(async () => {
       await result.current.submit(event());
     });
 
-    expect(result.current.error).toBe('New password must be different.');
+    expect(result.current.error).toBe("New password must be different.");
   });
 
-  it('requires matching confirmation', async () => {
+  it("requires matching confirmation", async () => {
     const { result } = renderHook(() => usePasswordSettings(true));
 
-    await fill(result, { current: 'oldpass', next: 'newpass', confirm: 'otherpass' });
+    await fill(result, {
+      current: "oldpass1",
+      next: "newpass1",
+      confirm: "otherpass1",
+    });
     await act(async () => {
       await result.current.submit(event());
     });
 
     expect(result.current.error).toBe("New passwords don't match.");
   });
-
-  it('requires a signed-in user', async () => {
-    mocks.auth.currentUser = null;
-    const { result } = renderHook(() => usePasswordSettings(true));
-
-    await fill(result, { current: 'oldpass', next: 'newpass', confirm: 'newpass' });
-    await act(async () => {
-      await result.current.submit(event());
-    });
-
-    expect(result.current.error).toBe('No authenticated user found.');
-  });
 });
 
-describe('usePasswordSettings — submission', () => {
-  it('reauthenticates before updating when the account has a password', async () => {
+describe("usePasswordSettings — submission", () => {
+  it("changes the password through the server route, never the client SDK", async () => {
     const { result } = renderHook(() => usePasswordSettings(true));
 
-    await fill(result, { current: 'oldpass', next: 'newpass', confirm: 'newpass' });
+    await fill(result, {
+      current: "oldpass1",
+      next: "newpass1",
+      confirm: "newpass1",
+    });
     await act(async () => {
       await result.current.submit(event());
     });
 
-    expect(mocks.credential).toHaveBeenCalledWith('ada@example.com', 'oldpass');
-    expect(mocks.reauthenticate).toHaveBeenCalled();
-    expect(mocks.updatePassword).toHaveBeenCalledWith(mocks.auth.currentUser, 'newpass');
-    expect(result.current.message).toBe('Password updated.');
-    expect(result.current.currentPassword).toBe('');
-    expect(result.current.newPassword).toBe('');
-    expect(result.current.confirmPassword).toBe('');
+    expect(mocks.changePassword).toHaveBeenCalledWith("/api/user/password", {
+      method: "POST",
+      body: { currentPassword: "oldpass1", newPassword: "newpass1" },
+    });
+    expect(result.current.message).toBe("Password updated.");
+    expect(result.current.currentPassword).toBe("");
+    expect(result.current.newPassword).toBe("");
+    expect(result.current.confirmPassword).toBe("");
     expect(result.current.changing).toBe(false);
   });
 
-  it('skips reauthentication for social-only accounts', async () => {
+  it("sets a first password for a social-only account without asking for one", async () => {
     const { result } = renderHook(() => usePasswordSettings(false));
 
-    await fill(result, { current: 'anything', next: 'newpass', confirm: 'newpass' });
+    await fill(result, { next: "newpass1", confirm: "newpass1" });
     await act(async () => {
       await result.current.submit(event());
     });
 
-    expect(mocks.reauthenticate).not.toHaveBeenCalled();
-    expect(mocks.updatePassword).toHaveBeenCalled();
+    expect(mocks.changePassword).toHaveBeenCalledWith("/api/user/password", {
+      method: "POST",
+      body: { currentPassword: undefined, newPassword: "newpass1" },
+    });
   });
 
-  it('surfaces the provider error message', async () => {
-    mocks.updatePassword.mockRejectedValue(new Error('weak-password'));
-    const { result } = renderHook(() => usePasswordSettings(false));
+  it("surfaces the server message when the password is rejected", async () => {
+    mocks.changePassword.mockRejectedValue(
+      new Error("Your current password is incorrect.")
+    );
+    const { result } = renderHook(() => usePasswordSettings(true));
 
-    await fill(result, { current: 'old', next: 'newpass', confirm: 'newpass' });
+    await fill(result, {
+      current: "oldpass1",
+      next: "newpass1",
+      confirm: "newpass1",
+    });
     await act(async () => {
       await result.current.submit(event());
     });
 
-    expect(result.current.error).toBe('weak-password');
+    expect(result.current.error).toBe("Your current password is incorrect.");
     expect(result.current.changing).toBe(false);
   });
 
-  it('falls back to a generic message for non-Error rejections', async () => {
-    mocks.updatePassword.mockRejectedValue('nope');
-    const { result } = renderHook(() => usePasswordSettings(false));
+  it("falls back to a generic message for non-Error rejections", async () => {
+    mocks.changePassword.mockRejectedValue("nope");
+    const { result } = renderHook(() => usePasswordSettings(true));
 
-    await fill(result, { current: 'old', next: 'newpass', confirm: 'newpass' });
+    await fill(result, {
+      current: "oldpass1",
+      next: "newpass1",
+      confirm: "newpass1",
+    });
     await act(async () => {
       await result.current.submit(event());
     });
 
-    expect(result.current.error).toBe('Failed to update password.');
+    expect(result.current.error).toBe("Failed to update password.");
   });
 
-  it('clears stale messages on the next attempt', async () => {
-    const { result } = renderHook(() => usePasswordSettings(false));
+  it("clears stale messages on the next attempt", async () => {
+    const { result } = renderHook(() => usePasswordSettings(true));
 
-    await fill(result, { current: 'old', next: 'newpass', confirm: 'newpass' });
+    await fill(result, {
+      current: "oldpass1",
+      next: "newpass1",
+      confirm: "newpass1",
+    });
     await act(async () => {
       await result.current.submit(event());
     });
-    expect(result.current.message).toBe('Password updated.');
+    expect(result.current.message).toBe("Password updated.");
 
-    await fill(result, { current: '', next: '', confirm: '' });
+    await fill(result, { current: "", next: "", confirm: "" });
     await act(async () => {
       await result.current.submit(event());
     });
 
-    expect(result.current.message).toBe('');
-    expect(result.current.error).toBe('Enter your current password.');
+    expect(result.current.message).toBe("");
+    expect(result.current.error).toBe("Enter your current password.");
   });
 });

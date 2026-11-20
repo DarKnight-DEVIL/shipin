@@ -26,15 +26,13 @@ export const REQUEST_STATUS = {
 
   warehouse_received: "warehouse_received",
 
-  ready_for_international_shipping:
-    "ready_for_international_shipping",
+  ready_for_international_shipping: "ready_for_international_shipping",
 
   packed: "packed",
 
   shipped: "shipped",
 
-  out_for_delivery:
-    "out_for_delivery",
+  out_for_delivery: "out_for_delivery",
 
   delivered: "delivered",
 
@@ -44,4 +42,4 @@ export const REQUEST_STATUS = {
 } as const;
 
 export type RequestStatus =
-  typeof REQUEST_STATUS[keyof typeof REQUEST_STATUS];
+  (typeof REQUEST_STATUS)[keyof typeof REQUEST_STATUS];
