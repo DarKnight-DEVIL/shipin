@@ -182,9 +182,42 @@ export default function TermsPage() {
               6.3 Refunds
             </h3>
             <p className="mb-4">
-              Refunds are processed according to our refund policy, available in
-              your account dashboard. Refund requests are reviewed on a
-              case-by-case basis.
+              Our{" "}
+              <Link
+                href="/refund-policy"
+                className="text-orange-700 dark:text-orange-300 hover:underline"
+              >
+                Refund Policy
+              </Link>{" "}
+              forms part of these Terms and sets out what is refundable. In
+              summary:
+            </p>
+            <ul className="list-disc list-inside space-y-2 mb-4">
+              <li>
+                Cancel before we have paid the seller and you are refunded in
+                full, including any Express tier fee.
+              </li>
+              <li>
+                Once we have paid the seller, we ask them for a return where
+                their policy allows, resell or return the items for you, and
+                refund the proceeds less any seller restocking charge and the
+                domestic shipping already spent. We tell you the figure before
+                acting on it.
+              </li>
+              <li>
+                Wrong, damaged or missing items are reported within 7 days of
+                delivery with photos, and resolved with a replacement, a partial
+                refund, or a full refund where the item cannot be used and
+                cannot be replaced.
+              </li>
+              <li>
+                Refunds are paid to your wallet immediately once agreed, or to
+                the original PayPal account within 5–10 business days. We charge
+                no restocking fee, cancellation penalty or claim fee.
+              </li>
+            </ul>
+            <p className="mb-4">
+              Nothing in this section limits your statutory rights.
             </p>
           </section>
 
