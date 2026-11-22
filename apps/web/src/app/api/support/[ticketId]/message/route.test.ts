@@ -136,7 +136,7 @@ describe("POST /api/support/[ticketId]/message", () => {
     expect(response.status).toBe(404);
   });
 
-  it("stops a customer replying to someone else's ticket", async () => {
+  it("returns 404 (not found) rather than 403 when a customer replies to another user's ticket, closing the enumeration oracle", async () => {
     mocks.docs["supportTickets/ticket-1"] = { customerId: "someone-else" };
 
     const response = await POST(
@@ -144,7 +144,7 @@ describe("POST /api/support/[ticketId]/message", () => {
       context()
     );
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(404);
     expect(mocks.add).not.toHaveBeenCalled();
   });
 
