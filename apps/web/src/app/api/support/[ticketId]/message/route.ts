@@ -101,10 +101,13 @@ export const POST = withErrorHandler(
       return NextResponse.json(
         {
           success: false,
-          error: "You can only reply to your own support tickets.",
-          code: "AUTHORIZATION_ERROR",
+          error: "Support ticket not found.",
+          code: "NOT_FOUND",
         },
-        { status: 403, headers: NO_STORE }
+        {
+          status: 404,
+          headers: NO_STORE,
+        }
       );
     }
 
