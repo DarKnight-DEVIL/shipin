@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- The inspection-photo quota on `/api/r2/upload` counts `warehouse.inspectionPhotos` from the request document `authorizeInspectionAccess` already reads, instead of listing the bucket with `ListObjectsV2`. The upload token therefore needs only `s3:PutObject`; before this, a token without `s3:ListBucket` failed every upload with a 500 rather than naming the missing permission. A client that discards the object key instead of registering it can still exceed the cap — already true of the listing, which could not be a hard bound either.
+- The proxy rejects cross-site mutations: a `POST`, `PUT`, `PATCH` or `DELETE` to `/api/*` carrying `Sec-Fetch-Site: cross-site` is answered `403 CROSS_SITE_REQUEST_BLOCKED` (`apps/web/src/proxy.ts`). It runs after the origin allowlist and covers what that allowlist cannot judge — a plain form post or a `no-cors` fetch may arrive with no `Origin` at all, and the browser stamps `Sec-Fetch-Site` itself, so page script cannot forge it. Requests without the header (server-to-server callers, test clients) and cross-site reads are unchanged.
 - Passkey MFA works on localhost again: `Permissions-Policy` allows `publickey-credentials-get=(self)`, and in development the relying party follows the loopback origin the ceremony was served from instead of refusing a shared-hosting `APP_URL` outright or insisting on port 3000. Production still derives the origin from `APP_URL` and rejects shared hosting, where an RP ID would cover other tenants.
 - Admin MFA session cookies moved to version 2, which invalidates existing elevated sessions: administrators must complete the MFA challenge once after this deploy. The bump rejects tokens whose claims no longer match the current session format.
 - The standalone artefact is now prepared by `npm run build` (`next build && node scripts/prepare-standalone.mjs`), not only by npm's `prestart` hook, so a container or supervisor that runs `.next/standalone/apps/web/server.js` directly no longer serves HTML whose `/_next/static` chunks 404. `prestart` still runs the same idempotent script.
@@ -57,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Admin wallet credits preserve the amount the refund request asked for instead of crediting the captured total.
 - `/api/paypal/capture-order` runs inside `withErrorHandler` and always releases its capture claim, including when the settlement throws.
 - Duplicate Firestore indexes removed; `firebase.json` no longer declares a Storage rules file the app does not use (R2 is the object store).
-- CSRF is token-less by design, and the docs now say so: an intermediate pass added `src/lib/csrf.ts` (double-submit cookie) with proxy enforcement, but no flow issued the cookie, no client sent the header, and the check ran on every method and every API path — including `GET /api/health` and the public routes — so it would have answered 401 to all API traffic. Removed — `src/lib/csrf.ts` is not in the tree and no CSRF token is issued or read. CSRF is covered by four controls instead: Bearer-token auth (a cross-origin request cannot set `Authorization`), the proxy's origin allowlist (`403 CORS_ORIGIN_NOT_ALLOWED`), its rejection of `POST`/`PUT`/`PATCH`/`DELETE` carrying `Sec-Fetch-Site: cross-site` (`403 CROSS_SITE_REQUEST_BLOCKED`), and CSP `form-action 'self'`. The only cookie is the `HttpOnly` + `SameSite=Strict` admin MFA session, which only ever supplements a bearer-verified request. Matches `README.md` → Security.
+- CSRF is token-less by design, and the docs now say so: an intermediate pass added `src/lib/csrf.ts` (double-submit cookie) with proxy enforcement, but no flow issued the cookie, no client sent the header, and the check ran on every method and every API path — including `GET /api/health` and the public routes — so it would have answered 401 to all API traffic. Removed — `src/lib/csrf.ts` is not in the tree and no CSRF token is issued or read. CSRF is covered by four controls instead: Bearer-token auth (a cross-origin request cannot set `Authorization`), the proxy's origin allowlist (`403 CORS_ORIGIN_NOT_ALLOWED`), its rejection of cross-site mutations (`403 CROSS_SITE_REQUEST_BLOCKED`), and CSP `form-action 'self'`. The only cookie is the `HttpOnly` + `SameSite=Strict` admin MFA session, which only ever supplements a bearer-verified request. Matches `README.md` → Security.
 - Added eslint-disable suppressions with explanations for legitimate `setState` inside effects in support hooks
 
 ### Removed
@@ -65,6 +67,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed unused `gsap` dependency (~35KB gzipped) — no imports were found anywhere in `src/`
 
 ---
+
+
+## Unreleased
+
+### Changed
+
+- `/api/tracking` endpoint now uses a stricter rate limit of 20 requests per minute per IP (down from 30 for general API), making it expensive to guess sequential SHP-YYYY-NNNNNN tracking IDs while still allowing customer retries. The proxy (`src/proxy.ts`) applies `strictRateLimiter` specifically to `/api/tracking` and `/api/tracking/` paths.
+
 ## [0.1.0] — Initial Release
 
 ### Added
@@ -79,4 +89,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Content-Security-Policy, HSTS, X-Frame-Options, Permissions-Policy security headers
 - Zod input validation on all API routes
 - Firestore and Storage security rules
-- Comprehensive README, CLAUDE.md, DESIGN.md, PRODUCT.md, ARCHITECTURE.md docs
+- Comprehensive README, CLAUDE.md, DESIGN.md, PRODUCT.md, ARCHITECTURE.md docs
