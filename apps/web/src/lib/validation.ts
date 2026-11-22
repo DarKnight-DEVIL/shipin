@@ -39,7 +39,7 @@ export const whatsappPhoneSchema = z
 
 /** A money amount: finite, positive, at most 2 decimals. */
 export const moneySchema = z
-  .number()
+  .number({ error: "Amount must be a valid number." })
   .finite("Amount must be a valid number.")
   .positive("Amount must be greater than zero.")
   .max(999999999, "Amount exceeds maximum allowed.")
@@ -57,14 +57,22 @@ export const idSchema = z
   .max(64, "ID is too long.")
   .regex(/^[a-zA-Z0-9_-]+$/, "ID contains invalid characters.");
 
-/** A UUID (strict). */
-export const uuidSchema = z
-  .string()
-  .trim()
-  .regex(
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-    "Invalid ID format."
-  );
+/**
+ * A Firestore document ID whose messages name the field they belong to.
+ *
+ * `idSchema` answers "ID contains invalid characters.", which a JSON body
+ * surfaced verbatim: the caller was told something about "ID" without being
+ * told which field the server rejected. Body schemas use this; a lone route
+ * param can keep `idSchema`.
+ */
+export function namedIdSchema(label: string) {
+  return z
+    .string({ error: `${label} is required.` })
+    .trim()
+    .min(1, `${label} is required.`)
+    .max(64, `${label} is too long.`)
+    .regex(/^[a-zA-Z0-9_-]+$/, `${label} contains invalid characters.`);
+}
 
 /** Free-text message: no HTML, no scripts, bounded length. */
 export const messageSchema = z
@@ -76,17 +84,6 @@ export const messageSchema = z
 /** Admin ticket/support reason. */
 export const adminReasonSchema = messageSchema;
 
-/** Customer name / display name. */
-export const nameSchema = z
-  .string()
-  .trim()
-  .min(1, "Name is required.")
-  .max(100, "Name is too long (max 100 characters).")
-  .regex(
-    /^[A-Za-z\s\p{Script=Latin}'-]+$/u,
-    "Name contains invalid characters."
-  );
-
 /** Short label: 1-50 chars, limited character set. */
 export const labelSchema = z
   .string()
@@ -96,7 +93,9 @@ export const labelSchema = z
   .regex(/^[A-Za-z0-9\s-]+$/, "Label contains invalid characters.");
 
 /** PayPal payment type enum. */
-export const paymentTypeSchema = z.enum(["main", "additional_item"]);
+export const paymentTypeSchema = z.enum(["main", "additional_item"], {
+  error: "Invalid payment type.",
+});
 
 /** Refund method enum. */
 export const refundMethodSchema = z.enum([
@@ -110,19 +109,6 @@ export const whatsappTemplateSchema = z.enum([
   "hello_world",
   "shipin_payment_received",
   "shipin_support_update",
-]);
-
-/** Request status enum (server-defined; clients cannot set this). */
-export const requestStatusSchema = z.enum([
-  "draft",
-  "submitted",
-  "processing",
-  "purchased",
-  "shipped",
-  "delivered",
-  "cancelled",
-  "refund_requested",
-  "refunded",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -310,21 +296,41 @@ export const shipmentStatusBodySchema = z.object({
   status: z.enum(["shipped", "out_for_delivery", "delivered"]),
 });
 
-/** POST /api/paypal/create-order */
+/**
+ * POST /api/paypal/create-order.
+ *
+ * One schema for the whole payload. It used to be split in two — the ids in
+ * `createOrderIdsSchema`, the amount and type hand-checked — so the same fields
+ * were defined twice and only one copy named the rejected field. Both ids use
+ * `namedIdSchema` here so a value Firestore cannot accept as a document id is a
+ * 400 saying "Request ID" rather than a 500 from inside the Admin SDK.
+ */
 export const createOrderBodySchema = z.object({
-  requestId: idSchema,
+  requestId: namedIdSchema("Request ID"),
   amount: moneySchema,
   paymentType: paymentTypeSchema.optional().default("main"),
-  additionalItemRequestId: idSchema.optional(),
+  additionalItemRequestId: namedIdSchema(
+    "Additional item request ID"
+  ).optional(),
 });
 
 /** POST /api/paypal/capture-order */
 export const captureOrderBodySchema = z.object({
-  requestId: idSchema,
-  orderID: z.string().trim().min(1, "Order ID is required.").max(64),
+  requestId: namedIdSchema("Request ID"),
+  // Also the Firestore document id for `paypalPaymentOrders/{orderID}`, so the
+  // charset is a path-safety rule and not just cosmetics: "/" is rejected here
+  // rather than throwing inside the Admin SDK when `.doc(orderID)` runs.
+  orderID: z
+    .string()
+    .trim()
+    .min(1, "Order ID is required.")
+    .max(64, "Order ID is too long.")
+    .regex(/^[a-zA-Z0-9_-]+$/, "Order ID contains invalid characters."),
   amount: moneySchema,
   paymentType: paymentTypeSchema.optional().default("main"),
-  additionalItemRequestId: idSchema.optional(),
+  additionalItemRequestId: namedIdSchema(
+    "Additional item request ID"
+  ).optional(),
 });
 
 /** POST /api/paypal/create-wallet-topup */
@@ -333,26 +339,32 @@ export const createTopupBodySchema = z.object({
   description: z.string().trim().max(200).optional(),
 });
 
-/** POST /api/payment/complete-wallet */
-export const completeWalletBodySchema = z.object({
-  requestId: idSchema,
+/**
+ * POST /api/paypal/capture-wallet-topup.
+ *
+ * `orderID` becomes `walletTopupOrders/{orderID}`, so it needs the same
+ * path-safety rule as every other id that reaches `.doc()`; `amount` is the
+ * same money rule the creation route uses, instead of a hand-written positivity
+ * check that accepted 10.123.
+ */
+export const captureTopupBodySchema = z.object({
+  orderID: namedIdSchema("PayPal Order ID"),
   amount: moneySchema,
 });
 
-/** POST /api/r2/upload */
-export const r2UploadBodySchema = z.object({
-  requestId: idSchema,
+/**
+ * POST /api/payment/complete-wallet.
+ *
+ * The request id is the whole body: the amount due is priced from the stored
+ * quote inside the transaction, so a client-sent amount is not accepted (and,
+ * because the object strips unknown keys, cannot influence the charge if one is
+ * still sent).
+ */
+export const completeWalletBodySchema = z.object({
+  requestId: namedIdSchema("Request ID"),
 });
 
-/** POST /api/r2/view */
-export const r2ViewBodySchema = z.object({
-  key: z
-    .string()
-    .trim()
-    .min(1, "Object key is required.")
-    .max(512, "Object key is too long.")
-    .regex(/^inspection\/.+/i, "Only inspection images are allowed."),
-});
+
 
 /** POST /api/whatsapp/test */
 export const whatsappTestBodySchema = z.object({
@@ -365,7 +377,7 @@ export const whatsappTestBodySchema = z.object({
 
 export const requestIdSchema = z.object({ requestId: idSchema });
 export const ticketIdSchema = z.object({ ticketId: idSchema });
-export const trackingIdSchema = z.object({ trackingId: idSchema });
+
 
 // ---------------------------------------------------------------------------
 // Utility: validate and coerce a JSON body.
