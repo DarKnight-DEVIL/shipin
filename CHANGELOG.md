@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Turbo hashes the source `.env*` files (`apps/*/.env*`, `.env*`) instead of `**/.env*`. The old glob also matched the copies the tracer left inside `.next/standalone`, so a build changed the global hash of the next build.
 - `/api/health` derives the shared-store state from `getRateLimitStoreStatus()`, the same check the limiter uses: a Redis URL that is set but unusable (not https) now reports `degraded` instead of `connected` while every `record()` call returns `unavailable`.
 - Installs are npm-only: a root `preinstall` guard fails `yarn`/`pnpm`/`bun` runs before they can write a second lockfile.
+- The Firebase client SDK left every route's critical path. `AuthRedirectHandler` lives in the root layout and imported `firebase/auth` statically, so the app + auth SDK (~51 KB gzipped) was in the initial JavaScript of every page — landing, `/terms`, `/track` — for a call that only does something when returning from a redirect sign-in. It and the two landing components that only needed a signed-in/out nav label now import it after mount. Measured: `/` 241 → 203 KB gzipped, `/terms` and `/track` → 192 KB, routes that use Firebase unchanged. `bundle-budgets.json` was re-baselined from a fresh build (it had drifted ~6-8 KB above the shipped code on the signed-in routes, so the gate was failing independently of this change); `/` tightened from 244 to 206.
+- The rendering strategy is documented in `docs/ARCHITECTURE.md`: static by default, no ISR and why not (per-user data is read client-side from Firestore), the signed-out shells the signed-in routes serve, the two `force-dynamic`/`force-static` route handlers, build-time sitemap, and the bundle gate that keeps a route from growing.
+- The E2E runner no longer prints a false "Skipping signed-in specs" warning. Its `curl` probe for the Auth emulator ran *before* `emulators:exec` started it, so it warned on every cold start — including runs where the passkey ceremony then passed — while never actually changing the spec list. A probe that cannot see the emulator no longer announces its absence; a real emulator failure now surfaces as a sign-in failure rather than as a quietly smaller suite.
+- `auth-flow.spec.ts` runs again: it was in the repository but in no spec list, so neither `test:e2e:local` nor CI ever executed it — the `/login` heading plus auth options and the `/support` sign-in prompt were covered by nothing. It is now in the runner's default set. Its support assertion also asked for 45s inside Playwright's 30s default test budget, so it could only ever fail as "Test timeout of 30000ms exceeded"; the test budget is 90s and the assertion 30s.
+- `middleware.ts` (now `src/proxy.ts` after the Next.js 16 rename) applies the full `SECURITY_HEADERS` map (CSP, HSTS, Permissions-Policy) and proxy-level rate limiting on every request
+- Production CSP tightened: `'unsafe-eval'` dropped, `connect-src` narrowed from a blanket `wss: https:` to the Firebase socket hosts plus named API origins, and the third-party script/style/frame hosts allowlisted explicitly. `'unsafe-inline'` remains in `script-src` and `style-src`: every route is statically prerendered, so Next.js inlines its hydration bootstrap at build time and a per-request nonce can never match it (see `getProductionCSP` in `apps/web/src/lib/securityHeaders.ts`)
+- CI pipeline enhanced: multi-Node matrix testing (22, 24), coverage reporting, and dedicated E2E job
+- Support message route now validates message is non-empty string after trim (rejects whitespace-only messages)
 
 ### Added
 - `npm run emulators` — Firestore and Auth emulators with the Emulator UI on port 4000. `firebase.json` keeps `ui.enabled: false` so `emulators:exec` in CI does not start it; the script passes `--ui` to override that locally.
@@ -29,20 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - axe-core contract tests verifying package availability and hook export shape (`src/lib/axeScan.test.ts`)
 - GlobeDashboard wrapped in `<Suspense>` with screen-reader-friendly loading placeholder
 - CI accessibility audit job (`a11y`) running axe-core contract tests in GitHub Actions
-- **Integration tests** for critical API routes: login-intent (rate limiting), tracking (public access), support messages (auth + role checks), PayPal create-order (auth + validation)
-- **Cache-Control headers** for static assets (1 year), landing/tracking pages (ISR with 1hr revalidation), login/verify pages (5min revalidation)
-- **Sentry monitoring** integration (`@sentry/nextjs`) with client/server/edge configs, source map upload, error filtering
-- **Dockerfile** for production deployments (multi-stage build, non-root user, health check)
+- Integration tests for critical API routes: login-intent (rate limiting), tracking (public access), support messages (auth + role checks), PayPal create-order (auth + validation)
+- Cache-Control headers for static assets (1 year), landing/tracking pages (ISR with 1hr revalidation), login/verify pages (5min revalidation)
+- Sentry monitoring integration (`@sentry/nextjs`) with client/server/edge configs, source map upload, error filtering
+- Dockerfile for production deployments (multi-stage build, non-root user, health check)
 - GlobeDashboard code-split with named webpack chunk (`globe-dashboard`) + `webpackPrefetch: true`
-- **Monorepo structure** with extracted packages: `@shipin/shared`, `@shipin/config`, `@shipin/utils`, `@shipin/ui`
-- **Turbo** monorepo build orchestration with caching
-- **Override** vulnerable transitive dependencies (minimatch, rimraf, gaxios, gcp-metadata, google-gax)
-
-### Changed
-- `middleware.ts` (now `src/proxy.ts` after the Next.js 16 rename) applies the full `SECURITY_HEADERS` map (CSP, HSTS, Permissions-Policy) and proxy-level rate limiting on every request
-- Production CSP tightened: `'unsafe-eval'` dropped, `connect-src` narrowed from a blanket `wss: https:` to the Firebase socket hosts plus named API origins, and the third-party script/style/frame hosts allowlisted explicitly. `'unsafe-inline'` remains in `script-src` and `style-src`: every route is statically prerendered, so Next.js inlines its hydration bootstrap at build time and a per-request nonce can never match it (see `getProductionCSP` in `apps/web/src/lib/securityHeaders.ts`)
-- CI pipeline enhanced: multi-Node matrix testing (22, 24), coverage reporting, and dedicated E2E job
-- Support message route now validates message is non-empty string after trim (rejects whitespace-only messages)
+- Monorepo structure with extracted packages: `@shipin/shared`, `@shipin/config`, `@shipin/utils`, `@shipin/ui`
+- Turbo monorepo build orchestration with caching
+- Override vulnerable transitive dependencies (minimatch, rimraf, gaxios, gcp-metadata, google-gax)
 
 ### Fixed
 - Admin MFA elevation no longer becomes unusable without a revocation store. `isMfaSessionDenied` fails closed in production, which is right for a real deployment, but it rejected every freshly minted session too — the local E2E run (production build, no Redis) could elevate and then get 403 from every admin route. `MFA_DENYLIST_OPTIONAL=1`, which the code already referenced but never applied, now opts E2E out, like `RATE_LIMIT_STORE_OPTIONAL`; nothing else sets it.
@@ -55,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Admin wallet credits preserve the amount the refund request asked for instead of crediting the captured total.
 - `/api/paypal/capture-order` runs inside `withErrorHandler` and always releases its capture claim, including when the settlement throws.
 - Duplicate Firestore indexes removed; `firebase.json` no longer declares a Storage rules file the app does not use (R2 is the object store).
-- Replaced forbidden `require()` calls in `csrf.ts` with proper ES module imports
+- CSRF is token-less by design, and the docs now say so: an intermediate pass added `src/lib/csrf.ts` (double-submit cookie) with proxy enforcement, but no flow issued the cookie, no client sent the header, and the check ran on every method and every API path — including `GET /api/health` and the public routes — so it would have answered 401 to all API traffic. Removed — `src/lib/csrf.ts` is not in the tree and no CSRF token is issued or read. CSRF is covered by four controls instead: Bearer-token auth (a cross-origin request cannot set `Authorization`), the proxy's origin allowlist (`403 CORS_ORIGIN_NOT_ALLOWED`), its rejection of `POST`/`PUT`/`PATCH`/`DELETE` carrying `Sec-Fetch-Site: cross-site` (`403 CROSS_SITE_REQUEST_BLOCKED`), and CSP `form-action 'self'`. The only cookie is the `HttpOnly` + `SameSite=Strict` admin MFA session, which only ever supplements a bearer-verified request. Matches `README.md` → Security.
 - Added eslint-disable suppressions with explanations for legitimate `setState` inside effects in support hooks
 
 ### Removed
@@ -63,7 +65,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed unused `gsap` dependency (~35KB gzipped) — no imports were found anywhere in `src/`
 
 ---
-
 ## [0.1.0] — Initial Release
 
 ### Added
@@ -78,7 +79,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Content-Security-Policy, HSTS, X-Frame-Options, Permissions-Policy security headers
 - Zod input validation on all API routes
 - Firestore and Storage security rules
-- Comprehensive README, CLAUDE.md, DESIGN.md, PRODUCT.md, ARCHITECTURE.md docs
-
-[Unreleased]: https://github.com/DarKnight-DEVIL/shipin/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/DarKnight-DEVIL/shipin/releases/tag/v0.1.0
+- Comprehensive README, CLAUDE.md, DESIGN.md, PRODUCT.md, ARCHITECTURE.md docs
