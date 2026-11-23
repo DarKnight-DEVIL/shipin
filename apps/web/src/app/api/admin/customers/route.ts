@@ -15,7 +15,9 @@ export interface AdminCustomer {
 }
 
 /** Bumped when the refund payload changes shape. */
-export const REFUND_SCHEMA_VERSION = 2;
+// Not exported: Next treats every extra export of a route module as a route
+// contract violation and fails the build on it.
+const REFUND_SCHEMA_VERSION = 2;
 
 export interface RefundRequestDetails {
   id: string;

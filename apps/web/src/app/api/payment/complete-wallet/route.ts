@@ -6,6 +6,7 @@ import {
   readIdempotentResponse,
   rememberIdempotentResponse,
 } from "@/lib/idempotency";
+import { validateBody, completeWalletBodySchema } from "@/lib/validation";
 import { withErrorHandler } from "@/utils/errors";
 import {
   processWalletPayment,
@@ -29,7 +30,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (auth instanceof NextResponse) return auth;
 
   // --- 2. Parse and validate body ---
-  let body: { requestId?: unknown; amount?: unknown };
+  //
+  // Only the request id is read. The amount used to come from this body, which
+  // let a caller settle a $500 request with `amount: 1`; it is now derived from
+  // the stored quote inside the service's transaction. An older client that
+  // still sends `amount` is simply stripped by the schema.
+  let body: unknown;
   try {
     body = await req.json();
   } catch {
@@ -39,23 +45,16 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     );
   }
 
-  const requestId =
-    typeof body.requestId === "string" ? body.requestId.trim() : "";
-  const amount = Number(body.amount);
+  const parsed = validateBody(body, completeWalletBodySchema);
 
-  if (!requestId) {
+  if (!parsed.success) {
     return NextResponse.json(
-      { success: false, error: "Request ID is required." },
+      { success: false, error: "A valid request ID is required." },
       { status: 400 }
     );
   }
 
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return NextResponse.json(
-      { success: false, error: "Invalid payment amount." },
-      { status: 400 }
-    );
-  }
+  const { requestId } = parsed.data;
 
   // --- 2b. Replay a completed attempt instead of charging again ---
   //
@@ -77,11 +76,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // --- 3. Delegate to the wallet service ---
   try {
-    const result = await processWalletPayment(
-      requestId,
-      amount,
-      auth.profile.uid
-    );
+    const result = await processWalletPayment(requestId, auth.profile.uid);
 
     const body = {
       success: true,

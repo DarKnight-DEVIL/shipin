@@ -26,13 +26,32 @@ export interface CreatePayPalOrderInput {
    * PayPal's answers without mocking `@/lib/http` out from under other suites.
    */
   transport?: typeof fetchWithTimeout;
+  /**
+   * Optional idempotency key for PayPal's `PayPal-Request-Id` header.
+   * If not provided, a deterministic key is generated from requestId, paymentType, and additionalItemRequestId.
+   */
+  idempotencyKey?: string;
 }
 
 export type CreatePayPalOrderResult =
-  { ok: true; orderId: string } | PaymentFailure;
+  { ok: true; orderId: string } | (PaymentFailure & { errorCode?: string });
 
 interface PayPalOrderBody {
   id?: string;
+  /**
+   * PayPal's Orders v2 error body is flat — `{ name, message, details }` — so
+   * the code and message are read from the top level first. The nested shape is
+   * what older/gateway responses return; both are accepted rather than letting
+   * a real `INVALID_REQUEST` show up as `UNKNOWN` in the logs.
+   */
+  name?: string;
+  message?: string;
+  error?: {
+    name?: string;
+    code?: string;
+    message?: string;
+    details?: unknown[];
+  };
 }
 
 export async function createPayPalOrder({
@@ -42,17 +61,24 @@ export async function createPayPalOrder({
   additionalItemRequestId,
   paypalAmount,
   transport = fetchWithTimeout,
+  idempotencyKey,
 }: CreatePayPalOrderInput): Promise<CreatePayPalOrderResult> {
   const accessToken = await getPayPalAccessToken();
 
   const baseUrl =
     serverEnv.PAYPAL_API_URL ?? "https://api-m.sandbox.paypal.com";
 
+  // Generate deterministic idempotency key if not provided
+  const requestIdempotencyKey =
+    idempotencyKey ??
+    `${requestId}:${paymentType}:${additionalItemRequestId ?? "main"}`;
+
   const paypalResponse = await transport(`${baseUrl}/v2/checkout/orders`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
+      "PayPal-Request-Id": requestIdempotencyKey,
     },
     body: JSON.stringify({
       intent: "CAPTURE",
@@ -80,12 +106,29 @@ export async function createPayPalOrder({
   const paypalData = (await paypalResponse.json()) as PayPalOrderBody;
 
   if (!paypalResponse.ok) {
-    console.error("PayPal create order error:", paypalData);
+    // Include PayPal error code for debugging (sanitized)
+    const paypalErrorCode =
+      paypalData?.error?.name ||
+      paypalData?.error?.code ||
+      paypalData?.name ||
+      "UNKNOWN";
+    const paypalErrorMessage =
+      paypalData?.error?.message ||
+      paypalData?.message ||
+      "Unknown PayPal error";
+
+    console.error("PayPal create order error:", {
+      code: paypalErrorCode,
+      message: paypalErrorMessage,
+      status: paypalResponse.status,
+    });
 
     return {
       ok: false,
       status: paypalResponse.status,
       error: "Unable to process payment. Please try again.",
+      // Sanitized error code for client-side handling
+      errorCode: paypalErrorCode.replace(/[^A-Z0-9_]/g, "_").substring(0, 50),
     };
   }
 

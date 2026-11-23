@@ -234,20 +234,28 @@ describe("POST /api/webhook", () => {
     });
   });
 
-  it("ignores a capture whose amount differs from the order", async () => {
+  it("returns 500 for a capture whose amount differs so PayPal retries", async () => {
     seedOrder();
 
-    await POST(
-      request(
-        captureEvent({ amount: { value: "99.00", currency_code: "USD" } })
-      )
+    const response = await POST(
+      request({
+        ...captureEvent({ amount: { value: "99.00", currency_code: "USD" } }),
+        id: "EV-MISMATCH",
+      })
     );
 
+    // Returning 200 here would mark the event processed and hide the drift.
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: "WEBHOOK_PROCESSING_ERROR",
+    });
     expect(mocks.txUpdate).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith(
       "PayPal capture amount mismatch:",
       expect.objectContaining({ orderId: "ORDER-1" })
     );
+    expect(mocks.docs["paypalWebhookEvents/EV-MISMATCH"]).toBeUndefined();
   });
 
   it("marks the request paid and notifies the customer", async () => {
@@ -321,7 +329,7 @@ describe("POST /api/webhook", () => {
     );
   });
 
-  it("skips the wallet when it has no document", async () => {
+  it("returns 500 when the wallet document is missing so the debit is not skipped", async () => {
     seedOrder({ walletApplied: 20 });
     mocks.txGet
       .mockResolvedValueOnce({
@@ -330,8 +338,15 @@ describe("POST /api/webhook", () => {
       })
       .mockResolvedValueOnce({ exists: false });
 
-    await POST(request(captureEvent()));
+    const response = await POST(request(captureEvent()));
 
+    // The order says wallet credit was used; silently skipping the debit
+    // would leave the payment half-settled, so this must trigger a retry.
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: "WEBHOOK_PROCESSING_ERROR",
+    });
     expect(mocks.txSet).not.toHaveBeenCalled();
   });
 

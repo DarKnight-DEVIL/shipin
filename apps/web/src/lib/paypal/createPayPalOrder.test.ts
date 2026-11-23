@@ -115,16 +115,39 @@ describe("createPayPalOrder", () => {
     mocks.fetchWithTimeout.mockResolvedValue({
       ok: false,
       status: 500,
-      json: async () => ({ name: "INTERNAL_SERVER_ERROR" }),
+      json: async () => ({
+        name: "INTERNAL_SERVER_ERROR",
+        message: "An internal server error occurred.",
+      }),
     });
 
     await expect(createPayPalOrder(input)).resolves.toEqual({
       ok: false,
       status: 500,
       error: "Unable to process payment. Please try again.",
+      // PayPal's own code, so the caller can tell a declined card from an
+      // outage without parsing the human message.
+      errorCode: "INTERNAL_SERVER_ERROR",
     });
     expect(consoleError).toHaveBeenCalledWith("PayPal create order error:", {
-      name: "INTERNAL_SERVER_ERROR",
+      code: "INTERNAL_SERVER_ERROR",
+      message: "An internal server error occurred.",
+      status: 500,
+    });
+  });
+
+  it("sanitises an unknown error body instead of passing it through", async () => {
+    mocks.fetchWithTimeout.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ something: "unexpected" }),
+    });
+
+    await expect(createPayPalOrder(input)).resolves.toEqual({
+      ok: false,
+      status: 400,
+      error: "Unable to process payment. Please try again.",
+      errorCode: "UNKNOWN",
     });
   });
 

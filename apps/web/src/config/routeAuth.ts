@@ -57,6 +57,13 @@ export const ROUTE_AUTH_CLASSIFICATION: Record<string, RouteAuth> = {
   // session, so under the "/api/admin" prefix the proxy would otherwise answer
   // every run with 401 before the signature is checked.
   "/api/admin/compliance/retention/purge": "public",
+  // Daily PayPal ↔ Firestore reconciliation, same shape as the two sweeps
+  // above: a timestamp plus an HMAC signed with CRON_SECRET, called from GitHub
+  // Actions with no Firebase session. Under the "/api/admin" prefix the proxy
+  // answered every run with 401 before `verifyCronRequest` could look at the
+  // signature, so the job replayed nothing and reported nothing. The handler
+  // still refuses an unsigned caller and the proxy keeps rate-limiting it.
+  "/api/admin/payments/reconcile": "public",
 
   // --- Customer ---
   "/api/profile": "customer",

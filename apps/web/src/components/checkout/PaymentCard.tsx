@@ -43,10 +43,9 @@ export default function PaymentCard({ request, walletBalance }: Props) {
       // success instead of charging the wallet twice.
       await customerApi("/api/payment/complete-wallet", {
         method: "POST",
-        body: {
-          requestId: request.id,
-          amount: payment.walletApplied,
-        },
+        // No amount: the route prices the payment from the stored quote, so a
+        // client that names its own number cannot underpay.
+        body: { requestId: request.id },
         idempotencyKey: newIdempotencyKey(),
       });
 

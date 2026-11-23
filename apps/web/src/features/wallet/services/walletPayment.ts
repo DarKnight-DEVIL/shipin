@@ -2,6 +2,8 @@ import "server-only";
 
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebaseAdmin";
+import { calculatePayment } from "@/features/finance/services/calculatePayment";
+import type { QuoteBreakdown } from "@/types/request";
 import { toShipINError } from "@/utils/errors";
 
 // ---------------------------------------------------------------------------
@@ -15,10 +17,10 @@ export interface WalletPaymentResult {
 
 export type WalletPaymentErrorCode =
   | "REQUEST_NOT_FOUND"
-  | "UNAUTHORIZED_REQUEST"
   | "ALREADY_PAID"
   | "WALLET_NOT_FOUND"
-  | "INSUFFICIENT_BALANCE";
+  | "INSUFFICIENT_BALANCE"
+  | "QUOTE_AMOUNT_MISSING";
 
 export interface WalletPaymentError {
   code: WalletPaymentErrorCode;
@@ -44,6 +46,46 @@ export class WalletPaymentFailure extends Error {
 // ---------------------------------------------------------------------------
 
 /**
+ * The amount a wallet payment has to settle, taken from the stored quote.
+ *
+ * The client used to send this number and it was charged as-is, so a request
+ * quoted at $500 could be paid with `amount: 1`. It is derived here instead,
+ * inside the transaction, with the same helper the PayPal path uses: the
+ * quoted grand total plus the gateway fee the quote does not absorb.
+ *
+ * @throws WalletPaymentFailure QUOTE_AMOUNT_MISSING when there is no quote to
+ *         price the payment from, so a half-built request cannot be settled
+ *         for nothing.
+ */
+function quotedDue(request: Record<string, unknown>): number {
+  const quote = request.quote as { breakdown?: unknown } | undefined;
+  const breakdown = quote?.breakdown;
+
+  if (!breakdown || typeof breakdown !== "object") {
+    throw new WalletPaymentFailure("QUOTE_AMOUNT_MISSING");
+  }
+
+  const grandTotal = Number((breakdown as { grandTotal?: unknown }).grandTotal);
+
+  // A zero or negative total is not something a customer can settle.
+  if (!Number.isFinite(grandTotal) || grandTotal <= 0) {
+    throw new WalletPaymentFailure("QUOTE_AMOUNT_MISSING");
+  }
+
+  try {
+    return calculatePayment({
+      breakdown: breakdown as QuoteBreakdown,
+      // The wallet is what pays, so nothing is applied from it in the quote.
+      walletBalance: 0,
+      useWallet: false,
+    }).totalPaid;
+  } catch {
+    // An unusable quote throws inside the calculator; report one cause.
+    throw new WalletPaymentFailure("QUOTE_AMOUNT_MISSING");
+  }
+}
+
+/**
  * Process a wallet-only payment for a shipping request.
  *
  * Runs the balance check and deduction inside a Firestore transaction so
@@ -52,15 +94,17 @@ export class WalletPaymentFailure extends Error {
  * classic TOCTOU race: two concurrent calls could both pass the balance
  * check and both deduct, driving the balance negative.
  *
+ * The amount is NOT a parameter: it is derived from the stored quote inside
+ * the transaction. A caller that could name the amount could settle a $500
+ * request with $1, which is what this endpoint did before.
+ *
  * @param requestId - The shipping request being paid for.
- * @param amount     - The amount to charge from the wallet.
  * @param userId     - The authenticated customer's UID (must own the request).
  * @returns          - The wallet transaction ID on success.
  * @throws           - A ShipINError subclass for any known failure.
  */
 export async function processWalletPayment(
   requestId: string,
-  amount: number,
   userId: string
 ): Promise<WalletPaymentResult> {
   const requestRef = adminDb.collection("requests").doc(requestId);
@@ -75,15 +119,20 @@ export async function processWalletPayment(
 
       const request = requestSnapshot.data();
 
-      // Ownership check: the caller must own this request.
-      if (request?.userId !== userId) {
-        throw new WalletPaymentFailure("UNAUTHORIZED_REQUEST");
+      // Ownership check: the caller must own this request. A stranger's request
+      // answers exactly like a missing one — a distinct 403 would confirm that
+      // the id exists.
+      if (!request || request.userId !== userId) {
+        throw new WalletPaymentFailure("REQUEST_NOT_FOUND");
       }
 
       // Prevent duplicate payment.
-      if (request?.status === "paid") {
+      if (request.status === "paid") {
         throw new WalletPaymentFailure("ALREADY_PAID");
       }
+
+      // Price the payment from the stored quote, never from the caller.
+      const amount = quotedDue(request);
 
       // Get wallet.
       const walletSnapshot = await transaction.get(walletRef);
@@ -164,11 +213,11 @@ export function walletPaymentErrorResponse(
         message: "Request not found.",
         status: 404,
       };
-    case "UNAUTHORIZED_REQUEST":
+    case "QUOTE_AMOUNT_MISSING":
       return {
-        code: "UNAUTHORIZED_REQUEST",
-        message: "You are not authorized to access this request.",
-        status: 403,
+        code: "QUOTE_AMOUNT_MISSING",
+        message: "This request has no quoted amount to pay yet.",
+        status: 400,
       };
     case "ALREADY_PAID":
       return {

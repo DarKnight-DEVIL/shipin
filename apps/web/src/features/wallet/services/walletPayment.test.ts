@@ -27,7 +27,17 @@ describe("processWalletPayment", () => {
 
   const USER_ID = "user-1";
   const REQUEST_ID = "test-req-1";
-  const AMOUNT = 50;
+  /**
+   * The endpoint no longer takes an amount: the service prices the payment from
+   * the stored quote. `(50 + 0.30) / (1 - 0.044) = 52.6150…`, charged at 52.62.
+   */
+  const GRAND_TOTAL = 50;
+  const DUE = 52.62;
+  const QUOTED_REQUEST = {
+    userId: USER_ID,
+    status: "pending",
+    quote: { breakdown: { grandTotal: GRAND_TOTAL } },
+  };
 
   function makeDocRef(path: string) {
     return {
@@ -89,68 +99,94 @@ describe("processWalletPayment", () => {
   }
 
   it("deducts balance and marks request paid on success", async () => {
-    const reqData = { userId: USER_ID, status: "pending" };
     const walData = { userId: USER_ID, balance: 200, currency: "USD" };
-    const fn = await withFreshService(reqData, walData);
+    const fn = await withFreshService(QUOTED_REQUEST, walData);
 
-    const result = await fn(REQUEST_ID, AMOUNT, USER_ID);
+    const result = await fn(REQUEST_ID, USER_ID);
 
     expect(result).toMatchObject({
       success: true,
       transactionId: expect.any(String),
     });
-    expect(fakeStore.get(`wallets/${USER_ID}`)?.balance).toBe(150);
+    expect(fakeStore.get(`wallets/${USER_ID}`)?.balance).toBeCloseTo(
+      200 - DUE,
+      2
+    );
 
     const updatedRequest = fakeStore.get(`requests/${REQUEST_ID}`) as
       { status?: string; payment?: { amountPaid?: number } } | undefined;
     expect(updatedRequest?.status).toBe("paid");
-    expect(updatedRequest?.payment?.amountPaid).toBe(AMOUNT);
+    expect(updatedRequest?.payment?.amountPaid).toBe(DUE);
+  });
+
+  it("prices the payment from the quote, not from anything the caller sends", async () => {
+    const fn = await withFreshService(
+      { ...QUOTED_REQUEST, quote: { breakdown: { grandTotal: 500 } } },
+      { userId: USER_ID, balance: 1000 }
+    );
+
+    await fn(REQUEST_ID, USER_ID);
+
+    // (500 + 0.30) / (1 - 0.044) = 523.3263… → 523.33
+    const updated = fakeStore.get(`requests/${REQUEST_ID}`) as {
+      payment?: { amountPaid?: number };
+    };
+    expect(updated.payment?.amountPaid).toBe(523.33);
+  });
+
+  it("refuses a request whose quote carries no payable total", async () => {
+    const fn = await withFreshService(
+      { userId: USER_ID, status: "pending" },
+      { balance: 200 }
+    );
+
+    await expect(fn(REQUEST_ID, USER_ID)).rejects.toThrow(
+      "QUOTE_AMOUNT_MISSING"
+    );
+    // Nothing may move: a request that cannot be priced cannot be settled.
+    expect(fakeStore.get(`wallets/${USER_ID}`)?.balance).toBe(200);
+    expect(fakeStore.get(`requests/${REQUEST_ID}`)?.status).toBe("pending");
   });
 
   it("rejects when request not found", async () => {
     const fn = await withFreshService({}, { balance: 100 });
     fakeStore.delete(`requests/${REQUEST_ID}`);
 
-    await expect(fn(REQUEST_ID, AMOUNT, USER_ID)).rejects.toThrow(
-      "REQUEST_NOT_FOUND"
-    );
+    await expect(fn(REQUEST_ID, USER_ID)).rejects.toThrow("REQUEST_NOT_FOUND");
   });
 
-  it("rejects unauthorized request (different user)", async () => {
-    const reqData = { userId: "other-user", status: "pending" };
-    const fn = await withFreshService(reqData, { balance: 100 });
-
-    await expect(fn(REQUEST_ID, AMOUNT, USER_ID)).rejects.toThrow(
-      "UNAUTHORIZED_REQUEST"
+  it("answers another customer's request exactly like a missing one", async () => {
+    // A distinct 403 would confirm that the id exists to someone guessing ids.
+    const fn = await withFreshService(
+      { ...QUOTED_REQUEST, userId: "other-user" },
+      { balance: 100 }
     );
+
+    await expect(fn(REQUEST_ID, USER_ID)).rejects.toThrow("REQUEST_NOT_FOUND");
   });
 
   it("rejects already-paid request (idempotency)", async () => {
-    const reqData = { userId: USER_ID, status: "paid" };
-    const fn = await withFreshService(reqData, { balance: 200 });
-
-    await expect(fn(REQUEST_ID, AMOUNT, USER_ID)).rejects.toThrow(
-      "ALREADY_PAID"
+    const fn = await withFreshService(
+      { ...QUOTED_REQUEST, status: "paid" },
+      { balance: 200 }
     );
+
+    await expect(fn(REQUEST_ID, USER_ID)).rejects.toThrow("ALREADY_PAID");
   });
 
   it("rejects insufficient balance", async () => {
-    const reqData = { userId: USER_ID, status: "pending" };
-    const fn = await withFreshService(reqData, { balance: 30 });
+    const fn = await withFreshService(QUOTED_REQUEST, { balance: 30 });
 
-    await expect(fn(REQUEST_ID, AMOUNT, USER_ID)).rejects.toThrow(
+    await expect(fn(REQUEST_ID, USER_ID)).rejects.toThrow(
       "INSUFFICIENT_BALANCE"
     );
   });
 
   it("rejects when wallet does not exist", async () => {
-    const reqData = { userId: USER_ID, status: "pending" };
-    const fn = await withFreshService(reqData, {});
+    const fn = await withFreshService(QUOTED_REQUEST, {});
     fakeStore.delete(`wallets/${USER_ID}`);
 
-    await expect(fn(REQUEST_ID, AMOUNT, USER_ID)).rejects.toThrow(
-      "WALLET_NOT_FOUND"
-    );
+    await expect(fn(REQUEST_ID, USER_ID)).rejects.toThrow("WALLET_NOT_FOUND");
   });
 });
 
@@ -158,9 +194,9 @@ describe("walletPaymentErrorResponse", () => {
   const cases: [string, string, number][] = [
     ["REQUEST_NOT_FOUND", "Request not found.", 404],
     [
-      "UNAUTHORIZED_REQUEST",
-      "You are not authorized to access this request.",
-      403,
+      "QUOTE_AMOUNT_MISSING",
+      "This request has no quoted amount to pay yet.",
+      400,
     ],
     ["ALREADY_PAID", "This request has already been paid.", 400],
     ["WALLET_NOT_FOUND", "Wallet not found.", 400],

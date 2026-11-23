@@ -87,7 +87,7 @@ describe("POST /api/payment/complete-wallet", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 400 when requestId is empty and amount is negative", async () => {
+  it("returns 400 when requestId is empty", async () => {
     mockRequireAuth.mockResolvedValue(AUTH as never);
     const res = (await POST(
       makeRequest({ requestId: "", amount: -5 })
@@ -96,14 +96,22 @@ describe("POST /api/payment/complete-wallet", () => {
     const body = await res.json();
     expect(body.success).toBe(false);
     expect(body.error).toBeTruthy();
+    expect(mockProcess).not.toHaveBeenCalled();
   });
 
-  it("returns 400 for non-positive amount", async () => {
+  it("ignores an amount in the body instead of charging it", async () => {
+    // The field used to be the price. A caller that still sends `amount: 1` for
+    // a $500 request must be charged the quote, so the route passes no amount
+    // to the service at all.
     mockRequireAuth.mockResolvedValue(AUTH as never);
+    mockProcess.mockResolvedValue({ success: true, transactionId: "txn-1" });
+
     const res = (await POST(
-      makeRequest({ requestId: "r1", amount: 0 })
+      makeRequest({ requestId: "r1", amount: 1 })
     )) as Response;
-    expect(res.status).toBe(400);
+
+    expect(res.status).toBe(200);
+    expect(mockProcess).toHaveBeenCalledWith("r1", "user-1");
   });
 
   it("delegates to the wallet service with the authenticated uid", async () => {
@@ -116,20 +124,21 @@ describe("POST /api/payment/complete-wallet", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ success: true, transactionId: "txn-1" });
-    expect(mockProcess).toHaveBeenCalledWith("r1", 10.5, "user-1");
+    expect(mockProcess).toHaveBeenCalledWith("r1", "user-1");
   });
 
-  it("treats a non-string requestId as missing", async () => {
+  it("rejects a body without a usable requestId", async () => {
     mockRequireAuth.mockResolvedValue(AUTH as never);
 
-    const res = (await POST(
-      makeRequest({ requestId: 42, amount: 10 })
-    )) as Response;
+    for (const body of [{ requestId: 42 }, { requestId: "" }, {}]) {
+      const res = (await POST(makeRequest(body))) as Response;
 
-    expect(res.status).toBe(400);
-    await expect(res.json()).resolves.toMatchObject({
-      error: "Request ID is required.",
-    });
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      await expect(res.json()).resolves.toMatchObject({
+        error: "A valid request ID is required.",
+      });
+    }
+
     expect(mockProcess).not.toHaveBeenCalled();
   });
 

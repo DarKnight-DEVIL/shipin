@@ -255,7 +255,10 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
       expected: expectedAmount,
       actual: capturedAmount,
     });
-    return;
+    // Throw so PayPal retries the webhook; marking it processed would lose the drift.
+    throw new Error(
+      `PayPal capture amount mismatch: expected ${expectedAmount}, got ${capturedAmount}`
+    );
   }
 
   const requestId = paymentOrder.requestId;
@@ -308,26 +311,32 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
     if (walletApplied > 0) {
       const walletRef = adminDb.collection("wallets").doc(requestData.userId);
       const walletSnapshot = await transaction.get(walletRef);
-      if (walletSnapshot.exists) {
-        const currentBalance = walletSnapshot.data()?.balance ?? 0;
-        const newBalance = currentBalance - walletApplied;
-        transaction.update(walletRef, {
-          balance: newBalance,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-        const walletTransactionRef = adminDb
-          .collection("walletTransactions")
-          .doc();
-        transaction.set(walletTransactionRef, {
-          userId: requestData.userId,
-          type: "payment",
-          amount: -walletApplied,
-          balanceAfter: newBalance,
-          requestId,
-          description: "Request Payment",
-          createdAt: FieldValue.serverTimestamp(),
-        });
+      if (!walletSnapshot.exists) {
+        // Wallet document missing but payment order says wallet was used.
+        // This should never happen in normal operation - throw to trigger
+        // webhook retry rather than silently skipping wallet deduction.
+        throw new Error(
+          `Wallet document missing for user ${requestData.userId} but walletApplied=${walletApplied}`
+        );
       }
+      const currentBalance = walletSnapshot.data()?.balance ?? 0;
+      const newBalance = currentBalance - walletApplied;
+      transaction.update(walletRef, {
+        balance: newBalance,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      const walletTransactionRef = adminDb
+        .collection("walletTransactions")
+        .doc();
+      transaction.set(walletTransactionRef, {
+        userId: requestData.userId,
+        type: "payment",
+        amount: -walletApplied,
+        balanceAfter: newBalance,
+        requestId,
+        description: "Request Payment",
+        createdAt: FieldValue.serverTimestamp(),
+      });
     }
 
     // The payment order never stores a name; the request does.

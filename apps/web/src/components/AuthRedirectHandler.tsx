@@ -6,15 +6,36 @@ import { auth } from "@/lib/firebase";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
+const SAFE_NEXT_ORIGIN = "https://shipin.invalid";
+
+/**
+ * Resolve the `next` parameter to a same-origin path, or null.
+ *
+ * The shape checks alone are not enough: browsers normalise a backslash to a
+ * slash, so `/\evil.com` passes both `startsWith("/")` and the
+ * `startsWith("//")` guard and then navigates to the protocol-relative
+ * `//evil.com`. Parsing against a fixed origin and comparing it rejects that
+ * — along with control characters and anything else a URL parser rewrites —
+ * in one place, instead of growing one `startsWith` special case per bypass.
+ */
+function sameOriginPath(raw: string | null): string | null {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return null;
+
+  try {
+    const url = new URL(raw, SAFE_NEXT_ORIGIN);
+    if (url.origin !== SAFE_NEXT_ORIGIN) return null;
+
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
+}
+
 export default function AuthRedirectHandler() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const requestedNext = searchParams.get("next");
-  const safeRequestedNext =
-    requestedNext?.startsWith("/") && !requestedNext.startsWith("//")
-      ? requestedNext
-      : null;
+  const safeRequestedNext = sameOriginPath(searchParams.get("next"));
 
   useEffect(() => {
     let mounted = true;
