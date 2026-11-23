@@ -114,8 +114,10 @@ describe("verifyPayPalWebhook", () => {
     expect(result).toBe(false);
   });
 
-  it("skips verification and returns true in dev/test when PAYPAL_WEBHOOK_ID is missing", async () => {
+  it("skips verification and returns true in dev/test when PAYPAL_WEBHOOK_ID is missing AND ALLOW_UNVERIFIED_WEBHOOKS=1", async () => {
     envState.webhookId = undefined;
+    // Set the opt-in env var for this test
+    process.env.ALLOW_UNVERIFIED_WEBHOOKS = "1";
 
     const result = await verifyPayPalWebhook(mockHeaders, "{}");
     expect(result).toBe(true);
@@ -125,6 +127,8 @@ describe("verifyPayPalWebhook", () => {
       String(url).includes("verify-webhook-signature")
     );
     expect(verificationCalls).toHaveLength(0);
+
+    delete process.env.ALLOW_UNVERIFIED_WEBHOOKS;
   });
 
   it("FAILS CLOSED in production when PAYPAL_WEBHOOK_ID is missing", async () => {

@@ -216,7 +216,7 @@ async function main() {
   } finally {
     // Clean up
     const apps = getApps();
-    await Promise.all(apps.map((a) => a.delete()));
+    await Promise.all(apps.map((a) => (a as any).delete()));
   }
 }
 

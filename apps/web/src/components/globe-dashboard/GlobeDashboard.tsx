@@ -8,7 +8,7 @@ import earthTextureUrl from "./earth-texture.webp";
 import cloudsTextureUrl from "./clouds-texture.webp";
 
 /** A shipping destination as used by the globe dashboard. */
-interface GlobeLocation {
+export interface GlobeLocation {
   title: string;
   subtitle: string;
   lat: number;
@@ -32,7 +32,7 @@ interface GlobeTheme {
 }
 
 /** One entry rendered in the fixed-height locations list. */
-interface LocationEntry {
+export interface LocationEntry {
   location: GlobeLocation;
   muted: boolean;
 }

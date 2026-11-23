@@ -142,6 +142,10 @@ const REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
   "R2_SECRET_ACCESS_KEY",
   "R2_BUCKET_NAME",
   "APP_URL",
+  // Admin MFA sessions cannot be signed without it. Moving to REQUIRED so
+  // a missing secret fails at startup (build/start-preflight) instead of
+  // 500-ing on the first admin request.
+  "MFA_SESSION_SECRET",
 ]);
 
 /**
@@ -150,9 +154,6 @@ const REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
  */
 const PRODUCTION_REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
   "PAYPAL_WEBHOOK_ID",
-  // Admin MFA sessions cannot be signed without it, so a deploy missing this
-  // would 500 every admin request instead of failing at boot.
-  "MFA_SESSION_SECRET",
 ]);
 
 /**
@@ -220,74 +221,10 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
 // that the startup check and the runtime check share one implementation
 // (including the https:// URL validation). Import it from there.
 
-/**
- * Validate that all production-required environment variables are set.
- * Throws if any are missing when running in production.
- * Should be called at application startup.
- *
- * In production, this checks every variable in REQUIRED_SERVER_ENV (15 vars)
- * plus PAYPAL_WEBHOOK_ID (which is not in that set but is production-critical),
- * plus the rate-limit store vars. Previously only PAYPAL_WEBHOOK_ID was validated,
- * leaving Firebase Admin, PayPal credentials, SMTP, and R2 to fail lazily at runtime.
- */
-/**
- * APP_URL drives WebAuthn's relying-party origin and the CORS allowlist, both of
- * which fail in confusing ways when it is not an absolute URL ("foo" parses as a
- * relative path and later throws inside the WebAuthn library). Check the shape
- * while the error can still name the variable.
- */
-function assertAppUrlShape(): void {
-  const raw = process.env.APP_URL?.trim();
-
-  // Absence is reported by the missing-variable check, with its own message.
-  if (!raw) return;
-
-  let parsed: URL | null = null;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    parsed = null;
-  }
-
-  if (
-    !parsed ||
-    (parsed.protocol !== "http:" && parsed.protocol !== "https:")
-  ) {
-    throw new Error(
-      `[ShipIN] FATAL: APP_URL must be an absolute http(s) URL (for example https://shipin.app); got "${raw}".`
-    );
-  }
-}
-
-export function validateProductionRequiredEnv(): void {
-  if (!isProduction) return;
-
-  assertAppUrlShape();
-
-  const required: string[] = [
-    ...REQUIRED_SERVER_ENV,
-    ...PRODUCTION_REQUIRED_SERVER_ENV,
-  ];
-
-  if (!isRateLimitStoreOptional()) {
-    required.push(...RATE_LIMIT_STORE_SERVER_ENV);
-  }
-
-  const missing = required.filter((key) => !process.env[key]);
-
-  if (missing.length > 0) {
-    const optOutHint = missing.some((key) =>
-      (RATE_LIMIT_STORE_SERVER_ENV as readonly string[]).includes(key)
-    )
-      ? ` Rate limiting would be per-instance and fail open; set both, or set ${RATE_LIMIT_STORE_OPTIONAL_ENV}=1 for the E2E suite only.`
-      : "";
-
-    throw new Error(
-      `[ShipIN] FATAL: Missing required production environment variables: ${missing.join(", ")}. ` +
-        `These must be set for production deployment.${optOutHint}`
-    );
-  }
-}
+// Re-export the stricter production validator from production.ts so both
+// instrumentation (Vercel) and start-preflight (Docker) use the same rules.
+// production.ts avoids importing clientEnv at load time, making it safe here.
+export { validateProductionRequiredEnv } from "./production";
 
 export const serverEnv: ServerEnv = new Proxy({} as ServerEnv, {
   get(_target, prop) {

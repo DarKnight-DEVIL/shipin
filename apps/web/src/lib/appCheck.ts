@@ -12,25 +12,17 @@ import "server-only";
 
 import { clientEnv, isProduction, serverEnv } from "@/config/env";
 import { childLogger } from "@/lib/logger";
+import { appCheckClient } from "@/instrumentation";
 
 /** Firebase's conventional header for a client-supplied App Check token. */
 export const APP_CHECK_HEADER = "x-firebase-appcheck";
 
-const appCheckLogger = childLogger({ service: "appcheck" });
+export const appCheckLogger = childLogger({ service: "appcheck" });
 
 export type AppCheckOutcome = "ok" | "missing" | "invalid" | "not-enforced";
 
 /**
  * Whether API routes must reject requests without a valid App Check token.
- *
- * Precedence:
- *   1. An explicit flag wins (`true` enforces, `false` disables).
- *   2. Unset defaults to ENFORCED in a production build that ships a site key.
- *      A forgotten variable must not silently disable the check on a live
- *      deployment; the client already sends X-Firebase-AppCheck whenever a
- *      site key is configured, so enabling it cannot lock browser clients out.
- *   3. Unset with no site key (local development, CI, previews) stays off, so
- *      no Firebase project is needed to run the app.
  */
 export function isAppCheckEnforced(): boolean {
   const flag = serverEnv.APP_CHECK_ENFORCEMENT?.trim().toLowerCase();
@@ -56,11 +48,6 @@ export interface AppCheckConfiguration {
 
 /**
  * The two independent switches, reported separately.
- *
- * Enforcement without a site key is `misconfigured`, not `enforced`: every
- * browser request would be rejected because the client has no way to mint a
- * token. This is the single definition — `/api/health` and the startup warning
- * both read it, so they cannot disagree about the deployment's state.
  */
 export function getAppCheckStatus(): AppCheckConfiguration {
   const configured = Boolean(clientEnv.NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY);
@@ -79,17 +66,6 @@ export function getAppCheckStatus(): AppCheckConfiguration {
 
 /**
  * Validate the App Check configuration at startup.
- *
- * In production:
- * - If enforcement is ON but no site key is configured → THROW (fail-fast).
- *   Every browser request would be rejected; this is a hard deployment failure.
- * - If a site key is configured but enforcement is OFF → WARN.
- *   Production should enforce; not enforcing means API routes accept requests
- *   without App Check tokens.
- *
- * In dev/test: never throw, only warn if misconfigured.
- *
- * @returns the same configuration object as {@link getAppCheckStatus}.
  */
 export function reportAppCheckStatus(): AppCheckConfiguration {
   const configuration = getAppCheckStatus();
@@ -124,9 +100,6 @@ export function reportAppCheckStatus(): AppCheckConfiguration {
 
 /**
  * Verify the App Check token on a request.
- *
- * Never throws: a rejected token is an ordinary outcome that the caller turns
- * into a 401, and a broken verifier must not surface a 500 to the client.
  */
 export async function verifyAppCheckRequest(
   request: Request
@@ -137,18 +110,16 @@ export async function verifyAppCheckRequest(
   if (!token) return "missing";
 
   try {
-    // Loaded here, never at module scope. `firebase-admin/app-check` pulls in
-    // jwks-rsa, which `require()`s jose's ESM-only entry; on the deployed
-    // serverless runtime that throws ERR_REQUIRE_ESM while the module graph
-    // loads. `instrumentation.ts` imports this file at boot to report the two
-    // flags above, so a top-level import there took the whole server down —
-    // Next logged "an error occurred while loading the instrumentation hook"
-    // and answered every route, static pages included, with 500.
-    //
-    // The status helpers need none of the SDK, and verification is the only
-    // thing that does, so this is the one place it may be loaded.
-    const { getAppCheck } = await import("firebase-admin/app-check");
-    await getAppCheck().verifyToken(token);
+    // Use the App Check client initialized once at boot in instrumentation.ts.
+    // Falls back to dynamic import if boot-time initialization failed.
+    let getAppCheckFn: (app?: import("firebase-admin/app").App) => import("firebase-admin/app-check").AppCheck;
+    if (appCheckClient) {
+      getAppCheckFn = appCheckClient;
+    } else {
+      const { getAppCheck } = await import("firebase-admin/app-check");
+      getAppCheckFn = getAppCheck;
+    }
+    await getAppCheckFn().verifyToken(token);
     return "ok";
   } catch (error) {
     // Log a code only: verification errors can embed the token or app id.

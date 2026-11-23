@@ -141,11 +141,9 @@ export default function AdminRequestsPage() {
                 type="button"
                 onClick={() => selectFilter(option.key)}
                 aria-pressed={active}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  active
-                    ? "bg-purple-600 text-white"
-                    : "bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white"
-                }`}
+                className={active
+                    ? "rounded-full px-3 py-1.5 text-xs font-medium transition bg-purple-600 text-white"
+                    : "rounded-full px-3 py-1.5 text-xs font-medium transition bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white"}
               >
                 {option.label}
               </button>

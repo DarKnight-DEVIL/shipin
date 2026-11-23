@@ -55,8 +55,9 @@ describe("calculateProcessingFee", () => {
     expect(result.fee).toBe(4.92);
   });
 
-  it("rounds a fractional cent up rather than to nearest", () => {
-    // 33.82 / 0.9651 = 35.0429... ; toFixed would charge 35.04 and lose a cent.
+  it("rounds a fractional cent to nearest using banker's rounding", () => {
+    // 33.82 / 0.9651 = 35.0429... ; banker's rounding gives 35.04 (not 35.05).
+    // The old Math.ceil behavior would overcharge by 1¢.
     const result = calculateProcessingFee({
       amount: 33.33,
       percentage: 0.0349,
@@ -64,8 +65,8 @@ describe("calculateProcessingFee", () => {
       absorbFee: false,
     });
 
-    expect(result.totalToCharge).toBeCloseTo(35.05, 5);
-    expect(result.fee).toBeCloseTo(1.72, 5);
+    expect(result.totalToCharge).toBeCloseTo(35.04, 5);
+    expect(result.fee).toBeCloseTo(1.71, 5);
   });
 
   it("rounds monetary values to two decimals", () => {

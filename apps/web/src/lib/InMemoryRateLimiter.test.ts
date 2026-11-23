@@ -38,7 +38,7 @@ describe("InMemoryRateLimiter", () => {
     vi.restoreAllMocks();
   });
 
-  it("drops idle buckets without waiting for more traffic", async () => {
+  it("drops idle buckets on the next request instead of holding a timer", async () => {
     vi.useFakeTimers();
 
     try {
@@ -53,7 +53,16 @@ describe("InMemoryRateLimiter", () => {
 
       await vi.advanceTimersByTimeAsync(61_000);
 
-      expect(idle.trackedBuckets).toBe(0);
+      // Deliberately no background sweep: one timer per limiter instance is a
+      // leak in a hot-reloaded dev server and a needless wakeup in each lambda.
+      // The bucket is still held until traffic arrives.
+      expect(idle.trackedBuckets).toBe(1);
+
+      // `record()` prunes every bucket, so the dead one goes as soon as any
+      // request reaches the limiter — a quiet process never accumulates them.
+      await idle.record(createRequest({ "x-vercel-forwarded-for": "8.8.8.8" }));
+
+      expect(idle.trackedBuckets).toBe(1);
     } finally {
       vi.useRealTimers();
     }

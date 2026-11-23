@@ -27,11 +27,27 @@ describe("standalone start contract", () => {
     // The env files are excluded from the traced tree, so the start command has
     // to read them from the app directory instead.
     expect(scripts.start).toBe(
-      `node --env-file-if-exists=.env --env-file-if-exists=.env.local ${STANDALONE_SERVER_ENTRY}`
+      `node --experimental-strip-types --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/start-preflight.ts && node --env-file-if-exists=.env --env-file-if-exists=.env.local ${STANDALONE_SERVER_ENTRY}`
     );
     // `next start` reads `.next/` and warns that it does not support standalone
     // output, so it exercises a different server than the one that ships.
     expect(scripts.start).not.toContain("next start");
+  });
+
+  it("validates the environment before the server binds a port", () => {
+    // `instrumentation.register()` runs the same validator, but only once the
+    // server is booting — in a container that is a crash loop. The preflight
+    // must therefore run first, and with the same env files the server gets,
+    // or it would validate a different environment than the one served.
+    const [preflight, server] = scripts.start.split(" && ");
+
+    expect(preflight).toContain("scripts/start-preflight.ts");
+    expect(server).toContain(STANDALONE_SERVER_ENTRY);
+
+    const envFlags =
+      "--env-file-if-exists=.env --env-file-if-exists=.env.local";
+    expect(preflight).toContain(envFlags);
+    expect(server).toContain(envFlags);
   });
 
   it("copies the assets and prunes the artefacts the trace leaves behind", () => {

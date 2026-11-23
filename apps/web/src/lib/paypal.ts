@@ -8,7 +8,7 @@
  * All configuration is centralized in @/config/env (serverEnv).
  */
 
-import { serverEnv, isProduction } from "@/config/env";
+import { serverEnv } from "@/config/env";
 import { createShipINError } from "@/utils/errors";
 import { fetchWithTimeout } from "@/lib/http";
 import { childLogger } from "./logger";
@@ -170,10 +170,11 @@ export async function verifyPayPalWebhook(
   const id = webhookId ?? serverEnv.PAYPAL_WEBHOOK_ID;
 
   if (!id) {
-    // FAIL CLOSED in production: an unverifiable webhook must never be
-    // accepted as legitimate. In dev/test we skip verification so local
-    // testing without a PayPal webhook registration still works.
-    if (isProduction) {
+    // FAIL CLOSED always: an unverifiable webhook must never be accepted.
+    // The only exception is explicit opt-in via ALLOW_UNVERIFIED_WEBHOOKS=1
+    // for local development without a PayPal webhook registration.
+    const allowUnverified = process.env.ALLOW_UNVERIFIED_WEBHOOKS === "1";
+    if (!allowUnverified) {
       paypalLog.error("FATAL: PAYPAL_WEBHOOK_ID is not configured");
       throw createShipINError(
         "PayPal webhook verification is unavailable.",
@@ -182,7 +183,7 @@ export async function verifyPayPalWebhook(
       );
     }
     paypalLog.warn(
-      "PAYPAL_WEBHOOK_ID missing, skipping verification (dev/test only)"
+      "PAYPAL_WEBHOOK_ID missing, skipping verification (ALLOW_UNVERIFIED_WEBHOOKS=1)"
     );
     return true;
   }

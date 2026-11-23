@@ -248,69 +248,96 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     }
 
     const walletRef = adminDb.collection("wallets").doc(userId);
-    const walletSnapshot = await walletRef.get();
 
-    const walletBalance = walletSnapshot.exists
-      ? Math.max(0, toNumber(walletSnapshot.data()?.balance))
-      : 0;
+    // Use a transaction to atomically check wallet balance and create payment order.
+    // This prevents TOCTOU where another request drains the wallet between check and create.
+    let paymentOrderResult: { walletApplied: number; expectedPayPalAmount: number };
+    try {
+      paymentOrderResult = await adminDb.runTransaction(async (transaction) => {
+        const walletSnapshot = await transaction.get(walletRef);
+        const walletBalance = walletSnapshot.exists
+          ? Math.max(0, toNumber(walletSnapshot.data()?.balance))
+          : 0;
 
-    const requestedWalletAmount = roundMoney(
-      totalRequired - requestedPayPalAmount
-    );
+        const requestedWalletAmount = roundMoney(
+          totalRequired - requestedPayPalAmount
+        );
 
-    if (requestedWalletAmount < -0.01) {
-      return NextResponse.json(
-        { success: false, error: "Invalid payment amount." },
-        { status: 400 }
-      );
-    }
+        if (requestedWalletAmount < -0.01) {
+          throw new Error("INVALID_PAYMENT_AMOUNT");
+        }
 
-    if (requestedWalletAmount > walletBalance + 0.01) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "The requested wallet amount exceeds the available wallet balance.",
-        },
-        { status: 400 }
-      );
-    }
+        if (requestedWalletAmount > walletBalance + 0.01) {
+          throw new Error("INSUFFICIENT_WALLET_BALANCE");
+        }
 
-    const walletApplied = Math.max(
-      0,
-      Math.min(requestedWalletAmount, walletBalance)
-    );
+        const walletApplied = Math.max(
+          0,
+          Math.min(requestedWalletAmount, walletBalance)
+        );
 
-    const expectedPayPalAmount = roundMoney(totalRequired - walletApplied);
+        const expectedPayPalAmount = roundMoney(totalRequired - walletApplied);
 
-    /*
-     * Compare whole cents: a browser sending 100.01 for a 100.00 quote must not
-     * be charged the extra cent.
-     */
-    if (!sameCents(requestedPayPalAmount, expectedPayPalAmount)) {
-      console.error("PayPal amount mismatch:", {
-        baseAmount,
-        totalRequired,
-        walletBalance,
-        walletApplied,
-        requestedPayPalAmount,
-        expectedPayPalAmount,
-        requestId,
+        /*
+         * Compare whole cents: a browser sending 100.01 for a 100.00 quote must not
+         * be charged the extra cent.
+         */
+        if (!sameCents(requestedPayPalAmount, expectedPayPalAmount)) {
+          console.error("PayPal amount mismatch:", {
+            baseAmount,
+            totalRequired,
+            walletBalance,
+            walletApplied,
+            requestedPayPalAmount,
+            expectedPayPalAmount,
+            requestId,
+          });
+          throw new Error("PAYMENT_AMOUNT_MISMATCH");
+        }
+
+        // Return the calculated values; PayPal order creation and payment order storage
+        // happen outside the transaction (PayPal API call is external).
+        return { walletApplied, expectedPayPalAmount };
       });
-
-      return NextResponse.json(
-        { success: false, error: "Payment amount could not be verified." },
-        { status: 400 }
-      );
+    } catch (error) {
+      if (error instanceof Error) {
+        switch (error.message) {
+          case "INVALID_PAYMENT_AMOUNT":
+            return NextResponse.json(
+              { success: false, error: "Invalid payment amount." },
+              { status: 400 }
+            );
+          case "INSUFFICIENT_WALLET_BALANCE":
+            return NextResponse.json(
+              {
+                success: false,
+                error:
+                  "The requested wallet amount exceeds the available wallet balance.",
+              },
+              { status: 400 }
+            );
+          case "PAYMENT_AMOUNT_MISMATCH":
+            return NextResponse.json(
+              { success: false, error: "Payment amount could not be verified." },
+              { status: 400 }
+            );
+        }
+      }
+      throw error;
     }
+
+    const { walletApplied, expectedPayPalAmount } = paymentOrderResult!;
 
     // --- 6. Create the PayPal order ---
+    // Use a deterministic idempotency key so retries don't create duplicate orders.
+    const idempotencyKey = `${requestId}:${paymentType}:${additionalItemRequestId ?? "main"}`;
     const created = await createPayPalOrder({
       requestId,
       description,
       paymentType,
       additionalItemRequestId,
       paypalAmount: expectedPayPalAmount,
+      idempotencyKey,
     });
 
     if (!created.ok) {

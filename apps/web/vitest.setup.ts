@@ -1,4 +1,4 @@
-import { vi, beforeAll, afterAll, afterEach } from "vitest";
+import { vi, beforeAll, afterAll, afterEach, beforeEach } from "vitest";
 // jest-dom's matchers are only used by the suites that opt into happy-dom.
 // Importing them for every suite made setup the single largest cost of a run
 // (~70ms per file), so they are loaded only where a DOM actually exists.
@@ -15,6 +15,18 @@ if (typeof window !== "undefined") {
     cleanup();
   });
 }
+
+// Reset Redis rate limiter singletons between tests to prevent state leakage.
+// The singleton caches Ratelimit instances and the Redis client, which must be
+// cleared so each test file gets a fresh state.
+beforeEach(async () => {
+  try {
+    const { resetSharedRedisClientForTests } = await import("@/lib/redisRateLimiter");
+    resetSharedRedisClientForTests();
+  } catch {
+    // Module may not be loaded in all test environments; ignore.
+  }
+});
 
 // Mock Next.js router
 vi.mock("next/navigation", () => ({
@@ -64,6 +76,7 @@ vi.mock("@/config/env", () => ({
     PAYPAL_CLIENT_ID: "test-client-id",
     PAYPAL_CLIENT_SECRET: "test-secret",
     PAYPAL_ENV: "sandbox",
+    PAYPAL_WEBHOOK_ID: "test-webhook-id",
     SMTP_EMAIL: "test@test.com",
     SMTP_PASSWORD: "test-password",
     RESEND_API_KEY: "test-resend-key",

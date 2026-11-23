@@ -48,8 +48,9 @@ ENV HOSTNAME="0.0.0.0"
 # Node makes the request itself: the runtime image carries busybox, but its
 # `wget` build does not consistently support `--spider`, so that check could
 # fail on an otherwise healthy container. PORT is what the server listens on.
+# Use an async IIFE so top-level await works in CommonJS (default for `node -e`).
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "(async()=>{try{const r=await fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health');const s=await r.json();process.exit(s.status!=='degraded'&&s.status!==undefined?0:1)}catch(e){process.exit(1)}})()"
 
 # Same entrypoint as `npm start` in apps/web; its `prestart` hook performs the
 # public/ and .next/static copies that the COPYs above provide here.

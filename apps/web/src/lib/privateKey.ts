@@ -93,9 +93,41 @@ function unescapeNewlines(value: string): string {
 }
 
 /**
+ * Validate that a normalized PEM key can actually be used by firebase-admin.
+ * Throws with a descriptive error if the key is malformed.
+ * Only validates when the input looks like it should be a PEM key (contains PEM_BEGIN).
+ * Non-key values (short strings, base64-shaped values that aren't keys) pass through.
+ */
+function validatePrivateKey(pem: string): void {
+  // Only validate if this looks like a PEM key (has BEGIN marker).
+  // Non-key values like "test-key" or short base64 strings pass through unchanged.
+  if (!pem.includes(PEM_BEGIN)) {
+    return;
+  }
+
+  if (!pem.includes("-----END")) {
+    throw new Error("Private key does not contain a valid PEM footer (-----END)");
+  }
+  // Basic structure check: should have BEGIN, base64 content, END
+  const lines = pem.split("\n");
+  if (lines.length < 3) {
+    throw new Error("Private key has too few lines to be a valid PEM");
+  }
+  // Ensure it looks like a PKCS#8 or PKCS#1 key
+  const hasPrivateKeyMarker =
+    pem.includes("PRIVATE KEY") || pem.includes("RSA PRIVATE KEY") || pem.includes("EC PRIVATE KEY");
+  if (!hasPrivateKeyMarker) {
+    throw new Error("Private key does not contain PRIVATE KEY marker");
+  }
+}
+
+/**
  * Return a PEM that `createPrivateKey`/`cert()` accepts, or an empty string when
  * nothing was supplied. Escaped newlines, wrapping quotes, trailing spaces and
  * base64 storage are all tolerated; the key material is never altered.
+ * 
+ * Throws if the normalized key fails validation (does not look like a valid PEM).
+ * Non-key values (short strings, base64-shaped values that aren't keys) pass through unchanged.
  */
 export function normalizePrivateKey(raw: string | null | undefined): string {
   if (!raw) return "";
@@ -106,11 +138,16 @@ export function normalizePrivateKey(raw: string | null | undefined): string {
   // Strip .env.local value wrapping quotes FIRST, before any unescaping.
   const withoutEnvQuotes = stripEnvValueQuotes(trimmed);
 
-  return (
+  const normalized = (
     unescapeNewlines(decodeIfBase64(stripWrappingQuotes(withoutEnvQuotes)))
       // Copy-paste often leaves a trailing space on wrapped lines; OpenSSL
       // rejects the key for it, and no PEM line legitimately ends in whitespace.
       .replace(/[ \t]+\n/g, "\n")
       .trim()
   );
+
+  // Validate the normalized key structure before returning
+  validatePrivateKey(normalized);
+
+  return normalized;
 }

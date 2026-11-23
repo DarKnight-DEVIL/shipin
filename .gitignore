@@ -26,5 +26,65 @@ artifacts/
 # Next.js
 /.next/
 /out/
+.next/
+**/.next/
+out/
+**/out/
+**/.turbo/
+.turbo/
+*.tsbuildinfo
+**/*.tsbuildinfo
+next-env.d.ts
+**/next-env.d.ts
 
-# Dependencies
+# Build output
+dist/
+**/dist/
+build/
+**/build/
+
+# Test, coverage and browser-run artifacts
+coverage/
+**/coverage/
+playwright-report/
+**/playwright-report/
+test-results/
+**/test-results/
+.playwright/
+**/.playwright/
+.playwright-cli/
+**/.playwright-cli/
+
+# Version control, editor and agent tooling
+.git
+.github/
+.vscode/
+.idea/
+.claude/
+.agents/
+.freebuff/
+.cloud-attachments/
+.impeccable/
+.serena/
+.postman/
+.shots/
+.scratch/
+.vercel/
+
+# Local secrets and certificates
+*.pem
+**/*.pem
+*.key
+**/*.key
+
+# OS noise, logs and editor backups
+.DS_Store
+Thumbs.db
+*.log
+**/*.log
+*.bak
+**/*.bak
+*.orig
+**/*.orig
+*.rej
+**/*.rej

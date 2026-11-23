@@ -72,7 +72,6 @@ beforeEach(() => {
   mocks.getR2BucketName.mockReset().mockReturnValue("shipin-bucket");
   mocks.command.mockReset();
   mocks.authorize.mockReset().mockResolvedValue(null);
-  vi.stubGlobal("crypto", { randomUUID: () => "uuid-1" });
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -165,10 +164,16 @@ describe("POST /api/r2/upload", () => {
     );
     const body = await response.json();
 
-    expect(body.key).toBe(`inspection/req1/uuid-1.${extension}`);
+    // The route takes the id from `node:crypto`, so the contract is the shape
+    // (a real UUID under the sanitised request directory), not a fixed value.
+    const keyPattern = new RegExp(
+      `^inspection/req1/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.${extension}$`
+    );
+
+    expect(body.key).toMatch(keyPattern);
     expect(mocks.command).toHaveBeenCalledWith({
       Bucket: "shipin-bucket",
-      Key: `inspection/req1/uuid-1.${extension}`,
+      Key: expect.stringMatching(keyPattern),
       Body: expect.any(Buffer),
       ContentType: type,
       Metadata: { requestid: "req1" },

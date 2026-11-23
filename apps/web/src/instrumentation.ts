@@ -7,6 +7,7 @@
  */
 
 import { childLogger } from "@/lib/logger";
+import { appCheckLogger } from "@/lib/appCheck";
 
 import { validateProductionRequiredEnv } from "@/config/env";
 import { reportAppCheckStatus } from "@/lib/appCheck";
@@ -14,10 +15,7 @@ import { reportRateLimitStoreStatus } from "@/lib/redisRateLimiter";
 
 /**
  * Register is called once when the Next.js server starts.
- * We use it to validate that all production-required environment variables
- * are set, so the server fails fast instead of accepting requests with
- * a misconfigured deployment.
- */
+ * We use it to validate that all production-required environment variables * are set, so the server fails fast instead of accepting requests with * a misconfigured deployment. */
 /**
  * Refuse to boot on a configuration that would serve broken endpoints.
  *
@@ -47,46 +45,29 @@ function failBoot(error: unknown): never {
   throw error;
 }
 
+let appCheckClient: ((app?: import("firebase-admin/app").App) => import("firebase-admin/app-check").AppCheck) | null = null;
+export { appCheckClient };
+
 export async function register() {
-  // Error reporting first, so a crash later in this hook is captured. Each
-  // runtime imports only its own config; the SDK is disabled without a DSN, so
-  // this is a no-op in development and in CI.
-  if (process.env.NEXT_RUNTIME === "nodejs") {
+  // Error reporting first, so a crash later in this hook is captured. Each  // runtime imports only its own config; the SDK is disabled without a DSN, so  // this is a no-op in development and in CI.  if (process.env.NEXT_RUNTIME === "nodejs") {
     await import("../sentry.server.config");
   } else if (process.env.NEXT_RUNTIME === "edge") {
     await import("../sentry.edge.config");
   }
-
-  // Validate production-required env vars (PAYPAL_WEBHOOK_ID and the shared
-  // rate-limit store).
-  try {
+  // Validate production-required env vars (PAYPAL_WEBHOOK_ID and the shared  // rate-limit store).  try {
     validateProductionRequiredEnv();
   } catch (error) {
     failBoot(error);
   }
-
-  // Warn (never throw) when production has no shared rate-limit store: limits
-  // are then per-instance, the proxy fails open on infrastructure failures, and
-  // /api/health reports `degraded` so monitoring can see it. Crashing at boot
-  // would deny service over a variable a human can fix live, and it made a
-  // production build impossible to run without a real Upstash database.
+  // Warn (never throw) when production has no shared rate-limit store: limits  // are then per-instance, the proxy fails open on infrastructure failures, and  // /api/health reports `degraded` so monitoring can see it. Crashing at boot  // would deny service over a variable a human can fix live, and it made a  // production build impossible to run without a real Upstash database.
   reportRateLimitStoreStatus();
-
-  // Validate that every route under src/app/api is classified
-  // (public/customer/admin). The proxy rejects unclassified routes with a 500,
-  // so a route missing from the table is a broken endpoint, not a warning:
-  // throw (and exit below) rather than serving it.
-  //
-  // Imported dynamically and only on a Node runtime: the edge build has no use
-  // for a startup check that ends in `process.exit`. The route list itself is a
-  // generated static array, so nothing here touches the filesystem.
-  if (process.env.NEXT_RUNTIME !== "edge") {
+  // Validate that every route under src/app/api is classified  // (public/customer/admin). The proxy rejects unclassified routes with a 500,  // so a route missing from the table is a broken endpoint, not a warning:  // throw (and exit below) rather than serving it.  //
+  // Imported dynamically and only on a Node runtime: the edge build has no use  // for a startup check that ends in `process.exit`. The route list itself is a  // generated static array, so nothing here touches the filesystem.  if (process.env.NEXT_RUNTIME !== "edge") {
     try {
       const { assertAllRoutesClassified } =
         await import("@/config/routeClassification");
       const report = assertAllRoutesClassified();
-
-      if (report.skipped) {
+      if (report.skipped) {
         // Expected for a deployed bundle that ships compiled output without src/.
         // routeClassification.test.ts enforces the same invariant in CI, so this
         // is a notice rather than a degraded state.
@@ -101,13 +82,15 @@ export async function register() {
       failBoot(error);
     }
   }
-
-  // Warn (never throw) when App Check is enforced without a site key: every
-  // browser request is rejected in that state, but crashing at boot would take
-  // the deployment down for a configuration a human can fix live. Logged here,
-  // surfaced as `degraded` by /api/health.
-  reportAppCheckStatus();
+  // Initialize App Check client once at boot to avoid per-request dynamic import overhead.  // The dynamic import in verifyAppCheckRequest avoids ERR_REQUIRE_ESM at module scope,  // but after this boot-time initialization we can reuse the same instance.  try {
+    const { getAppCheck } = await import("firebase-admin/app-check");
+    appCheckClient = getAppCheck;
+    appCheckLogger.info("[AppCheck] Client initialized at boot");
+  } catch (error) {
+    // If boot-time initialization fails (e.g., ERR_REQUIRE_ESM on edge),    // fall back to per-request dynamic imports in verifyAppCheckRequest.    appCheckLogger.warn("[AppCheck] Boot-time client initialization failed, using per-request imports");
+  }  // Warn (never throw) when App Check is enforced without a site key: every  // browser request is rejected in that state, but crashing at boot would take  // the deployment down for a configuration a human can fix live. Logged here,  // surfaced as `degraded` by /api/health.  reportAppCheckStatus();
 }
+
 
 /**
  * Report errors that escape a route handler or server component.

@@ -187,35 +187,36 @@ jobs:
       - name: Build for production
         run: npm run build
         env:
-          # Dummy env vars, so the measured bundle inlines the same NEXT_PUBLIC_*
-          # values that ship; the build itself no longer needs them.
+          # Use REAL production env vars from secrets so the measured bundle
+          # matches what actually ships. Dummy values would miss feature flags,
+          # Firebase config size differences, PayPal SDK inclusion, etc.
           NODE_ENV: "production"
-          PAYPAL_CLIENT_ID: "test"
-          PAYPAL_CLIENT_SECRET: "test"
-          NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
-          PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
-          PAYPAL_ENV: "sandbox"
-          PAYPAL_WEBHOOK_ID: "test"
-          SMTP_EMAIL: "test@test.com"
-          SMTP_PASSWORD: "test"
-          RESEND_API_KEY: "test"
-          FIREBASE_ADMIN_PROJECT_ID: "test"
-          FIREBASE_ADMIN_CLIENT_EMAIL: "test@test.com"
-          FIREBASE_ADMIN_PRIVATE_KEY: "test"
-          R2_ACCOUNT_ID: "test"
-          R2_ACCESS_KEY_ID: "test"
-          R2_SECRET_ACCESS_KEY: "test"
-          R2_BUCKET_NAME: "test"
-          APP_URL: "http://localhost:3000"
-          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
-          NEXT_PUBLIC_FIREBASE_API_KEY: "test"
-          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "test.firebaseapp.com"
-          NEXT_PUBLIC_FIREBASE_PROJECT_ID: "test"
-          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "test-bucket"
-          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "123456"
-          NEXT_PUBLIC_FIREBASE_APP_ID: "1:123456:web:abcdef"
-          UPSTASH_REDIS_REST_URL: "https://test.upstash.io"
-          UPSTASH_REDIS_REST_TOKEN: "test"
+          PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
+          PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
+          NEXT_PUBLIC_PAYPAL_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_PAYPAL_CLIENT_ID }}
+          PAYPAL_API_URL: ${{ secrets.PAYPAL_API_URL }}
+          PAYPAL_ENV: ${{ secrets.PAYPAL_ENV }}
+          PAYPAL_WEBHOOK_ID: ${{ secrets.PAYPAL_WEBHOOK_ID }}
+          SMTP_EMAIL: ${{ secrets.SMTP_EMAIL }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          FIREBASE_ADMIN_PROJECT_ID: ${{ secrets.FIREBASE_ADMIN_PROJECT_ID }}
+          FIREBASE_ADMIN_CLIENT_EMAIL: ${{ secrets.FIREBASE_ADMIN_CLIENT_EMAIL }}
+          FIREBASE_ADMIN_PRIVATE_KEY: ${{ secrets.FIREBASE_ADMIN_PRIVATE_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          APP_URL: ${{ secrets.APP_URL }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
 
       - name: Check initial JS budgets
         # Fails when a route grows past its budget, when a prerendered route
@@ -330,8 +331,8 @@ jobs:
           NODE_ENV: "test"
 
   # ─── Test-order independence ────────────────────────────────────────────────
-  # The unit suite runs with `isolate: false`, so every file in a worker shares
-  # one module registry. Shuffling the file order on each run means a mock or a
+  # The unit suite runs with `isolate: true` (per-file isolation), but Vitest's
+  # `sequence.shuffle` still randomizes file order across workers. A mock or a
   # module-level cache leaking between files fails here, instead of passing by
   # luck on whatever order the filesystem happened to return.
   #

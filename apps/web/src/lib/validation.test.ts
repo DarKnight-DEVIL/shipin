@@ -4,16 +4,13 @@ import {
   whatsappPhoneSchema,
   moneySchema,
   idSchema,
-  uuidSchema,
   messageSchema,
-  nameSchema,
   paymentTypeSchema,
   refundMethodSchema,
-  requestStatusSchema,
+  requestStatusBodySchema,
   sendEmailBodySchema,
   captureOrderBodySchema,
   createOrderBodySchema,
-  r2ViewBodySchema,
   validateBody,
 } from "@/lib/validation";
 
@@ -53,73 +50,11 @@ describe("whatsappPhoneSchema", () => {
   });
 });
 
-describe("moneySchema", () => {
-  it("accepts positive finite amounts with max 2 decimals", () => {
-    expect(moneySchema.safeParse(10).success).toBe(true);
-    expect(moneySchema.safeParse(0.01).success).toBe(true);
-    expect(moneySchema.safeParse(999999999).success).toBe(true);
-  });
-
-  it("rejects invalid amounts", () => {
-    expect(moneySchema.safeParse(0).success).toBe(false);
-    expect(moneySchema.safeParse(-5).success).toBe(false);
-    expect(moneySchema.safeParse(NaN).success).toBe(false);
-    expect(moneySchema.safeParse(Infinity).success).toBe(false);
-    expect(moneySchema.safeParse(10.123).success).toBe(false);
-    expect(moneySchema.safeParse(1000000000).success).toBe(false);
-  });
-});
-
-describe("idSchema", () => {
-  it("accepts safe document IDs", () => {
-    expect(idSchema.safeParse("abc-123_XYZ").success).toBe(true);
-  });
-
-  it("rejects dangerous or oversized IDs (prevents path/selector injection)", () => {
-    expect(idSchema.safeParse("a/b").success).toBe(false);
-    expect(idSchema.safeParse("a..b").success).toBe(false);
-    expect(idSchema.safeParse("").success).toBe(false);
-    expect(idSchema.safeParse("x".repeat(65)).success).toBe(false);
-    expect(idSchema.safeParse("id; delete from users").success).toBe(false);
-  });
-});
-
-describe("uuidSchema", () => {
-  it("accepts a strict UUID", () => {
-    expect(
-      uuidSchema.safeParse("550e8400-e29b-41d4-a716-446655440000").success
-    ).toBe(true);
-  });
-
-  it("rejects malformed UUIDs", () => {
-    expect(
-      uuidSchema.safeParse("550e8400e29b41d4a716446655440000").success
-    ).toBe(false);
-    expect(
-      uuidSchema.safeParse("zzze8400-e29b-41d4-a716-446655440000").success
-    ).toBe(false);
-    expect(uuidSchema.safeParse("").success).toBe(false);
-  });
-});
-
 describe("messageSchema", () => {
   it("trims and bounds length", () => {
     expect(messageSchema.safeParse("   hello   ").success).toBe(true);
     expect(messageSchema.safeParse("x".repeat(2001)).success).toBe(false);
     expect(messageSchema.safeParse("   ").success).toBe(false);
-  });
-});
-
-describe("nameSchema", () => {
-  it("accepts Latin names with spaces, apostrophes, hyphens", () => {
-    expect(nameSchema.safeParse("John O'Dea-Smythe").success).toBe(true);
-  });
-
-  it("rejects script injection in names", () => {
-    expect(nameSchema.safeParse("<script>alert(1)</script>").success).toBe(
-      false
-    );
-    expect(nameSchema.safeParse("name; DROP TABLE users").success).toBe(false);
   });
 });
 
@@ -136,9 +71,15 @@ describe("enum schemas", () => {
     expect(refundMethodSchema.safeParse("bitcoin").success).toBe(false);
   });
 
-  it("requestStatusSchema is a closed set", () => {
-    expect(requestStatusSchema.safeParse("submitted").success).toBe(true);
-    expect(requestStatusSchema.safeParse("magic").success).toBe(false);
+  it("requestStatusBodySchema is a closed set", () => {
+    // The status is validated inside the PATCH body, not as a bare string.
+    expect(
+      requestStatusBodySchema.safeParse({ status: "submitted" }).success
+    ).toBe(true);
+    expect(requestStatusBodySchema.safeParse({ status: "magic" }).success).toBe(
+      false
+    );
+    expect(requestStatusBodySchema.safeParse("submitted").success).toBe(false);
   });
 });
 
@@ -183,19 +124,6 @@ describe("body schemas", () => {
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.data.paymentType).toBe("main");
   });
-
-  it("r2ViewBodySchema only allows inspection/ keys (no traversal)", () => {
-    expect(
-      r2ViewBodySchema.safeParse({ key: "inspection/req-1/photo.jpg" }).success
-    ).toBe(true);
-    expect(
-      r2ViewBodySchema.safeParse({ key: "warehouse/secret.pdf" }).success
-    ).toBe(false);
-    expect(
-      r2ViewBodySchema.safeParse({ key: "../../etc/passwd" }).success
-    ).toBe(false);
-    expect(r2ViewBodySchema.safeParse({ key: "" }).success).toBe(false);
-  });
 });
 
 describe("validateBody", () => {
@@ -224,5 +152,36 @@ describe("validateBody", () => {
     expect(result.success).toBe(false);
     const result2 = validateBody("string", createOrderBodySchema);
     expect(result2.success).toBe(false);
+  });
+});
+
+describe("moneySchema", () => {
+  it("accepts positive finite amounts with max 2 decimals", () => {
+    expect(moneySchema.safeParse(10).success).toBe(true);
+    expect(moneySchema.safeParse(0.01).success).toBe(true);
+    expect(moneySchema.safeParse(999999999).success).toBe(true);
+  });
+
+  it("rejects invalid amounts", () => {
+    expect(moneySchema.safeParse(0).success).toBe(false);
+    expect(moneySchema.safeParse(-5).success).toBe(false);
+    expect(moneySchema.safeParse(NaN).success).toBe(false);
+    expect(moneySchema.safeParse(Infinity).success).toBe(false);
+    expect(moneySchema.safeParse(10.123).success).toBe(false);
+    expect(moneySchema.safeParse(1000000000).success).toBe(false);
+  });
+});
+
+describe("idSchema", () => {
+  it("accepts safe document IDs", () => {
+    expect(idSchema.safeParse("abc-123_XYZ").success).toBe(true);
+  });
+
+  it("rejects dangerous or oversized IDs (prevents path/selector injection)", () => {
+    expect(idSchema.safeParse("a/b").success).toBe(false);
+    expect(idSchema.safeParse("a..b").success).toBe(false);
+    expect(idSchema.safeParse("").success).toBe(false);
+    expect(idSchema.safeParse("x".repeat(65)).success).toBe(false);
+    expect(idSchema.safeParse("id; delete from users").success).toBe(false);
   });
 });

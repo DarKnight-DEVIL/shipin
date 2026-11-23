@@ -37,6 +37,12 @@ vi.mock("@/lib/redisRateLimiter", () => ({
 
 vi.mock("@/lib/appCheck", () => ({
   reportAppCheckStatus: hooks.reportAppCheck,
+  appCheckLogger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
 }));
 
 // The real module walks src/app/api on disk; the boot behaviour under test is

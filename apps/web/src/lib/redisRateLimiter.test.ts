@@ -137,35 +137,28 @@ describe("createSharedRateLimiter without Redis configured", () => {
 });
 
 describe("createSharedRateLimiter in production without a shared store", () => {
-  it("reports the missing store as unavailable instead of using per-instance limits", async () => {
+  it("throws an error instead of silently degrading to per-instance limits", async () => {
     state.isProduction = true;
     const fallback = makeFallback();
     const limiter = createSharedRateLimiter("api", 30, 60_000, fallback);
 
-    const result = await limiter.record(requestWith());
-
-    expect(result.ok).toBe(false);
-    expect(result.unavailable).toBe(true);
-    expect(result.remaining).toBe(0);
+    await expect(limiter.record(requestWith())).rejects.toThrow(
+      "UPSTASH_REDIS_REST_URL and/or UPSTASH_REDIS_REST_TOKEN are not configured in production"
+    );
     // Silent degradation to in-memory limits is exactly what must not happen.
     expect(fallback.record).not.toHaveBeenCalled();
-    // Surfaced through the error counters (/api/health) and the one startup
-    // warning, not a log line per request.
-    expect(await limiter.getErrorCounts(0)).toEqual([
-      { ip: "1.2.3.4", errors: 1, lastErrorAt: expect.any(Number) },
-    ]);
   });
 
-  it("fails closed when the configured URL is not https", async () => {
+  it("throws an error when the configured URL is not https", async () => {
     state.isProduction = true;
     state.url = "http://insecure.example";
     state.token = "tok";
     const fallback = makeFallback();
     const limiter = createSharedRateLimiter("api", 30, 60_000, fallback);
 
-    const result = await limiter.record(requestWith());
-
-    expect(result.ok).toBe(false);
+    await expect(limiter.record(requestWith())).rejects.toThrow(
+      "UPSTASH_REDIS_REST_URL and/or UPSTASH_REDIS_REST_TOKEN are not configured in production"
+    );
     expect(fallback.record).not.toHaveBeenCalled();
   });
 });

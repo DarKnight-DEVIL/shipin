@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   requestGet: vi.fn(),
   walletGet: vi.fn(),
   orderSet: vi.fn(),
+  runTransaction: vi.fn(),
   isQuoteExpired: vi.fn(),
   calculateProcessingFee: vi.fn(),
   getPayPalAccessToken: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("@/lib/firebaseAdmin", () => ({
         return { id, set: mocks.orderSet };
       },
     }),
+    runTransaction: mocks.runTransaction,
   },
 }));
 vi.mock("@/features/requests/services/quoteExpiry", () => ({
@@ -72,6 +74,13 @@ beforeEach(() => {
   mocks.requestGet.mockReset().mockResolvedValue(snap(requestDoc));
   mocks.walletGet.mockReset().mockResolvedValue(snap({ balance: 0 }));
   mocks.orderSet.mockReset().mockResolvedValue(undefined);
+  mocks.runTransaction.mockReset().mockImplementation(async (fn) => {
+    // Execute the transaction function with a mock transaction object
+    const mockTransaction = {
+      get: mocks.walletGet,
+    };
+    return fn(mockTransaction);
+  });
   mocks.isQuoteExpired.mockReset().mockReturnValue(false);
   mocks.calculateProcessingFee
     .mockReset()

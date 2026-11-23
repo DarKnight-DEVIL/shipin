@@ -185,9 +185,12 @@ export async function requireAdmin(request: Request): Promise<AdminUser> {
     try {
       const authUser = await adminAuth.getUser(uid);
       hasAnyMfa = (authUser.multiFactor?.enrolledFactors?.length ?? 0) > 0;
-    } catch {
-      // A failed lookup means no factor: fall through to MFA_SETUP_REQUIRED
-      // rather than granting access.
+    } catch (error) {
+      // Only swallow "user-not-found" — any other error (network, quota, etc.)
+      // must propagate so the request fails with 500 instead of a false MFA denial.
+      const authError = error as { code?: string };
+      if (authError.code !== "auth/user-not-found") throw error;
+      // user-not-found: no factor enrolled, fall through to MFA_SETUP_REQUIRED
     }
   }
 

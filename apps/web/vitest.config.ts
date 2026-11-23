@@ -60,7 +60,7 @@ export default defineConfig({
         "src/components/ui/index.ts", // re-export barrel: no executable statements
         "src/components/settings/settingsStyles.ts", // static class names, no logic
         "src/components/landing/types.ts", // type declarations only
-        "src/lib/firebase.ts", // lazy singleton with no unit-level exercise path
+        "src/lib/firebase.ts", // lazy singleton with App Check init & emulator connect — requires integration test (see TESTING.md), not unit-testable in isolation
         "src/lib/pdf/index.ts", // re-export barrel: no executable statements
         "src/features/**/types/README.md", // feature docs, not runtime code
         "**/README.md",

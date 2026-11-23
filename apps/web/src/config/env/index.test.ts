@@ -93,7 +93,17 @@ function setStoreConfigured() {
 beforeEach(() => {
   for (const key of [...SERVER_ENV_KEYS, "PAYPAL_WEBHOOK_ID", OPT_OUT])
     vi.stubEnv(key, "");
+  // The store pair has to be cleared explicitly: a developer shell or CI job
+  // that exports real Upstash credentials would otherwise make every
+  // "store is unset" case below pass vacuously, with the validator seeing a
+  // configured store and returning quietly.
+  vi.stubEnv(STORE_URL, "");
+  vi.stubEnv(STORE_TOKEN, "");
   for (const key of CLIENT_KEYS) vi.stubEnv(key, "test-value");
+  // `NEXT_PUBLIC_APP_URL` is a trusted origin, not just a link prefix, so the
+  // validator checks its shape before the cases below run. A placeholder like
+  // "test-value" fails that check and would mask every assertion here.
+  vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://example.com");
 });
 
 afterEach(() => {

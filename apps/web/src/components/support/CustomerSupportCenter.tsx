@@ -139,11 +139,7 @@ export default function CustomerSupportCenter({ customerId }: Props) {
                     key={ticket.id}
                     type="button"
                     onClick={() => setSelectedTicket(ticket)}
-                    className={`w-full rounded-xl px-3 py-3 text-left transition ${
-                      selected
-                        ? "bg-[var(--surface-2)]"
-                        : "hover:bg-[var(--surface-2)]/60"
-                    }`}
+                    className={selected ? "w-full rounded-xl px-3 py-3 text-left transition bg-[var(--surface-2)]" : "w-full rounded-xl px-3 py-3 text-left transition hover:bg-[var(--surface-2)]/60"}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -184,11 +180,7 @@ export default function CustomerSupportCenter({ customerId }: Props) {
                     key={request.id}
                     type="button"
                     onClick={() => selectRefundRequest(request)}
-                    className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-                      selected
-                        ? "border-[var(--accent-solid)] bg-[color-mix(in_srgb,var(--accent-solid)_10%,transparent)]"
-                        : "border-transparent hover:bg-[var(--surface-2)]/60"
-                    }`}
+                    className={selected ? "w-full rounded-xl border px-3 py-3 text-left transition bg-[var(--accent-solid)]" : "w-full rounded-xl border px-3 py-3 text-left transition hover:bg-[var(--surface-2)]/60"}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">

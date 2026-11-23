@@ -183,9 +183,17 @@ export async function getRequestById(
   }
 }
 
+/** Metadata that tells a capped list apart from a complete one. */
+export interface RequestSubscriptionMeta {
+  /** True when the snapshot filled the cap, so older requests may exist. */
+  truncated: boolean;
+  /** The cap the query was given, so the UI can name the number it shows. */
+  limit: number;
+}
+
 export function subscribeToRequests(
   userId: string,
-  callback: (requests: Request[]) => void,
+  callback: (requests: Request[], meta: RequestSubscriptionMeta) => void,
   onError?: (error: Error) => void
 ): () => void {
   // Bounded and ordered: this feeds /requests and the customer support card,
@@ -203,11 +211,19 @@ export function subscribeToRequests(
   return onSnapshot(
     q,
     (snapshot) => {
+      // A full page means "at least this many", not "exactly this many": the
+      // listener cannot know whether a 201st request exists without reading it.
+      // Callers that render a count have to say `200+` rather than 200, or a
+      // capped list quietly looks complete.
       callback(
         snapshot.docs.map((doc) => ({
           id: doc.id,
           ...(doc.data() as Omit<Request, "id">),
-        }))
+        })),
+        {
+          truncated: snapshot.size >= REQUEST_SUBSCRIPTION_LIMIT,
+          limit: REQUEST_SUBSCRIPTION_LIMIT,
+        }
       );
     },
     onError

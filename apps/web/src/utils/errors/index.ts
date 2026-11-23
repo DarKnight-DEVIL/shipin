@@ -5,6 +5,8 @@
  * uniformly and serialized to clients with a consistent shape.
  */
 
+import { NextResponse } from "next/server";
+
 /**
  * Factory function to create a ShipINError with explicit code and status.
  * Used when throwing new application errors (not converting existing ones).
@@ -169,7 +171,6 @@ export function withErrorHandler<Args extends unknown[]>(
     } catch (error) {
       const err = toShipINError(error);
       console.error("[API Error]", err.code, err.message);
-      const { NextResponse } = await import("next/server");
       return NextResponse.json(serializeError(error), { status: err.status });
     }
   };

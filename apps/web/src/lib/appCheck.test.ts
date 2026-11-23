@@ -154,8 +154,15 @@ describe("verifyAppCheckRequest", () => {
       ...source.matchAll(/\bimport\s*\(\s*["']([^"']+)["']\s*\)/g),
     ].filter((match) => match[1] === SDK);
 
-    expect(sdkImports).toHaveLength(1);
-    expect(sdkImports[0].index).toBeGreaterThan(verifier);
+    // Type-position occurrences — `let fn: () => import("…").AppCheck` — are
+    // erased by the compiler and load nothing, so the count is not the
+    // contract. What matters is that none of them sits above the verifier: an
+    // import evaluated at module scope would load the SDK at boot, exactly
+    // like the static import this test forbids.
+    expect(sdkImports.length).toBeGreaterThan(0);
+    for (const match of sdkImports) {
+      expect(match.index).toBeGreaterThan(verifier);
+    }
   });
 
   it("reports not-enforced without looking at the request", async () => {

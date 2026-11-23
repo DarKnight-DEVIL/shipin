@@ -26,6 +26,8 @@ function RequestsPageContent() {
 
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
+  /** The live listener is capped, so a full page means "200+", not "200". */
+  const [listTruncated, setListTruncated] = useState(false);
 
   const setStatusFilter = (value: string) => {
     if (value) {
@@ -50,10 +52,14 @@ function RequestsPageContent() {
         return;
       }
 
-      unsubscribeRequests = subscribeToRequests(user.uid, (data: Request[]) => {
-        setRequests(data);
-        setLoading(false);
-      });
+      unsubscribeRequests = subscribeToRequests(
+        user.uid,
+        (data: Request[], meta) => {
+          setRequests(data);
+          setListTruncated(meta.truncated);
+          setLoading(false);
+        }
+      );
     });
 
     return () => {
@@ -128,7 +134,7 @@ function RequestsPageContent() {
             ? `${filteredRequests.length} matching request${
                 filteredRequests.length === 1 ? "" : "s"
               }`
-            : `${requests.length} request${
+            : `${requests.length}${listTruncated ? "+" : ""} request${
                 requests.length === 1 ? "" : "s"
               } · quotes, payments and deliveries in one place`
         }
@@ -139,6 +145,16 @@ function RequestsPageContent() {
           </Link>
         }
       />
+
+      {/* A capped list must say so: the count above and every chip below
+          describe only the newest page the listener loaded. */}
+      {listTruncated && (
+        <p role="status" className="app-panel mb-4 px-4 py-3 text-[12px]">
+          Showing your {requests.length} most recent requests. Older requests
+          are not loaded — search or filter by status to find one, or open it
+          from its email receipt.
+        </p>
+      )}
 
       {/* TOOLBAR */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
