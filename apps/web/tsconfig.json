@@ -6,7 +6,10 @@
     // runtime without an import. The base config deliberately restricts
     // `types` to node, which would leave those globals untyped; name the
     // package here so the type graph matches the runner.
-    "types": ["node", "vitest/globals"],
+    "types": [
+      "node",
+      "vitest/globals"
+    ],
     "plugins": [
       {
         "name": "next"
@@ -14,8 +17,12 @@
     ],
     "paths": {
       // Root imports (@/lib/auth) resolve from the app root first, then src.
-      "@/*": ["./*", "./src/*"]
-    }
+      "@/*": [
+        "./*",
+        "./src/*"
+      ]
+    },
+    "jsx": "preserve"
   },
   "include": [
     "next-env.d.ts",
@@ -26,5 +33,8 @@
     "../../packages/*/src/**/*.ts",
     "../../packages/*/src/**/*.tsx"
   ],
-  "exclude": ["node_modules", "scripts"]
+  "exclude": [
+    "node_modules",
+    "scripts"
+  ]
 }

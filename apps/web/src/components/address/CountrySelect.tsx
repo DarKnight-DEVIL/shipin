@@ -2,31 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Select, { StylesConfig } from "react-select";
-import { Country } from "country-state-city";
+import { COUNTRIES, type CountryOption } from "@/lib/countries";
 
 interface Props {
   value: string;
   onChange: (value: string) => void;
 }
 
-interface CountryOption {
-  value: string;
-  label: string;
-  name: string;
-}
-
 export default function CountrySelect({ value, onChange }: Props) {
   const [isDark, setIsDark] = useState(false);
 
-  const countries = useMemo<CountryOption[]>(
-    () =>
-      Country.getAllCountries().map((c) => ({
-        value: c.isoCode,
-        label: `${c.flag}  ${c.name}`,
-        name: c.name,
-      })),
-    []
-  );
+  // `COUNTRIES` is a static, pre-sorted list, so this component no longer ships
+  // a country dataset of its own.
+  const countries = useMemo<CountryOption[]>(() => COUNTRIES, []);
 
   useEffect(() => {
     const root = document.documentElement;

@@ -1,0 +1,21 @@
+{
+  // `tsconfig.json` excludes `scripts/`: those run under plain Node
+  // (`node --experimental-strip-types`), not through Next's compiler. Without
+  // this config nothing typechecks them at all — `check-production-env.ts`
+  // could drift from the validator it calls and only fail during a release.
+  //
+  // Deliberately narrow. Widening it to `scripts/**/*.ts` surfaces five
+  // pre-existing errors in files this change does not touch
+  // (`scripts/lib/licenses.test.ts` and `scripts/migrations/migration-runner.ts`),
+  // so the guard covers the one script whose breakage would reach a release
+  // first. Add files here one at a time as they are fixed.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // The script imports `../src/config/env/index.ts` with its extension, which
+    // is what plain Node requires.
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["scripts/**/*.ts"],
+  "exclude": ["node_modules"]
+}

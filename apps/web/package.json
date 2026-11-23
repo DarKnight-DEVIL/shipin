@@ -37,6 +37,7 @@
     "check:money-globs": "node scripts/check-money-globs.mjs",
     "check:authorized-domains": "node scripts/check-authorized-domains.mjs",
     "check:firestore-indexes": "node scripts/check-firestore-indexes.mjs",
+    "check:env-inlining": "node scripts/check-env-inlining.mjs",
     "check:production-env": "node --experimental-strip-types scripts/check-production-env.ts",
     "check:licenses": "node scripts/check-licenses.mjs"
   },
@@ -59,7 +60,6 @@
     "@vercel/speed-insights": "^2.0.0",
     "axe-core": "^4.14.0",
     "clsx": "^2.1.1",
-    "country-state-city": "^3.2.1",
     "date-fns": "^4.4.0",
     "firebase": "^13.4.0",
     "firebase-admin": "^14.5.1",
