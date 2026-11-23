@@ -13,7 +13,7 @@
     "lucide-react": "^1.23.0",
     "react": "^19",
     "react-dom": "^19",
-    "tailwind-merge": "^2.2.0"
+    "tailwind-merge": "^2.6.2"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",
