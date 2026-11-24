@@ -186,6 +186,29 @@ describe("AuthRedirectHandler", () => {
     expect(h.router.replace).not.toHaveBeenCalled();
   });
 
+  it("does not show a stuck interstitial when the user returns to /login later", async () => {
+    // Sign-in completed via the redirect fallback: interstitial up, result
+    // resolved, destination route replaced the login page.
+    sessionStorage.setItem("shipin:auth-redirect-pending", "1");
+    h.getRedirectResult.mockResolvedValue(seedUser("Ada"));
+    h.ensureUserProfile.mockResolvedValue({ role: "customer" });
+    const { rerender } = render(<AuthRedirectHandler />);
+
+    await waitFor(() => expect(h.router.replace).toHaveBeenCalledWith("/dashboard"));
+
+    // The dashboard replaces the login route.
+    h.pathname = "/dashboard";
+    rerender(<AuthRedirectHandler />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    // Logging out brings the user back to /login in the same SPA session —
+    // the interstitial must stay gone; before the reset fix it hung here
+    // forever because nothing ever cleared the returning-from-redirect state.
+    h.pathname = "/login";
+    rerender(<AuthRedirectHandler />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("repairs the profile, greets the user and lands on the dashboard", async () => {
     h.getRedirectResult.mockResolvedValue(seedUser("Ada"));
     h.ensureUserProfile.mockResolvedValue({ role: "customer" });

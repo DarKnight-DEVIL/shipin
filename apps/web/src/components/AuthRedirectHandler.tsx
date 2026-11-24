@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getRedirectResult } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
@@ -60,7 +60,19 @@ export default function AuthRedirectHandler() {
 
   // The root layout keeps this component mounted across client navigations,
   // so the interstitial must unmount when the destination page is actually
-  // showing — not when routing merely starts.
+  // showing — not when routing merely starts. And the flag must RESET once
+  // the destination page has replaced the login route: otherwise every later
+  // visit to /login in the same session (logging out, manual navigation)
+  // renders a stuck, never-dismissed interstitial.
+  const leftLoginRoute = useRef(false);
+
+  useEffect(() => {
+    if (pathname !== "/login" && !leftLoginRoute.current) {
+      leftLoginRoute.current = true;
+      setReturningFromRedirect(false);
+    }
+  }, [pathname]);
+
   const showSignInInterstitial =
     returningFromRedirect && pathname === "/login";
 
