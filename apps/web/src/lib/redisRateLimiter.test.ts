@@ -20,6 +20,7 @@ const state = vi.hoisted(() => ({
   url: "",
   token: "",
   isProduction: false,
+  storeOptional: false,
   limit: vi.fn(),
   hset: vi.fn(),
   hgetall: vi.fn(),
@@ -42,6 +43,8 @@ vi.mock("@/config/env", () => ({
   get isDevelopment() {
     return !state.isProduction;
   },
+  RATE_LIMIT_STORE_OPTIONAL_ENV: "RATE_LIMIT_STORE_OPTIONAL",
+  isRateLimitStoreOptional: () => state.storeOptional,
 }));
 
 vi.mock("@upstash/redis", () => ({
@@ -106,6 +109,7 @@ beforeEach(() => {
   state.url = "";
   state.token = "";
   state.isProduction = false;
+  state.storeOptional = false;
   state.limit.mockReset();
   state.hset.mockReset().mockResolvedValue(1);
   state.hgetall.mockReset().mockResolvedValue({});
@@ -160,6 +164,37 @@ describe("createSharedRateLimiter in production without a shared store", () => {
       "UPSTASH_REDIS_REST_URL and/or UPSTASH_REDIS_REST_TOKEN are not configured in production"
     );
     expect(fallback.record).not.toHaveBeenCalled();
+  });
+
+  it("names the opt-out variable an operator has to set", async () => {
+    state.isProduction = true;
+    const limiter = createSharedRateLimiter("api", 30, 60_000, makeFallback());
+
+    const error = await limiter.record(requestWith()).catch((e: Error) => e);
+
+    expect(error).toBeInstanceOf(Error);
+
+    // The message used to interpolate the VALUE of an env var that names a
+    // different env var, so the log an operator actually sees said
+    // "set undefined=1".
+    const message = (error as Error).message;
+    expect(message).toContain("RATE_LIMIT_STORE_OPTIONAL=1");
+    expect(message).not.toContain("undefined=1");
+  });
+
+  it("falls back to the in-memory limiter when the E2E opt-out is set", async () => {
+    // The documented opt-out used to satisfy only the startup validator, so the
+    // server booted and then answered 500 to every request; the E2E suite and
+    // any local `npm start` died there.
+    state.isProduction = true;
+    state.storeOptional = true;
+    const fallback = makeFallback();
+    const limiter = createSharedRateLimiter("web", 100, 60_000, fallback);
+
+    const result = await limiter.record(requestWith());
+
+    expect(result).toEqual(fallbackResult);
+    expect(fallback.record).toHaveBeenCalledTimes(1);
   });
 });
 

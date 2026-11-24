@@ -51,7 +51,12 @@ import { childLogger } from "./logger";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
-import { serverEnv, isProduction } from "@/config/env";
+import {
+  serverEnv,
+  isProduction,
+  isRateLimitStoreOptional,
+  RATE_LIMIT_STORE_OPTIONAL_ENV,
+} from "@/config/env";
 import { getClientIp } from "@/lib/clientIp";
 
 export interface RateLimitResult {
@@ -163,7 +168,9 @@ export function reportRateLimitStoreStatus(): RateLimitStoreStatus {
   if (status.degraded) {
     const rateLimiterLogger = childLogger({ service: "rate-limiter" });
 rateLimiterLogger.warn(
-      "[RateLimiter] UPSTASH_REDIS_REST_URL and/or UPSTASH_REDIS_REST_TOKEN are not set in production. " +        "Rate limits are per-instance only; /api/health reports this as degraded. " +        "Set both variables to enforce limits across serverless regions."
+      "[RateLimiter] UPSTASH_REDIS_REST_URL and/or UPSTASH_REDIS_REST_TOKEN are not set in production. " +
+        "Rate limits are per-instance only; /api/health reports this as degraded. " +
+        "Set both variables to enforce limits across serverless regions."
     );
   }
 
@@ -279,7 +286,7 @@ export function createSharedRateLimiter(
 
       const limiter = getRatelimitInstance(name, maxRequests, windowMs);
       if (!limiter) {
-        if (isProduction) {
+        if (isProduction && !isRateLimitStoreOptional()) {
           // No shared store configured in production — this is a hard failure.
           // A financial application cannot operate with per-instance rate limits
           // that an attacker can bypass by spreading requests across regions.
@@ -289,13 +296,19 @@ export function createSharedRateLimiter(
           // as a defense-in-depth measure.
           const err = new Error(
             `[RateLimiter:${name}] UPSTASH_REDIS_REST_URL and/or UPSTASH_REDIS_REST_TOKEN are not configured in production. ` +
-              `Rate limiting requires a shared store. Set both variables, or set ${process.env.RATE_LIMIT_STORE_OPTIONAL_ENV}=1 only for the E2E suite.`
+              `Rate limiting requires a shared store. Set both variables, or set ${RATE_LIMIT_STORE_OPTIONAL_ENV}=1 only for the E2E suite.`
           );
           console.error(err.message);
           throw err;
         }
 
-        // Development/test: no Redis configured → use in-memory fallback.
+        // Development/test, or a production build carrying the documented E2E
+        // opt-out: use the per-instance in-memory fallback. The opt-out has to
+        // be honoured here and not only by the startup validator, otherwise the
+        // process boots and then answers 500 to every request while
+        // /api/health reports the deployment as down. Health still reports
+        // `degraded` for this deployment, which is the alert an operator acts
+        // on; `reportRateLimitStoreStatus` is what records it.
         return fallback.record(request);
       }
 

@@ -137,6 +137,11 @@ const env = {
   UPSTASH_REDIS_REST_URL: "",
   UPSTASH_REDIS_REST_TOKEN: "",
   RATE_LIMIT_STORE_OPTIONAL: "1",
+  // `APP_URL`/`NEXT_PUBLIC_APP_URL` are rewritten to http://localhost:3000
+  // below, and a production build refuses a cleartext origin without this. It
+  // has to be here as well as in the comment block above: without it the
+  // preflight exits before the server binds, and nothing runs at all.
+  APP_URL_E2E_OPTIONAL: "1",
   // Same store, different failure: the MFA revocation list fails closed in
   // production, so without this every elevation is rejected and the cookie
   // authorizes nothing. E2E only — never set on a deployment.
