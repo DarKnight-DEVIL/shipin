@@ -11,7 +11,6 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
-  signInWithPopup,
   signInWithRedirect,
 } from "firebase/auth";
 import type { User } from "firebase/auth";
@@ -29,7 +28,6 @@ import { toast } from "sonner";
 
 import { auth, getAppCheckToken } from "@/lib/firebase";
 import { verificationEmailOptions } from "@/lib/emailVerification";
-import SigningInOverlay from "@/components/SigningInOverlay";
 import {
   clearAuthRedirectPending,
   markAuthRedirectPending,
@@ -99,11 +97,6 @@ export default function LoginClient() {
    */
   const [acceptedPolicies, setAcceptedPolicies] = useState(false);
   const [formError, setFormError] = useState("");
-  // A Google sign-in is completing (popup open, credential exchange, or the
-  // redirect fallback in flight). The whole page is covered by the
-  // signing-in interstitial so the form never appears to stall or flash
-  // back mid-flow.
-  const [googlePending, setGooglePending] = useState(false);
   // Optional documentation link rendered under the inline error, for
   // failures a user cannot fix from this page.
   const [formErrorHelp, setFormErrorHelp] = useState<{
@@ -249,78 +242,42 @@ export default function LoginClient() {
   }
 
   async function handleGoogleLogin() {
-    // The button opens the classic Google chooser in a popup. The popup works
-    // because /__/auth is served same-origin (see next.config.ts) and the
-    // auth helper frames are allowed by our own frame headers; before that,
-    // the popup's result never came back and redirect was the only flow that
-    // worked.
+    // The button uses the redirect flow: the browser goes straight to
+    // Google's chooser, the user picks an account, and the return trip —
+    // handled by AuthRedirectHandler with the signing-in interstitial —
+    // completes the sign-in. The sequence is exactly:
+    // click → Google chooser → loader → dashboard.
     //
-    // The full-screen interstitial deliberately waits until the account is
-    // picked: loader → chooser → loader read as the page flickering, while
-    // chooser → loader → dashboard is the order users expect. Until then the
-    // button's own spinner is the feedback.
+    // The popup flow was dropped deliberately: Edge demotes the popup to a
+    // tab and its tracking prevention breaks the popup result delivery, so
+    // every Edge sign-in silently fell back to the redirect anyway — after
+    // showing a loader first, which read as the page flickering. The redirect
+    // behaves identically in every browser, so the button now uses it
+    // directly and shows no loader until the account is picked.
     setLoading(true);
-    console.warn("[ShipIN] google: opening popup chooser");
+    markAuthRedirectPending();
     try {
-      const result = await signInWithPopup(auth, new GoogleAuthProvider());
-      console.warn("[ShipIN] google: popup resolved — showing loader, finishing sign-in");
-      setGooglePending(true);
-      await finishSignIn(result.user);
-    } catch (error) {
-      const code = (error as { code?: string })?.code;
-      console.warn("[ShipIN] google: popup flow rejected with", code ?? error);
-
-      // Closing the chooser, or a second click superseding the first, is the
-      // user changing their mind — not a failure to apologise for.
-      if (
-        code === "auth/popup-closed-by-user" ||
-        code === "auth/cancelled-popup-request"
-      ) {
-        console.warn("[ShipIN] google: treated as intentional cancellation");
-        setLoading(false);
-        setGooglePending(false);
-        return;
-      }
-
-      // A blocker killed the popup before it opened. The redirect flow (with
-      // AuthRedirectHandler completing it on return) is the fallback. Mark
-      // the trip and cover the page now: the browser is about to leave for
-      // Google, and the return must render the interstitial instead of
-      // flashing the login form back.
-      if (code === "auth/popup-blocked") {
-        console.warn("[ShipIN] google: popup blocked — switching to redirect fallback");
-        markAuthRedirectPending();
-        setGooglePending(true);
-        try {
-          await signInWithRedirect(auth, new GoogleAuthProvider());
-          // The browser leaves this page; AuthRedirectHandler finishes the
-          // flow, including the best-effort login-intent ping.
-          return;
-        } catch (redirectError) {
-          clearAuthRedirectPending();
-          await handleAuthFailure(redirectError);
-          return;
-        }
-      }
-
-      await handleAuthFailure(error);
+      await signInWithRedirect(auth, new GoogleAuthProvider());
+      // The browser leaves this page; AuthRedirectHandler finishes the
+      // flow, including the best-effort login-intent ping.
+    } catch (redirectError) {
+      clearAuthRedirectPending();
+      await handleAuthFailure(redirectError);
     }
   }
 
   /**
-   * Shared failure path for every Google sign-in attempt (popup and
-   * redirect flows): maps Firebase error codes to actionable user messages
-   * and surfaces them inline as well as in a toast.
+   * Shared failure path for every Google sign-in attempt (redirect flow): maps
+   * Firebase error codes to actionable user messages and surfaces them inline
+   * as well as in a toast.
    */
   async function handleAuthFailure(error: unknown) {
     if (await beginSecondFactor(error)) {
       setLoading(false);
-      setGooglePending(false);
       return;
     }
 
     setLoading(false);
-    setGooglePending(false);
     // The previous inline error is about a different attempt, so it must
     // not outlive this one. Clearing it also unmounts any documentation
     // link, which only renders beside an inline error.
@@ -610,9 +567,7 @@ export default function LoginClient() {
   }
 
   return (
-    <>
-      {googlePending && <SigningInOverlay />}
-      <main className={`login ${display.variable}`}>
+    <main className={`login ${display.variable}`}>
       <aside className="login__brand">
         <div className="login__art" aria-hidden="true" />
         <div className="login__brandbody">
@@ -959,6 +914,5 @@ export default function LoginClient() {
         </div>
       </section>
     </main>
-    </>
   );
 }

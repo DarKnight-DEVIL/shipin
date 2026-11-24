@@ -23,7 +23,6 @@ const h = vi.hoisted(() => ({
   createUserWithEmailAndPassword: vi.fn(),
   sendEmailVerification: vi.fn(),
   signInWithRedirect: vi.fn(),
-  signInWithPopup: vi.fn(),
   sendPasswordResetEmail: vi.fn(),
   replace: vi.fn(),
   refresh: vi.fn(),
@@ -56,7 +55,6 @@ vi.mock("firebase/auth", () => ({
   sendEmailVerification: (...args: unknown[]) =>
     h.sendEmailVerification(...args),
   signInWithRedirect: (...args: unknown[]) => h.signInWithRedirect(...args),
-  signInWithPopup: (...args: unknown[]) => h.signInWithPopup(...args),
   sendPasswordResetEmail: (...args: unknown[]) =>
     h.sendPasswordResetEmail(...args),
 }));
@@ -148,7 +146,6 @@ beforeEach(() => {
   h.createUserWithEmailAndPassword.mockReset();
   h.sendEmailVerification.mockReset().mockResolvedValue(undefined);
   h.signInWithRedirect.mockReset();
-  h.signInWithPopup.mockReset();
   h.sendPasswordResetEmail.mockReset().mockResolvedValue(undefined);
   h.replace.mockReset();
   h.refresh.mockReset();
@@ -522,74 +519,8 @@ describe("LoginClient: sign-in warm-up", () => {
   });
 });
 
-describe("LoginClient: Google popup flow", () => {
-  it("opens a popup from the Continue with Google button", async () => {
-    h.signInWithPopup.mockResolvedValue({
-      user: profile({ emailVerified: true }),
-    });
-    render(<LoginClient />);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /continue with google/i })
-    );
-
-    await waitFor(() => expect(h.replace).toHaveBeenCalledWith("/dashboard"));
-    expect(h.signInWithPopup).toHaveBeenCalledWith(
-      { name: "test-auth" },
-      expect.anything()
-    );
-    // The button and the auto-prompt are independent paths.
-    expect(h.signInWithRedirect).not.toHaveBeenCalled();
-  });
-
-  it("shows the interstitial only after the account is picked, not at click", async () => {
-    let settlePopup: (value: { user: unknown }) => void = () => {};
-    h.signInWithPopup.mockReturnValue(
-      new Promise((resolve) => {
-        settlePopup = resolve;
-      })
-    );
-    render(<LoginClient />);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /continue with google/i })
-    );
-
-    // While the chooser is open the form stays visible (button spinner only):
-    // loader → chooser → loader read as the page flickering.
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
-
-    settlePopup({ user: profile({ emailVerified: true }) });
-    // Once the account is picked, the interstitial covers the page for the
-    // profile work and the ride to the dashboard.
-    await waitFor(() =>
-      expect(screen.getByRole("status")).toHaveTextContent(/signing you in/i)
-    );
-    await waitFor(() => expect(h.replace).toHaveBeenCalledWith("/dashboard"));
-  });
-
-  it("treats a closed chooser as a cancellation, not an error", async () => {
-    h.signInWithPopup.mockRejectedValue({ code: "auth/popup-closed-by-user" });
-    render(<LoginClient />);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /continue with google/i })
-    );
-
-    // No spinner left behind and no failure message for changing one's mind.
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: /continue with google/i })
-      ).not.toBeDisabled()
-    );
-    expect(h.error).not.toHaveBeenCalled();
-    expect(h.signInWithRedirect).not.toHaveBeenCalled();
-    // The interstitial is gone and the form is back.
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
-  });
-
-  it("falls back to a redirect when the popup is blocked", async () => {
-    h.signInWithPopup.mockRejectedValue({ code: "auth/popup-blocked" });
+describe("LoginClient: Google redirect flow", () => {
+  it("sends the browser to Google from the Continue with Google button", async () => {
     h.signInWithRedirect.mockResolvedValue(undefined);
     render(<LoginClient />);
 
@@ -603,10 +534,45 @@ describe("LoginClient: Google popup flow", () => {
         expect.anything()
       )
     );
-    expect(h.error).not.toHaveBeenCalled();
     // The return trip is marked so the interstitial renders instead of the
     // login form flashing back mid-sign-in.
     expect(sessionStorage.getItem("shipin:auth-redirect-pending")).toBe("1");
+  });
+
+  it("shows no full-screen loader before the browser leaves for Google", async () => {
+    // The navigation itself is the feedback; loader → chooser → loader read
+    // as the page flickering. The interstitial only appears on the return
+    // trip (AuthRedirectHandler's tests cover that).
+    h.signInWithRedirect.mockReturnValue(new Promise(() => {}));
+    render(<LoginClient />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i })
+    );
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    // The Google button flips to its in-flight label while the browser leaves
+    // (the email Continue button shares the label, so target by class).
+    expect(document.querySelector(".login__google")).toBeDisabled();
+  });
+
+  it("reports a failure to start the redirect inline and clears the trip mark", async () => {
+    h.signInWithRedirect.mockRejectedValue({
+      code: "auth/firebase-app-check-token-is-invalid",
+    });
+    render(<LoginClient />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i })
+    );
+
+    await waitFor(() =>
+      expect(h.error).toHaveBeenCalledWith(expect.stringContaining("App Check"))
+    );
+    expect(sessionStorage.getItem("shipin:auth-redirect-pending")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /continue with google/i })
+    ).not.toBeDisabled();
   });
 });
 
@@ -663,7 +629,7 @@ describe("LoginClient: forgot password", () => {
 
 describe("LoginClient: App Check errors", () => {
   it("explains a Google sign-in blocked by App Check", async () => {
-    h.signInWithPopup.mockRejectedValue({
+    h.signInWithRedirect.mockRejectedValue({
       code: "auth/firebase-app-check-token-is-invalid",
     });
     render(<LoginClient />);
@@ -704,7 +670,7 @@ describe("LoginClient: App Check errors", () => {
   });
 
   it("points the unauthorized-domain error at the documentation", async () => {
-    h.signInWithPopup.mockRejectedValue({ code: "auth/unauthorized-domain" });
+    h.signInWithRedirect.mockRejectedValue({ code: "auth/unauthorized-domain" });
     render(<LoginClient />);
 
     fireEvent.click(
@@ -733,7 +699,7 @@ describe("LoginClient: App Check errors", () => {
   });
 
   it("drops the documentation link on the next failure", async () => {
-    h.signInWithPopup.mockRejectedValue({ code: "auth/unauthorized-domain" });
+    h.signInWithRedirect.mockRejectedValue({ code: "auth/unauthorized-domain" });
     render(<LoginClient />);
 
     fireEvent.click(
@@ -743,7 +709,7 @@ describe("LoginClient: App Check errors", () => {
       name: /authorized domains documentation/i,
     });
 
-    h.signInWithPopup.mockRejectedValue({ code: "auth/network-request-failed" });
+    h.signInWithRedirect.mockRejectedValue({ code: "auth/network-request-failed" });
     fireEvent.click(
       screen.getByRole("button", { name: /continue with google/i })
     );
@@ -758,7 +724,7 @@ describe("LoginClient: App Check errors", () => {
   });
 
   it("clears the documentation link when a validation error replaces it", async () => {
-    h.signInWithPopup.mockRejectedValue({ code: "auth/unauthorized-domain" });
+    h.signInWithRedirect.mockRejectedValue({ code: "auth/unauthorized-domain" });
     render(<LoginClient />);
 
     fireEvent.click(
