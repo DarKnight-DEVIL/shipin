@@ -124,7 +124,20 @@ export function ensureFirebaseApp(): { app: FirebaseApp; auth: Auth } {
   if (app === null) {
     const firebaseConfig = {
       apiKey: clientEnv.NEXT_PUBLIC_FIREBASE_API_KEY,
-      authDomain: clientEnv.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+      // Same-origin authDomain. The auth helper (/__/auth handler + iframe)
+      // must be served from this app's own origin: on any other host the
+      // browser partitions the helper's third-party storage and sign-in
+      // results never reach the page (silent sign-out after the redirect
+      // back from Google). next.config.ts proxies /__/auth to the real
+      // helper on <project>.firebaseapp.com, so using the current host here
+      // keeps the whole flow same-origin in every https deployment.
+      // HTTPS-only on purpose: on http://localhost:3000 the hostname loses
+      // the port, the SDK would target https://localhost (nothing there),
+      // and local dev has no TLS anyway — dev keeps the configured domain.
+      authDomain:
+        typeof window !== "undefined" && window.location.protocol === "https:"
+          ? window.location.hostname
+          : clientEnv.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
       projectId: clientEnv.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
       messagingSenderId: clientEnv.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
       appId: clientEnv.NEXT_PUBLIC_FIREBASE_APP_ID,

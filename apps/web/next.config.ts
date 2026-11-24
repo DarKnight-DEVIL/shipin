@@ -6,6 +6,18 @@ import { STANDALONE_OUTPUT_EXCLUDES } from "./standalone-output-excludes.mjs";
 
 const ANALYZE = process.env.ANALYZE === "true";
 
+// Firebase's auth helper (the /__/auth handler and iframe that complete
+// popup and redirect sign-ins) lives on <project>.firebaseapp.com. Hosted
+// anywhere else — Vercel included — the browser partitions that third-party
+// storage, the helper's result never reaches the page, and sign-in returns
+// to the app silently signed out (getRedirectResult resolves null). Proxying
+// /__/auth through this app makes the helper same-origin, which is Firebase's
+// documented fix for apps not served by Firebase Hosting:
+// https://firebase.google.com/docs/auth/web/redirect-best-practices (Option 3).
+const FIREBASE_PROJECT =
+  process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "shipin-9576a";
+const FIREBASE_AUTH_HELPER_ORIGIN = `https://${FIREBASE_PROJECT}.firebaseapp.com`;
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Vercel builds Next.js itself and runs one function per route, so it must
@@ -61,6 +73,17 @@ const nextConfig: NextConfig = {
       "recharts",
       "framer-motion",
     ],
+  },
+  async rewrites() {
+    // Transparent proxy (a 302 would defeat the purpose): the browser sees
+    // the auth helper on this origin, so its storage is not partitioned.
+    // Pair this with the same-origin authDomain in src/lib/firebase.ts.
+    return [
+      {
+        source: "/__/auth/:path*",
+        destination: `${FIREBASE_AUTH_HELPER_ORIGIN}/__/auth/:path*`,
+      },
+    ];
   },
   async headers() {
     // Production only. Next warns that a custom /_next/static Cache-Control can
