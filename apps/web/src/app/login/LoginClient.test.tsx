@@ -542,7 +542,7 @@ describe("LoginClient: Google popup flow", () => {
     expect(h.signInWithRedirect).not.toHaveBeenCalled();
   });
 
-  it("covers the page with the signing-in interstitial while the popup is open", async () => {
+  it("shows the interstitial only after the account is picked, not at click", async () => {
     let settlePopup: (value: { user: unknown }) => void = () => {};
     h.signInWithPopup.mockReturnValue(
       new Promise((resolve) => {
@@ -555,11 +555,16 @@ describe("LoginClient: Google popup flow", () => {
       screen.getByRole("button", { name: /continue with google/i })
     );
 
-    // The interstitial replaces the form while the chooser is open, so the
-    // user is never left staring at a form that appears to have done nothing.
-    expect(screen.getByRole("status")).toHaveTextContent(/signing you in/i);
+    // While the chooser is open the form stays visible (button spinner only):
+    // loader → chooser → loader read as the page flickering.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
     settlePopup({ user: profile({ emailVerified: true }) });
+    // Once the account is picked, the interstitial covers the page for the
+    // profile work and the ride to the dashboard.
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(/signing you in/i)
+    );
     await waitFor(() => expect(h.replace).toHaveBeenCalledWith("/dashboard"));
   });
 

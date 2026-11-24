@@ -243,17 +243,20 @@ export default function LoginClient() {
   }
 
   async function handleGoogleLogin() {
-    // The button opens the classic Google chooser in a popup. The One Tap
-    // chooser auto-prompted on page load stays independent — this is the
-    // explicit path for people who dismissed it or landed without it. The
-    // popup works because /__/auth is served same-origin (see next.config.ts)
-    // and the auth helper frames are allowed by our own frame headers; before
-    // that, the popup's result never came back and redirect was the only
-    // flow that worked.
+    // The button opens the classic Google chooser in a popup. The popup works
+    // because /__/auth is served same-origin (see next.config.ts) and the
+    // auth helper frames are allowed by our own frame headers; before that,
+    // the popup's result never came back and redirect was the only flow that
+    // worked.
+    //
+    // The full-screen interstitial deliberately waits until the account is
+    // picked: loader → chooser → loader read as the page flickering, while
+    // chooser → loader → dashboard is the order users expect. Until then the
+    // button's own spinner is the feedback.
     setLoading(true);
-    setGooglePending(true);
     try {
       const result = await signInWithPopup(auth, new GoogleAuthProvider());
+      setGooglePending(true);
       await finishSignIn(result.user);
     } catch (error) {
       const code = (error as { code?: string })?.code;
@@ -271,10 +274,12 @@ export default function LoginClient() {
 
       // A blocker killed the popup before it opened. The redirect flow (with
       // AuthRedirectHandler completing it on return) is the fallback. Mark
-      // the trip so the return renders the signing-in interstitial instead
-      // of flashing the login form back.
+      // the trip and cover the page now: the browser is about to leave for
+      // Google, and the return must render the interstitial instead of
+      // flashing the login form back.
       if (code === "auth/popup-blocked") {
         markAuthRedirectPending();
+        setGooglePending(true);
         try {
           await signInWithRedirect(auth, new GoogleAuthProvider());
           // The browser leaves this page; AuthRedirectHandler finishes the
