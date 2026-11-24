@@ -101,6 +101,7 @@ describe("settleMainPayment", () => {
       expect.objectContaining({ __kind: "wallets" }),
       {
         balance: 80,
+        reserved: 0,
         currency: "USD",
         updatedAt: "__SERVER_TS__",
       },

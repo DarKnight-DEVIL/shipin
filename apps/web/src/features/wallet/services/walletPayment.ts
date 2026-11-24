@@ -142,8 +142,15 @@ export async function processWalletPayment(
 
       const wallet = walletSnapshot.data();
       const currentBalance = wallet?.balance ?? 0;
+      /*
+       * Funds promised to a pending PayPal checkout are not spendable: without
+       * this a wallet payment made while a PayPal capture was in flight could
+       * drain the balance the capture is about to settle from.
+       */
+      const reserved = Math.max(0, Number(wallet?.reserved ?? 0));
+      const available = currentBalance - reserved;
 
-      if (currentBalance < amount) {
+      if (available < amount) {
         throw new WalletPaymentFailure("INSUFFICIENT_BALANCE");
       }
 

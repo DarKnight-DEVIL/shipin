@@ -6,7 +6,7 @@
  * entry, and must record who made the decision (ip / user-agent).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 
 const mocks = vi.hoisted(() => ({
@@ -53,11 +53,17 @@ const request = (init?: { body?: unknown; headers?: Record<string, string> }) =>
   });
 
 beforeEach(() => {
+  // Forwarded metadata is recorded only in a declared proxy deployment.
+  vi.stubEnv("VERCEL", "1");
   mocks.auth.mockReset().mockResolvedValue({ profile: { uid: "user-1" } });
   mocks.getUserConsentState.mockReset().mockResolvedValue({});
   mocks.getConsentLog.mockReset().mockResolvedValue([]);
   mocks.getGrantedCategories.mockReset().mockResolvedValue([]);
   mocks.updateUserConsent.mockReset().mockResolvedValue(undefined);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("GET /api/user/consent", () => {

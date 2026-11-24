@@ -10,35 +10,12 @@ import { WHATSAPP_TEMPLATES } from "@/features/notifications/templates";
 import type { NotificationCategory } from "@/features/notifications/services/notificationService";
 import { withErrorHandler } from "@/utils/errors";
 import { readAndValidateBody, shipmentBodySchema } from "@/lib/validation";
+import { generateTrackingId } from "@/lib/trackingId";
 
 interface RouteContext {
   params: Promise<{
     requestId: string;
   }>;
-}
-
-/**
- * Mint the next ShipIN tracking ID.
- *
- * Runs here rather than in the admin panel so the counter is written by the
- * Admin SDK: `counters/{id}` is closed to clients, and a missing ID must not
- * depend on the browser having generated one.
- */
-async function generateTrackingId(): Promise<string> {
-  const counterRef = adminDb.collection("counters").doc("tracking");
-
-  return adminDb.runTransaction(async (transaction) => {
-    const snapshot = await transaction.get(counterRef);
-    const next = (snapshot.data()?.value ?? 0) + 1;
-
-    transaction.set(
-      counterRef,
-      { value: next, updatedAt: FieldValue.serverTimestamp() },
-      { merge: true }
-    );
-
-    return `SHP-${new Date().getFullYear()}-${String(next).padStart(6, "0")}`;
-  });
 }
 
 export const POST = withErrorHandler(

@@ -39,8 +39,35 @@ interface RequestData {
   quoteRegenerationRequested?: boolean;
 }
 
+/*
+ * A request counts as revenue only once it is paid. `submitted`, `review`,
+ * `awaiting_payment` and the terminal non-paying states are pipeline, not money;
+ * counting their quoted totals inflated every financial number on the page.
+ */
+const PAID_STATUSES = new Set([
+  "paid",
+  "purchased",
+  "warehouse_received",
+  "ready_for_international_shipping",
+  "packed",
+  "shipped",
+  "out_for_delivery",
+  "delivered",
+]);
+
+/** Nothing here can still become overdue. */
+const TERMINAL_STATUSES = new Set(["delivered", "refunded", "rejected"]);
+
 function requestRevenue(request: RequestData): number {
   return request.payment?.amount ?? request.quote?.breakdown?.grandTotal ?? 0;
+}
+
+/** `YYYY-MM`, independent of locale and of the current year. */
+function monthKey(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(
+    2,
+    "0"
+  )}`;
 }
 
 export const GET = async (request: NextRequest): Promise<NextResponse> => {
@@ -89,14 +116,18 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
     );
 
     const review = requests.filter((r) => r.status === "review").length;
-    const paidStatuses = new Set([
-      "paid",
-      "purchased",
-      "warehouse_received",
-      "packed",
-      "shipped",
-      "delivered",
-    ]);
+    const paidRequests = requests.filter((r) =>
+      PAID_STATUSES.has(r.status ?? "")
+    );
+
+    /*
+     * "Quote ready" is not "under review": it is the subset of reviewed
+     * requests that actually carry a priced quote for the customer to approve.
+     */
+    const quoteReady = requests.filter(
+      (r) =>
+        r.status === "review" && (r.quote?.breakdown?.grandTotal ?? 0) > 0
+    ).length;
 
     let grossRevenue = 0;
     let serviceFees = 0;
@@ -104,8 +135,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
     let shippingCost = 0;
     let paidOrders = 0;
 
-    for (const request of requests) {
-      if (!paidStatuses.has(request.status ?? "")) continue;
+    for (const request of paidRequests) {
       paidOrders += 1;
       const breakdown = request.quote?.breakdown;
       grossRevenue += breakdown?.grandTotal ?? 0;
@@ -117,18 +147,18 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
     }
 
     const months: Record<string, number> = {};
-    for (const request of requests) {
+    for (const request of paidRequests) {
       const created = request.createdAt?.toDate?.();
       if (!created) continue;
-      const month = created.toLocaleString("default", { month: "short" });
-      months[month] = (months[month] ?? 0) + requestRevenue(request);
+      const key = monthKey(created);
+      months[key] = (months[key] ?? 0) + requestRevenue(request);
     }
 
     const customerMap = new Map<
       string,
       { name: string; email: string; revenue: number; requestCount: number }
     >();
-    for (const request of requests) {
+    for (const request of paidRequests) {
       const id = request.userId || "unknown";
       const existing = customerMap.get(id) ?? {
         name: request.customerName || "Unknown",
@@ -150,7 +180,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
       total: requests.length,
       submitted: requests.filter((r) => r.status === "submitted").length,
       review,
-      quoteReady: review,
+      quoteReady,
       quoteUpdates: requests.filter(
         (r) =>
           r.quoteRegenerationRequested === true &&
@@ -167,7 +197,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
       ).length,
       shipped: requests.filter((r) => r.status === "shipped").length,
       delivered: requests.filter((r) => r.status === "delivered").length,
-      revenue: requests.reduce(
+      revenue: paidRequests.reduce(
         (sum, request) => sum + requestRevenue(request),
         0
       ),
@@ -189,7 +219,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
           r.updatedAt?.toDate?.().toDateString() === today
       ).length,
       overdue: requests.filter((r) => {
-        if (!r.updatedAt || r.status === "delivered") return false;
+        if (!r.updatedAt || TERMINAL_STATUSES.has(r.status ?? "")) return false;
         const days =
           (Date.now() - (r.updatedAt.toDate?.()?.getTime() ?? 0)) / 86400000;
         return days > 14;
@@ -217,16 +247,19 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
       productCost,
       shippingCost,
       paidOrders,
-      averageOrderValue: paidOrders === 0 ? 0 : grossRevenue / paidOrders,
+      // Money, not a float: 100 / 6 is not 16.666666666666668 on a dashboard.
+      averageOrderValue:
+        paidOrders === 0
+          ? 0
+          : Math.round((grossRevenue / paidOrders) * 100) / 100,
     };
 
     const body = {
       success: true,
       stats,
-      monthlyRevenue: Object.entries(months).map(([month, revenue]) => ({
-        month,
-        revenue,
-      })),
+      monthlyRevenue: Object.entries(months)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, revenue]) => ({ month, revenue })),
       statusDistribution: [
         { name: "Submitted", value: stats.submitted },
         { name: "Review", value: review },

@@ -100,6 +100,22 @@ describe("mockFirestore", () => {
     ).rejects.toThrow(/No document to update/);
   });
 
+  it("rejects a read after the first write in a transaction", async () => {
+    const db = createMockFirestore();
+    const request = db.collection("requests").doc("r1");
+
+    await request.set({ status: "review" });
+
+    // The webhook used to update the request and only then read the wallet.
+    // Firestore rejects that order, so the mock must too.
+    await expect(
+      db.runTransaction(async (transaction) => {
+        transaction.update(request, { status: "paid" });
+        await transaction.get(db.collection("wallets").doc("u1"));
+      })
+    ).rejects.toThrow(/read after write/);
+  });
+
   it("validates document paths and supports seeding and reset", async () => {
     const db = createMockFirestore();
 

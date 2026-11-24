@@ -106,6 +106,8 @@ function configureRedis() {
 }
 
 beforeEach(() => {
+  // The platform header is trusted only when the deployment says so.
+  vi.stubEnv("VERCEL", "1");
   state.url = "";
   state.token = "";
   state.isProduction = false;
@@ -118,6 +120,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -388,5 +391,62 @@ describe("reportRateLimitStoreStatus", () => {
       configured: false,
       degraded: false,
     });
+  });
+});
+
+describe("the E2E no-op switch", () => {
+  it("serves every request without touching the store", async () => {
+    // The local E2E suite is a production build carrying the documented
+    // RATE_LIMIT_STORE_OPTIONAL opt-out; one browser from 127.0.0.1 spends the
+    // whole web budget in a single window and the proxy then 429s mid-suite.
+    vi.stubEnv("RATE_LIMIT_DISABLED", "1");
+    vi.stubEnv("NODE_ENV", "production");
+    state.isProduction = true;
+    state.storeOptional = true;
+    const fallback = makeFallback();
+    const limiter = createSharedRateLimiter("web", 100, 60_000, fallback);
+
+    const results = await Promise.all(
+      [1, 2, 3].map(() => limiter.record(requestWith()))
+    );
+
+    expect(results.map((result) => result.ok)).toEqual([true, true, true]);
+    expect(results[0].remaining).toBe(100);
+    expect(fallback.record).not.toHaveBeenCalled();
+    expect(state.limit).not.toHaveBeenCalled();
+  });
+
+  it("applies to a development build as well", async () => {
+    vi.stubEnv("RATE_LIMIT_DISABLED", "1");
+    const fallback = makeFallback();
+    const limiter = createSharedRateLimiter("web", 100, 60_000, fallback);
+
+    await expect(limiter.record(requestWith())).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(fallback.record).not.toHaveBeenCalled();
+  });
+
+  it("is ignored on a production deployment without the E2E opt-out", async () => {
+    vi.stubEnv("RATE_LIMIT_DISABLED", "1");
+    vi.stubEnv("NODE_ENV", "production");
+    state.isProduction = true;
+    const limiter = createSharedRateLimiter("api", 30, 60_000, makeFallback());
+
+    // A real deployment that picks the variable up by accident keeps its
+    // limits: the missing store is still a hard failure there.
+    await expect(limiter.record(requestWith())).rejects.toThrow(
+      "not configured in production"
+    );
+  });
+
+  it('stays off unless the variable is exactly "1"', async () => {
+    vi.stubEnv("RATE_LIMIT_DISABLED", "true");
+    const fallback = makeFallback();
+    const limiter = createSharedRateLimiter("web", 100, 60_000, fallback);
+
+    await limiter.record(requestWith());
+
+    expect(fallback.record).toHaveBeenCalledTimes(1);
   });
 });

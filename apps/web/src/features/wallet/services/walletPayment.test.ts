@@ -148,6 +148,19 @@ describe("processWalletPayment", () => {
     expect(fakeStore.get(`requests/${REQUEST_ID}`)?.status).toBe("pending");
   });
 
+  it("refuses a quote whose total is not a payable amount", async () => {
+    // A breakdown that exists but prices to zero is not settleable either.
+    const fn = await withFreshService(
+      { ...QUOTED_REQUEST, quote: { breakdown: { grandTotal: 0 } } },
+      { balance: 200 }
+    );
+
+    await expect(fn(REQUEST_ID, USER_ID)).rejects.toThrow(
+      "QUOTE_AMOUNT_MISSING"
+    );
+    expect(fakeStore.get(`wallets/${USER_ID}`)?.balance).toBe(200);
+  });
+
   it("rejects when request not found", async () => {
     const fn = await withFreshService({}, { balance: 100 });
     fakeStore.delete(`requests/${REQUEST_ID}`);
@@ -182,11 +195,46 @@ describe("processWalletPayment", () => {
     );
   });
 
+  it("treats a wallet document with no balance as zero", async () => {
+    const fn = await withFreshService(QUOTED_REQUEST, { reserved: 0 });
+
+    await expect(fn(REQUEST_ID, USER_ID)).rejects.toThrow(
+      "INSUFFICIENT_BALANCE"
+    );
+  });
+
+  it("does not spend funds reserved for a pending PayPal checkout", async () => {
+    const fn = await withFreshService(QUOTED_REQUEST, {
+      balance: 200,
+      reserved: 180,
+    });
+
+    // 20 left is less than the 52.62 due, even though the balance says 200.
+    await expect(fn(REQUEST_ID, USER_ID)).rejects.toThrow(
+      "INSUFFICIENT_BALANCE"
+    );
+    expect(fakeStore.get(`wallets/${USER_ID}`)?.balance).toBe(200);
+  });
+
   it("rejects when wallet does not exist", async () => {
     const fn = await withFreshService(QUOTED_REQUEST, {});
     fakeStore.delete(`wallets/${USER_ID}`);
 
     await expect(fn(REQUEST_ID, USER_ID)).rejects.toThrow("WALLET_NOT_FOUND");
+  });
+
+  it("wraps an unexpected transaction failure instead of leaking it", async () => {
+    const fn = await withFreshService(QUOTED_REQUEST, { balance: 200 });
+    const { WalletPaymentFailure } = await import("./walletPayment");
+    fakeAdminDb.runTransaction.mockRejectedValueOnce(
+      new Error("commit failed")
+    );
+
+    const error = await fn(REQUEST_ID, USER_ID).catch((e: unknown) => e);
+
+    // Not a refusal the route can map, so it must arrive as a wrapped error.
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(WalletPaymentFailure);
   });
 });
 
@@ -236,5 +284,14 @@ describe("walletPaymentErrorResponse", () => {
 
     expect(walletPaymentErrorResponse("nope")).toBeNull();
     expect(walletPaymentErrorResponse(undefined)).toBeNull();
+  });
+
+  it("returns null for a refusal code it does not map", async () => {
+    const { walletPaymentErrorResponse, WalletPaymentFailure } =
+      await import("./walletPayment");
+
+    expect(
+      walletPaymentErrorResponse(new WalletPaymentFailure("UNMAPPED" as never))
+    ).toBeNull();
   });
 });

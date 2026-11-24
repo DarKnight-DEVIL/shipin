@@ -155,18 +155,13 @@ const PRODUCTION_REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
   "PAYPAL_WEBHOOK_ID",
 ]);
 
-/**
- * Shared rate-limit store credentials: required in production, because
- * without them every instance limits on its own and the proxy fails open — a
- * misconfigured deploy would serve traffic with abuse protection off.
- *
- * Only the local/CI E2E suite (a production build against a throwaway
- * database) may opt out, via {@link RATE_LIMIT_STORE_OPTIONAL_ENV}.
+/*
+ * The rate-limit store credentials live in `./production.ts`
+ * (`RATE_LIMIT_STORE_SERVER_ENV`) and are required in production: without them
+ * every instance limits on its own and the proxy fails open. They are not
+ * duplicated here — a second list is how the two drifted apart before. Only the
+ * local/CI E2E suite may opt out, via {@link RATE_LIMIT_STORE_OPTIONAL_ENV}.
  */
-const RATE_LIMIT_STORE_SERVER_ENV = [
-  "UPSTASH_REDIS_REST_URL",
-  "UPSTASH_REDIS_REST_TOKEN",
-] as const;
 
 /** Set to exactly "1" to allow booting production with no rate-limit store (E2E only). */
 export const RATE_LIMIT_STORE_OPTIONAL_ENV = "RATE_LIMIT_STORE_OPTIONAL";
@@ -198,7 +193,7 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
   // PAYPAL_WEBHOOK_ID is listed in PRODUCTION_REQUIRED_SERVER_ENV instead:
   // it may be absent in dev/test, but must be set in production.
   // UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are not optional in
-  // production: see RATE_LIMIT_STORE_SERVER_ENV above. When they are absent
+  // production: see RATE_LIMIT_STORE_SERVER_ENV in ./production.ts. When absent
   // with the E2E opt-out set, startup warns and /api/health reports degraded.
   "WHATSAPP_ACCESS_TOKEN",
   "WHATSAPP_PHONE_NUMBER_ID",

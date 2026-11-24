@@ -22,6 +22,44 @@ async function fetchAnalytics(): Promise<AnalyticsApiResponse> {
     method: "GET",
   });
 }
+/**
+ * Everything the dashboard renders, from the route's single aggregate read.
+ *
+ * Each `get*` helper below used to fetch the same endpoint on its own, so one
+ * dashboard load made seven identical requests (and seven full-collection
+ * aggregations on a cache miss).
+ */
+export interface DashboardData {
+  stats: DashboardStats;
+  monthlyRevenue: MonthlyRevenuePoint[];
+  statusDistribution: StatusDistributionPoint[];
+  recentActivity: RecentActivityEntry[];
+  topCustomers: CustomerSummary[];
+  operations: OperationsOverview;
+  financials: FinancialOverview;
+}
+
+export async function getDashboardData(): Promise<DashboardData> {
+  try {
+    const data = await fetchAnalytics();
+
+    return {
+      stats: data.stats,
+      monthlyRevenue: data.monthlyRevenue,
+      statusDistribution: data.statusDistribution,
+      recentActivity: data.recentActivity.map((entry) => ({
+        ...entry,
+        createdAt: entry.createdAt ? new Date(entry.createdAt) : undefined,
+      })),
+      topCustomers: data.topCustomers,
+      operations: data.operations,
+      financials: data.financials,
+    };
+  } catch (error) {
+    throw toShipINError(error);
+  }
+}
+
 export interface DashboardStats {
   totalRequests: number;
   total: number;

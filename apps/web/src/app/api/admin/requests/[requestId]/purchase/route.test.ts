@@ -176,7 +176,7 @@ it("requires an administrator (rejects when requireAdmin throws)", async () => {
   expect(response.status).toBe(500);
   await expect(response.json()).resolves.toMatchObject({
     code: "INTERNAL_ERROR",
-    error: "ADMIN_ACCESS_REQUIRED",
+    error: "An unexpected error occurred.",
   });
   expect(mocks.update).not.toHaveBeenCalled();
 });

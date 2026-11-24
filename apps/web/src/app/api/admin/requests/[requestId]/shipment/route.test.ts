@@ -17,12 +17,6 @@ vi.mock("@/lib/firebaseAdmin", () => ({
     collection: vi.fn(() => ({
       doc: vi.fn(() => ({ get: mocks.get, update: mocks.update })),
     })),
-    runTransaction: vi.fn(async (work: (tx: unknown) => Promise<string>) =>
-      work({
-        get: vi.fn(async () => ({ exists: false, data: () => undefined })),
-        set: vi.fn(),
-      })
-    ),
   },
 }));
 vi.mock("firebase-admin/firestore", () => ({
@@ -95,7 +89,8 @@ describe("POST /api/admin/requests/[requestId]/shipment", () => {
 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toMatchObject({
-      error: "Unable to read request data.",
+      error: "An unexpected error occurred.",
+      code: "INTERNAL_ERROR",
     });
   });
 
@@ -130,7 +125,7 @@ describe("POST /api/admin/requests/[requestId]/shipment", () => {
     });
   });
 
-  it("mints a tracking ID when the request does not supply one", async () => {
+  it("mints an unguessable tracking ID when the request does not supply one", async () => {
     mocks.get.mockResolvedValue({
       exists: true,
       data: () => ({ status: "paid" }),
@@ -138,12 +133,15 @@ describe("POST /api/admin/requests/[requestId]/shipment", () => {
 
     const response = await call({ carrier: "DHL", trackingNumber: "ABC123" });
 
-    expect(mocks.update.mock.calls[0][0].tracking).toMatchObject({
-      internalTrackingId: "SHP-2026-000001",
-    });
-    await expect(response.json()).resolves.toMatchObject({
-      trackingId: "SHP-2026-000001",
-    });
+    // Crockford base32, 16 random characters: a sequential id would let one
+    // label reveal every shipment minted around it.
+    const minted = /^SHP-[0-9A-HJKMNP-TV-Z]{16}$/;
+    expect(mocks.update.mock.calls[0][0].tracking.internalTrackingId).toMatch(
+      minted
+    );
+    const body = await response.json();
+    expect(body.trackingId).toMatch(minted);
+    expect(body.trackingId).not.toBe("SHP-2026-000001");
   });
 
   it("defaults optional tracking fields", async () => {
@@ -210,7 +208,12 @@ describe("POST /api/admin/requests/[requestId]/shipment", () => {
 
     const response = await call();
 
+    // The provider's message stays in the server log; the client gets the
+    // generic internal-failure text.
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toMatchObject({ error: "offline" });
+    await expect(response.json()).resolves.toMatchObject({
+      error: "An unexpected error occurred.",
+      code: "INTERNAL_ERROR",
+    });
   });
 });

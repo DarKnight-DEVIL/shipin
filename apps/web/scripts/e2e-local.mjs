@@ -137,6 +137,11 @@ const env = {
   UPSTASH_REDIS_REST_URL: "",
   UPSTASH_REDIS_REST_TOKEN: "",
   RATE_LIMIT_STORE_OPTIONAL: "1",
+  // Blanking the store still left the in-memory limiter, which is what kept
+  // answering 429: 100 page requests per IP per minute is less than one suite.
+  // This switches the limiter off for this run only (honoured because the
+  // opt-out above is set). Never set it on a deployment.
+  RATE_LIMIT_DISABLED: "1",
   // The startup check refuses to boot a production build with emulator
   // variables set - exactly what this suite does on purpose.
   EMULATOR_GUARD_OPTIONAL: "1",

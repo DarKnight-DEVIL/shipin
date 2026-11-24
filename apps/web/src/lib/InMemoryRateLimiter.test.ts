@@ -27,6 +27,8 @@ describe("InMemoryRateLimiter", () => {
   let limiter: InMemoryRateLimiter;
 
   beforeEach(() => {
+    // Forwarded headers are read only in a declared proxy deployment.
+    vi.stubEnv("VERCEL", "1");
     limiter = new InMemoryRateLimiter({
       maxRequests: 5,
       windowMs: 60_000,
@@ -35,6 +37,7 @@ describe("InMemoryRateLimiter", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 

@@ -127,14 +127,16 @@ Quality bar for changes: `npx tsc --noEmit`, `npm run lint` (0 errors), `npm tes
   verified elevated session cookie issued by `POST /api/auth/mfa/session`. That session also
   covers WebAuthn, which is verified there with a per-request challenge, signature and counter
   check; a bare `X-MFA-WebAuthn` header is never trusted.
-- **App Check via reCAPTCHA v3.** The client initializes App Check from
+- **App Check via reCAPTCHA Enterprise.** The client initializes App Check from
   `NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY`, refreshes tokens in the background, and sends
   `X-Firebase-AppCheck` on every API call. `APP_CHECK_ENFORCEMENT=true` makes API routes reject
   requests without a valid token — the Admin SDK bypasses Firebase's own enforcement, so this is
   the only thing that covers our handlers. Console setup: App Check → Apps → register the web app
-  with reCAPTCHA v3 (site key into the env var) → add every deployed domain → enforce for Identity
-  Toolkit, Cloud Firestore and Cloud Storage. Locally, `NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG=true`
-  registers a debug token, which must be added under App Check → Debug tokens.
+  with reCAPTCHA **Enterprise** (site key into the env var — the provider is
+  `ReCaptchaEnterpriseProvider`, so a classic v3 key is rejected) → add every deployed domain →
+  enforce for Identity Toolkit, Cloud Firestore and Cloud Storage. Locally,
+  `NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG=true` registers a debug token, which must be added under
+  App Check → Debug tokens.
 - **Rate limiting requires Redis in production.** If the shared store is not configured, a
   production instance refuses to start rather than falling back to per-instance in-memory limits
   that an attacker could bypass by spreading requests across serverless instances.

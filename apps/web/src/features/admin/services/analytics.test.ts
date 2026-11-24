@@ -7,6 +7,7 @@ vi.mock("@/lib/customerApiClient", () => ({
 }));
 
 import {
+  getDashboardData,
   getDashboardStats,
   getFinancialOverview,
   getMonthlyRevenue,
@@ -529,5 +530,36 @@ describe("getFinancialOverview", () => {
     customerApiMock.mockRejectedValue(new Error("offline"));
 
     await expect(getFinancialOverview()).rejects.toBeInstanceOf(Error);
+  });
+});
+
+describe("getDashboardData", () => {
+  it("maps the single aggregate read into the dashboard payload", async () => {
+    const updated = Date.UTC(2026, 2, 4);
+    seed(req({ id: "a", status: "paid", updatedAt: stamp(updated) }));
+
+    const data = await getDashboardData();
+
+    expect(data.stats.totalRequests).toBe(1);
+    expect(data.monthlyRevenue).toBeDefined();
+    expect(data.statusDistribution).toBeDefined();
+    expect(data.topCustomers).toBeDefined();
+    expect(data.operations).toBeDefined();
+    expect(data.financials.paidOrders).toBe(1);
+    expect(data.recentActivity[0].createdAt).toEqual(new Date(updated));
+  });
+
+  it("leaves createdAt undefined when the entry carries no timestamp", async () => {
+    seed(req({ id: "fresh" }));
+
+    const [entry] = (await getDashboardData()).recentActivity;
+
+    expect(entry.createdAt).toBeUndefined();
+  });
+
+  it("wraps read failures", async () => {
+    customerApiMock.mockRejectedValue(new Error("offline"));
+
+    await expect(getDashboardData()).rejects.toBeInstanceOf(Error);
   });
 });

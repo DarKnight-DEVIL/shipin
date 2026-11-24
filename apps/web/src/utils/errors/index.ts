@@ -121,6 +121,16 @@ export function toShipINError(error: unknown): ShipINError {
 }
 
 /**
+ * The message every unexpected failure reports to a client.
+ *
+ * Only errors that were deliberately constructed with a client-facing message
+ * (4xx application errors, or a non-generic code) keep their text. A raw
+ * `Error` from Firestore, PayPal, or a bug carries provider internals and
+ * stack-adjacent detail; it goes to the server log and the client gets this.
+ */
+const GENERIC_SERVER_ERROR = "An unexpected error occurred.";
+
+/**
  * Serialize an error to a client-safe JSON shape.
  * Never leaks stack traces or internal details in production.
  */
@@ -131,6 +141,19 @@ export function serializeError(error: unknown): {
   details?: unknown;
 } {
   const err = toShipINError(error);
+
+  /*
+   * An internal failure is logged with its real message before the generic one
+   * replaces it: whoever debugs the 500 needs the detail the client must not
+   * see. `withErrorHandler` logs the same line, so errors that pass through it
+   * are not logged twice.
+   */
+  const isInternal =
+    err.code === "INTERNAL_ERROR" || err.status >= 500;
+  if (isInternal) {
+    console.error("[API Error detail]", err.code, error);
+  }
+
   // `success: false` is part of the documented envelope
   // (response-convention.md) and what the API clients branch on
   // (`apiClient`: `!response.ok || payload.success === false`). Without it an
@@ -143,7 +166,7 @@ export function serializeError(error: unknown): {
     details?: unknown;
   } = {
     success: false,
-    error: err.message,
+    error: isInternal ? GENERIC_SERVER_ERROR : err.message,
     code: err.code,
   };
   if (err.details !== undefined && process.env.NODE_ENV !== "production") {

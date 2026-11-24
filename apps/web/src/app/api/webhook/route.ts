@@ -13,6 +13,12 @@ import {
 import { verifyPayPalWebhook } from "@/lib/paypal";
 import { sendNotification } from "@/features/notifications/services/notificationService";
 import { buildPaymentReceivedNotification } from "@/lib/paypal/paymentReceivedNotification";
+import { roundMoney, toNumber } from "@/lib/paypal/amounts";
+import {
+  deleteConsumedWalletHold,
+  reservedAfterRelease,
+  WALLET_HOLDS_COLLECTION,
+} from "@/lib/paypal/walletHolds";
 
 // PayPal Webhook ID from the developer dashboard.
 // Should be set in environment variables: PAYPAL_WEBHOOK_ID
@@ -208,6 +214,12 @@ interface PayPalCapture {
 /**
  * Handle a completed PayPal capture from a webhook.
  * This provides server-side confirmation independent of the client.
+ *
+ * Every document the decision depends on — request, payment order, wallet,
+ * wallet hold and the ledger entry — is read before the first write. The
+ * previous version updated the request and the payment order and only then read
+ * the wallet, which Firestore rejects inside a transaction, so a webhook that
+ * arrived after the client capture could fail every retry.
  */
 async function handleCaptureCompleted(capture: PayPalCapture) {
   const captureId = capture.id;
@@ -244,8 +256,8 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
     return;
   }
 
-  const capturedAmount = Number(capture.amount?.value ?? 0);
-  const expectedAmount = Number(paymentOrder.paypalAmount ?? 0);
+  const capturedAmount = roundMoney(toNumber(capture.amount?.value));
+  const expectedAmount = roundMoney(toNumber(paymentOrder.paypalAmount));
 
   if (Math.abs(capturedAmount - expectedAmount) > 0.01) {
     console.error("PayPal capture amount mismatch:", {
@@ -260,12 +272,49 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
     );
   }
 
-  const requestId = paymentOrder.requestId;
+  const requestId = paymentOrder.requestId as string;
+  const userId = paymentOrder.userId as string;
   const requestRef = adminDb.collection("requests").doc(requestId);
+  const walletRef = adminDb.collection("wallets").doc(userId);
+  const holdRef =
+    typeof paymentOrder.walletHoldId === "string" && paymentOrder.walletHoldId
+      ? adminDb
+          .collection(WALLET_HOLDS_COLLECTION)
+          .doc(paymentOrder.walletHoldId)
+      : null;
 
-  // Run transaction to atomically update request + wallet + notifications
+  /*
+   * One ledger document per capture, derived from PayPal's capture id, so a
+   * redelivered COMPLETED event cannot write the wallet deduction twice.
+   */
+  const walletTransactionRef = adminDb
+    .collection("walletTransactions")
+    .doc(`paypal_${captureId}`);
+
+  const walletApplied = roundMoney(toNumber(paymentOrder.walletApplied));
+  const totalRequired = roundMoney(
+    toNumber(paymentOrder.totalRequired) || capturedAmount + walletApplied
+  );
+  const baseAmount = roundMoney(toNumber(paymentOrder.baseAmount));
+  const capturedCurrency = capture.amount?.currency_code || "USD";
+  const paymentMethod = walletApplied > 0 ? "wallet_and_paypal" : "paypal";
+
   const customerName = await adminDb.runTransaction(async (transaction) => {
+    // ---- Reads first ----
     const requestSnapshot = await transaction.get(requestRef);
+    const currentOrderSnapshot = await transaction.get(paymentOrderRef);
+    const walletSnapshot = await transaction.get(walletRef);
+    const holdSnapshot = holdRef ? await transaction.get(holdRef) : null;
+    const ledgerSnapshot = await transaction.get(walletTransactionRef);
+
+    const currentOrder = currentOrderSnapshot.data();
+    if (!currentOrder) {
+      throw new Error("Payment order disappeared during settlement.");
+    }
+
+    // A concurrent attempt finished first; this delivery is a no-op.
+    if (currentOrder.status === "completed") return;
+
     if (!requestSnapshot.exists) {
       console.error("Request not found:", requestId);
       return;
@@ -274,61 +323,57 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
     const requestData = requestSnapshot.data();
     if (!requestData) return;
 
-    // Check if already paid (idempotency)
+    /*
+     * The request was settled by another path. Finish the payment-order mark
+     * so this delivery stops retrying, but do not move money a second time.
+     */
     if (requestData.status === "paid") {
+      transaction.update(paymentOrderRef, {
+        status: "completed",
+        captureId,
+        capturedAmount,
+        capturedCurrency,
+        completedAt: FieldValue.serverTimestamp(),
+      });
       return;
     }
 
-    // Mark request as paid
-    transaction.update(requestRef, {
-      status: "paid",
-      payment: {
-        provider: "paypal",
-        paymentMethod: "paypal",
-        orderId,
-        captureId,
-        amountPaid: capturedAmount,
-        walletAmount: paymentOrder.walletApplied ?? 0,
-        paypalAmount: capturedAmount,
-        status: "completed",
-        paidAt: FieldValue.serverTimestamp(),
-      },
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    let newBalance = roundMoney(toNumber(walletSnapshot.data()?.balance));
 
-    // Update payment order
-    transaction.update(paymentOrderRef, {
-      status: "completed",
-      captureId,
-      capturedAmount,
-      capturedCurrency: capture.amount?.currency_code,
-      completedAt: FieldValue.serverTimestamp(),
-    });
-
-    // Create wallet transaction if wallet was used
-    const walletApplied = paymentOrder.walletApplied ?? 0;
-    if (walletApplied > 0) {
-      const walletRef = adminDb.collection("wallets").doc(requestData.userId);
-      const walletSnapshot = await transaction.get(walletRef);
+    if (walletApplied > 0 && !ledgerSnapshot.exists) {
       if (!walletSnapshot.exists) {
         // Wallet document missing but payment order says wallet was used.
-        // This should never happen in normal operation - throw to trigger
-        // webhook retry rather than silently skipping wallet deduction.
+        // Throw to trigger a retry rather than silently skipping the debit.
         throw new Error(
-          `Wallet document missing for user ${requestData.userId} but walletApplied=${walletApplied}`
+          `Wallet document missing for user ${userId} but walletApplied=${walletApplied}`
         );
       }
-      const currentBalance = walletSnapshot.data()?.balance ?? 0;
-      const newBalance = currentBalance - walletApplied;
-      transaction.update(walletRef, {
-        balance: newBalance,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      const walletTransactionRef = adminDb
-        .collection("walletTransactions")
-        .doc();
+
+      if (newBalance + 0.01 < walletApplied) {
+        // The hold should make this impossible; if it happens the balance must
+        // not go negative and the capture needs a human, not a retry loop.
+        throw new Error(
+          `Wallet balance ${newBalance} cannot cover walletApplied=${walletApplied} for ${orderId}`
+        );
+      }
+    }
+
+    // ---- Writes ----
+    if (walletApplied > 0 && !ledgerSnapshot.exists) {
+      newBalance = roundMoney(newBalance - walletApplied);
+
+      transaction.set(
+        walletRef,
+        {
+          balance: newBalance,
+          reserved: reservedAfterRelease(walletSnapshot, holdSnapshot),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
       transaction.set(walletTransactionRef, {
-        userId: requestData.userId,
+        userId,
         type: "payment",
         amount: -walletApplied,
         balanceAfter: newBalance,
@@ -337,6 +382,35 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
         createdAt: FieldValue.serverTimestamp(),
       });
     }
+
+    transaction.update(requestRef, {
+      status: "paid",
+      payment: {
+        provider: paymentMethod,
+        paymentMethod,
+        orderId,
+        captureId,
+        amount: totalRequired,
+        amountPaid: totalRequired,
+        paypalAmount: capturedAmount,
+        walletAmount: walletApplied,
+        quoteAmount: baseAmount,
+        currency: capturedCurrency,
+        status: "completed",
+        paidAt: FieldValue.serverTimestamp(),
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    transaction.update(paymentOrderRef, {
+      status: "completed",
+      captureId,
+      capturedAmount,
+      capturedCurrency,
+      completedAt: FieldValue.serverTimestamp(),
+    });
+
+    deleteConsumedWalletHold(transaction, holdRef, holdSnapshot);
 
     // The payment order never stores a name; the request does.
     return (
@@ -350,7 +424,7 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
   try {
     await sendNotification(
       buildPaymentReceivedNotification({
-        userId: paymentOrder.userId,
+        userId,
         requestId,
         customerName: customerName || "Customer",
       })

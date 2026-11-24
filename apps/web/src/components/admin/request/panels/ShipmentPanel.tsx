@@ -14,7 +14,6 @@ import Section from "@/components/ui/Section";
 import ActionButton from "@/components/ui/ActionButton";
 
 import { adminApi } from "@/lib/adminApiClient";
-import { generateShippingLabel } from "@/lib/pdf/shippingLabel";
 
 interface Props {
   request: Request;
@@ -430,7 +429,12 @@ export default function ShipmentPanel({ request }: Props) {
 
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
+                // jsPDF is a large dependency that only the print action needs.
+                const { generateShippingLabel } = await import(
+                  "@/lib/pdf/shippingLabel"
+                );
+
                 const generated = generateShippingLabel(request);
 
                 if (!generated) {

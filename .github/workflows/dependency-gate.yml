@@ -48,7 +48,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
-          package-manager: npm@12.2.2
 
       - name: Enable corepack (respects packageManager field)
         run: corepack enable

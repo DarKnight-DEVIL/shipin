@@ -26,6 +26,15 @@ import { PAYPAL_FIXED_FEE, PAYPAL_PERCENTAGE } from "@/config/constants";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { roundMoney, sameCents, toNumber } from "@/lib/paypal/amounts";
 import { createPayPalOrder } from "@/lib/paypal/createPayPalOrder";
+import {
+  availableWalletBalance,
+  releaseExpiredWalletHolds,
+  releaseWalletHold,
+  reservedBalance,
+  walletHoldDocId,
+  WALLET_HOLD_TTL_MS,
+  WALLET_HOLDS_COLLECTION,
+} from "@/lib/paypal/walletHolds";
 import type { AdditionalItemRequest } from "@/types/request";
 import { withErrorHandler } from "@/utils/errors";
 import { createOrderBodySchema, readAndValidateBody } from "@/lib/validation";
@@ -34,6 +43,27 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   // --- 1. Authenticate the caller ---
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
+
+  /*
+   * A reservation with no PayPal order behind it must not survive the request,
+   * so every failure path releases it: PayPal refusing to create the order and
+   * PayPal throwing instead of answering. It is cleared once an order exists,
+   * because capture then owns the hold.
+   */
+  let unbackedReservation: { holdId: string; userId: string } | null = null;
+
+  const releaseUnbackedReservation = async (): Promise<void> => {
+    if (!unbackedReservation) return;
+
+    const { holdId, userId } = unbackedReservation;
+    unbackedReservation = null;
+
+    try {
+      await releaseWalletHold(holdId, userId);
+    } catch (error) {
+      console.error("Could not release the wallet hold:", error);
+    }
+  };
 
   try {
     const parsed = await readAndValidateBody(request, createOrderBodySchema);
@@ -224,8 +254,27 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
     const walletRef = adminDb.collection("wallets").doc(userId);
 
-    // Use a transaction to atomically check wallet balance and create payment order.
-    // This prevents TOCTOU where another request drains the wallet between check and create.
+    // A checkout is identified by request + payment type + item, so a retried
+    // create-order reuses the same PayPal order and the same wallet hold.
+    const idempotencyKey = `${requestId}:${paymentType}:${
+      additionalItemRequestId ?? "main"
+    }`;
+    const holdId = walletHoldDocId(idempotencyKey);
+    const holdRef = adminDb.collection(WALLET_HOLDS_COLLECTION).doc(holdId);
+
+    // Abandoned checkouts must not leave the balance locked; this is the only
+    // scheduled opportunity to reconcile them.
+    try {
+      await releaseExpiredWalletHolds();
+    } catch (error) {
+      console.error("Could not reconcile expired wallet holds:", error);
+    }
+
+    /*
+     * Reserve the wallet part inside a transaction. Reserving (rather than only
+     * checking) is what keeps a drained wallet from stranding a captured PayPal
+     * payment: the balance cannot be spent again between this point and capture.
+     */
     let paymentOrderResult: {
       walletApplied: number;
       expectedPayPalAmount: number;
@@ -233,9 +282,29 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     try {
       paymentOrderResult = await adminDb.runTransaction(async (transaction) => {
         const walletSnapshot = await transaction.get(walletRef);
-        const walletBalance = walletSnapshot.exists
-          ? Math.max(0, toNumber(walletSnapshot.data()?.balance))
-          : 0;
+        const holdSnapshot = await transaction.get(holdRef);
+
+        /*
+         * Recalculating replaces this checkout's previous hold, so changing the
+         * wallet share does not leave the old amount reserved as well.
+         */
+        const previousHold = holdSnapshot.data();
+        const previousHoldAmount =
+          holdSnapshot.exists && previousHold?.status === "reserved"
+            ? roundMoney(Math.max(0, toNumber(previousHold?.amount)))
+            : 0;
+
+        const reserved = roundMoney(
+          Math.max(
+            0,
+            reservedBalance(walletSnapshot.data()) - previousHoldAmount
+          )
+        );
+
+        const walletBalance = availableWalletBalance({
+          balance: walletSnapshot.data()?.balance,
+          reserved,
+        });
 
         const requestedWalletAmount = roundMoney(
           totalRequired - requestedPayPalAmount
@@ -271,6 +340,46 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             requestId,
           });
           throw new Error("PAYMENT_AMOUNT_MISMATCH");
+        }
+
+        if (walletApplied > 0) {
+          transaction.set(
+            walletRef,
+            {
+              reserved: roundMoney(reserved + walletApplied),
+              updatedAt: new Date(),
+            },
+            { merge: true }
+          );
+
+          transaction.set(holdRef, {
+            userId,
+            amount: walletApplied,
+            status: "reserved",
+            idempotencyKey,
+            orderId: null,
+            expiresAt: new Date(Date.now() + WALLET_HOLD_TTL_MS),
+            createdAt: new Date(),
+          });
+        } else if (holdSnapshot.exists) {
+          /*
+           * The retry dropped the wallet share entirely. The hold and the money
+           * it promised go together: deleting the hold alone left
+           * `wallets.reserved` counting an amount nothing had a claim on, so
+           * the customer could never spend that part of the balance again.
+           */
+          transaction.delete(holdRef);
+
+          if (previousHoldAmount > 0 && walletSnapshot.exists) {
+            transaction.set(
+              walletRef,
+              {
+                reserved,
+                updatedAt: new Date(),
+              },
+              { merge: true }
+            );
+          }
         }
 
         // Return the calculated values; PayPal order creation and payment order storage
@@ -309,9 +418,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
     const { walletApplied, expectedPayPalAmount } = paymentOrderResult!;
 
+    if (walletApplied > 0) {
+      unbackedReservation = { holdId, userId };
+    }
+
     // --- 6. Create the PayPal order ---
-    // Use a deterministic idempotency key so retries don't create duplicate orders.
-    const idempotencyKey = `${requestId}:${paymentType}:${additionalItemRequestId ?? "main"}`;
     const created = await createPayPalOrder({
       requestId,
       description,
@@ -322,11 +433,18 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     });
 
     if (!created.ok) {
+      // No PayPal order exists, so the reservation must not survive it.
+      await releaseUnbackedReservation();
+
       return NextResponse.json(
         { success: false, error: created.error },
         { status: created.status }
       );
     }
+
+    // The order exists from here on: capture owns the hold, so a failure while
+    // storing the payment order must leave it in place.
+    unbackedReservation = null;
 
     /*
      * --- 7. Store the payment order ---
@@ -350,6 +468,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       processingFee: processing.fee,
       totalRequired,
       walletApplied,
+      walletHoldId: walletApplied > 0 ? holdId : null,
       paypalAmount: expectedPayPalAmount,
       currency: "USD",
       status: "created",
@@ -368,6 +487,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     });
   } catch (error) {
     console.error("PayPal create order route error:", error);
+
+    /*
+     * The PayPal call threw rather than reporting a failure, so no order exists
+     * to capture and the reservation must go now — not at the 30-minute expiry,
+     * which would leave the customer unable to spend their own money for a
+     * checkout that never happened.
+     */
+    await releaseUnbackedReservation();
 
     return NextResponse.json(
       { success: false, error: "Internal server error" },

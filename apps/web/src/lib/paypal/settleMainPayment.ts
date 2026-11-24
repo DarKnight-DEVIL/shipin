@@ -21,6 +21,11 @@ import { adminDb } from "@/lib/firebaseAdmin";
 
 import { roundMoney, toNumber } from "./amounts";
 import type { PaymentFailure } from "./types";
+import {
+  deleteConsumedWalletHold,
+  reservedAfterRelease,
+  WALLET_HOLDS_COLLECTION,
+} from "./walletHolds";
 
 export interface MainPaymentSettlementInput {
   requestRef: DocumentReference;
@@ -98,6 +103,12 @@ export async function settleMainPayment({
     walletApplied > 0 ? "wallet_and_paypal" : "paypal";
 
   const walletRef = adminDb.collection("wallets").doc(paymentOrder.userId);
+  const holdRef =
+    typeof paymentOrder.walletHoldId === "string" && paymentOrder.walletHoldId
+      ? adminDb
+          .collection(WALLET_HOLDS_COLLECTION)
+          .doc(paymentOrder.walletHoldId)
+      : null;
 
   /*
    * One wallet transaction document per PayPal capture, so a retried capture
@@ -108,9 +119,13 @@ export async function settleMainPayment({
     .doc(`paypal_${captureId}`);
 
   await adminDb.runTransaction(async (transaction) => {
+    // Every read comes before the first write: Firestore rejects the reverse
+    // order, and a retried capture must see the current status of all four
+    // documents rather than the copy read before the capture call.
     const walletSnapshot = await transaction.get(walletRef);
     const paymentOrderSnapshot = await transaction.get(paymentOrderRef);
-    await transaction.get(requestRef);
+    const requestSnapshot = await transaction.get(requestRef);
+    const holdSnapshot = holdRef ? await transaction.get(holdRef) : null;
 
     const currentPaymentOrder = paymentOrderSnapshot.data();
 
@@ -126,6 +141,10 @@ export async function settleMainPayment({
       throw new Error("Payment ownership verification failed.");
     }
 
+    if (!requestSnapshot.exists) {
+      throw new Error("Request for this payment could not be found.");
+    }
+
     const currentBalance = walletSnapshot.exists
       ? Math.max(0, toNumber(walletSnapshot.data()?.balance))
       : 0;
@@ -137,10 +156,12 @@ export async function settleMainPayment({
     const newBalance = roundMoney(currentBalance - walletApplied);
 
     if (walletApplied > 0) {
+      // Consume the reservation in the same write that debits the balance.
       transaction.set(
         walletRef,
         {
           balance: newBalance,
+          reserved: reservedAfterRelease(walletSnapshot, holdSnapshot),
           currency: walletSnapshot.exists
             ? walletSnapshot.data()?.currency || "USD"
             : "USD",
@@ -148,6 +169,8 @@ export async function settleMainPayment({
         },
         { merge: true }
       );
+
+      deleteConsumedWalletHold(transaction, holdRef, holdSnapshot);
 
       transaction.set(walletTransactionRef, {
         userId: paymentOrder.userId,

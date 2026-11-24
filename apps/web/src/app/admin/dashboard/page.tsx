@@ -84,13 +84,8 @@ const TopCustomers = dynamic(
 );
 
 import {
-  getDashboardStats,
-  getMonthlyRevenue,
-  getStatusDistribution,
-  getRecentActivity,
-  getTopCustomers,
-  getOperationsOverview,
-  getFinancialOverview,
+  getDashboardData,
+  type DashboardData,
   type DashboardStats,
   type MonthlyRevenuePoint,
   type StatusDistributionPoint,
@@ -111,7 +106,7 @@ export default function AdminDashboardPage() {
     []
   );
   const [topCustomers, setTopCustomers] = useState<
-    Awaited<ReturnType<typeof getTopCustomers>>
+    DashboardData["topCustomers"]
   >([]);
   const [operations, setOperations] = useState<OperationsOverviewData | null>(
     null
@@ -125,25 +120,17 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     async function load() {
       try {
-        const analyticsData = await getDashboardStats();
-        setStats(analyticsData);
+        // One request feeds the whole page: the previous version fetched the
+        // same endpoint once per section (seven times on every load).
+        const analyticsData = await getDashboardData();
 
-        const [revenue, distribution, activity, customers, ops, finance] =
-          await Promise.all([
-            getMonthlyRevenue(),
-            getStatusDistribution(),
-            getRecentActivity(),
-            getTopCustomers(),
-            getOperationsOverview(),
-            getFinancialOverview(),
-          ]);
-
-        setMonthlyRevenue(revenue);
-        setStatusDistribution(distribution);
-        setRecentActivity(activity);
-        setTopCustomers(customers);
-        setOperations(ops);
-        setFinancials(finance);
+        setStats(analyticsData.stats);
+        setMonthlyRevenue(analyticsData.monthlyRevenue);
+        setStatusDistribution(analyticsData.statusDistribution);
+        setRecentActivity(analyticsData.recentActivity);
+        setTopCustomers(analyticsData.topCustomers);
+        setOperations(analyticsData.operations);
+        setFinancials(analyticsData.financials);
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Failed to load dashboard data."

@@ -8,10 +8,14 @@
 # emulators, and the server variables below are placeholders. Never deploy it.
 # Documented in DEPLOYMENT.md ("Local full stack with docker compose").
 #
-# Server secrets are loaded from .env.local (gitignored). Create it from
-# .env.example and fill in real values for local testing against the
-# emulators. If .env.local is missing, the stack will fail fast with a clear
-# error instead of silently using placeholders.
+# Server secrets are loaded from .env.local at the repository root
+# (gitignored). Create it from the app's template, then fill in real values for
+# local testing against the emulators:
+#
+#   cp apps/web/.env.example .env.local
+#
+# If .env.local is missing, the stack will fail fast with a clear error instead
+# of silently using placeholders.
 name: shipin-local
 
 # Client configuration. `next build` inlines every NEXT_PUBLIC_* value into the

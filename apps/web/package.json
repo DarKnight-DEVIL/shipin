@@ -39,12 +39,13 @@
     "check:authorized-domains": "node scripts/check-authorized-domains.mjs",
     "check:firestore-indexes": "node scripts/check-firestore-indexes.mjs",
     "check:env-inlining": "node scripts/check-env-inlining.mjs",
+    "check:orphan-modules": "node scripts/check-orphan-modules.mjs",
     "check:production-env": "node --experimental-strip-types scripts/check-production-env.ts",
     "check:licenses": "node scripts/check-licenses.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1171.0",
-    "@aws-sdk/s3-request-presigner": "3.1167.0",
+    "@aws-sdk/s3-request-presigner": "3.1171.0",
     "@paypal/react-paypal-js": "10.6.1",
     "@react-pdf/renderer": "4.9.0",
     "@sentry/nextjs": "11.12.0",

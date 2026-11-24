@@ -5,6 +5,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 import {
+  getAuthHelperCSP,
   getDevCSP,
   getProductionCSP,
   SECURITY_HEADERS,
@@ -357,5 +358,49 @@ describe("CSP source lists", () => {
         );
       }
     }
+  });
+});
+
+describe("getAuthHelperCSP", () => {
+  it("lets the app frame the Firebase auth helper", () => {
+    const csp = getAuthHelperCSP();
+
+    // The SDK embeds /__/auth/* in a hidden iframe on the app's own pages; the
+    // app-wide `frame-ancestors 'none'` blocks that and silently hangs every
+    // popup and redirect sign-in.
+    expect(csp).toContain("frame-ancestors 'self'");
+    expect(csp).not.toContain("frame-ancestors 'none'");
+  });
+
+  it("is otherwise the production policy", () => {
+    const csp = getAuthHelperCSP();
+
+    expect(csp).toContain("report-uri /api/csp-report");
+    expect(csp).toContain("object-src 'none'");
+    expect(cspDirective(csp, "script-src")).toContain("'self'");
+  });
+});
+
+describe("emulator connect sources", () => {
+  it("adds the local emulator origins to the dev policy", () => {
+    vi.stubEnv("NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST", "127.0.0.1:8080");
+    vi.stubEnv("NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST", " 127.0.0.1:9099 ");
+
+    try {
+      const sources = cspSources(getDevCSP(), "connect-src");
+
+      expect(sources).toContain("http://127.0.0.1:8080");
+      expect(sources).toContain("http://127.0.0.1:9099");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("adds nothing when no emulator is configured", () => {
+    const sources = cspSources(getDevCSP(), "connect-src");
+
+    expect(
+      sources.filter((source) => source.startsWith("http://127.0.0.1")),
+    ).toEqual([]);
   });
 });

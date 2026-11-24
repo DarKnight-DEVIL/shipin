@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   requireAuthWithProfile: vi.fn(),
   requestGet: vi.fn(),
   walletGet: vi.fn(),
+  holdGet: vi.fn(),
+  txSet: vi.fn(),
+  txDelete: vi.fn(),
   orderSet: vi.fn(),
   runTransaction: vi.fn(),
   isQuoteExpired: vi.fn(),
@@ -19,10 +22,20 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
     collection: (name: string) => ({
+      /*
+       * A retried checkout has both a wallet and a hold; they must read
+       * differently, because the reservation maths subtracts the hold.
+       */
       doc: (id?: string) => {
-        if (name === "requests") return { id, get: mocks.requestGet };
-        if (name === "wallets") return { id, get: mocks.walletGet };
-        return { id, set: mocks.orderSet };
+        const ref = {
+          id,
+          path: `${name}/${id ?? ""}`,
+          get: mocks.holdGet,
+          set: mocks.orderSet,
+        };
+        if (name === "requests") return { ...ref, get: mocks.requestGet };
+        if (name === "wallets") return { ...ref, get: mocks.walletGet };
+        return ref;
       },
     }),
     runTransaction: mocks.runTransaction,
@@ -73,11 +86,20 @@ beforeEach(() => {
   });
   mocks.requestGet.mockReset().mockResolvedValue(snap(requestDoc));
   mocks.walletGet.mockReset().mockResolvedValue(snap({ balance: 0 }));
+  mocks.holdGet.mockReset().mockResolvedValue(snap(undefined));
+  mocks.txSet.mockReset();
+  mocks.txDelete.mockReset();
   mocks.orderSet.mockReset().mockResolvedValue(undefined);
   mocks.runTransaction.mockReset().mockImplementation(async (fn) => {
-    // Execute the transaction function with a mock transaction object
+    // Execute the transaction function with a mock transaction object.
+    // `get` answers per document path, as a real transaction read does.
     const mockTransaction = {
-      get: mocks.walletGet,
+      get: async (ref: { path?: string }) =>
+        ref?.path?.startsWith("wallets/")
+          ? mocks.walletGet()
+          : mocks.holdGet(),
+      set: mocks.txSet,
+      delete: mocks.txDelete,
     };
     return fn(mockTransaction);
   });
@@ -282,6 +304,38 @@ describe("POST /api/paypal/create-order", () => {
     });
   });
 
+  it("releases the reservation when the PayPal call throws", async () => {
+    // A thrown network error is not a PayPal refusal: no order exists, so the
+    // hold must go now instead of sitting on the balance until its expiry.
+    mocks.walletGet.mockResolvedValue(snap({ balance: 20, reserved: 20 }));
+    mocks.holdGet.mockResolvedValue(
+      snap({ userId: "user-1", amount: 20, status: "reserved" })
+    );
+    mocks.fetch.mockRejectedValue(new Error("connection reset"));
+
+    const response = await POST(request({ ...body, amount: 84.7 }));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Internal server error",
+    });
+
+    // The reservation was made, then released: the hold is gone and the wallet
+    // no longer counts the money as promised.
+    expect(mocks.txSet).toHaveBeenCalledWith(
+      expect.objectContaining({ path: expect.stringMatching(/^walletHolds\//) }),
+      expect.objectContaining({ amount: 20, status: "reserved" })
+    );
+    expect(mocks.txDelete).toHaveBeenCalledWith(
+      expect.objectContaining({ path: expect.stringMatching(/^walletHolds\//) })
+    );
+    const releasedWrite = mocks.txSet.mock.calls.find(
+      ([, data]) => data?.reserved === 0
+    );
+    expect(releasedWrite?.[0]).toMatchObject({ path: "wallets/user-1" });
+  });
+
   it("requires PayPal to return an order id", async () => {
     mocks.fetch.mockResolvedValue({
       ok: true,
@@ -328,6 +382,69 @@ describe("POST /api/paypal/create-order", () => {
     const sent = JSON.parse(mocks.fetch.mock.calls[0][1].body);
     expect(sent.purchase_units[0].amount.value).toBe("104.70");
     expect(sent.purchase_units[0].description).toBe("ShipIN Request REQ-100");
+  });
+
+  it("reserves the wallet part so a later payment cannot spend it", async () => {
+    mocks.walletGet.mockResolvedValue(snap({ balance: 20 }));
+
+    const response = await POST(request({ ...body, amount: 84.7 }));
+
+    expect(response.status).toBe(200);
+
+    const holdWrite = mocks.txSet.mock.calls.find(
+      ([, data]) => data?.status === "reserved"
+    );
+    expect(holdWrite?.[1]).toMatchObject({
+      userId: "user-1",
+      amount: 20,
+      status: "reserved",
+    });
+
+    const walletWrite = mocks.txSet.mock.calls.find(
+      ([, data]) => typeof data?.reserved === "number"
+    );
+    expect(walletWrite?.[1]).toMatchObject({ reserved: 20 });
+  });
+
+  it("releases the hold and the reservation when a retry drops the wallet share", async () => {
+    // The first checkout reserved the whole balance; the retry pays everything
+    // through PayPal, so neither the hold nor `wallets.reserved` may survive.
+    mocks.walletGet.mockResolvedValue(snap({ balance: 20, reserved: 20 }));
+    mocks.holdGet.mockResolvedValue(
+      snap({ userId: "user-1", amount: 20, status: "reserved" })
+    );
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ walletApplied: 0, paypalAmount: 104.7 })
+    );
+
+    expect(mocks.txDelete).toHaveBeenCalledTimes(1);
+    expect(mocks.txDelete.mock.calls[0][0]).toMatchObject({
+      path: expect.stringMatching(/^walletHolds\//),
+    });
+    // Released together: the balance is spendable again, not just unheld.
+    expect(mocks.txSet).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "wallets/user-1" }),
+      expect.objectContaining({ reserved: 0 }),
+      { merge: true }
+    );
+  });
+
+  it("refuses a wallet share the unreserved balance cannot cover", async () => {
+    // 20 is left, but 90 is already promised to another checkout.
+    mocks.walletGet.mockResolvedValue(snap({ balance: 100, reserved: 90 }));
+
+    const response = await POST(request({ ...body, amount: 84.7 }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error:
+        "The requested wallet amount exceeds the available wallet balance.",
+    });
+    expect(mocks.txSet).not.toHaveBeenCalled();
   });
 
   it("applies wallet balance to reduce the PayPal amount", async () => {

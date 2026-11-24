@@ -118,6 +118,7 @@ describe("GET /api/admin/analytics", () => {
         doc("r6", {
           status: "review",
           userId: "u3",
+          quote: { breakdown: { grandTotal: 60 } },
           quoteRegenerationRequested: true,
         }),
         doc("r7", {
@@ -162,14 +163,15 @@ describe("GET /api/admin/analytics", () => {
     });
 
     // Paid statuses: paid (r1), shipped (r2), warehouse_received (r5),
-    // packed (r10), delivered (r4). Only r1 carries a quote breakdown.
+    // packed (r10), ready_for_international_shipping (r11), delivered (r4).
+    // Only r1 carries a quote breakdown.
     expect(body.financials).toEqual({
       grossRevenue: 100,
       serviceFees: 10,
       productCost: 70,
       shippingCost: 20,
-      paidOrders: 5,
-      averageOrderValue: 20,
+      paidOrders: 6,
+      averageOrderValue: 16.67,
     });
 
     expect(body.operations).toEqual({
@@ -192,7 +194,9 @@ describe("GET /api/admin/analytics", () => {
       { name: "Delivered", value: 1 },
     ]);
 
-    expect(body.monthlyRevenue).toEqual([{ month: "Mar", revenue: 150 }]);
+    // Paid requests only, and the key carries the year so March 2027 cannot
+    // merge into March 2026.
+    expect(body.monthlyRevenue).toEqual([{ month: "2026-03", revenue: 150 }]);
 
     // u1 booked the two paid orders; ties keep insertion order.
     expect(body.topCustomers[0]).toMatchObject({

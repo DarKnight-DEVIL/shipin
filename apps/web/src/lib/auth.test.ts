@@ -531,7 +531,8 @@ describe("withAuthHandler", () => {
     const res = await wrapped(req);
     expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.error).toBe("Boom");
+    // Provider/internal messages stay in the server log.
+    expect(body.error).toBe("An unexpected error occurred.");
     expect(body.code).toBe("INTERNAL_ERROR");
   });
 });

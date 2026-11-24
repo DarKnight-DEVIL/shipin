@@ -76,6 +76,28 @@ export interface RateLimitResult {
 /** Milliseconds used as the sliding-window cutoff for error-count queries. */
 export const RATE_LIMIT_ERROR_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
+/**
+ * E2E-only switch that turns the per-IP limits into a no-op.
+ *
+ * The local E2E suite drives one browser from 127.0.0.1, so every request
+ * shares a bucket: a single run spends the 100-request web budget inside one
+ * window and the proxy then answers 429 to pages, robots.txt and sitemap.xml
+ * mid-suite. CI failed that way intermittently — the run either finished
+ * inside the window or did not.
+ *
+ * Only `scripts/e2e-local.mjs` sets this. It is honoured for a non-production
+ * build, or for a production build that already carries the documented
+ * `RATE_LIMIT_STORE_OPTIONAL=1` E2E opt-out, so a real deployment that picks
+ * up the variable by accident keeps enforcing its limits.
+ */
+export const RATE_LIMIT_DISABLED_ENV = "RATE_LIMIT_DISABLED";
+
+export function isRateLimitingDisabled(): boolean {
+  if (process.env[RATE_LIMIT_DISABLED_ENV] !== "1") return false;
+
+  return process.env.NODE_ENV !== "production" || isRateLimitStoreOptional();
+}
+
 /** Redis hash holding per-IP error counters, one per limiter. */
 const ERROR_HASH_PREFIX = "shipin:ratelimit:errors:";
 const ERROR_HASH_TTL_SECONDS = 10 * 60;
@@ -280,6 +302,17 @@ export function createSharedRateLimiter(
 
   return {
     async record(request: Request): Promise<RateLimitResult> {
+      if (isRateLimitingDisabled()) {
+        // Deliberately permissive rather than throwing: callers still publish
+        // the headers they would for an allowed request.
+        return {
+          ok: true,
+          limit: maxRequests,
+          remaining: maxRequests,
+          reset: Date.now() + windowMs,
+        };
+      }
+
       // One derivation, shared with the in-memory limiter and the consent
       // audit log; see `clientIp.ts` for which headers are trusted and why.
       const ip = getClientIp(request) ?? "127.0.0.1";

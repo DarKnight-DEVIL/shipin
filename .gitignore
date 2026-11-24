@@ -43,6 +43,13 @@ dist/
 build/
 **/build/
 
+# Local screenshots and ad-hoc debug dumps
+screenshots/
+/screenshots/
+firestore-debug.log
+c2.js
+eslint-output.json
+
 # Test, coverage and browser-run artifacts
 coverage/
 **/coverage/

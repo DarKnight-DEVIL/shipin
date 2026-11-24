@@ -76,6 +76,96 @@ function walkHtml(dir, found = []) {
 }
 
 /** `requests/new.html` → `/requests/new`, `index.html` → `/`. */
+/**
+ * Chunk files a dynamic route loads before hydration.
+ *
+ * Dynamic routes never produce HTML, so the `<script src>` walk cannot see
+ * them. The route's own build manifest contributes the framework and polyfill
+ * chunks, and its client-reference manifest lists the chunks for every
+ * synchronously referenced client module — including the page itself. Async
+ * chunks (next/dynamic, lazy modals) are excluded, matching the static
+ * measurement's "initial load only" policy.
+ */
+function dynamicChunks(buildDir, pageDir) {
+  let buildManifest;
+  try {
+    buildManifest = JSON.parse(
+      readFileSync(path.join(pageDir, "build-manifest.json"), "utf8")
+    );
+  } catch {
+    return null;
+  }
+
+  const files = new Set([
+    ...(buildManifest.rootMainFiles ?? []),
+    ...(buildManifest.polyfillFiles ?? []),
+  ]);
+
+  const referenceFile = readdirSync(pageDir).find((name) =>
+    name.endsWith("_client-reference-manifest.js")
+  );
+
+  if (referenceFile) {
+    const source = readFileSync(path.join(pageDir, referenceFile), "utf8");
+    // The manifest is `globalThis.__RSC_MANIFEST["…"] = { … };`.
+    const start = source.indexOf("] = {");
+
+    if (start !== -1) {
+      try {
+        const manifest = JSON.parse(
+          source.slice(start + 4).trim().replace(/;\s*$/, "")
+        );
+
+        for (const module of Object.values(manifest.clientModules ?? {})) {
+          if (module.async) continue;
+          for (const chunk of module.chunks ?? []) {
+            files.add(chunk.replace(/^\/_next\//, ""));
+          }
+        }
+      } catch {
+        // A manifest Next changes shape on: keep the framework chunks.
+      }
+    }
+  }
+
+  return [...files].map((file) => path.join(buildDir, file));
+}
+
+/** `.next/server/app/(platform)/requests/[id]/page` → `/requests/[id]`. */
+function routeForPageDir(pageDir, appDir) {
+  const route = path
+    .relative(appDir, pageDir)
+    .split(path.sep)
+    .join("/")
+    .split("/")
+    .filter((segment) => !/^\(.+\)$/.test(segment))
+    .join("/");
+
+  return route ? `/${route}` : "/";
+}
+
+/** Every `…/page/build-manifest.json` Next emitted for a dynamic route. */
+function dynamicRouteManifests(appDir) {
+  const manifests = [];
+
+  function walk(dir) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (
+        entry.name === "build-manifest.json" &&
+        path.basename(dir) === "page"
+      ) {
+        manifests.push({ pageDir: path.dirname(dir), file: full });
+      }
+    }
+  }
+
+  walk(appDir);
+  return manifests;
+}
+
 function routeFor(htmlFile, appDir) {
   const rel = path
     .relative(appDir, htmlFile)
@@ -136,6 +226,7 @@ function main() {
   const measured = new Map();
   const missingChunks = new Set();
   let ignoredRoutes = 0;
+  let dynamicRoutes = 0;
 
   for (const htmlFile of htmlFiles) {
     const route = routeFor(htmlFile, appDir);
@@ -152,6 +243,28 @@ function main() {
       else bytes += size;
     }
     measured.set(route, bytes);
+  }
+
+  /*
+   * Dynamic routes are measured from the chunk group Next bootstraps for them.
+   * A route that did prerender keeps its HTML measurement instead.
+   */
+  for (const { pageDir, file } of dynamicRouteManifests(appDir)) {
+    const route = routeForPageDir(pageDir, appDir);
+    if (route.startsWith("/api") || measured.has(route)) continue;
+
+    const chunks = dynamicChunks(options.buildDir, path.dirname(file));
+    if (!chunks) continue;
+
+    let bytes = 0;
+    for (const chunk of chunks) {
+      const size = gzipSize(chunk);
+      if (size < 0) missingChunks.add(path.basename(chunk));
+      else bytes += size;
+    }
+
+    measured.set(route, bytes);
+    dynamicRoutes += 1;
   }
 
   if (measured.size === 0) {
@@ -240,6 +353,11 @@ function main() {
   }
   if (ignoredRoutes > 0) {
     process.stdout.write(`Skipped ${ignoredRoutes} framework page(s).\n`);
+  }
+  if (dynamicRoutes > 0) {
+    process.stdout.write(
+      `Measured ${dynamicRoutes} dynamic route(s) from their bootstrap chunks.\n`
+    );
   }
 
   if (unbudgeted.length > 0) {

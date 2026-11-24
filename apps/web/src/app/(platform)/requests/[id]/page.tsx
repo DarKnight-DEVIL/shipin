@@ -5,10 +5,18 @@ import { useParams, useRouter } from "next/navigation";
 import { AlertCircle, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { toast } from "sonner";
 
-import Lightbox from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
+
+/*
+ * The lightbox only matters once a customer taps a photo. Loading it statically
+ * charged every request page for the gallery up front.
+ */
+const Lightbox = dynamic(() => import("yet-another-react-lightbox"), {
+  ssr: false,
+});
 
 import { auth } from "@/lib/firebase";
 import { customerApi } from "@/lib/customerApiClient";

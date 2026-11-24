@@ -1,22 +1,35 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   // Base config only. Every workspace extends this for compilerOptions and
-  // declares its own `include`, so nothing here ever compiles on its own.
+  // declares its own `include`, so nothing here compiles on its own.
   //
-  // `files: []` is deliberate. It used to be `include: ["packages/*/src/**/*"]`,
-  // which made a bare `tsc -p .` at the repo root check the packages and exit 0
-  // while silently ignoring apps/web — a green result that proved very little.
-  // Widening the include instead is not an option: apps/web needs its own
-  // `paths` (@/*), Next's tsconfig plugin and `.next/types`, so a root-wide
-  // project would drown in false unresolved-import errors.
+  // `files: []` plus `references` makes this a solution-style config: the two
+  // workspaces are the projects, and this file only carries the shared
+  // compilerOptions they extend. Without the references, `tsc -p .` — and every
+  // editor that opens this file — reported TS18002, "The 'files' list in config
+  // file is empty".
+  //
+  // Compiling nothing at the root is deliberate. It used to be
+  // `include: ["packages/*/src/**/*"]`, which made a bare `tsc -p .` at the repo
+  // root check the packages and exit 0 while silently ignoring apps/web — a
+  // green result that proved very little. Widening the include instead is not
+  // an option: apps/web needs its own `paths` (@/*), Next's tsconfig plugin and
+  // `.next/types`, so a root-wide project would drown in false
+  // unresolved-import errors.
   //
   // The project-wide check is `npm run typecheck` → `turbo run typecheck`,
   // which runs `tsc --noEmit` in the two remaining workspaces (config, web);
   // the unused ui/shared/utils packages were removed in the §2.6 orphan
-  // cleanup. CI runs exactly that. A bare root `tsc` now fails with
-  // TS18002 ("The 'files' list in config file is empty") instead of reporting a
-  // partial pass.
+  // cleanup, which is why they are not referenced below. CI runs exactly that.
+  // A bare root `tsc -p .` now checks nothing and exits 0, so it is not the
+  // gate. `tsc -b` is: it builds both referenced projects — packages/config
+  // emits its `dist/` while apps/web stays check-only through `noEmit` — and
+  // exits 0. Both its outputs (`dist/`, `*.tsbuildinfo`) are gitignored.
   "files": [],
+  "references": [
+    { "path": "./packages/config" },
+    { "path": "./apps/web" }
+  ],
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["dom", "dom.iterable", "esnext"],

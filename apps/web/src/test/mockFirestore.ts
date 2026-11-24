@@ -243,8 +243,23 @@ export function createMockFirestore(): MockFirestoreDb {
     },
   });
 
-  const makeTransaction = (): MockTransaction => ({
+  const makeTransaction = (): MockTransaction => {
+    /*
+     * Firestore requires every read in a transaction before the first write.
+     * The mock used to allow both orders, so a handler that read the wallet
+     * after updating the request passed here and failed in production. Track
+     * the reads and writes and reject the illegal order instead.
+     */
+    let hasWritten = false;
+
+    return {
     async get(ref: MockDocRef) {
+      if (hasWritten) {
+        throw new Error(
+          `read after write: ${ref.path} (Firestore requires all transaction reads before the first write)`
+        );
+      }
+
       const [colName, docId] = ref.path.split("/");
       const doc = store.get(colName)?.get(docId);
       return {
@@ -257,19 +272,23 @@ export function createMockFirestore(): MockFirestoreDb {
       data: Record<string, unknown>,
       options?: MockSetOptions
     ) {
+      hasWritten = true;
       const [colName, docId] = ref.path.split("/");
       applySet(store, colName, docId, data, options);
     },
     update(ref: MockDocRef, data: Record<string, unknown>) {
+      hasWritten = true;
       const [colName, docId] = ref.path.split("/");
       requireDoc(store, colName, docId);
       applyUpdate(store, colName, docId, data);
     },
     delete(ref: MockDocRef) {
+      hasWritten = true;
       const [colName, docId] = ref.path.split("/");
       store.get(colName)?.delete(docId);
     },
-  });
+    };
+  };
 
   return {
     collection: makeCollectionRef,

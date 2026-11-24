@@ -91,7 +91,7 @@ describe("POST /api/admin/requests/[requestId]/tracking/refresh", () => {
     await expect(response.json()).resolves.toEqual({
       success: false,
       code: "INTERNAL_ERROR",
-      error: "ADMIN_ACCESS_REQUIRED",
+      error: "An unexpected error occurred.",
     });
     expect(mocks.resolveTracking).not.toHaveBeenCalled();
   });

@@ -7,9 +7,12 @@ const mocks = vi.hoisted(() => ({
   recordRateLimit: vi.fn(),
   sendNotification: vi.fn(),
   docs: {} as Record<string, Record<string, unknown> | undefined>,
+  txOverrides: {} as Record<string, { exists: boolean; data?: () => unknown }>,
   txGet: vi.fn(),
   txUpdate: vi.fn(),
   txSet: vi.fn(),
+  txDelete: vi.fn(),
+  ops: [] as string[],
 }));
 
 vi.mock("@/config/env", () => ({ serverEnv: mocks.env }));
@@ -51,7 +54,30 @@ vi.mock("@/lib/firebaseAdmin", () => ({
       },
     }),
     runTransaction: async (handler: (tx: unknown) => Promise<unknown>) =>
-      handler({ get: mocks.txGet, update: mocks.txUpdate, set: mocks.txSet }),
+      handler({
+        get: async (ref: { path: string }) => {
+          mocks.ops.push(`read:${ref.path}`);
+          mocks.txGet(ref);
+
+          const override = mocks.txOverrides[ref.path];
+          if (override) return override;
+
+          const data = mocks.docs[ref.path];
+          return { exists: data !== undefined, data: () => data };
+        },
+        update: (ref: { path: string }, data: Record<string, unknown>) => {
+          mocks.ops.push(`write:${ref.path}`);
+          mocks.txUpdate(ref, data);
+        },
+        set: (ref: { path: string }, data: Record<string, unknown>) => {
+          mocks.ops.push(`write:${ref.path}`);
+          mocks.txSet(ref, data);
+        },
+        delete: (ref: { path: string }) => {
+          mocks.ops.push(`write:${ref.path}`);
+          mocks.txDelete(ref);
+        },
+      }),
   },
 }));
 
@@ -88,11 +114,21 @@ const request = (
 function seedOrder(overrides: Record<string, unknown> = {}) {
   mocks.docs["paypalPaymentOrders/ORDER-1"] = {
     status: "created",
+    baseAmount: 100,
+    totalRequired: 104.92,
     paypalAmount: 104.92,
     requestId: "req-1",
     userId: "user-1",
-    customerName: "Ada",
     walletApplied: 0,
+    ...overrides,
+  };
+}
+
+function seedRequest(overrides: Record<string, unknown> = {}) {
+  mocks.docs["requests/req-1"] = {
+    status: "awaiting_payment",
+    userId: "user-1",
+    customerName: "Ada",
     ...overrides,
   };
 }
@@ -100,6 +136,8 @@ function seedOrder(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   mocks.env.PAYPAL_WEBHOOK_ID = "WH-1";
   mocks.docs = {};
+  mocks.txOverrides = {};
+  mocks.ops = [];
   mocks.verifyPayPalWebhook.mockReset().mockResolvedValue(true);
   mocks.recordRateLimit.mockReset().mockResolvedValue({
     ok: true,
@@ -111,6 +149,7 @@ beforeEach(() => {
   mocks.txGet.mockReset();
   mocks.txUpdate.mockReset();
   mocks.txSet.mockReset();
+  mocks.txDelete.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -175,10 +214,7 @@ describe("POST /api/webhook", () => {
 
   it("finds the order id from the links when the related id is absent", async () => {
     seedOrder();
-    mocks.txGet.mockResolvedValue({
-      exists: true,
-      data: () => ({ status: "awaiting_payment", userId: "user-1" }),
-    });
+    seedRequest();
 
     const response = await POST(
       request(
@@ -205,6 +241,7 @@ describe("POST /api/webhook", () => {
 
   it("is idempotent for an already completed order", async () => {
     seedOrder({ status: "completed" });
+    seedRequest();
 
     await POST(request(captureEvent()));
 
@@ -258,22 +295,53 @@ describe("POST /api/webhook", () => {
     expect(mocks.docs["paypalWebhookEvents/EV-MISMATCH"]).toBeUndefined();
   });
 
-  it("marks the request paid and notifies the customer", async () => {
+  it("reads every document before its first write", async () => {
     seedOrder();
-    mocks.txGet.mockResolvedValue({
-      exists: true,
-      data: () => ({ status: "awaiting_payment", userId: "user-1" }),
-    });
+    seedRequest();
+
+    await POST(request(captureEvent()));
+
+    const firstWrite = mocks.ops.findIndex((op) => op.startsWith("write:"));
+    const lastRead = mocks.ops.reduce(
+      (last, op, index) => (op.startsWith("read:") ? index : last),
+      -1
+    );
+
+    expect(firstWrite).toBeGreaterThan(-1);
+    // Firestore transactions reject a read after a write.
+    expect(firstWrite).toBeGreaterThan(lastRead);
+    expect(mocks.ops.filter((op) => op.startsWith("read:"))).toEqual(
+      expect.arrayContaining([
+        "read:requests/req-1",
+        "read:paypalPaymentOrders/ORDER-1",
+      ])
+    );
+  });
+
+  it("marks the request paid with the same payment shape as settlement", async () => {
+    seedOrder();
+    seedRequest();
 
     const response = await POST(request(captureEvent()));
 
-    expect(mocks.txUpdate).toHaveBeenCalledTimes(2);
-    expect(mocks.txUpdate.mock.calls[0][1]).toMatchObject({
+    const requestUpdate = mocks.txUpdate.mock.calls.find(
+      ([ref]) => ref.path === "requests/req-1"
+    );
+
+    expect(requestUpdate?.[1]).toMatchObject({
       status: "paid",
       payment: {
+        provider: "paypal",
+        paymentMethod: "paypal",
         orderId: "ORDER-1",
         captureId: "CAPTURE-1",
+        amount: 104.92,
         amountPaid: 104.92,
+        paypalAmount: 104.92,
+        walletAmount: 0,
+        quoteAmount: 100,
+        currency: "USD",
+        status: "completed",
       },
     });
     expect(mocks.sendNotification).toHaveBeenCalledWith(
@@ -286,15 +354,8 @@ describe("POST /api/webhook", () => {
   });
 
   it("uses the request's customer name, not the payment order", async () => {
-    seedOrder({ customerName: undefined });
-    mocks.txGet.mockResolvedValue({
-      exists: true,
-      data: () => ({
-        status: "awaiting_payment",
-        userId: "user-1",
-        customerName: "Grace",
-      }),
-    });
+    seedOrder();
+    seedRequest({ customerName: "Grace" });
 
     await POST(request(captureEvent()));
 
@@ -303,40 +364,55 @@ describe("POST /api/webhook", () => {
     );
   });
 
-  it("debits the wallet when part of the payment came from it", async () => {
-    seedOrder({ walletApplied: 20 });
-    mocks.txGet
-      .mockResolvedValueOnce({
-        exists: true,
-        data: () => ({ status: "awaiting_payment", userId: "user-1" }),
-      })
-      .mockResolvedValueOnce({ exists: true, data: () => ({ balance: 50 }) });
+  it("debits the wallet once into a deterministic ledger document and releases the hold", async () => {
+    seedOrder({ walletApplied: 20, walletHoldId: "hold-1" });
+    seedRequest();
+    mocks.docs["wallets/user-1"] = { balance: 50, reserved: 20 };
+    mocks.docs["walletHolds/hold-1"] = {
+      userId: "user-1",
+      amount: 20,
+      status: "reserved",
+    };
 
     await POST(request(captureEvent()));
 
-    // Wallet starts at 50, applies 20, so new balance is 30
-    expect(mocks.txUpdate).toHaveBeenCalledWith(
+    // Wallet starts at 50, applies 20, so new balance is 30 and nothing is
+    // reserved once the hold is consumed.
+    expect(mocks.txSet).toHaveBeenCalledWith(
       expect.objectContaining({ path: "wallets/user-1" }),
-      { balance: 30, updatedAt: "__SERVER_TS__" }
+      expect.objectContaining({ balance: 30, reserved: 0 })
     );
     expect(mocks.txSet).toHaveBeenCalledWith(
-      expect.objectContaining({ path: "walletTransactions/generated" }),
+      expect.objectContaining({ path: "walletTransactions/paypal_CAPTURE-1" }),
       expect.objectContaining({
         amount: -20,
         type: "payment",
         balanceAfter: 30,
+        userId: "user-1",
       })
+    );
+    expect(mocks.txDelete).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "walletHolds/hold-1" })
+    );
+  });
+
+  it("does not debit the wallet twice when the ledger entry already exists", async () => {
+    seedOrder({ walletApplied: 20, walletHoldId: "hold-1" });
+    seedRequest();
+    mocks.docs["wallets/user-1"] = { balance: 30, reserved: 0 };
+    mocks.docs["walletTransactions/paypal_CAPTURE-1"] = { amount: -20 };
+
+    await POST(request(captureEvent()));
+
+    expect(mocks.txSet).not.toHaveBeenCalledWith(
+      expect.objectContaining({ path: "wallets/user-1" }),
+      expect.anything()
     );
   });
 
   it("returns 500 when the wallet document is missing so the debit is not skipped", async () => {
     seedOrder({ walletApplied: 20 });
-    mocks.txGet
-      .mockResolvedValueOnce({
-        exists: true,
-        data: () => ({ status: "awaiting_payment" }),
-      })
-      .mockResolvedValueOnce({ exists: false });
+    seedRequest();
 
     const response = await POST(request(captureEvent()));
 
@@ -350,42 +426,49 @@ describe("POST /api/webhook", () => {
     expect(mocks.txSet).not.toHaveBeenCalled();
   });
 
+  it("returns 500 when the wallet cannot cover the reserved amount", async () => {
+    seedOrder({ walletApplied: 20, walletHoldId: "hold-1" });
+    seedRequest();
+    mocks.docs["wallets/user-1"] = { balance: 5, reserved: 20 };
+
+    const response = await POST(request(captureEvent()));
+
+    expect(response.status).toBe(500);
+    expect(mocks.txSet).not.toHaveBeenCalled();
+  });
+
   it("stops when the request disappeared", async () => {
     seedOrder();
-    mocks.txGet.mockResolvedValue({ exists: false });
 
     await POST(request(captureEvent()));
 
     expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 
-  it("stops when the request is already paid", async () => {
-    seedOrder();
-    mocks.txGet.mockResolvedValue({
-      exists: true,
-      data: () => ({ status: "paid" }),
-    });
+  it("marks the payment order complete without moving money when the request is already paid", async () => {
+    seedOrder({ walletApplied: 20 });
+    seedRequest({ status: "paid" });
 
     await POST(request(captureEvent()));
 
-    expect(mocks.txUpdate).not.toHaveBeenCalled();
+    expect(mocks.txUpdate).toHaveBeenCalledTimes(1);
+    expect(mocks.txUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "paypalPaymentOrders/ORDER-1" }),
+      expect.objectContaining({ status: "completed" })
+    );
+    expect(mocks.txSet).not.toHaveBeenCalled();
   });
 
   it("returns 500 when processing throws so PayPal retries (idempotent handler)", async () => {
     seedOrder();
-    mocks.txGet.mockResolvedValue({
-      exists: true,
-      data: () => ({ status: "awaiting_payment" }),
-    });
+    seedRequest();
     mocks.txUpdate.mockImplementation(() => {
       throw new Error("transaction aborted");
     });
 
     const response = await POST(request(captureEvent()));
 
-    // Now returns 500 so PayPal will retry the webhook delivery.
-    // handleCaptureCompleted is idempotent (checks captureId + request status),
-    // so retries are safe.
+    // Returns 500 so PayPal retries the delivery.
     expect(response.status).toBe(500);
     expect(console.error).toHaveBeenCalledWith(
       "Webhook processing error:",
@@ -399,10 +482,7 @@ describe("POST /api/webhook", () => {
 
   it("keeps a 200 when the notification fails (non-critical, outside transaction)", async () => {
     seedOrder();
-    mocks.txGet.mockResolvedValue({
-      exists: true,
-      data: () => ({ status: "awaiting_payment" }),
-    });
+    seedRequest();
     mocks.sendNotification.mockRejectedValue(new Error("mail down"));
 
     const response = await POST(request(captureEvent()));
