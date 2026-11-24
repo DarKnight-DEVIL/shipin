@@ -31,7 +31,14 @@ vi.unmock("@/components/AuthRedirectHandler");
 
 const h = vi.hoisted(() => ({
   getRedirectResult: vi.fn(),
-  currentUser: null as { uid: string } | null,
+  currentUser: null as
+    | {
+        uid: string;
+        displayName: string | null;
+        email: string | null;
+        photoURL: string | null;
+      }
+    | null,
   ensureUserProfile: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
