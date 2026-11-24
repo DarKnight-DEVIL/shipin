@@ -37,6 +37,31 @@ interface GoogleIdApi {
   disableAutoSelect(): void;
 }
 
+/**
+ * Cancels a pending One Tap / FedCM prompt so it does not follow the user off
+ * the login page onto the dashboard or other pages.
+ */
+export function cancelGooglePrompt(): void {
+  try {
+    window.google?.accounts?.id?.cancel?.();
+  } catch {
+    // Cancellation is best-effort only.
+  }
+}
+
+/**
+ * Prevents One Tap from silently auto-selecting the account on future page
+ * loads. Called after a successful sign-in so a completed session is not
+ * followed by further auto sign-in prompts.
+ */
+export function disableGoogleAutoSelect(): void {
+  try {
+    window.google?.accounts?.id?.disableAutoSelect?.();
+  } catch {
+    // Best-effort only.
+  }
+}
+
 declare global {
   interface Window {
     google?: { accounts: { id: GoogleIdApi } };
