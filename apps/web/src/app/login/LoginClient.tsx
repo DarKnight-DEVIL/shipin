@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import { auth, getAppCheckToken } from "@/lib/firebase";
 import {
   FIREBASE_MANAGED_GOOGLE_CLIENT_ID,
+  autoPromptGoogleSignIn,
   loadGoogleIdentity,
   promptGoogleSignIn,
 } from "@/lib/googleIdentity";
@@ -138,6 +139,18 @@ export default function LoginClient() {
     // Preload the Google Identity Services script so the in-page credential
     // flow is ready before the first click.
     void loadGoogleIdentity().catch(() => {});
+    // Auto-prompt One Tap with the page: the chooser is then already on
+    // screen when the user reaches for the button, and auto_select signs
+    // returning users in without any click at all. The credential handler
+    // only touches state setters and module-level Firebase singletons, so it
+    // behaves identically on every render — mount-only is the intent.
+    autoPromptGoogleSignIn(GOOGLE_CLIENT_ID, (credential) => {
+      void completeGoogleCredential(credential);
+    });
+    // The credential handler only touches state setters and module-level
+    // Firebase singletons, so it behaves identically on every render —
+    // mount-only is the intent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const safeRequestedNext =

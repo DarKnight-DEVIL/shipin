@@ -25,6 +25,8 @@ interface GoogleIdApi {
     callback: (response: { credential: string }) => void;
     /** Browser-native account chooser; no third-party cookies needed. */
     use_fedcm_for_prompt?: boolean;
+    /** Reuse the account the user chose on a previous sign-in silently. */
+    auto_select?: boolean;
   }): void;
   /**
    * Shows the One Tap / FedCM account chooser. The callback reports whether
@@ -122,4 +124,29 @@ export function promptGoogleSignIn(
       });
     })
     .catch(onUnavailable);
+}
+
+/**
+ * Auto-prompts One Tap as the page loads, the way Google recommends One Tap
+ * be used on sign-in pages. The chooser is then already on screen before the
+ * user reaches for the button — the click-time FedCM round trip (fetch the
+ * account list, ~0.5s) happens while the page is still loading instead.
+ * `auto_select` signs returning users in with zero clicks. Failures are
+ * silent: the button and its redirect fallback remain the path in.
+ */
+export function autoPromptGoogleSignIn(
+  clientId: string,
+  onCredential: (credential: string) => void
+): void {
+  loadGoogleIdentity()
+    .then((api) => {
+      api.initialize({
+        client_id: clientId,
+        callback: (response) => onCredential(response.credential),
+        use_fedcm_for_prompt: true,
+        auto_select: true,
+      });
+      api.prompt();
+    })
+    .catch(() => {});
 }

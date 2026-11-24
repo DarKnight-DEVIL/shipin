@@ -27,6 +27,7 @@ const h = vi.hoisted(() => ({
   sendPasswordResetEmail: vi.fn(),
   loadGoogleIdentity: vi.fn(),
   promptGoogleSignIn: vi.fn(),
+  autoPromptGoogleSignIn: vi.fn(),
   replace: vi.fn(),
   refresh: vi.fn(),
   searchParams: new URLSearchParams(),
@@ -68,6 +69,8 @@ vi.mock("@/lib/googleIdentity", () => ({
   FIREBASE_MANAGED_GOOGLE_CLIENT_ID: "test-gsi-client-id",
   loadGoogleIdentity: (...args: unknown[]) => h.loadGoogleIdentity(...args),
   promptGoogleSignIn: (...args: unknown[]) => h.promptGoogleSignIn(...args),
+  autoPromptGoogleSignIn: (...args: unknown[]) =>
+    h.autoPromptGoogleSignIn(...args),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -172,6 +175,7 @@ beforeEach(() => {
         onUnavailable();
       }
     );
+  h.autoPromptGoogleSignIn.mockReset();
   h.replace.mockReset();
   h.refresh.mockReset();
   h.success.mockReset();
@@ -544,6 +548,13 @@ describe("LoginClient: sign-in warm-up", () => {
     // The GIS script is preloaded too, so the in-page credential flow is
     // ready before the first click.
     expect(h.loadGoogleIdentity).toHaveBeenCalledTimes(1);
+    // One Tap is auto-prompted with the page: the chooser is then already on
+    // screen before the user reaches for the button, and auto_select signs
+    // returning users in with zero clicks.
+    expect(h.autoPromptGoogleSignIn).toHaveBeenCalledWith(
+      "test-gsi-client-id",
+      expect.any(Function)
+    );
   });
 });
 
