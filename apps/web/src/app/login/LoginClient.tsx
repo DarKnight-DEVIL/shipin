@@ -8,7 +8,6 @@ import {
   GoogleAuthProvider,
   initializeRecaptchaConfig,
   sendPasswordResetEmail,
-  signInWithCredential,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
@@ -29,14 +28,6 @@ import { ArrowLeft, ArrowUpRight, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
 import { auth, getAppCheckToken } from "@/lib/firebase";
-import {
-  FIREBASE_MANAGED_GOOGLE_CLIENT_ID,
-  autoPromptGoogleSignIn,
-  cancelGooglePrompt,
-  disableGoogleAutoSelect,
-  loadGoogleIdentity,
-} from "@/lib/googleIdentity";
-import { clientEnv } from "@/config/env";
 import { verificationEmailOptions } from "@/lib/emailVerification";
 import SigningInOverlay from "@/components/SigningInOverlay";
 import {
@@ -91,14 +82,6 @@ function Logo({ small = false }: { small?: boolean }) {
 const AUTHORIZED_DOMAINS_DOC =
   "https://support.google.com/firebase/answer/6400741";
 
-/**
- * Google OAuth client for the in-page GIS flow. Defaults to the
- * Firebase-managed web client for this project; NEXT_PUBLIC_GOOGLE_CLIENT_ID
- * overrides it.
- */
-const GOOGLE_CLIENT_ID =
-  clientEnv.NEXT_PUBLIC_GOOGLE_CLIENT_ID || FIREBASE_MANAGED_GOOGLE_CLIENT_ID;
-
 export default function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -148,26 +131,8 @@ export default function LoginClient() {
   useEffect(() => {
     void getAppCheckToken();
     void initializeRecaptchaConfig(auth).catch(() => {});
-    // Preload the Google Identity Services script so the in-page credential
-    // flow is ready before the first click.
-    void loadGoogleIdentity().catch(() => {});
-    // Auto-prompt One Tap with the page: the chooser is then already on
-    // screen when the user reaches for the button, and auto_select signs
-    // returning users in without any click at all. The credential handler
-    // only touches state setters and module-level Firebase singletons, so it
-    // behaves identically on every render — mount-only is the intent.
-    autoPromptGoogleSignIn(GOOGLE_CLIENT_ID, (credential) => {
-      void completeGoogleCredential(credential);
-    });
-    // Cancel any pending One Tap / FedCM prompt when leaving the login page
-    // so it does not follow the user onto the dashboard or other pages.
-    return () => {
-      cancelGooglePrompt();
-    };
-    // The credential handler only touches state setters and module-level
-    // Firebase singletons, so it behaves identically on every render —
-    // mount-only is the intent.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // The warm-up handlers only touch module-level Firebase singletons, so
+    // they behave identically on every render — mount-only is the intent.
   }, []);
 
   const safeRequestedNext =
@@ -177,11 +142,6 @@ export default function LoginClient() {
 
   /** Post-authentication routing, shared by every sign-in path. */
   async function finishSignIn(user: User) {
-    // A completed session must not be followed by further silent auto
-    // sign-in prompts, and any pending One Tap chooser must not follow the
-    // user onto the dashboard.
-    disableGoogleAutoSelect();
-    cancelGooglePrompt();
     if (!user.emailVerified) {
       try {
         await sendEmailVerification(user, verificationEmailOptions());
@@ -292,10 +252,6 @@ export default function LoginClient() {
     // flow that worked.
     setLoading(true);
     setGooglePending(true);
-    // Kill any pending One Tap chooser first: the popup aborts the FedCM
-    // prompt, and without this Chrome re-shows the chooser over the
-    // signing-in interstitial. One Tap belongs to the login page only.
-    cancelGooglePrompt();
     try {
       const result = await signInWithPopup(auth, new GoogleAuthProvider());
       await finishSignIn(result.user);
@@ -335,21 +291,8 @@ export default function LoginClient() {
     }
   }
 
-  async function completeGoogleCredential(credential: string) {
-    setGooglePending(true);
-    try {
-      const result = await signInWithCredential(
-        auth,
-        GoogleAuthProvider.credential(credential)
-      );
-      await finishSignIn(result.user);
-    } catch (error) {
-      await handleAuthFailure(error);
-    }
-  }
-
   /**
-   * Shared failure path for every Google sign-in attempt (credential and
+   * Shared failure path for every Google sign-in attempt (popup and
    * redirect flows): maps Firebase error codes to actionable user messages
    * and surfaces them inline as well as in a toast.
    */

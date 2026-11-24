@@ -102,13 +102,6 @@ interface ClientEnv {
   NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: string;
   /** `host:port` of a local Firestore emulator, same rules as the auth host. */
   NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST: string;
-  /**
-   * Google OAuth web client ID for the in-page Google Identity Services
-   * sign-in flow. Optional: the Firebase-managed client for this project is
-   * the documented fallback in lib/googleIdentity.ts, and an empty value
-   * simply keeps sign-in on the redirect flow.
-   */
-  NEXT_PUBLIC_GOOGLE_CLIENT_ID: string;
 }
 
 export function readEnv(
@@ -369,8 +362,6 @@ export const clientEnv: ClientEnv = {
     process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ?? "",
   NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST:
     process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST ?? "",
-  NEXT_PUBLIC_GOOGLE_CLIENT_ID:
-    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "",
 };
 
 /** Whether the app is running in production. */

@@ -23,13 +23,8 @@ const h = vi.hoisted(() => ({
   createUserWithEmailAndPassword: vi.fn(),
   sendEmailVerification: vi.fn(),
   signInWithRedirect: vi.fn(),
-  signInWithCredential: vi.fn(),
   signInWithPopup: vi.fn(),
   sendPasswordResetEmail: vi.fn(),
-  loadGoogleIdentity: vi.fn(),
-  autoPromptGoogleSignIn: vi.fn(),
-  cancelGooglePrompt: vi.fn(),
-  disableGoogleAutoSelect: vi.fn(),
   replace: vi.fn(),
   refresh: vi.fn(),
   searchParams: new URLSearchParams(),
@@ -62,20 +57,8 @@ vi.mock("firebase/auth", () => ({
     h.sendEmailVerification(...args),
   signInWithRedirect: (...args: unknown[]) => h.signInWithRedirect(...args),
   signInWithPopup: (...args: unknown[]) => h.signInWithPopup(...args),
-  signInWithCredential: (...args: unknown[]) =>
-    h.signInWithCredential(...args),
   sendPasswordResetEmail: (...args: unknown[]) =>
     h.sendPasswordResetEmail(...args),
-}));
-
-vi.mock("@/lib/googleIdentity", () => ({
-  FIREBASE_MANAGED_GOOGLE_CLIENT_ID: "test-gsi-client-id",
-  loadGoogleIdentity: (...args: unknown[]) => h.loadGoogleIdentity(...args),
-  autoPromptGoogleSignIn: (...args: unknown[]) =>
-    h.autoPromptGoogleSignIn(...args),
-  cancelGooglePrompt: (...args: unknown[]) => h.cancelGooglePrompt(...args),
-  disableGoogleAutoSelect: (...args: unknown[]) =>
-    h.disableGoogleAutoSelect(...args),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -166,10 +149,7 @@ beforeEach(() => {
   h.sendEmailVerification.mockReset().mockResolvedValue(undefined);
   h.signInWithRedirect.mockReset();
   h.signInWithPopup.mockReset();
-  h.signInWithCredential.mockReset();
   h.sendPasswordResetEmail.mockReset().mockResolvedValue(undefined);
-  h.loadGoogleIdentity.mockReset().mockResolvedValue(undefined);
-  h.autoPromptGoogleSignIn.mockReset();
   h.replace.mockReset();
   h.refresh.mockReset();
   h.success.mockReset();
@@ -539,68 +519,10 @@ describe("LoginClient: sign-in warm-up", () => {
     expect(h.initializeRecaptchaConfig).toHaveBeenCalledWith(
       expect.objectContaining({ name: "test-auth" })
     );
-    // The GIS script is preloaded too, so the in-page credential flow is
-    // ready before the first click.
-    expect(h.loadGoogleIdentity).toHaveBeenCalledTimes(1);
-    // One Tap is auto-prompted with the page: the chooser is then already on
-    // screen before the user reaches for the button, and auto_select signs
-    // returning users in with zero clicks.
-    expect(h.autoPromptGoogleSignIn).toHaveBeenCalledWith(
-      "test-gsi-client-id",
-      expect.any(Function)
-    );
   });
 });
 
-describe("LoginClient: Google Identity Services flow", () => {
-  it("signs in from the auto-prompted credential without leaving the page", async () => {
-    h.autoPromptGoogleSignIn.mockImplementation(
-      (_clientId: string, onCredential: (credential: string) => void) => {
-        onCredential("google-id-token");
-      }
-    );
-    h.signInWithCredential.mockResolvedValue({
-      user: profile({ emailVerified: true }),
-    });
-    render(<LoginClient />);
-
-    await waitFor(() => expect(h.replace).toHaveBeenCalledWith("/dashboard"));
-    expect(h.signInWithCredential).toHaveBeenCalledWith(
-      { name: "test-auth" },
-      { providerId: "google.com", idToken: "google-id-token" }
-    );
-    // The whole point of the auto-prompt: no popup, no redirect.
-    expect(h.signInWithPopup).not.toHaveBeenCalled();
-    expect(h.signInWithRedirect).not.toHaveBeenCalled();
-    expect(h.error).not.toHaveBeenCalled();
-  });
-
-  it("passes the configured Google client id to the auto-prompt", async () => {
-    render(<LoginClient />);
-
-    expect(h.autoPromptGoogleSignIn).toHaveBeenCalledWith(
-      "test-gsi-client-id",
-      expect.any(Function)
-    );
-  });
-
-  it("maps App Check failures from the credential flow too", async () => {
-    h.autoPromptGoogleSignIn.mockImplementation(
-      (_clientId: string, onCredential: (credential: string) => void) => {
-        onCredential("google-id-token");
-      }
-    );
-    h.signInWithCredential.mockRejectedValue({
-      code: "auth/firebase-app-check-token-is-invalid",
-    });
-    render(<LoginClient />);
-
-    await waitFor(() =>
-      expect(h.error).toHaveBeenCalledWith(expect.stringContaining("App Check"))
-    );
-    expect(h.replace).not.toHaveBeenCalled();
-  });
-
+describe("LoginClient: Google popup flow", () => {
   it("opens a popup from the Continue with Google button", async () => {
     h.signInWithPopup.mockResolvedValue({
       user: profile({ emailVerified: true }),
@@ -617,7 +539,6 @@ describe("LoginClient: Google Identity Services flow", () => {
       expect.anything()
     );
     // The button and the auto-prompt are independent paths.
-    expect(h.signInWithCredential).not.toHaveBeenCalled();
     expect(h.signInWithRedirect).not.toHaveBeenCalled();
   });
 

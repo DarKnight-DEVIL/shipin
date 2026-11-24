@@ -99,7 +99,7 @@ export function getDevCSP(): string {
   return (
     "default-src 'self'; " +
     scriptSrc +
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com https://accounts.google.com; " +
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com; " +
     `img-src ${IMAGE_SOURCES}; ` +
     "font-src 'self' https://fonts.gstatic.com; " +
     "connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com " +
@@ -108,9 +108,6 @@ export function getDevCSP(): string {
     // every render of the top-up button.
     "https://www.paypal.com https://www.sandbox.paypal.com " +
     "https://graph.facebook.com https://www.google.com https://www.google.com/recaptcha/ https://www.googletagmanager.com " +
-    // Google Identity Services posts from the page to accounts.google.com
-    // during the in-page credential flow.
-    "https://accounts.google.com " +
     "https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com " +
     "https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com https://va.vercel-scripts.com " +
     // Firebase Realtime Database sockets, then the dev-only transports: HMR on
@@ -186,7 +183,7 @@ export const SECURITY_HEADERS: Record<string, string> = {
    * permissive CSP from getDevCSP(). This is a fallback for requests that
    * bypass the proxy.
    */
-  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src ${IMAGE_SOURCES}; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com https://accounts.google.com https://cdn.vercel-insights.com https://analytics.vercel.com wss://*.firebaseio.com wss://*.firebasedatabase.app; frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://accounts.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to 'csp-endpoint';`,
+  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src ${IMAGE_SOURCES}; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com wss://*.firebaseio.com wss://*.firebasedatabase.app; frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://accounts.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to 'csp-endpoint';`,
 
   /**
    * Client Hints are deliberately not requested here.
@@ -278,7 +275,7 @@ export function getProductionCSP(): string {
   return (
     "default-src 'self'; " +
     scriptSrc +
-    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com https://accounts.google.com; ` +
+    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com; ` +
     `img-src ${IMAGE_SOURCES}; ` +
     "font-src 'self' https://fonts.gstatic.com; " +
     "connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com " +
@@ -286,9 +283,6 @@ export function getProductionCSP(): string {
     // production policy below for the same pair.
     "https://www.paypal.com https://www.sandbox.paypal.com " +
     "https://graph.facebook.com https://www.google.com https://www.google.com/recaptcha/ https://www.googletagmanager.com " +
-    // Google Identity Services posts from the page to accounts.google.com
-    // during the in-page credential flow.
-    "https://accounts.google.com " +
     "https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com " +
     "https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com " +
     // Narrowed from a blanket `wss: https:`: every host the app actually
