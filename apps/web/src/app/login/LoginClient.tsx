@@ -178,8 +178,10 @@ export default function LoginClient() {
   /** Post-authentication routing, shared by every sign-in path. */
   async function finishSignIn(user: User) {
     // A completed session must not be followed by further silent auto
-    // sign-in prompts.
+    // sign-in prompts, and any pending One Tap chooser must not follow the
+    // user onto the dashboard.
     disableGoogleAutoSelect();
+    cancelGooglePrompt();
     if (!user.emailVerified) {
       try {
         await sendEmailVerification(user, verificationEmailOptions());
@@ -290,6 +292,10 @@ export default function LoginClient() {
     // flow that worked.
     setLoading(true);
     setGooglePending(true);
+    // Kill any pending One Tap chooser first: the popup aborts the FedCM
+    // prompt, and without this Chrome re-shows the chooser over the
+    // signing-in interstitial. One Tap belongs to the login page only.
+    cancelGooglePrompt();
     try {
       const result = await signInWithPopup(auth, new GoogleAuthProvider());
       await finishSignIn(result.user);

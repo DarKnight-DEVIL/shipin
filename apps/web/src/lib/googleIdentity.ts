@@ -110,11 +110,20 @@ export function loadGoogleIdentity(): Promise<GoogleIdApi> {
  * user reaches for the button — the click-time FedCM round trip (fetch the
  * account list, ~0.5s) happens while the page is still loading instead.
  * Failures are silent: the popup button remains the path in.
+ *
+ * Guarded to run at most once per page load: a second prompt() while one is
+ * pending is what makes the chooser pop up again over the signing-in
+ * interstitial.
  */
+let promptAlreadyFired = false;
+
 export function autoPromptGoogleSignIn(
   clientId: string,
   onCredential: (credential: string) => void
 ): void {
+  if (promptAlreadyFired) return;
+  promptAlreadyFired = true;
+
   loadGoogleIdentity()
     .then((api) => {
       api.initialize({
@@ -125,5 +134,8 @@ export function autoPromptGoogleSignIn(
       });
       api.prompt();
     })
-    .catch(() => {});
+    .catch(() => {
+      // Allow a retry on the next mount if the script never loaded.
+      promptAlreadyFired = false;
+    });
 }
