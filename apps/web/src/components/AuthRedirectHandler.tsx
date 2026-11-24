@@ -132,10 +132,6 @@ export default function AuthRedirectHandler() {
     async function handleRedirectResult() {
       try {
         const result = await getRedirectResult(auth);
-        console.warn(
-          "[ShipIN] redirect check resolved:",
-          result ? "signed-in result" : "no pending redirect"
-        );
         if (result) {
           // User signed in via redirect. Routing has started — keep the
           // interstitial up until the destination page actually replaces
