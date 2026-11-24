@@ -23,6 +23,8 @@ interface GoogleIdApi {
   initialize(config: {
     client_id: string;
     callback: (response: { credential: string }) => void;
+    /** Browser-native account chooser; no third-party cookies needed. */
+    use_fedcm_for_prompt?: boolean;
   }): void;
   /**
    * Shows the One Tap / FedCM account chooser. The callback reports whether
@@ -106,6 +108,10 @@ export function promptGoogleSignIn(
       api.initialize({
         client_id: clientId,
         callback: (response) => onCredential(response.credential),
+        // FedCM is the browser-native account chooser: it needs no third-party
+        // cookies, which Chrome partitions away — the same class of breakage
+        // that killed the popup flow.
+        use_fedcm_for_prompt: true,
       });
       api.prompt((notification) => {
         if (notification.isNotDisplayed() || notification.isSkippedMoment()) {

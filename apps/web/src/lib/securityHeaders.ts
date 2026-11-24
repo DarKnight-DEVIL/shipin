@@ -99,7 +99,7 @@ export function getDevCSP(): string {
   return (
     "default-src 'self'; " +
     scriptSrc +
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com; " +
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com https://accounts.google.com; " +
     `img-src ${IMAGE_SOURCES}; ` +
     "font-src 'self' https://fonts.gstatic.com; " +
     "connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com " +
@@ -278,7 +278,7 @@ export function getProductionCSP(): string {
   return (
     "default-src 'self'; " +
     scriptSrc +
-    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com; ` +
+    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com https://accounts.google.com; ` +
     `img-src ${IMAGE_SOURCES}; ` +
     "font-src 'self' https://fonts.gstatic.com; " +
     "connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com " +
