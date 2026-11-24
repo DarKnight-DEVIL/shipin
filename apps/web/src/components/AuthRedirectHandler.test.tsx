@@ -22,7 +22,7 @@
 
 import { readFileSync } from "node:fs";
 import React from "react";
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The setup file stubs this component so layout tests never hit Firebase; this
@@ -43,6 +43,7 @@ const h = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
   searchParams: new URLSearchParams(),
+  pathname: "/login",
   // One stable object: the component's effect depends on `router`, and a new
   // object per render would re-run the redirect check on every render.
   router: { replace: vi.fn(), refresh: vi.fn() },
@@ -73,6 +74,7 @@ vi.mock("@/features/users/services/userProfile", () => ({
 // `h` is hoisted, so the mock factory can read it.
 vi.mock("next/navigation", () => ({
   useRouter: () => h.router,
+  usePathname: () => h.pathname,
   useSearchParams: () => ({
     get: (key: string) => h.searchParams.get(key),
   }),
@@ -100,6 +102,8 @@ beforeEach(() => {
   h.router.replace.mockReset();
   h.router.refresh.mockReset();
   h.searchParams = new URLSearchParams();
+  h.pathname = "/login";
+  sessionStorage.clear();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -146,6 +150,40 @@ describe("AuthRedirectHandler", () => {
     expect(h.ensureUserProfile).not.toHaveBeenCalled();
     expect(h.router.replace).not.toHaveBeenCalled();
     expect(h.router.refresh).not.toHaveBeenCalled();
+  });
+
+  it("shows the signing-in interstitial while returning from a redirect", async () => {
+    // The popup was blocked, so the button marked the trip before leaving.
+    sessionStorage.setItem("shipin:auth-redirect-pending", "1");
+    let resolveResult: (value: unknown) => void = () => {};
+    h.getRedirectResult.mockReturnValue(new Promise((resolve) => {
+      resolveResult = resolve;
+    }));
+
+    render(<AuthRedirectHandler />);
+
+    // The interstitial covers the login form while the result is pending.
+    expect(screen.getByRole("status")).toHaveTextContent(/signing you in/i);
+
+    resolveResult(seedUser());
+    await waitFor(() => expect(h.router.replace).toHaveBeenCalledWith("/dashboard"));
+    // The flag is cleared once the result is in; the interstitial stays up
+    // until the destination page replaces this one (pathname-driven).
+    expect(sessionStorage.getItem("shipin:auth-redirect-pending")).toBeNull();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("drops the interstitial when no redirect result comes back", async () => {
+    sessionStorage.setItem("shipin:auth-redirect-pending", "1");
+    render(<AuthRedirectHandler />);
+
+    expect(screen.getByRole("status")).toHaveTextContent(/signing you in/i);
+
+    await waitFor(() =>
+      expect(screen.queryByRole("status")).not.toBeInTheDocument()
+    );
+    expect(sessionStorage.getItem("shipin:auth-redirect-pending")).toBeNull();
+    expect(h.router.replace).not.toHaveBeenCalled();
   });
 
   it("repairs the profile, greets the user and lands on the dashboard", async () => {

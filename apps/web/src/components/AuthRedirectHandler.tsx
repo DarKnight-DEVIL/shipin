@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { getRedirectResult } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import SigningInOverlay from "@/components/SigningInOverlay";
+import {
+  clearAuthRedirectPending,
+  isAuthRedirectPending,
+} from "@/lib/authRedirectPending";
 
 const SAFE_NEXT_ORIGIN = "https://shipin.invalid";
 
@@ -33,9 +38,31 @@ function sameOriginPath(raw: string | null): string | null {
 
 export default function AuthRedirectHandler() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const safeRequestedNext = sameOriginPath(searchParams.get("next"));
+
+  // Returning from the redirect fallback: cover the login form with the
+  // signing-in interstitial until the result is resolved (or the navigation
+  // to the destination page has completed), so the user never sees the form
+  // flash back mid-sign-in.
+  const [returningFromRedirect, setReturningFromRedirect] = useState(false);
+
+  useEffect(() => {
+    // One-time mount sync from sessionStorage: the flag was written by the
+    // previous page before the browser left for Google, so it can only be
+    // read after hydration. This is an external-system read, not derived
+    // state, and it happens exactly once per mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (isAuthRedirectPending()) setReturningFromRedirect(true);
+  }, []);
+
+  // The root layout keeps this component mounted across client navigations,
+  // so the interstitial must unmount when the destination page is actually
+  // showing — not when routing merely starts.
+  const showSignInInterstitial =
+    returningFromRedirect && pathname === "/login";
 
   useEffect(() => {
     let mounted = true;
@@ -94,9 +121,18 @@ export default function AuthRedirectHandler() {
       try {
         const result = await getRedirectResult(auth);
         if (result) {
-          // User signed in via redirect
+          // User signed in via redirect. Routing has started — keep the
+          // interstitial up until the destination page actually replaces
+          // this one (the pathname check in render handles that), so the
+          // login form never flashes back mid-sign-in.
+          clearAuthRedirectPending();
           await routeSignedInUser(result.user);
+          return;
         }
+        // No pending redirect (direct visit, stale flag): drop the
+        // interstitial immediately.
+        clearAuthRedirectPending();
+        setReturningFromRedirect(false);
       } catch (error) {
         console.error("Redirect result error:", error);
         // A rejected getRedirectResult does not always mean a failed sign-in:
@@ -108,6 +144,7 @@ export default function AuthRedirectHandler() {
         // failed and leaving them on the login page.
         const signedIn = auth.currentUser;
         if (signedIn) {
+          clearAuthRedirectPending();
           await routeSignedInUser(signedIn);
           return;
         }
@@ -116,6 +153,8 @@ export default function AuthRedirectHandler() {
         if (err.code !== "auth/no-auth-event") {
           toast.error("Unable to complete sign-in. Please try again.");
         }
+        clearAuthRedirectPending();
+        setReturningFromRedirect(false);
       }
     }
 
@@ -125,6 +164,8 @@ export default function AuthRedirectHandler() {
       mounted = false;
     };
   }, [router, safeRequestedNext]);
+
+  if (showSignInInterstitial) return <SigningInOverlay />;
 
   return null;
 }

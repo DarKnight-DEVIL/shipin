@@ -621,6 +621,27 @@ describe("LoginClient: Google Identity Services flow", () => {
     expect(h.signInWithRedirect).not.toHaveBeenCalled();
   });
 
+  it("covers the page with the signing-in interstitial while the popup is open", async () => {
+    let settlePopup: (value: { user: unknown }) => void = () => {};
+    h.signInWithPopup.mockReturnValue(
+      new Promise((resolve) => {
+        settlePopup = resolve;
+      })
+    );
+    render(<LoginClient />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i })
+    );
+
+    // The interstitial replaces the form while the chooser is open, so the
+    // user is never left staring at a form that appears to have done nothing.
+    expect(screen.getByRole("status")).toHaveTextContent(/signing you in/i);
+
+    settlePopup({ user: profile({ emailVerified: true }) });
+    await waitFor(() => expect(h.replace).toHaveBeenCalledWith("/dashboard"));
+  });
+
   it("treats a closed chooser as a cancellation, not an error", async () => {
     h.signInWithPopup.mockRejectedValue({ code: "auth/popup-closed-by-user" });
     render(<LoginClient />);
@@ -637,6 +658,8 @@ describe("LoginClient: Google Identity Services flow", () => {
     );
     expect(h.error).not.toHaveBeenCalled();
     expect(h.signInWithRedirect).not.toHaveBeenCalled();
+    // The interstitial is gone and the form is back.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("falls back to a redirect when the popup is blocked", async () => {
@@ -655,6 +678,9 @@ describe("LoginClient: Google Identity Services flow", () => {
       )
     );
     expect(h.error).not.toHaveBeenCalled();
+    // The return trip is marked so the interstitial renders instead of the
+    // login form flashing back mid-sign-in.
+    expect(sessionStorage.getItem("shipin:auth-redirect-pending")).toBe("1");
   });
 });
 

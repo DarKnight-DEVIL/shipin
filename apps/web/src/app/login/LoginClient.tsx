@@ -38,6 +38,11 @@ import {
 } from "@/lib/googleIdentity";
 import { clientEnv } from "@/config/env";
 import { verificationEmailOptions } from "@/lib/emailVerification";
+import SigningInOverlay from "@/components/SigningInOverlay";
+import {
+  clearAuthRedirectPending,
+  markAuthRedirectPending,
+} from "@/lib/authRedirectPending";
 // The profile service is imported on demand below: it pulls in the Firestore
 // SDK, and the login page only needs it after a successful sign-in.
 
@@ -111,6 +116,11 @@ export default function LoginClient() {
    */
   const [acceptedPolicies, setAcceptedPolicies] = useState(false);
   const [formError, setFormError] = useState("");
+  // A Google sign-in is completing (popup open, credential exchange, or the
+  // redirect fallback in flight). The whole page is covered by the
+  // signing-in interstitial so the form never appears to stall or flash
+  // back mid-flow.
+  const [googlePending, setGooglePending] = useState(false);
   // Optional documentation link rendered under the inline error, for
   // failures a user cannot fix from this page.
   const [formErrorHelp, setFormErrorHelp] = useState<{
@@ -279,6 +289,7 @@ export default function LoginClient() {
     // that, the popup's result never came back and redirect was the only
     // flow that worked.
     setLoading(true);
+    setGooglePending(true);
     try {
       const result = await signInWithPopup(auth, new GoogleAuthProvider());
       await finishSignIn(result.user);
@@ -292,18 +303,23 @@ export default function LoginClient() {
         code === "auth/cancelled-popup-request"
       ) {
         setLoading(false);
+        setGooglePending(false);
         return;
       }
 
       // A blocker killed the popup before it opened. The redirect flow (with
-      // AuthRedirectHandler completing it on return) is the fallback.
+      // AuthRedirectHandler completing it on return) is the fallback. Mark
+      // the trip so the return renders the signing-in interstitial instead
+      // of flashing the login form back.
       if (code === "auth/popup-blocked") {
+        markAuthRedirectPending();
         try {
           await signInWithRedirect(auth, new GoogleAuthProvider());
           // The browser leaves this page; AuthRedirectHandler finishes the
           // flow, including the best-effort login-intent ping.
           return;
         } catch (redirectError) {
+          clearAuthRedirectPending();
           await handleAuthFailure(redirectError);
           return;
         }
@@ -314,6 +330,7 @@ export default function LoginClient() {
   }
 
   async function completeGoogleCredential(credential: string) {
+    setGooglePending(true);
     try {
       const result = await signInWithCredential(
         auth,
@@ -333,10 +350,12 @@ export default function LoginClient() {
   async function handleAuthFailure(error: unknown) {
     if (await beginSecondFactor(error)) {
       setLoading(false);
+      setGooglePending(false);
       return;
     }
 
     setLoading(false);
+    setGooglePending(false);
     // The previous inline error is about a different attempt, so it must
     // not outlive this one. Clearing it also unmounts any documentation
     // link, which only renders beside an inline error.
@@ -626,7 +645,9 @@ export default function LoginClient() {
   }
 
   return (
-    <main className={`login ${display.variable}`}>
+    <>
+      {googlePending && <SigningInOverlay />}
+      <main className={`login ${display.variable}`}>
       <aside className="login__brand">
         <div className="login__art" aria-hidden="true" />
         <div className="login__brandbody">
@@ -973,5 +994,6 @@ export default function LoginClient() {
         </div>
       </section>
     </main>
+    </>
   );
 }
