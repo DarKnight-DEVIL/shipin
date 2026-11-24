@@ -32,6 +32,8 @@ import { auth, getAppCheckToken } from "@/lib/firebase";
 import {
   FIREBASE_MANAGED_GOOGLE_CLIENT_ID,
   autoPromptGoogleSignIn,
+  cancelGooglePrompt,
+  disableGoogleAutoSelect,
   loadGoogleIdentity,
 } from "@/lib/googleIdentity";
 import { clientEnv } from "@/config/env";
@@ -147,6 +149,11 @@ export default function LoginClient() {
     autoPromptGoogleSignIn(GOOGLE_CLIENT_ID, (credential) => {
       void completeGoogleCredential(credential);
     });
+    // Cancel any pending One Tap / FedCM prompt when leaving the login page
+    // so it does not follow the user onto the dashboard or other pages.
+    return () => {
+      cancelGooglePrompt();
+    };
     // The credential handler only touches state setters and module-level
     // Firebase singletons, so it behaves identically on every render —
     // mount-only is the intent.
@@ -160,6 +167,9 @@ export default function LoginClient() {
 
   /** Post-authentication routing, shared by every sign-in path. */
   async function finishSignIn(user: User) {
+    // A completed session must not be followed by further silent auto
+    // sign-in prompts.
+    disableGoogleAutoSelect();
     if (!user.emailVerified) {
       try {
         await sendEmailVerification(user, verificationEmailOptions());

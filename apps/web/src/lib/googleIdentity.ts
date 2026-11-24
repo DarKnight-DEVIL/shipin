@@ -33,6 +33,7 @@ interface GoogleIdApi {
    * and its redirect fallback remain the path in.
    */
   prompt(callback?: (notification: unknown) => void): void;
+  cancel(): void;
   disableAutoSelect(): void;
 }
 
