@@ -55,7 +55,7 @@ function startAppCheck(firebaseApp: FirebaseApp): void {
   }
 
   appCheckInit = import("firebase/app-check")
-    .then(({ initializeAppCheck, ReCaptchaV3Provider, getToken }) => {
+    .then(({ initializeAppCheck, ReCaptchaEnterpriseProvider, getToken }) => {
       readAppCheckToken = getToken;
 
       if (clientEnv.NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG === "true") {
@@ -68,7 +68,11 @@ function startAppCheck(firebaseApp: FirebaseApp): void {
       }
 
       appCheck = initializeAppCheck(firebaseApp, {
-        provider: new ReCaptchaV3Provider(siteKey),
+        // reCAPTCHA Enterprise, not classic v3: the project's key is an
+        // Enterprise key, and the two are not interchangeable - a classic
+        // provider exchanging an Enterprise key gets a 400 from the App Check
+        // backend on every attempt, throttles, and blocks every enforced call.
+        provider: new ReCaptchaEnterpriseProvider(siteKey),
         // Refresh in the background so a long-lived tab never sends a stale token.
         isTokenAutoRefreshEnabled: true,
       });
