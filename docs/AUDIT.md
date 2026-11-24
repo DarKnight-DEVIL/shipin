@@ -272,15 +272,13 @@ it writes wholesale. Checks the schemas make unreachable were deleted rather tha
 as protection that cannot fire. Five touched files carried pre-existing prettier drift
 and are now format-clean.
 
-### 2.8 P1 — `/api/whatsapp/test` bypasses the admin MFA gate
+### 2.8 P1 — ~~`/api/whatsapp/test` bypasses the admin MFA gate~~ **done**
 
-Every other admin route calls `requireAdmin`, which enforces App Check, verified email,
-account state, role **and** an enrolled second factor with a per-request code
-(`src/lib/adminAuth.ts:46-200`). `src/app/api/whatsapp/test/route.ts:28,34` uses
-`requireAuthWithProfile` plus a manual `profile.role !== "admin"` check, so an admin who
-has not completed MFA (or a stolen admin ID token with no MFA proof) can drive the
-business WhatsApp account. Use `requireAdmin`, or delete the endpoint — nothing in the UI
-calls it.
+**Fixed.** The route now calls `requireAdmin` — the same App Check + verified email +
+account state + role + per-request second-factor gate every other admin route passes —
+and maps rejections through `getAdminAuthError`. The body parse moved to the guarded
+`readAndValidateBody` while it was there, so a malformed body is a 400. The endpoint
+keeps its role as a WhatsApp credential smoke test; nothing in the UI calls it.
 
 ### 2.9 P1 — the marketing page sells plans the billing code does not implement
 
@@ -378,3 +376,5 @@ allowlist gate has never run in CI.
 6. ~~§2.7 — adopt the 14 existing schemas in the routes they were written for~~ — **done**:
    every body-reading route now parses through `readAndValidateBody` + a strict schema
    (`407b1c0`).
+7. ~~§2.8 — the WhatsApp test endpoint's weak gate~~ — **done**: it now passes
+   `requireAdmin` like every other admin route (`e11f958`).
