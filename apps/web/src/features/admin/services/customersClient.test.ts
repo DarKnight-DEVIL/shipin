@@ -83,6 +83,39 @@ describe("getCustomersWithWallets", () => {
     customerApiMock.mockRejectedValue(new Error("offline"));
     await expect(getCustomersWithWallets()).rejects.toBeInstanceOf(Error);
   });
+
+  it("collects every page before returning", async () => {
+    customerApiMock
+      .mockResolvedValueOnce({
+        success: true,
+        customers: [{ id: "u1", displayName: "Ada", walletBalance: 10 }],
+        nextCursor: "CUR-1",
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        customers: [{ id: "u2", displayName: "Grace", walletBalance: 5 }],
+        nextCursor: "CUR-2",
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        customers: [{ id: "u3", displayName: "Lin", walletBalance: 1 }],
+        nextCursor: null,
+        hasMore: false,
+      });
+
+    const customers = await getCustomersWithWallets();
+
+    expect(customers.map((c) => c.id)).toEqual(["u1", "u2", "u3"]);
+    expect(customerApiMock).toHaveBeenCalledTimes(3);
+    expect(customerApiMock.mock.calls[1][0]).toBe(
+      "/api/admin/customers?cursor=CUR-1"
+    );
+    expect(customerApiMock.mock.calls[2][0]).toBe(
+      "/api/admin/customers?cursor=CUR-2"
+    );
+  });
 });
 
 describe("getRefundRequestDetails", () => {

@@ -14,20 +14,51 @@ const mocks = vi.hoisted(() => ({
   usersGet: vi.fn(),
   walletsGet: vi.fn(),
   requestDocGet: vi.fn(),
+  /** Captures the `where("__name__", "in", chunk)` calls for the wallets. */
+  walletFilters: vi.fn(),
+  usersQueryCalls: vi.fn(),
 }));
 
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
-    collection: (name: string) =>
-      name === "wallets"
-        ? { get: mocks.walletsGet }
-        : {
-            get: mocks.usersGet,
-            doc: (id: string) => ({
-              id,
-              get: () => mocks.requestDocGet(id),
-            }),
+    collection: (name: string) => {
+      if (name === "wallets") {
+        return {
+          where: (...args: unknown[]) => {
+            mocks.walletFilters(...args);
+            return { get: mocks.walletsGet };
           },
+        };
+      }
+
+      if (name === "users") {
+        const calls: Array<{ method: string; args: unknown[] }> = [];
+        const chain: Record<string, unknown> = {};
+        const step =
+          (method: string) =>
+          (...args: unknown[]) => {
+            calls.push({ method, args });
+            return chain;
+          };
+        chain.orderBy = step("orderBy");
+        chain.limit = step("limit");
+        chain.startAfter = step("startAfter");
+        chain.get = () => {
+          calls.push({ method: "get", args: [] });
+          return mocks.usersGet();
+        };
+        mocks.usersQueryCalls.mockReturnValue(calls);
+        return chain;
+      }
+
+      // `requests`, for the ?requestId= branch.
+      return {
+        doc: (id: string) => ({
+          id,
+          get: () => mocks.requestDocGet(id),
+        }),
+      };
+    },
   },
 }));
 
@@ -54,6 +85,8 @@ const request = (query = "") =>
 const doc = (id: string, data: Record<string, unknown>) => ({
   id,
   data: () => data,
+  // `toAdminPage` reads `createdAt` off the snapshot to build the cursor.
+  get: (field: string) => data[field],
 });
 
 beforeEach(() => {
@@ -111,6 +144,64 @@ describe("GET /api/admin/customers — list", () => {
         walletBalance: 0,
       },
     ]);
+    // The user page is bounded and ordered by the query, not the route.
+    const userCalls = mocks.usersQueryCalls();
+    expect(userCalls[0]).toEqual({
+      method: "orderBy",
+      args: ["createdAt", "desc"],
+    });
+    expect(userCalls[1]).toEqual({ method: "limit", args: [100] });
+    // One wallet query for a page that fits in a single `in`.
+    expect(mocks.walletFilters).toHaveBeenCalledTimes(1);
+    expect(body.hasMore).toBe(false);
+    expect(body.nextCursor).toBeNull();
+  });
+
+  it("chunks the wallet lookup when the page exceeds the `in` cap", async () => {
+    const docs = Array.from({ length: 35 }, (_, i) =>
+      doc(`user-${i}`, { email: `${i}@example.com` })
+    );
+    mocks.usersGet.mockResolvedValue({ docs });
+
+    const response = await GET(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.walletFilters).toHaveBeenCalledTimes(2);
+    const [, , firstChunk] = mocks.walletFilters.mock.calls[0];
+    const [, , secondChunk] = mocks.walletFilters.mock.calls[1];
+    expect(firstChunk).toHaveLength(30);
+    expect(secondChunk).toHaveLength(5);
+  });
+
+  it("continues after the cursor the previous page returned", async () => {
+    mocks.usersGet.mockResolvedValue({
+      docs: [doc("user-1", { createdAt: { toMillis: () => 7_000 } })],
+    });
+
+    const first = await GET(request("?limit=1"));
+    const body = await first.json();
+
+    expect(body.hasMore).toBe(true);
+    expect(body.nextCursor).toBeTruthy();
+
+    const second = await GET(request(`?cursor=${body.nextCursor}`));
+
+    expect(second.status).toBe(200);
+    expect(mocks.usersQueryCalls()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method: "startAfter" }),
+      ])
+    );
+  });
+
+  it("rejects a cursor it cannot read", async () => {
+    const response = await GET(request("?cursor=junk"));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "INVALID_PAGE_PARAM",
+    });
   });
 });
 

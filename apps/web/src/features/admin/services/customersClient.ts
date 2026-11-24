@@ -84,12 +84,41 @@ function legacyRefund(
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
+/** Safety net for the page loop: 200 pages is 20,000 customers. */
+const MAX_CUSTOMER_PAGES = 200;
+
+interface CustomerPageResponse {
+  success: boolean;
+  customers: AdminCustomer[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
 async function fetchCustomers(): Promise<AdminCustomer[]> {
-  const result = await customerApi<{
-    success: boolean;
-    customers: AdminCustomer[];
-  }>("/api/admin/customers", { method: "GET" });
-  return result.customers;
+  /*
+   * The list is paginated server-side; the screens that call this (the wallet
+   * console and the audit view) search and act on the whole customer book, so
+   * the pages are collected here rather than paged in the UI.
+   */
+  const customers: AdminCustomer[] = [];
+  let cursor: string | null = null;
+
+  for (let page = 0; page < MAX_CUSTOMER_PAGES; page += 1) {
+    const search: string = cursor
+      ? `?cursor=${encodeURIComponent(cursor)}`
+      : "";
+    const result: CustomerPageResponse =
+      await customerApi<CustomerPageResponse>(`/api/admin/customers${search}`, {
+        method: "GET",
+      });
+
+    customers.push(...result.customers);
+
+    if (!result.hasMore || !result.nextCursor) return customers;
+    cursor = result.nextCursor;
+  }
+
+  return customers;
 }
 
 async function fetchRefundData(requestId: string): Promise<RefundRequestData> {

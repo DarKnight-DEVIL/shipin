@@ -2,6 +2,7 @@ import { Timestamp } from "firebase/firestore";
 
 import { customerApi } from "@/lib/customerApiClient";
 import { toShipINError } from "@/utils/errors";
+import { REQUEST_STATUS } from "@/features/requests/services/requestStatus";
 import type { Request } from "@/types/request";
 
 export type AdminRequestFilter = string | null;
@@ -50,27 +51,84 @@ function restoreTimestamps(value: unknown): unknown {
   return result;
 }
 
-export async function getAllRequests(): Promise<Request[]> {
+export async function getAdminRequestPage(
+  options: {
+    status?: string | null;
+    cursor?: string | null;
+    limit?: number;
+  } = {}
+): Promise<{
+  requests: Request[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}> {
   try {
+    const search = new URLSearchParams();
+    if (options.status) search.set("status", options.status);
+    if (options.cursor) search.set("cursor", options.cursor);
+    if (options.limit) search.set("limit", String(options.limit));
+
+    const query = search.toString();
+
     const result = await customerApi<{
       success: boolean;
       requests: Array<Record<string, unknown> & { id: string }>;
-    }>("/api/admin/requests", { method: "GET" });
+      nextCursor: string | null;
+      hasMore: boolean;
+    }>(`/api/admin/requests${query ? `?${query}` : ""}`, { method: "GET" });
 
-    return result.requests.map((doc) => {
-      // One boundary assertion, over a payload the route sends whole. It used
-      // to be an unchecked `as unknown as Request[]` layered on a seven-field
-      // projection, so the queue's `items`, `quote`, `refundRequest` and
-      // `refundOffer` reads were always `undefined` and rendered as blanks.
-      const restored = restoreTimestamps(doc) as Record<string, unknown>;
+    return {
+      requests: result.requests.map((doc) => {
+        // One boundary assertion, over a payload the route sends whole. It used
+        // to be an unchecked `as unknown as Request[]` layered on a seven-field
+        // projection, so the queue's `items`, `quote`, `refundRequest` and
+        // `refundOffer` reads were always `undefined` and rendered as blanks.
+        const restored = restoreTimestamps(doc) as Record<string, unknown>;
 
-      return {
-        ...restored,
-        // Required by the type and rendered without a guard in the purchasing
-        // queue: a legacy document without items must not take the list down.
-        items: Array.isArray(restored.items) ? restored.items : [],
-      } as unknown as Request;
-    });
+        return {
+          ...restored,
+          // Required by the type and rendered without a guard in the purchasing
+          // queue: a legacy document without items must not take the list down.
+          items: Array.isArray(restored.items) ? restored.items : [],
+        } as unknown as Request;
+      }),
+      nextCursor: result.nextCursor ?? null,
+      hasMore: result.hasMore ?? false,
+    };
+  } catch (error) {
+    throw toShipINError(error);
+  }
+}
+
+/** Safety net for the page loops below: 200 pages is 20,000 documents. */
+const MAX_PAGES = 200;
+
+async function collectAllPages(
+  options: { status?: string | null } = {}
+): Promise<Request[]> {
+  const collected: Request[] = [];
+  let cursor: string | null = null;
+
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const result = await getAdminRequestPage({ ...options, cursor });
+    collected.push(...result.requests);
+
+    if (!result.hasMore || !result.nextCursor) return collected;
+    cursor = result.nextCursor;
+  }
+
+  return collected;
+}
+
+/**
+ * Every request, whole. The screens that call this (the purchasing queue and
+ * the audit console) sort and filter the full book client-side, so they need
+ * the complete set — but it now arrives in bounded pages instead of one
+ * multi-megabyte body.
+ */
+export async function getAllRequests(): Promise<Request[]> {
+  try {
+    return await collectAllPages();
   } catch (error) {
     throw toShipINError(error);
   }
@@ -139,10 +197,39 @@ export function getAdminRequestPriority(request: Request): number {
   return 13;
 }
 
+const REQUEST_STATUS_VALUES: Set<string> = new Set(
+  Object.values(REQUEST_STATUS)
+);
+
+/*
+ * Filter names that are not status equalities. `refund_requested` collides
+ * with a status value, but as a queue filter it means "the refund flag inside
+ * the document is live, whatever the status" — pushing it down as a status
+ * equality would return a different, much narrower set than the filter
+ * promises. Both synthetic filters stay client-side over the full set.
+ */
+const SYNTHETIC_FILTERS: Set<string> = new Set([
+  "refund_requested",
+  "quote_requested",
+]);
+
 export async function getAdminRequestQueue(
   filter: AdminRequestFilter
 ): Promise<Request[]> {
-  const requests = await getAllRequests();
+  /*
+   * A plain status is pushed down to the query, so the purchasing queue reads
+   * only the documents it will show instead of the whole collection. The two
+   * synthetic filters (refund/quote requests) are flags inside the document,
+   * not statuses, so those stay client-side over the full set.
+   */
+  const serverStatus =
+    filter &&
+    !SYNTHETIC_FILTERS.has(filter) &&
+    REQUEST_STATUS_VALUES.has(filter)
+      ? filter
+      : null;
+
+  const requests = await collectAllPages({ status: serverStatus });
 
   return requests
     .filter((request) => matchesAdminRequestFilter(request, filter))

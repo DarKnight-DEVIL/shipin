@@ -5,6 +5,18 @@ import { getAdminAuthError, requireAdmin } from "@/lib/adminAuth";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
+/*
+ * The dashboard is the most-refreshed admin screen and every refresh used to
+ * read every request document. The numbers are operational, not financial
+ * reporting: a 60-second server-side cache keeps repeated loads from
+ * re-billing the whole collection without anyone noticing the staleness. A
+ * mirror/aggregate document maintained on write would remove the cost
+ * entirely; that is a bigger change than the dashboard needs today
+ * (docs/AUDIT.md §2.3).
+ */
+const ANALYTICS_CACHE_TTL_MS = 60_000;
+let analyticsCache: { at: number; body: unknown } | null = null;
+
 interface RequestData {
   id: string;
   status?: string;
@@ -43,7 +55,35 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
   }
 
   try {
-    const snapshot = await adminDb.collection("requests").get();
+    if (
+      analyticsCache &&
+      Date.now() - analyticsCache.at < ANALYTICS_CACHE_TTL_MS
+    ) {
+      return NextResponse.json(analyticsCache.body, {
+        status: 200,
+        headers: NO_STORE,
+      });
+    }
+
+    const snapshot = await adminDb
+      .collection("requests")
+      .select(
+        "status",
+        "userId",
+        "customerName",
+        "email",
+        "payment.amount",
+        "quote.breakdown.grandTotal",
+        "quote.breakdown.serviceFee",
+        "quote.breakdown.productsTotal",
+        "quote.breakdown.domesticShipping",
+        "quote.breakdown.internationalShipping",
+        "createdAt",
+        "updatedAt",
+        "refundRequest.status",
+        "quoteRegenerationRequested"
+      )
+      .get();
     const requests = snapshot.docs.map(
       (doc) => ({ id: doc.id, ...doc.data() }) as RequestData
     );
@@ -180,38 +220,39 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
       averageOrderValue: paidOrders === 0 ? 0 : grossRevenue / paidOrders,
     };
 
-    return NextResponse.json(
-      {
-        success: true,
-        stats,
-        monthlyRevenue: Object.entries(months).map(([month, revenue]) => ({
-          month,
-          revenue,
-        })),
-        statusDistribution: [
-          { name: "Submitted", value: stats.submitted },
-          { name: "Review", value: review },
-          { name: "Awaiting Payment", value: stats.awaitingPayment },
-          { name: "Warehouse", value: stats.warehouse },
-          { name: "Shipped", value: stats.shipped },
-          { name: "Delivered", value: stats.delivered },
-        ],
-        recentActivity,
-        topCustomers: Array.from(customerMap.entries())
-          .map(([id, data]) => ({
-            id,
-            name: data.name,
-            email: data.email,
-            revenue: data.revenue,
-            requests: data.requestCount,
-          }))
-          .sort((a, b) => b.revenue - a.revenue)
-          .slice(0, 10),
-        operations,
-        financials,
-      },
-      { status: 200, headers: NO_STORE }
-    );
+    const body = {
+      success: true,
+      stats,
+      monthlyRevenue: Object.entries(months).map(([month, revenue]) => ({
+        month,
+        revenue,
+      })),
+      statusDistribution: [
+        { name: "Submitted", value: stats.submitted },
+        { name: "Review", value: review },
+        { name: "Awaiting Payment", value: stats.awaitingPayment },
+        { name: "Warehouse", value: stats.warehouse },
+        { name: "Shipped", value: stats.shipped },
+        { name: "Delivered", value: stats.delivered },
+      ],
+      recentActivity,
+      topCustomers: Array.from(customerMap.entries())
+        .map(([id, data]) => ({
+          id,
+          name: data.name,
+          email: data.email,
+          revenue: data.revenue,
+          requests: data.requestCount,
+        }))
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 10),
+      operations,
+      financials,
+    };
+
+    analyticsCache = { at: Date.now(), body };
+
+    return NextResponse.json(body, { status: 200, headers: NO_STORE });
   } catch (error) {
     console.error("[AdminAnalytics] Failed to load analytics:", error);
     return NextResponse.json(

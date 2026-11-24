@@ -362,3 +362,93 @@ describe("getAdminRequestQueue", () => {
     expect(queue.map((item) => item.id)).toEqual(["delivered"]);
   });
 });
+
+describe("pagination over /api/admin/requests", () => {
+  it("collects every page before returning", async () => {
+    customerApiMock
+      .mockResolvedValueOnce({
+        success: true,
+        requests: [
+          {
+            id: "r-1",
+            userId: "",
+            customerName: "",
+            email: "",
+            status: "paid",
+          },
+        ],
+        nextCursor: "CUR-1",
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        requests: [
+          {
+            id: "r-2",
+            userId: "",
+            customerName: "",
+            email: "",
+            status: "paid",
+          },
+        ],
+        nextCursor: "CUR-2",
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        requests: [
+          {
+            id: "r-3",
+            userId: "",
+            customerName: "",
+            email: "",
+            status: "paid",
+          },
+        ],
+        nextCursor: null,
+        hasMore: false,
+      });
+
+    const all = await getAllRequests();
+
+    expect(all.map((item) => item.id)).toEqual(["r-1", "r-2", "r-3"]);
+    expect(customerApiMock).toHaveBeenCalledTimes(3);
+    expect(customerApiMock.mock.calls[1][0]).toBe(
+      "/api/admin/requests?cursor=CUR-1"
+    );
+    expect(customerApiMock.mock.calls[2][0]).toBe(
+      "/api/admin/requests?cursor=CUR-2"
+    );
+  });
+
+  it("pushes a plain status filter down to the server", async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      requests: [],
+      nextCursor: null,
+      hasMore: false,
+    });
+
+    await getAdminRequestQueue("paid");
+
+    expect(customerApiMock.mock.calls[0][0]).toBe(
+      "/api/admin/requests?status=paid"
+    );
+  });
+
+  it("keeps the synthetic refund filter client-side", async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      requests: [],
+      nextCursor: null,
+      hasMore: false,
+    });
+
+    await getAdminRequestQueue("refund_requested");
+
+    // `refund_requested` is a flag inside the document, not a status filter,
+    // even though the name collides with a status value — so it cannot be
+    // pushed into the query.
+    expect(customerApiMock.mock.calls[0][0]).toBe("/api/admin/requests");
+  });
+});

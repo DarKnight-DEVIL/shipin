@@ -26,6 +26,12 @@ interface AdminUserRow {
   createdAt: number | null;
 }
 
+interface UsersPageResponse {
+  users: AdminUserRow[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,11 +45,29 @@ export default function AdminUsersPage() {
     setError(null);
 
     try {
-      const result = await customerApi<{ users: AdminUserRow[] }>(
-        "/api/admin/users",
-        { method: "GET" }
-      );
-      setUsers(result.users);
+      /*
+       * The route serves pages; the table searches and acts on the whole book
+       * (a role change must see every admin), so the pages are collected here.
+       */
+      const users: AdminUserRow[] = [];
+      let cursor: string | null = null;
+
+      for (let page = 0; page < 200; page += 1) {
+        const search: string = cursor
+          ? `?cursor=${encodeURIComponent(cursor)}`
+          : "";
+        const result: UsersPageResponse = await customerApi<UsersPageResponse>(
+          `/api/admin/users${search}`,
+          { method: "GET" }
+        );
+
+        users.push(...result.users);
+
+        if (!result.hasMore || !result.nextCursor) break;
+        cursor = result.nextCursor;
+      }
+
+      setUsers(users);
     } catch (caught) {
       setError(
         caught instanceof CustomerApiError

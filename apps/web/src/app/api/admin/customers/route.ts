@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Timestamp } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { getAdminAuthError, requireAdmin } from "@/lib/adminAuth";
+import {
+  InvalidAdminPageParamError,
+  parseAdminPageParams,
+  toAdminPage,
+} from "@/lib/adminPagination";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -81,37 +87,99 @@ async function handleGetCustomers(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const [usersSnap, walletsSnap] = await Promise.all([
-    adminDb.collection("users").get(),
-    adminDb.collection("wallets").get(),
-  ]);
+  /*
+   * One page of customers, newest first, with the wallet balance of exactly
+   * those customers. This used to read every user and every wallet document on
+   * every load; now the page bounds the reads on both collections, and the
+   * balances arrive through chunked `in` queries because Firestore caps `in`
+   * at 30 values.
+   */
+  let params;
+  try {
+    params = parseAdminPageParams(url);
+  } catch (error) {
+    if (error instanceof InvalidAdminPageParamError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid limit or cursor.",
+          code: error.code,
+        },
+        { status: 400, headers: NO_STORE }
+      );
+    }
+    throw error;
+  }
 
+  let usersQuery = adminDb
+    .collection("users")
+    .orderBy("createdAt", "desc")
+    .limit(params.limit);
+
+  if (params.cursorMs !== null) {
+    usersQuery = usersQuery.startAfter(Timestamp.fromMillis(params.cursorMs));
+  }
+
+  const usersSnap = await usersQuery.get();
+
+  const walletMap = await loadWalletBalances(usersSnap.docs.map((d) => d.id));
+
+  const page = toAdminPage(usersSnap.docs, params.limit, (doc) => {
+    const d = doc.data() as Record<string, unknown>;
+    return {
+      id: doc.id,
+      displayName: String(d.displayName || "Unnamed Customer"),
+      email: String(d.email || ""),
+      photoURL: d.photoURL ? String(d.photoURL) : undefined,
+      role: d.role ? String(d.role) : "customer",
+      walletBalance: walletMap.get(doc.id) ?? 0,
+    };
+  });
+
+  const customers = page.items.filter((c) => c.role !== "admin");
+
+  return NextResponse.json(
+    {
+      success: true,
+      customers,
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+    },
+    { status: 200, headers: NO_STORE }
+  );
+}
+
+/** Firestore caps a single `in` at 30 values. */
+const IN_QUERY_CHUNK = 30;
+
+async function loadWalletBalances(
+  userIds: string[]
+): Promise<Map<string, number>> {
   const walletMap = new Map<string, number>();
-  for (const doc of walletsSnap.docs) {
-    const bal = Number(doc.data().balance ?? 0);
-    if (Number.isFinite(bal)) {
-      walletMap.set(doc.id, bal);
+
+  if (userIds.length === 0) return walletMap;
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < userIds.length; i += IN_QUERY_CHUNK) {
+    chunks.push(userIds.slice(i, i + IN_QUERY_CHUNK));
+  }
+
+  const snapshots = await Promise.all(
+    chunks.map((chunk) =>
+      adminDb.collection("wallets").where("__name__", "in", chunk).get()
+    )
+  );
+
+  for (const snapshot of snapshots) {
+    for (const doc of snapshot.docs) {
+      const bal = Number(doc.data().balance ?? 0);
+      if (Number.isFinite(bal)) {
+        walletMap.set(doc.id, bal);
+      }
     }
   }
 
-  const customers: AdminCustomer[] = usersSnap.docs
-    .map((doc) => {
-      const d = doc.data() as Record<string, unknown>;
-      return {
-        id: doc.id,
-        displayName: String(d.displayName || "Unnamed Customer"),
-        email: String(d.email || ""),
-        photoURL: d.photoURL ? String(d.photoURL) : undefined,
-        role: d.role ? String(d.role) : "customer",
-        walletBalance: walletMap.get(doc.id) ?? 0,
-      };
-    })
-    .filter((c) => c.role !== "admin");
-
-  return NextResponse.json(
-    { success: true, customers },
-    { status: 200, headers: NO_STORE }
-  );
+  return walletMap;
 }
 
 export const GET = async (request: NextRequest): Promise<NextResponse> => {

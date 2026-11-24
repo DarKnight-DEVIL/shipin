@@ -121,6 +121,9 @@ export async function getShipment(
   return snap.exists() ? snap.data() : null;
 }
 
+/** Firestore caps a single `in` at 30 values. */
+const IN_QUERY_CHUNK = 30;
+
 export async function getShipmentRequests(shipmentId: string) {
   const shipment = await getShipment(shipmentId);
 
@@ -130,14 +133,35 @@ export async function getShipmentRequests(shipmentId: string) {
     return [];
   }
 
-  const q = query(
-    collection(db, "requests").withConverter(requestConverter),
-    where("__name__", "in", shipment.requestIds)
+  /*
+   * Firestore caps a single `in` at 30 values, so a consolidation with more
+   * members than that made this query throw and the shipment page showed
+   * nothing at all. Fetch in chunks and put the results back in the shipment's
+   * own order, which is the order the consolidation was built in.
+   */
+  const chunks: string[][] = [];
+  for (let i = 0; i < shipment.requestIds.length; i += IN_QUERY_CHUNK) {
+    chunks.push(shipment.requestIds.slice(i, i + IN_QUERY_CHUNK));
+  }
+
+  const snapshots = await Promise.all(
+    chunks.map((chunk) =>
+      getDocs(
+        query(
+          collection(db, "requests").withConverter(requestConverter),
+          where("__name__", "in", chunk)
+        )
+      )
+    )
   );
 
-  const snapshot = await getDocs(q);
+  const byId = new Map(
+    snapshots.flatMap((snap) => snap.docs.map((d) => [d.id, d.data()] as const))
+  );
 
-  return snapshot.docs.map((doc) => doc.data());
+  return shipment.requestIds
+    .filter((id) => byId.has(id))
+    .map((id) => byId.get(id)!);
 }
 
 /** Default page size for a customer's shipment list. */

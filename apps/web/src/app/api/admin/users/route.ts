@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Timestamp } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { getAdminAuthError, requireAdmin } from "@/lib/adminAuth";
+import {
+  InvalidAdminPageParamError,
+  parseAdminPageParams,
+  toAdminPage,
+} from "@/lib/adminPagination";
 import { childLogger } from "../../../../lib/logger";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
@@ -35,37 +41,65 @@ function mfaSummary(mfa: unknown): boolean {
 /**
  * GET /api/admin/users
  *
- * List every account with its role so an administrator can see who holds
- * admin rights. Never returns secrets, MFA secrets, or tokens.
+ * List accounts with their role so an administrator can see who holds admin
+ * rights, newest first, in `?limit`/`?cursor` pages. Never returns secrets,
+ * MFA secrets, or tokens.
  */
 async function handleGet(request: NextRequest): Promise<NextResponse> {
   await requireAdmin(request);
 
-  const snapshot = await adminDb.collection("users").get();
+  const url = new URL(request.url);
 
-  const users: AdminUserRow[] = snapshot.docs
-    .map((doc) => {
-      const data = doc.data() as Record<string, unknown>;
-      const createdAt = data.createdAt as
-        { toMillis?: () => number } | undefined;
+  let params;
+  try {
+    params = parseAdminPageParams(url);
+  } catch (error) {
+    if (error instanceof InvalidAdminPageParamError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid limit or cursor.",
+          code: error.code,
+        },
+        { status: 400, headers: NO_STORE }
+      );
+    }
+    throw error;
+  }
 
-      return {
-        uid: doc.id,
-        email: typeof data.email === "string" ? data.email : "",
-        displayName:
-          typeof data.displayName === "string" ? data.displayName : "",
-        role: readRole(data.role),
-        mfaEnabled: mfaSummary(data.mfa),
-        createdAt:
-          typeof createdAt?.toMillis === "function"
-            ? createdAt.toMillis()
-            : null,
-      };
-    })
-    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  let query = adminDb
+    .collection("users")
+    .orderBy("createdAt", "desc")
+    .limit(params.limit);
+
+  if (params.cursorMs !== null) {
+    query = query.startAfter(Timestamp.fromMillis(params.cursorMs));
+  }
+
+  const snapshot = await query.get();
+
+  const page = toAdminPage(snapshot.docs, params.limit, (doc) => {
+    const data = doc.data() as Record<string, unknown>;
+    const createdAt = data.createdAt as { toMillis?: () => number } | undefined;
+
+    return {
+      uid: doc.id,
+      email: typeof data.email === "string" ? data.email : "",
+      displayName: typeof data.displayName === "string" ? data.displayName : "",
+      role: readRole(data.role),
+      mfaEnabled: mfaSummary(data.mfa),
+      createdAt:
+        typeof createdAt?.toMillis === "function" ? createdAt.toMillis() : null,
+    };
+  });
 
   return NextResponse.json(
-    { success: true, users },
+    {
+      success: true,
+      users: page.items,
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+    },
     { status: 200, headers: NO_STORE }
   );
 }

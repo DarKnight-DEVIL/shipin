@@ -13,10 +13,18 @@ import { NextRequest } from "next/server";
 const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
   get: vi.fn(),
+  select: vi.fn(),
 }));
 
 vi.mock("@/lib/firebaseAdmin", () => ({
-  adminDb: { collection: () => ({ get: mocks.get }) },
+  adminDb: {
+    collection: () => ({
+      select: (...fields: string[]) => {
+        mocks.select(fields);
+        return { get: mocks.get };
+      },
+    }),
+  },
 }));
 
 vi.mock("@/lib/adminAuth", () => ({
@@ -34,7 +42,13 @@ vi.mock("@/lib/adminAuth", () => ({
   },
 }));
 
-import { GET } from "./route";
+/*
+ * The route caches its response for 60 seconds, so every test re-imports it:
+ * a static import would share one cache across the whole file and the second
+ * test would assert against the first test's numbers.
+ */
+type RouteModule = typeof import("./route");
+let GET: RouteModule["GET"];
 
 const request = () =>
   new NextRequest("https://shipin.test/api/admin/analytics");
@@ -47,11 +61,14 @@ const doc = (id: string, data: Record<string, unknown>) => ({
   data: () => data,
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules();
+  ({ GET } = (await import("./route")) as RouteModule);
   mocks.requireAdmin
     .mockReset()
     .mockResolvedValue({ uid: "admin-1", mfaVerified: true });
   mocks.get.mockReset().mockResolvedValue({ docs: [] });
+  mocks.select.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -252,5 +269,56 @@ describe("GET /api/admin/analytics", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: "Unable to load analytics.",
     });
+  });
+
+  it("reads only the fields the dashboard aggregates", async () => {
+    await GET(request());
+
+    const fields = mocks.select.mock.calls[0][0] as string[];
+    // The projections the numbers come from — and nothing else, so a refresh
+    // does not drag whole documents (items, photos, addresses) off the wire.
+    expect(fields).toEqual([
+      "status",
+      "userId",
+      "customerName",
+      "email",
+      "payment.amount",
+      "quote.breakdown.grandTotal",
+      "quote.breakdown.serviceFee",
+      "quote.breakdown.productsTotal",
+      "quote.breakdown.domesticShipping",
+      "quote.breakdown.internationalShipping",
+      "createdAt",
+      "updatedAt",
+      "refundRequest.status",
+      "quoteRegenerationRequested",
+    ]);
+  });
+
+  it("serves repeated loads from the 60-second cache", async () => {
+    vi.useFakeTimers();
+    await GET(request());
+    await GET(request());
+
+    // One collection read for two dashboard loads.
+    expect(mocks.get).toHaveBeenCalledTimes(1);
+
+    // Past the TTL the next load reads again.
+    vi.setSystemTime(Date.now() + 61_000);
+    await GET(request());
+
+    expect(mocks.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not cache a failed load", async () => {
+    mocks.get.mockRejectedValueOnce(new Error("firestore down"));
+
+    const failed = await GET(request());
+    expect(failed.status).toBe(500);
+
+    const second = await GET(request());
+
+    expect(second.status).toBe(200);
+    expect(mocks.get).toHaveBeenCalledTimes(2);
   });
 });

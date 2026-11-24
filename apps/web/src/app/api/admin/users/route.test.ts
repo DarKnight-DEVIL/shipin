@@ -10,26 +10,50 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const mocks = vi.hoisted(() => ({
-  requireAdmin: vi.fn(),
-  listGet: vi.fn(),
-  docGet: vi.fn(),
-  docUpdate: vi.fn(),
-  adminQueryGet: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  /**
+   * Chainable stand-in for the users-collection query: the GET path builds
+   * `orderBy().limit().startAfter()`, PATCH reads through `where('role',…)`,
+   * and both need to record what was asked of them.
+   */
+  const makeCollection = () => {
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    const chain: Record<string, unknown> = {};
+    const step =
+      (method: string) =>
+      (...args: unknown[]) => {
+        calls.push({ method, args });
+        return chain;
+      };
+    chain.orderBy = step("orderBy");
+    chain.limit = step("limit");
+    chain.startAfter = step("startAfter");
+    chain.get = () => {
+      calls.push({ method: "get", args: [] });
+      return mocks.listGet();
+    };
+    chain.where = () => ({ get: () => mocks.adminQueryGet() });
+    chain.doc = (uid: string) => ({
+      id: uid,
+      get: () => mocks.docGet(uid),
+      update: (data: unknown) => mocks.docUpdate(uid, data),
+    });
+    return { chain, calls };
+  };
+
+  return {
+    requireAdmin: vi.fn(),
+    listGet: vi.fn(),
+    docGet: vi.fn(),
+    docUpdate: vi.fn(),
+    adminQueryGet: vi.fn(),
+    collection: vi.fn(),
+    makeCollection,
+  };
+});
 
 vi.mock("@/lib/firebaseAdmin", () => ({
-  adminDb: {
-    collection: () => ({
-      get: mocks.listGet,
-      doc: (uid: string) => ({
-        id: uid,
-        get: () => mocks.docGet(uid),
-        update: (data: unknown) => mocks.docUpdate(uid, data),
-      }),
-      where: () => ({ get: mocks.adminQueryGet }),
-    }),
-  },
+  adminDb: { collection: () => mocks.collection() },
 }));
 
 vi.mock("@/lib/adminAuth", () => ({
@@ -50,8 +74,8 @@ vi.mock("@/lib/adminAuth", () => ({
 import { GET, PATCH } from "./route";
 import { logger } from "../../../../lib/logger";
 
-const listRequest = () =>
-  new NextRequest("https://shipin.test/api/admin/users");
+const listRequest = (search = "") =>
+  new NextRequest(`https://shipin.test/api/admin/users${search}`);
 
 const patchRequest = (body: unknown, raw = false) =>
   new NextRequest("https://shipin.test/api/admin/users", {
@@ -62,7 +86,11 @@ const patchRequest = (body: unknown, raw = false) =>
 const doc = (uid: string, data: Record<string, unknown>) => ({
   id: uid,
   data: () => data,
+  // `toAdminPage` reads `createdAt` off the snapshot to build the cursor.
+  get: (field: string) => data[field],
 });
+
+let calls: Array<{ method: string; args: unknown[] }>;
 
 const snapshot = (data: Record<string, unknown> | undefined) => ({
   exists: data !== undefined,
@@ -79,25 +107,30 @@ beforeEach(() => {
   mocks.docGet.mockReset().mockResolvedValue(snapshot({ role: "customer" }));
   mocks.docUpdate.mockReset().mockResolvedValue(undefined);
   mocks.adminQueryGet.mockReset().mockResolvedValue({ size: 2 });
+  const chain = mocks.makeCollection();
+  calls = chain.calls;
+  mocks.collection.mockReset().mockReturnValue(chain.chain);
   vi.spyOn(logger, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 describe("GET /api/admin/users", () => {
-  it("lists users newest first with role and MFA state", async () => {
+  it("lists users in the order the query returns, with role and MFA state", async () => {
+    // Newest first is the query's job now, so the fixtures are already in
+    // snapshot order and the test asserts the route no longer re-sorts.
     mocks.listGet.mockResolvedValue({
       docs: [
-        doc("u-old", {
-          email: "old@example.com",
-          displayName: "Old",
-          role: "customer",
-          createdAt: { toMillis: () => 1_000 },
-        }),
         doc("u-new", {
           email: "new@example.com",
           role: "admin",
           createdAt: { toMillis: () => 2_000 },
           mfa: { totp: { enabled: true } },
+        }),
+        doc("u-old", {
+          email: "old@example.com",
+          displayName: "Old",
+          role: "customer",
+          createdAt: { toMillis: () => 1_000 },
         }),
         doc("u-sms", { mfa: { sms: { enabled: true } }, createdAt: 5 }),
         doc("u-key", {
@@ -138,6 +171,46 @@ describe("GET /api/admin/users", () => {
       role: "customer",
       mfaEnabled: true,
     });
+    // The query, not the route, decides the order and the page size.
+    expect(calls.map((call) => call.method)).toEqual([
+      "orderBy",
+      "limit",
+      "get",
+    ]);
+    expect(calls[0].args).toEqual(["createdAt", "desc"]);
+    expect(body.hasMore).toBe(false);
+    expect(body.nextCursor).toBeNull();
+  });
+
+  it("continues after the cursor the previous page returned", async () => {
+    mocks.listGet.mockResolvedValue({
+      docs: [doc("u-1", { createdAt: { toMillis: () => 5_000 } })],
+    });
+
+    const first = await GET(listRequest("?limit=1"));
+    const body = await first.json();
+
+    expect(body.hasMore).toBe(true);
+    expect(body.nextCursor).toBeTruthy();
+
+    const second = await GET(listRequest(`?cursor=${body.nextCursor}`));
+
+    expect(second.status).toBe(200);
+    const startAfter = calls.find((call) => call.method === "startAfter");
+    expect(
+      (startAfter?.args[0] as { toMillis: () => number }).toMillis()
+    ).toBe(5_000);
+  });
+
+  it("rejects a cursor it cannot read", async () => {
+    const response = await GET(listRequest("?cursor=garbage"));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "INVALID_PAGE_PARAM",
+    });
+    expect(calls).toEqual([]);
   });
 
   it("rejects an unauthenticated caller", async () => {

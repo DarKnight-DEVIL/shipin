@@ -9,13 +9,42 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const mocks = vi.hoisted(() => ({
-  requireAdmin: vi.fn(),
-  get: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  /**
+   * A chainable stand-in for the Firestore query the route builds, so each
+   * test can assert the filters it applied (`where`, `orderBy`, `limit`,
+   * `startAfter`) and choose what `get()` resolves to.
+   */
+  const makeCollection = () => {
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    const chain: Record<string, (...args: unknown[]) => unknown> = {};
+    const step =
+      (method: string) =>
+      (...args: unknown[]) => {
+        calls.push({ method, args });
+        return chain;
+      };
+    chain.where = step("where");
+    chain.orderBy = step("orderBy");
+    chain.limit = step("limit");
+    chain.startAfter = step("startAfter");
+    chain.get = () => {
+      calls.push({ method: "get", args: [] });
+      return mocks.get();
+    };
+    return { chain, calls };
+  };
+
+  return {
+    requireAdmin: vi.fn(),
+    get: vi.fn(),
+    collection: vi.fn(),
+    makeCollection,
+  };
+});
 
 vi.mock("@/lib/firebaseAdmin", () => ({
-  adminDb: { collection: () => ({ get: mocks.get }) },
+  adminDb: { collection: () => mocks.collection() },
 }));
 
 vi.mock("@/lib/adminAuth", () => ({
@@ -35,18 +64,26 @@ vi.mock("@/lib/adminAuth", () => ({
 
 import { GET } from "./route";
 
-const request = () => new NextRequest("https://shipin.test/api/admin/requests");
+const request = (search = "") =>
+  new NextRequest(`https://shipin.test/api/admin/requests${search}`);
 
 const doc = (id: string, data: Record<string, unknown>) => ({
   id,
   data: () => data,
+  // `toAdminPage` reads `createdAt` off the snapshot to build the cursor.
+  get: (field: string) => data[field],
 });
+
+let calls: Array<{ method: string; args: unknown[] }>;
 
 beforeEach(() => {
   mocks.requireAdmin
     .mockReset()
     .mockResolvedValue({ uid: "admin-1", mfaVerified: true });
   mocks.get.mockReset().mockResolvedValue({ docs: [] });
+  const chain = mocks.makeCollection();
+  calls = chain.calls;
+  mocks.collection.mockReset().mockReturnValue(chain.chain);
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -126,6 +163,81 @@ describe("GET /api/admin/requests", () => {
         updatedAt: { seconds: "soon" },
       },
     ]);
+    // A page smaller than the limit is the last page.
+    expect(body.hasMore).toBe(false);
+    expect(body.nextCursor).toBeNull();
+  });
+
+  it("orders newest first and bounds the page", async () => {
+    const response = await GET(request("?limit=2"));
+
+    expect(response.status).toBe(200);
+    expect(calls.map((call) => call.method)).toEqual([
+      "orderBy",
+      "limit",
+      "get",
+    ]);
+    expect(calls[0].args).toEqual(["createdAt", "desc"]);
+    expect(calls[1].args).toEqual([2]);
+  });
+
+  it("pushes the status filter down to the query", async () => {
+    mocks.get.mockResolvedValue({ docs: [] });
+
+    const response = await GET(request("?status=paid"));
+
+    expect(response.status).toBe(200);
+    expect(calls.map((call) => call.method)).toEqual([
+      "where",
+      "orderBy",
+      "limit",
+      "get",
+    ]);
+    expect(calls[0].args).toEqual(["status", "==", "paid"]);
+  });
+
+  it("rejects a status the product does not have", async () => {
+    const response = await GET(request("?status=express"));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "UNKNOWN_STATUS",
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("continues after the cursor the previous page returned", async () => {
+    const lastCreatedAt = 1_700_000_500_000;
+    mocks.get.mockResolvedValue({
+      docs: [doc("req-9", { createdAt: { toMillis: () => lastCreatedAt } })],
+    });
+
+    const first = await GET(request("?limit=1"));
+    const body = await first.json();
+
+    expect(body.hasMore).toBe(true);
+    expect(body.nextCursor).toBeTruthy();
+
+    // Round-trip the cursor the way the client does.
+    const second = await GET(request(`?cursor=${body.nextCursor}`));
+
+    expect(second.status).toBe(200);
+    const startAfter = calls.find((call) => call.method === "startAfter");
+    expect(
+      (startAfter?.args[0] as { toMillis: () => number }).toMillis()
+    ).toBe(lastCreatedAt);
+  });
+
+  it("rejects a cursor it cannot read", async () => {
+    const response = await GET(request("?cursor=not-a-cursor"));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "INVALID_PAGE_PARAM",
+    });
+    expect(calls).toEqual([]);
   });
 
   it("rejects an unauthenticated caller", async () => {

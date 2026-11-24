@@ -177,7 +177,49 @@ describe("getShipmentRequests", () => {
       documentSnapshot({ requestIds: ["req-1", "req-2"] })
     );
     mocks.getDocs.mockResolvedValue({
-      docs: [{ data: () => ({ id: "req-1" }) }],
+      docs: [{ id: "req-1", data: () => ({ id: "req-1" }) }],
+    });
+
+    await expect(getShipmentRequests("ship-1")).resolves.toEqual([
+      { id: "req-1" },
+    ]);
+  });
+
+  it("chunks the id lookup past the 30-value `in` cap and keeps order", async () => {
+    const ids = Array.from({ length: 45 }, (_, i) => `req-${i}`);
+    mocks.getDoc.mockResolvedValue(documentSnapshot({ requestIds: ids }));
+    // Resolve per-chunk by reading the `in` argument off the where() calls.
+    const whereCalls = vi.mocked(firestore.where).mock.calls;
+    mocks.getDocs.mockReset().mockImplementation(async () => {
+      const chunk = whereCalls.at(-1)?.[2] as string[];
+      return {
+        docs: chunk.map((id: string) => ({
+          id,
+          data: () => ({ id, label: id }),
+        })),
+      };
+    });
+
+    const result = await getShipmentRequests("ship-1");
+
+    // Two queries, 30 + 15.
+    expect(mocks.getDocs).toHaveBeenCalledTimes(2);
+    const chunks = whereCalls
+      .filter(([field]) => field === "__name__")
+      .map(([, , values]) => values);
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]).toHaveLength(30);
+    expect(chunks[1]).toHaveLength(15);
+    // Reassembled in the shipment's own order, not query order.
+    expect(result.map((r: { id: string }) => r.id)).toEqual(ids);
+  });
+
+  it("skips requests that vanished instead of breaking the page", async () => {
+    mocks.getDoc.mockResolvedValue(
+      documentSnapshot({ requestIds: ["req-1", "req-gone"] })
+    );
+    mocks.getDocs.mockResolvedValue({
+      docs: [{ id: "req-1", data: () => ({ id: "req-1" }) }],
     });
 
     await expect(getShipmentRequests("ship-1")).resolves.toEqual([
