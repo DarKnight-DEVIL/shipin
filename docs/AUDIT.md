@@ -106,25 +106,35 @@ rewritten correctly — once §2.2 is fixed.)
 
 ### 2.3 P1 — admin list endpoints read whole collections, with no pagination anywhere
 
-| Endpoint | Code | Cost per load |
-| --- | --- | --- |
-| `GET /api/admin/requests` | `src/app/api/admin/requests/route.ts:21` | every request ever |
-| `GET /api/admin/analytics` | `src/app/api/admin/analytics/route.ts:46` | every request ever |
-| `GET /api/admin/customers` | `src/app/api/admin/customers/route.ts:85-86` | every user **and** every wallet |
-| `GET /api/admin/users` | `src/app/api/admin/users/route.ts:44` | every user |
+**Fixed.** `src/lib/adminPagination.ts` gives all four routes one cursor format
+(`?limit`/`?cursor`, base64url of the last `createdAt`; default page 100, clamped at 200;
+a malformed cursor is a 400, not a silent page one) and one page shape
+(`{ items, nextCursor, hasMore }`):
 
-Each returns the full result set in one JSON body. Firestore bills one read per document
-per load, so an operator refreshing the console a few times a day pays O(all orders) each
-time, and the response becomes multi-megabyte and eventually exceeds the route timeout.
-Client-side equivalents have the same shape: `getWarehouseInventory()`
-(`src/features/requests/services/warehouse.ts:21`) and the realtime
-`subscribeToAllSupportTickets()` (`src/features/support/services/index.ts:202`), which opens
-a listener over the entire ticket collection and re-downloads it on every write.
+- `GET /api/admin/requests` serves pages newest-first, documents still whole (§2.3b), plus
+  an optional `?status=` filter pushed into the query so a single-status queue reads only
+  that status. That equality filter next to the `createdAt` order is the new composite
+  index declared in `firestore.indexes.json`, which `check:firestore-indexes` enforces.
+- `GET /api/admin/users` pages newest-first; the client-side `.sort()` is gone.
+- `GET /api/admin/customers` pages the users and loads wallet balances only for that
+  page's users, through `in`-queries chunked at the 30-value Firestore cap. Admin rows are
+  filtered after paging so a page of admins costs one read, not a refetch. The
+  `?requestId=` refund branch is unchanged.
+- `GET /api/admin/analytics` projects only the fields the dashboard aggregates
+  (`.select(...)`, no items/photos/addresses off the wire) and serves repeated loads from
+  a 60-second server-side cache, so a refresh no longer re-bills the collection.
 
-Fix: cursor pagination (the customer list already does it, `getRequests`), `select()` for
-the admin tables, and an aggregate/mirror document for analytics instead of `get()`.
-`/api/admin/analytics` and `/api/admin/customers`, `/api/admin/wallet/balance` are also
-unreachable from the app (§2.5).
+The clients (`requestQueueClient`, `customersClient`, the admin users page) loop the pages
+with a 200-page safety net; plain status filters are pushed down to the server while the
+refund/quote synthetic filters stay client-side — `refund_requested` collides with a
+status value, and pushing it down would have returned a different, narrower set than the
+filter promises.
+
+Still open from this finding: the client-side equivalents `getWarehouseInventory()`
+(`src/features/requests/services/warehouse.ts:21`) and
+`subscribeToAllSupportTickets()` (`src/features/support/services/index.ts:202`), and the
+aggregate/mirror document for analytics (the cache bounds the cost per refresh, not per
+write).
 
 ### 2.3b P1 — that same endpoint hands the admin screens documents typed as `Request`
 
@@ -165,15 +175,9 @@ proportionally larger.
 
 ### 2.4 P1 — shipments break past 30 consolidation members
 
-`src/features/shipments/services/shipments.ts:133`:
-
-```ts
-where("__name__", "in", shipment.requestIds)
-```
-
-Firestore caps `in` at 30 values; a 31st request throws `INVALID_ARGUMENT` and the shipment
-page renders an error instead of the package. Chunk the ids (or use `getAll`, which takes
-up to 500 references).
+**Fixed.** `getShipmentRequests` chunks the ids at 30 and reassembles the results in the
+shipment's own order (the order the consolidation was built in); a request that has since
+vanished is skipped instead of breaking the page.
 
 ### 2.5 P1 — five data-rights endpoints exist, are tested, and nothing can reach them
 
@@ -351,8 +355,9 @@ allowlist gate has never run in CI.
    store and `zustand` are gone, and the pricing copy is generated from `PRICING` and
    `warehousePolicy` with a test that fails on drift. Remaining §2.6 orphans (checkout,
    request, dashboard components, workspace packages, unused schemas) are still open.
-4. §2.3 / §2.4 — pagination on the admin lists, and `in`-chunking before the order book
-   grows.
+4. ~~§2.3 / §2.4~~ — **done**: the four admin list routes page via `?limit`/`?cursor`
+   (`adminPagination.ts`), analytics projects and caches for 60 s, customers loads wallet
+   balances in 30-value chunks, and `getShipmentRequests` chunks past the `in` cap.
 5. §2.5 — either wire the rights endpoints into Settings or delete the routes and the
    promise in `POST /api/user/export`; a compliance endpoint nobody can call is worse than
    none.
