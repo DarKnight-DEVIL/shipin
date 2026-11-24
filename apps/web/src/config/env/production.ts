@@ -67,6 +67,43 @@ export const RATE_LIMIT_STORE_OPTIONAL_ENV = "RATE_LIMIT_STORE_OPTIONAL";
 /** Set to exactly \"1\" to allow http://localhost for APP_URL/NEXT_PUBLIC_APP_URL (E2E only). */
 export const APP_URL_E2E_OPTIONAL_ENV = "APP_URL_E2E_OPTIONAL";
 
+/**
+ * Emulator redirect variables. A real deployment with one of these set reads
+ * and writes a throwaway emulator instead of Firestore: auth flows would
+ * "work" in smoke tests while production data goes untouched. The startup
+ * check refuses to boot in that state; the local E2E suite, which runs a
+ * production build against emulators on purpose, opts out with
+ * {@link EMULATOR_GUARD_OPTIONAL_ENV}.
+ */
+export const PRODUCTION_FORBIDDEN_ENV = [
+  "FIRESTORE_EMULATOR_HOST",
+  "FIREBASE_AUTH_EMULATOR_HOST",
+  "FIREBASE_EMULATOR_HUB",
+  "NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST",
+  "NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST",
+] as const;
+
+/** Set to exactly \"1\" to allow emulator variables in production (E2E only). */
+export const EMULATOR_GUARD_OPTIONAL_ENV = "EMULATOR_GUARD_OPTIONAL";
+
+/** Returns true when the emulator guard is disabled (E2E only). */
+export function isEmulatorGuardOptional(): boolean {
+  return process.env[EMULATOR_GUARD_OPTIONAL_ENV] === "1";
+}
+
+/** Refuse to boot production with an emulator redirect in the environment. */
+function assertNoEmulators(): void {
+  if (isEmulatorGuardOptional()) return;
+  const set = PRODUCTION_FORBIDDEN_ENV.filter((key) => process.env[key]);
+  if (set.length > 0) {
+    throw new Error(
+      `[ShipIN] FATAL: ${set.join(", ")} set in production - the server would read and write a ` +
+        `throwaway emulator instead of live Firestore. Remove them from the deployment ` +
+        `environment, or set ${EMULATOR_GUARD_OPTIONAL_ENV}=1 for the E2E suite only.`
+    );
+  }
+}
+
 /** Any other value, including \"true\", keeps the store required. */
 export function isRateLimitStoreOptional(): boolean {
   return process.env[RATE_LIMIT_STORE_OPTIONAL_ENV] === "1";
@@ -274,6 +311,7 @@ export function validateProductionRequiredEnv(): void {
   assertAppUrlShape();
   assertAppAllowedOrigins();
   assertHttpsCredentialEndpoints();
+  assertNoEmulators();
 
   const required: string[] = [
     ...REQUIRED_SERVER_ENV,

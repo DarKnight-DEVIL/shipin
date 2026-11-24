@@ -291,7 +291,10 @@ describe("compliance rights escalation", () => {
       })
     );
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("RIGHTS REQUEST ESCALATED")
+      expect.stringContaining("Rights request escalated")
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("\"requestId\":\"rights-1\"")
     );
 
     warn.mockRestore();

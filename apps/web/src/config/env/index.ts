@@ -81,7 +81,6 @@ interface ClientEnv {
   NEXT_PUBLIC_FIREBASE_API_KEY: string;
   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: string;
   NEXT_PUBLIC_FIREBASE_PROJECT_ID: string;
-  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: string;
   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: string;
   NEXT_PUBLIC_FIREBASE_APP_ID: string;
   /**
@@ -224,7 +223,10 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
 // Re-export the stricter production validator from production.ts so both
 // instrumentation (Vercel) and start-preflight (Docker) use the same rules.
 // production.ts avoids importing clientEnv at load time, making it safe here.
-export { validateProductionRequiredEnv } from "./production";
+export {
+  validateProductionRequiredEnv,
+  isEmulatorGuardOptional,
+} from "./production";
 
 export const serverEnv: ServerEnv = new Proxy({} as ServerEnv, {
   get(_target, prop) {
@@ -340,10 +342,6 @@ export const clientEnv: ClientEnv = {
   NEXT_PUBLIC_FIREBASE_PROJECT_ID: validateClientEnv(
     process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
     "NEXT_PUBLIC_FIREBASE_PROJECT_ID"
-  ),
-  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: validateClientEnv(
-    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-    "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET"
   ),
   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: validateClientEnv(
     process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,

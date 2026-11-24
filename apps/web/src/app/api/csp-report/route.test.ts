@@ -52,10 +52,12 @@ describe("POST /api/csp-report", () => {
       })
     );
 
-    expect(console.warn).toHaveBeenCalledWith("[CSP Report]", {
-      violatedDirective: "script-src-elem",
-      blockedUri: "https://evil.example/x.js",
-    });
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("CSP violation reported")
+    );
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("\"violatedDirective\":\"script-src-elem\"")
+    );
     await expect(response.json()).resolves.toEqual({ received: true });
   });
 
@@ -65,10 +67,9 @@ describe("POST /api/csp-report", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(console.warn).toHaveBeenCalledWith("[CSP Report]", {
-      violatedDirective: undefined,
-      blockedUri: undefined,
-    });
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("CSP violation reported")
+    );
   });
 
   it("still acknowledges the report when forwarding is configured", async () => {

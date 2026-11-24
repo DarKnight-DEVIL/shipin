@@ -87,10 +87,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   );
 
   if (missingSignatureHeader) {
-    console.warn(
-      "PayPal webhook missing signature header:",
-      missingSignatureHeader
-    );
+    webhookLogger.warn("PayPal webhook missing signature header", {
+      header: missingSignatureHeader,
+    });
     return NextResponse.json(
       {
         success: false,
@@ -112,7 +111,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   );
 
   if (!valid) {
-    console.warn("PayPal webhook signature verification failed");
+    webhookLogger.warn("PayPal webhook signature verification failed");
     return NextResponse.json(
       {
         success: false,
@@ -233,7 +232,7 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
   const paymentOrderSnapshot = await paymentOrderRef.get();
 
   if (!paymentOrderSnapshot.exists) {
-    console.warn("PayPal order not found in our records:", orderId);
+    webhookLogger.warn("PayPal order not found in our records", { orderId });
     return;
   }
 

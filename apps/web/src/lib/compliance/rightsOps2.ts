@@ -5,7 +5,7 @@
  */
 
 import { adminDb } from "@/lib/firebaseAdmin";
-import { childLogger } from "../../lib/logger";
+import { childLogger } from "@/lib/logger";
 
 import { FieldValue } from "firebase-admin/firestore";
 
@@ -14,6 +14,8 @@ import {
   type RightsRequest,
   RIGHTS_DEADLINES,
 } from "./rights";
+
+const rightsLogger = childLogger({ service: "rights" });
 
 /**
 
@@ -265,9 +267,10 @@ export async function escalateRightsRequest(requestId: string): Promise<void> {
     escalationLevel: 1,
   });
 
-  console.warn(
-    `RIGHTS REQUEST ESCALATED: ${requestId} for user ${request.userId}`
-  );
+  rightsLogger.warn("Rights request escalated", {
+    requestId,
+    userId: request.userId,
+  });
 }
 
 /**

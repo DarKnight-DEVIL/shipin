@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withErrorHandler } from "@/utils/errors";
+import { childLogger } from "@/lib/logger";
+
+const cspLogger = childLogger({ service: "csp-report" });
 
 /**
  * POST /api/csp-report
@@ -52,7 +55,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       ? (cspReport as Record<string, unknown>)["blocked-uri"]
       : undefined;
 
-  console.warn("[CSP Report]", {
+  cspLogger.warn("CSP violation reported", {
     violatedDirective,
     blockedUri,
   });

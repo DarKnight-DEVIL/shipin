@@ -136,7 +136,6 @@ describe("getDevCSP", () => {
     expect(sources).not.toContain("wss:");
     expect(sources).toEqual(
       expect.arrayContaining([
-        "https://prod.spline.design", // the hero's .splinecode fetch
         "wss://*.firebasedatabase.app", // Firebase sockets
       ])
     );
@@ -264,20 +263,6 @@ describe("getProductionCSP", () => {
 
     expect(scriptSrc).toContain("https://js.paypal.com");
     expect(scriptSrc).toContain("https://apis.google.com");
-  });
-
-  it("allowlists the hero scene fetch in connect-src", async () => {
-    const { getProductionCSP: prodCsp } = await importWithEnv({
-      isDevelopment: false,
-      isProduction: true,
-    });
-
-    // `SplineHero` fetches `https://prod.spline.design/...splinecode`, and a
-    // fetch is `connect-src`, not `script-src`. Dev allowed the host while
-    // production did not, so the hero canvas stayed empty after a deploy.
-    expect(cspSources(prodCsp(), "connect-src")).toContain(
-      "https://prod.spline.design"
-    );
   });
 
   it("allowlists the PayPal SDK origins in connect-src", async () => {

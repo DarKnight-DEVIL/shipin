@@ -114,7 +114,6 @@ export default function RootLayout({
         />
         <link rel="dns-prefetch" href="https://www.gstatic.com" />
         <link rel="dns-prefetch" href="https://www.paypal.com" />
-        <link rel="dns-prefetch" href="https://cdn.spline.dev" />
       </head>
       <body className="min-h-full flex flex-col">
         <ThemeProvider>

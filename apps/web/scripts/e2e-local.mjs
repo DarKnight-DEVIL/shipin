@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-/** 
+/**
  * One command for the local E2E suite.
- * 
+ *
  *   npm run test:e2e:local                 # build, serve it, run the public specs
  *   npm run test:e2e:local -- --signed-in  # + Auth emulator, seeded admin, sign-in specs
  *   npm run test:e2e:local -- -g PayPal    # extra args go to `playwright test`
- * 
+ *
  * Why a script instead of a longer npm one-liner:
- * 
+ *
  *   - The specs need a datastore. CI has no Firebase service account and must
  *     not have one, so the server is pointed at the Firestore emulator via
  *     FIRESTORE_EMULATOR_HOST, and `emulators:exec` owns the emulator for
@@ -19,7 +19,7 @@
  *   - The emulator is a Java process. When `java` is missing, the failure
  *     arrives as an opaque "Could not spawn `java -version`", so this checks
  *     first and says what to install.
- * 
+ *
  * `--signed-in` also starts the Auth emulator, seeds an admin account
  * (`scripts/e2e/seed-auth-user.mjs`) and adds signed-in-smoke.spec.ts,
  * mfa-passkey.spec.ts and admin-refund.spec.ts, so the sign-in and money paths
@@ -32,7 +32,7 @@
  * and `scripts/e2e/seed-refund-fixture.mjs` writes a throwaway "purchased"
  * request for it to refund. That is what keeps the money path in CI without a
  * staging service account.
- * 
+ *
  * App configuration still comes from the environment like every other run:
  * `apps/web/.env.local` (Next loads it) or exported variables. A production
  * server validates its startup variables, so the build and the server must see
@@ -46,7 +46,7 @@ import path from "node:path";
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const isWindows = process.platform === "win32";
 
-/** 
+/**
  * Run one command line through the platform shell (`/bin/sh -c` on POSIX,
  * `cmd.exe /c` on Windows).
  * A single string, not an argv array: `emulators:exec` takes its script as one
@@ -105,7 +105,7 @@ if (java.error?.code === "ENOENT" || (java.status ?? 1) !== 0) {
             "  # macOS:         brew install openjdk",
             "  export JAVA_HOME=/usr/lib/jvm/<jdk>",
             '  export PATH="$JAVA_HOME/bin:$PATH"',
-          ])
+          ]),
     ].join("\n")
   );
   process.exit(1);
@@ -137,6 +137,9 @@ const env = {
   UPSTASH_REDIS_REST_URL: "",
   UPSTASH_REDIS_REST_TOKEN: "",
   RATE_LIMIT_STORE_OPTIONAL: "1",
+  // The startup check refuses to boot a production build with emulator
+  // variables set - exactly what this suite does on purpose.
+  EMULATOR_GUARD_OPTIONAL: "1",
   // `APP_URL`/`NEXT_PUBLIC_APP_URL` are rewritten to http://localhost:3000
   // below, and a production build refuses a cleartext origin without this. It
   // has to be here as well as in the comment block above: without it the
@@ -231,7 +234,14 @@ try {
   // curl is available on GitHub Actions runners.
   const curlCheck = spawnSync(
     "curl",
-    ["--output", "/dev/null", "--silent", "--head", "--fail", "http://127.0.0.1:9099"],
+    [
+      "--output",
+      "/dev/null",
+      "--silent",
+      "--head",
+      "--fail",
+      "http://127.0.0.1:9099",
+    ],
     { stdio: "ignore" }
   );
   authEmulatorRunning = curlCheck.status === 0;
@@ -241,7 +251,7 @@ try {
 if (!authEmulatorRunning) {
   console.warn(
     "::warning:: Firebase Auth emulator could not start (network restrictions on this runner). " +
-    "Skipping signed-in specs (signed-in-smoke.spec.ts, mfa-passkey.spec.ts) and running read-only E2E suite instead."
+      "Skipping signed-in specs (signed-in-smoke.spec.ts, mfa-passkey.spec.ts) and running read-only E2E suite instead."
   );
 }
 

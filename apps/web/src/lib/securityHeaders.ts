@@ -53,12 +53,9 @@ function emulatorConnectSources(): string {
  *   - `*.r2.cloudflarestorage.com` — presigned packing/inspection photos
  *     (`src/lib/r2.ts` builds the endpoint from `R2_ACCOUNT_ID`, so this is the
  *     only shape those URLs take)
- *   - `*.firebasestorage.app`, `firebasestorage.googleapis.com` — avatars and
- *     uploads that pass through Firebase Storage
  *   - `lh3.googleusercontent.com` — Google profile photos, the only
  *     `next/image` remotePattern in `next.config.ts`
- *   - `*.spline.design`, `cdn.spline.dev`, `www.gstatic.com` — landing-page 3D
- *     scene assets
+ *   - `www.gstatic.com` — Google font and identity assets
  *   - `www.paypalobjects.com` — the PayPal SDK renders its logo from here on
  *     `/wallet/topup`, which the narrowed list missed
  */
@@ -67,11 +64,7 @@ const IMAGE_SOURCES = [
   "blob:",
   "data:",
   "https://*.r2.cloudflarestorage.com",
-  "https://*.firebasestorage.app",
-  "https://firebasestorage.googleapis.com",
   "https://lh3.googleusercontent.com",
-  "https://*.spline.design",
-  "https://cdn.spline.dev",
   "https://www.gstatic.com",
   "https://www.paypalobjects.com",
 ].join(" ");
@@ -100,15 +93,15 @@ const DEV_HMR_SOCKETS =
  */
 export function getDevCSP(): string {
   const base =
-    "'self' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/";
+    "'self' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/";
   const scriptSrc = `script-src ${base} 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; `;
 
   return (
     "default-src 'self'; " +
     scriptSrc +
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com https://cdn.spline.dev; " +
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com; " +
     `img-src ${IMAGE_SOURCES}; ` +
-    "font-src 'self' https://fonts.gstatic.com https://cdn.spline.dev; " +
+    "font-src 'self' https://fonts.gstatic.com; " +
     "connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com " +
     // The PayPal SDK itself posts to its own origin (`/xoplatform/logger/...`),
     // not just the `api-m` hosts. Without these the SDK logs CSP refusals on
@@ -116,19 +109,16 @@ export function getDevCSP(): string {
     "https://www.paypal.com https://www.sandbox.paypal.com " +
     "https://graph.facebook.com https://www.google.com https://www.google.com/recaptcha/ https://www.googletagmanager.com " +
     "https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com " +
-    "https://*.firebasestorage.app https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com https://va.vercel-scripts.com " +
-    // The landing hero pulls its `.splinecode` scene from here
-    // (`SplineHero.tsx`), and that fetch is `connect-src`, not `script-src`.
-    "https://prod.spline.design " +
+    "https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com https://va.vercel-scripts.com " +
     // Firebase Realtime Database sockets, then the dev-only transports: HMR on
     // loopback and the local emulator origins.
     "wss://*.firebaseio.com wss://*.firebasedatabase.app " +
     DEV_HMR_SOCKETS +
     emulatorConnectSources() +
     "; " +
-    "worker-src 'self' blob: https://cdn.spline.dev; " +
+    "worker-src 'self' blob:; " +
     "media-src 'self'; " +
-    "frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://spline.dev https://cdn.spline.dev https://accounts.google.com https://apis.google.com https://www.google.com https://recaptcha.google.com https://*.firebaseapp.com; " +
+    "frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://accounts.google.com https://apis.google.com https://www.google.com https://recaptcha.google.com https://*.firebaseapp.com; " +
     "object-src 'none'; " +
     "base-uri 'self'; " +
     "form-action 'self'; " +
@@ -193,7 +183,7 @@ export const SECURITY_HEADERS: Record<string, string> = {
    * permissive CSP from getDevCSP(). This is a fallback for requests that
    * bypass the proxy.
    */
-  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src ${IMAGE_SOURCES}; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com https://*.firebasestorage.app https://cdn.vercel-insights.com https://analytics.vercel.com wss://*.firebaseio.com wss://*.firebasedatabase.app; frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://accounts.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to 'csp-endpoint';`,
+  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src ${IMAGE_SOURCES}; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com wss://*.firebaseio.com wss://*.firebasedatabase.app; frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://accounts.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to 'csp-endpoint';`,
 
   /**
    * Client Hints are deliberately not requested here.
@@ -280,34 +270,30 @@ export const SECURITY_HEADERS: Record<string, string> = {
  * `getCSPWithNonce` is in the git history for that day.
  */
 export function getProductionCSP(): string {
-  const scriptSrc = `script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://cdn.spline.dev https://spline.dev https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/; `;
+  const scriptSrc = `script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/; `;
 
   return (
     "default-src 'self'; " +
     scriptSrc +
-    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com https://cdn.spline.dev; ` +
+    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.paypal.com https://www.paypal.com; ` +
     `img-src ${IMAGE_SOURCES}; ` +
-    "font-src 'self' https://fonts.gstatic.com https://cdn.spline.dev; " +
+    "font-src 'self' https://fonts.gstatic.com; " +
     "connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com " +
     // The SDK reports to `www.paypal.com` / `www.sandbox.paypal.com`; see the
     // production policy below for the same pair.
     "https://www.paypal.com https://www.sandbox.paypal.com " +
     "https://graph.facebook.com https://www.google.com https://www.google.com/recaptcha/ https://www.googletagmanager.com " +
     "https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com " +
-    "https://*.firebasestorage.app https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com " +
-    // The landing hero fetches its `.splinecode` scene from here
-    // (`SplineHero.tsx`), and that fetch is governed by `connect-src`. Dev had
-    // this host but production did not, so the hero only ever loaded in dev.
-    "https://prod.spline.design " +
+    "https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com " +
     // Narrowed from a blanket `wss: https:`: every host the app actually
     // talks to is already listed above, so the wildcard only widened the
     // exfiltration surface. Firebase Realtime Database sockets stay allowed.
     "wss://*.firebaseio.com wss://*.firebasedatabase.app" +
     emulatorConnectSources() +
     "; " +
-    "worker-src 'self' blob: https://cdn.spline.dev; " +
+    "worker-src 'self' blob:; " +
     "media-src 'self'; " +
-    `frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://spline.dev https://cdn.spline.dev https://accounts.google.com https://apis.google.com https://www.google.com https://recaptcha.google.com https://*.firebaseapp.com; ` +
+    `frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://accounts.google.com https://apis.google.com https://www.google.com https://recaptcha.google.com https://*.firebaseapp.com; ` +
     "object-src 'none'; " +
     "base-uri 'self'; " +
     "form-action 'self'; " +

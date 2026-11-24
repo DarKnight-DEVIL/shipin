@@ -48,7 +48,6 @@ const CLIENT_KEYS = [
   "NEXT_PUBLIC_FIREBASE_API_KEY",
   "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
   "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
-  "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
   "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
   "NEXT_PUBLIC_FIREBASE_APP_ID",
 ] as const;
@@ -239,5 +238,61 @@ describe("isRateLimitStoreOptional", () => {
         `value ${JSON.stringify(value)}`
       ).toBe(false);
     }
+  });
+});
+
+describe("emulator guard", () => {
+  it("refuses to boot production with an emulator variable set", async () => {
+    setEverythingButStore();
+    vi.stubEnv(STORE_URL, "https://redis.example");
+    vi.stubEnv(STORE_TOKEN, "token");
+    vi.stubEnv("FIRESTORE_EMULATOR_HOST", "127.0.0.1:8080");
+    const { validateProductionRequiredEnv } = await loadEnvModule();
+
+    expect(() => validateProductionRequiredEnv()).toThrow(
+      /FIRESTORE_EMULATOR_HOST/
+    );
+  });
+
+  it("names every emulator variable that is set", async () => {
+    setEverythingButStore();
+    vi.stubEnv(STORE_URL, "https://redis.example");
+    vi.stubEnv(STORE_TOKEN, "token");
+    vi.stubEnv("FIRESTORE_EMULATOR_HOST", "127.0.0.1:8080");
+    vi.stubEnv("NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST", "127.0.0.1:9099");
+    const { validateProductionRequiredEnv } = await loadEnvModule();
+
+    expect(() => validateProductionRequiredEnv()).toThrow(
+      /FIRESTORE_EMULATOR_HOST.*NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST/s
+    );
+  });
+
+  it("lets the E2E opt-out allow emulator variables", async () => {
+    setEverythingButStore();
+    vi.stubEnv(STORE_URL, "https://redis.example");
+    vi.stubEnv(STORE_TOKEN, "token");
+    vi.stubEnv("FIRESTORE_EMULATOR_HOST", "127.0.0.1:8080");
+    vi.stubEnv("EMULATOR_GUARD_OPTIONAL", "1");
+    const { validateProductionRequiredEnv } = await loadEnvModule();
+
+    expect(() => validateProductionRequiredEnv()).not.toThrow();
+  });
+
+  it("does not fire outside production", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("FIRESTORE_EMULATOR_HOST", "127.0.0.1:8080");
+    const { validateProductionRequiredEnv } = await loadEnvModule();
+
+    expect(() => validateProductionRequiredEnv()).not.toThrow();
+  });
+
+  it('treats the opt-out like the others: only the exact string "1"', async () => {
+    vi.stubEnv("EMULATOR_GUARD_OPTIONAL", "true");
+    const enabled = await loadEnvModule();
+    expect(enabled.isEmulatorGuardOptional()).toBe(false);
+
+    vi.stubEnv("EMULATOR_GUARD_OPTIONAL", "1");
+    const on = await loadEnvModule();
+    expect(on.isEmulatorGuardOptional()).toBe(true);
   });
 });

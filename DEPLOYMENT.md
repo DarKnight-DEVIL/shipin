@@ -13,7 +13,6 @@ Set these in your Vercel project settings → Environment Variables:
 | `NEXT_PUBLIC_FIREBASE_API_KEY` | Yes | Firebase client config |
 | `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Yes | Firebase client config |
 | `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Yes | Firebase client config |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Yes | Firebase client config |
 | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Yes | Firebase client config |
 | `NEXT_PUBLIC_FIREBASE_APP_ID` | Yes | Firebase client config |
 | `FIREBASE_ADMIN_PROJECT_ID` | Yes | Server-only (not exposed to client) |
@@ -33,6 +32,11 @@ Set these in your Vercel project settings → Environment Variables:
 | `UPSTASH_REDIS_REST_URL` | **Yes** | **Global rate limiting. The server refuses to start without it** |
 | `UPSTASH_REDIS_REST_TOKEN` | **Yes** | **Global rate limiting. The server refuses to start without it** |
 
+The startup check also refuses to boot production with an emulator redirect
+(`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`, `FIREBASE_EMULATOR_HUB`
+or their `NEXT_PUBLIC_` twins) in the environment: the server would read and
+write a throwaway emulator instead of live Firestore. The local E2E suite opts
+out with `EMULATOR_GUARD_OPTIONAL=1`.
 ### Retention cleanup
 
 `executeRetentionCleanup()` deletes documents past their processing-register
@@ -105,8 +109,10 @@ explicit rather than wildcarded:
   `shipin-psi.vercel.app`; passkeys registered on the Firebase aliases will not
   validate. If a custom domain is added later, migrate MFA to it deliberately
   (existing passkeys have to be re-registered).
-- `firebase.json` currently configures only Firestore and Storage rules. There
-  is no `hosting` block, so the Firebase Hosting URLs do not serve this Next.js
+- `firebase.json` configures Firestore rules and indexes only. Firebase
+  Storage is not used (files live in Cloudflare R2), so there are no Storage
+  rules to deploy and the client config carries no `storageBucket`. There is
+  no `hosting` block, so the Firebase Hosting URLs do not serve this Next.js
   app yet; they need a Hosting target (static export or a Cloud Run / Functions
   backend).
 
@@ -267,7 +273,6 @@ npm run analyze
 
 This opens an interactive treemap. Look for:
 - `three` / `react-globe.gl` → Consider `lazy` + `ssr: false` (already done)
-- `@splinetool/react-spline` → Already dynamically imported with `ssr: false`
 - `framer-motion` → Consider if only used for simple animations
 - Duplicate dependencies → Check for multiple versions of same package
 
