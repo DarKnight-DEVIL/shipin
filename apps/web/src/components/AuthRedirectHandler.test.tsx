@@ -3,7 +3,9 @@
 /**
  * The redirect half of sign-in had no test.
  *
- * `LoginClient` falls back to `signInWithRedirect` when the popup fails, and
+ * `LoginClient` signs in with Google through `signInWithRedirect` (the popup
+ * flow hangs forever once the auth pages' Cross-Origin-Opener-Policy severs
+ * the popup from the opener), and
  * hands the browser to Google. This component — mounted once, in the root
  * layout — is the only thing that picks the result up. The signed-in E2E types
  * credentials, so it exercises `signInWithEmailAndPassword` and never touches

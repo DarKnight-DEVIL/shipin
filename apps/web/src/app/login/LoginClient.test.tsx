@@ -17,7 +17,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
-  signInWithPopup: vi.fn(),
   signInWithEmailAndPassword: vi.fn(),
   createUserWithEmailAndPassword: vi.fn(),
   sendEmailVerification: vi.fn(),
@@ -39,7 +38,6 @@ vi.mock("@/lib/firebase", () => ({
 
 vi.mock("firebase/auth", () => ({
   GoogleAuthProvider: class GoogleAuthProvider {},
-  signInWithPopup: (...args: unknown[]) => h.signInWithPopup(...args),
   signInWithEmailAndPassword: (...args: unknown[]) =>
     h.signInWithEmailAndPassword(...args),
   createUserWithEmailAndPassword: (...args: unknown[]) =>
@@ -130,7 +128,6 @@ const gateResponse = (status: number, retryAfter?: string) => ({
 });
 
 beforeEach(() => {
-  h.signInWithPopup.mockReset();
   h.signInWithEmailAndPassword.mockReset();
   h.createUserWithEmailAndPassword.mockReset();
   h.sendEmailVerification.mockReset().mockResolvedValue(undefined);
@@ -496,7 +493,7 @@ describe("LoginClient: rate-limit gate", () => {
 
 describe("LoginClient: App Check errors", () => {
   it("explains a Google sign-in blocked by App Check", async () => {
-    h.signInWithPopup.mockRejectedValue({
+    h.signInWithRedirect.mockRejectedValue({
       code: "auth/firebase-app-check-token-is-invalid",
     });
     render(<LoginClient />);
@@ -513,10 +510,33 @@ describe("LoginClient: App Check errors", () => {
         "administrator must disable App Check enforcement"
       )
     );
-    // App Check is not a popup problem: the redirect fallback cannot fix it,
-    // and firing it anyway would look like the sign-in was retried.
-    expect(h.signInWithRedirect).not.toHaveBeenCalled();
+    // App Check rejects the redirect sign-in itself; there is no retry that
+    // could fix it from the client, so the user must not be sent around again.
     expect(h.replace).not.toHaveBeenCalled();
+  });
+
+  it("starts Google sign-in with a redirect, not a popup", async () => {
+    // Regression: the popup flow hangs forever after the account chooser.
+    // The chooser and the Firebase auth handler send a Cross-Origin-Opener-Policy
+    // that severs the popup from this page (console: "Cross-Origin-Opener-Policy
+    // policy would block the window.closed call"), so the signInWithPopup
+    // promise never settles: no error, no navigation. The redirect flow is
+    // immune to COOP, and AuthRedirectHandler in the root layout completes it.
+    h.signInWithRedirect.mockResolvedValue(undefined);
+    render(<LoginClient />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i })
+    );
+
+    await waitFor(() =>
+      expect(h.signInWithRedirect).toHaveBeenCalledWith(
+        { name: "test-auth" },
+        expect.anything()
+      )
+    );
+    // No popup was attempted alongside the redirect.
+    expect(h.error).not.toHaveBeenCalled();
   });
 
   it("shows the App Check message inline for email sign-in", async () => {
@@ -538,7 +558,7 @@ describe("LoginClient: App Check errors", () => {
   });
 
   it("points the unauthorized-domain error at the documentation", async () => {
-    h.signInWithPopup.mockRejectedValue({ code: "auth/unauthorized-domain" });
+    h.signInWithRedirect.mockRejectedValue({ code: "auth/unauthorized-domain" });
     render(<LoginClient />);
 
     fireEvent.click(
@@ -567,7 +587,7 @@ describe("LoginClient: App Check errors", () => {
   });
 
   it("drops the documentation link on the next failure", async () => {
-    h.signInWithPopup.mockRejectedValue({ code: "auth/unauthorized-domain" });
+    h.signInWithRedirect.mockRejectedValue({ code: "auth/unauthorized-domain" });
     render(<LoginClient />);
 
     fireEvent.click(
@@ -577,7 +597,7 @@ describe("LoginClient: App Check errors", () => {
       name: /authorized domains documentation/i,
     });
 
-    h.signInWithPopup.mockRejectedValue({ code: "auth/popup-closed-by-user" });
+    h.signInWithRedirect.mockRejectedValue({ code: "auth/network-request-failed" });
     fireEvent.click(
       screen.getByRole("button", { name: /continue with google/i })
     );
@@ -592,7 +612,7 @@ describe("LoginClient: App Check errors", () => {
   });
 
   it("clears the documentation link when a validation error replaces it", async () => {
-    h.signInWithPopup.mockRejectedValue({ code: "auth/unauthorized-domain" });
+    h.signInWithRedirect.mockRejectedValue({ code: "auth/unauthorized-domain" });
     render(<LoginClient />);
 
     fireEvent.click(

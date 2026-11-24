@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Bricolage_Grotesque } from "next/font/google";
 import {
   GoogleAuthProvider,
-  signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
@@ -218,24 +217,19 @@ export default function LoginClient() {
 
   async function handleGoogleLogin() {
     try {
-      // Must be the very first call â€” preserves the user-gesture token
-      // so the browser doesn't block Firebase's popup (window.open).
-      // No React state updates, no awaits, no async work before this.
+      // Redirect, not popup. The Google account chooser and the Firebase
+      // auth handler send a Cross-Origin-Opener-Policy that severs the
+      // popup from this page (console: "Cross-Origin-Opener-Policy policy
+      // would block the window.closed call"), so once the account is
+      // chosen the signInWithPopup promise never settles: no error, no
+      // navigation, the user is just left on the form. The redirect flow
+      // is immune to COOP and popup blockers, and AuthRedirectHandler in
+      // the root layout completes the sign-in when the browser returns.
       const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-
       setLoading(true);
-      await finishSignIn(user);
-
-      // Rate-limit gate runs AFTER the popup so the user-gesture token
-      // is preserved for signInWithPopup above. Best-effort: never block
-      // the user on analytics.
-      try {
-        await fetch("/api/auth/login-intent", { method: "POST" });
-      } catch {
-        // Ignore â€” analytics failures must not break sign-in.
-      }
+      await signInWithRedirect(auth, provider);
+      // The browser leaves this page; AuthRedirectHandler finishes the
+      // flow, including the best-effort login-intent ping.
     } catch (error) {
       if (await beginSecondFactor(error)) {
         setLoading(false);
@@ -268,11 +262,6 @@ export default function LoginClient() {
       if (errorCode === "auth/internal-error") {
         userMessage =
           "Google sign-in failed due to an internal error. This usually means the Google provider isn't properly configured in Firebase Console. Please contact support or try email sign-in.";
-      } else if (errorCode === "auth/popup-blocked") {
-        userMessage =
-          "The sign-in popup was blocked by your browser. Please allow popups for this site and try again.";
-      } else if (errorCode === "auth/popup-closed-by-user") {
-        userMessage = "Sign-in was cancelled. Please try again.";
       } else if (errorCode === "auth/unauthorized-domain") {
         // The message named support and nothing else, so the one fact that
         // fixes it - this host is missing from the authorized list - never
@@ -305,21 +294,6 @@ export default function LoginClient() {
           "Network error. Please check your connection and try again.";
       } else if (errorCode === "auth/too-many-requests") {
         userMessage = "Too many attempts. Please wait a moment and try again.";
-      } else if (errorCode === "auth/cancelled-popup-request") {
-        userMessage = "Another sign-in attempt is in progress. Please wait.";
-      }
-
-      // For auth/internal-error, try signInWithRedirect as a fallback.
-      // The popup opens but Firebase OAuth fails internally â€” redirect
-      // avoids popup timing issues entirely and works on all browsers.
-      if (
-        errorCode === "auth/internal-error" ||
-        errorCode === "auth/popup-blocked"
-      ) {
-        toast.info("Trying redirect sign-in instead...");
-        const provider = new GoogleAuthProvider();
-        void signInWithRedirect(auth, provider);
-        return;
       }
 
       toast.error(userMessage);
