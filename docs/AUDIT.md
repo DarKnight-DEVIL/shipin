@@ -252,30 +252,25 @@ and the `POST` stub.
 - `/api/tracking/[trackingId]` exports a `POST` that always answers `501 not implemented`
   (`route.ts:76`), and `/api/admin/shipments/[shipmentId]` is unreferenced.
 
-### 2.7 P1 — 25 routes validate by hand, and 14 parse the body outside a guard
+### 2.7 P1 — ~~25 routes validate by hand, and 14 parse the body outside a guard~~ **done**
 
-Measured over every `src/app/api/**/route.ts` that reads a JSON body:
+**Fixed.** All 24 remaining hand-validating routes (the audit counted 25; `whatsapp/test`
+had already adopted its schema in the §2.6 pass) now go through
+`readAndValidateBody()` in `src/lib/validation.ts`: one guarded `request.json()` read —
+a malformed body is a 400, not the 500 the unguarded parser produced — plus one strict
+schema parse. New schemas cover the admin user-role change, additional items, refund
+offers, shipment recording and updates, the MFA step-up methods (totp/backup/webauthn),
+the HIBP prefix, breach records and updates, dashboard actions, R2 view keys, age
+verification, consent, grievances and password changes.
 
-- **25** do it with neither `validateBody` nor `safeParse` — they hand-check fields:
-  `admin/wallet/credit`, `admin/users`, `admin/requests/[requestId]/{additional-items,
-  refund-offer,shipment}`, `admin/shipments/[shipmentId]`, four `auth/mfa/*` routes,
-  `auth/password-leak-check`, `compliance/{breach,dashboard}`, all four `paypal/*` routes,
-  `r2/view`, `support/[ticketId]/message`, `user/{age-verification,consent,grievance,
-  password}` and `whatsapp/test`.
-- **14** read `request.json()` outside any `try`, so a malformed body becomes a 500
-  instead of a 400. **11** are in both groups — neither a schema nor a guard:
-  `admin/requests/[requestId]/{additional-items,refund-offer,shipment}`,
-  `admin/wallet/credit`, five `auth/mfa/*` + `webauthn` routes,
-  `paypal/create-wallet-topup`, `r2/view`, `support/[ticketId]/message`.
-
-Two concrete consequences:
-
-- Coercion replaces validation. `admin/wallet/credit:32` does `Number(body.amount)`, so
-  `"50"`, `" 50 "` and `[50]` are all accepted as credits; `admin/users:99` casts
-  `(body ?? {})` to a shape. `admin/users:86` and `user/password:53` do guard the parse,
-  `admin/wallet/credit:27` does not.
-
-The strict schemas that would fix this are already written and tested — see §2.6.
+Behaviour tightened where the old checks were looser than the data they guard:
+`admin/wallet/credit` no longer coerces `"50"` or `[50]` into an amount (and the client
+now sends the `customerId` the route actually reads, instead of the `userId` the route
+ignored); unknown MFA methods and out-of-vocabulary consent/grievance values are
+rejected instead of silently reinterpreted; the additional-items PATCH bounds the array
+it writes wholesale. Checks the schemas make unreachable were deleted rather than left
+as protection that cannot fire. Five touched files carried pre-existing prettier drift
+and are now format-clean.
 
 ### 2.8 P1 — `/api/whatsapp/test` bypasses the admin MFA gate
 
@@ -380,4 +375,6 @@ allowlist gate has never run in CI.
    exports immediately, the never-fulfilled `POST` and the placeholder
    `portability.ts` module are gone. Age-verification and the admin/internal endpoints
    remain unwired (see §2.5).
-6. §2.7 — adopt the 14 existing schemas in the routes they were written for.
+6. ~~§2.7 — adopt the 14 existing schemas in the routes they were written for~~ — **done**:
+   every body-reading route now parses through `readAndValidateBody` + a strict schema
+   (`407b1c0`).
