@@ -56,7 +56,6 @@ export default defineConfig({
         "src/app/api/**/route.test.ts", // test files are not production code
         "src/types/**",
         "src/styles/**",
-        "src/components/**/*.tsx", // presentational; exercised by the E2E pass
         "src/components/ui/index.ts", // re-export barrel: no executable statements
         "src/components/settings/settingsStyles.ts", // static class names, no logic
         "src/lib/firebase.ts", // lazy singleton with App Check init & emulator connect — requires integration test (see TESTING.md), not unit-testable in isolation

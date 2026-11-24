@@ -330,6 +330,34 @@ jobs:
           UPSTASH_REDIS_REST_TOKEN: ""
           NODE_ENV: "test"
 
+      # Component .tsx files are excluded from the main coverage run - folded
+      # into the global aggregate they would drag it below its floor - so the
+      # component layer gets its own gate: an aggregate floor over
+      # src/components .tsx files, measured against the colocated component
+      # tests. See docs/AUDIT.md section 2.10.
+      - name: Run component coverage gate
+        run: npm run test:coverage:components
+        env:
+          PAYPAL_CLIENT_ID: "test"
+          PAYPAL_CLIENT_SECRET: "test"
+          NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
+          PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
+          PAYPAL_ENV: "sandbox"
+          SMTP_EMAIL: "test@test.com"
+          SMTP_PASSWORD: "test"
+          FIREBASE_ADMIN_PROJECT_ID: "test"
+          FIREBASE_ADMIN_CLIENT_EMAIL: "test@test.com"
+          FIREBASE_ADMIN_PRIVATE_KEY: "test"
+          R2_ACCOUNT_ID: "test"
+          R2_ACCESS_KEY_ID: "test"
+          R2_SECRET_ACCESS_KEY: "test"
+          R2_BUCKET_NAME: "test"
+          WHATSAPP_ACCESS_TOKEN: "test"
+          WHATSAPP_PHONE_NUMBER_ID: "test"
+          UPSTASH_REDIS_REST_URL: ""
+          UPSTASH_REDIS_REST_TOKEN: ""
+          NODE_ENV: "test"
+
   # ─── Test-order independence ────────────────────────────────────────────────
   # The unit suite runs with `isolate: true` (per-file isolation), but Vitest's
   # `sequence.shuffle` still randomizes file order across workers. A mock or a

@@ -27,6 +27,7 @@
 "use strict";
 import { readdirSync } from "node:fs";
 import {
+  COMPONENTS_COVERAGE,
   COVERAGE_GLOB_THRESHOLDS,
   COVERAGE_METRICS,
   GLOBAL_COVERAGE_FLOORS,
@@ -180,7 +181,15 @@ function validateFloors() {
         );
       }
 
-      if (value < GLOBAL_COVERAGE_FLOORS[metric]) {
+      // The component layer starts from a low base (12 of 121 files
+      // tested when the gate was introduced), so its family floor sits
+      // below the global minimum on purpose: it is a ramp, not a weaker
+      // promise about the same code. Every other family covers code the
+      // global floor already binds, so for those a below-global floor
+      // would enforce nothing and is rejected.
+      const isRampFamily = floors === COMPONENTS_COVERAGE;
+
+      if (!isRampFamily && value < GLOBAL_COVERAGE_FLOORS[metric]) {
         problems.push(
           `${glob}: ${metric} floor ${value}% is below the global ` +
             `${GLOBAL_COVERAGE_FLOORS[metric]}% — a family floor must be at least as strict`
@@ -260,5 +269,5 @@ if (dead.length > 0) {
 out();
 out(
   `All ${globs.length} coverage threshold globs resolve to files, and every floor ` +
-    "is a valid percentage at or above the global minimum."
+    "is a valid percentage (family floors at or above the global minimum; the components ramp excepted)."
 );
