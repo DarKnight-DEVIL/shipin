@@ -24,6 +24,7 @@ const h = vi.hoisted(() => ({
   sendEmailVerification: vi.fn(),
   signInWithRedirect: vi.fn(),
   signInWithCredential: vi.fn(),
+  sendPasswordResetEmail: vi.fn(),
   loadGoogleIdentity: vi.fn(),
   promptGoogleSignIn: vi.fn(),
   replace: vi.fn(),
@@ -59,6 +60,8 @@ vi.mock("firebase/auth", () => ({
   signInWithRedirect: (...args: unknown[]) => h.signInWithRedirect(...args),
   signInWithCredential: (...args: unknown[]) =>
     h.signInWithCredential(...args),
+  sendPasswordResetEmail: (...args: unknown[]) =>
+    h.sendPasswordResetEmail(...args),
 }));
 
 vi.mock("@/lib/googleIdentity", () => ({
@@ -155,6 +158,7 @@ beforeEach(() => {
   h.sendEmailVerification.mockReset().mockResolvedValue(undefined);
   h.signInWithRedirect.mockReset();
   h.signInWithCredential.mockReset();
+  h.sendPasswordResetEmail.mockReset().mockResolvedValue(undefined);
   h.loadGoogleIdentity.mockReset().mockResolvedValue(undefined);
   // Default: One Tap cannot show, so the click falls through to the
   // redirect flow — the behaviour every pre-GIS test asserts.
@@ -194,10 +198,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** Open the email form and fill in credentials. */
+/** Fill in credentials. The card always shows the email form. */
 function fillEmailForm(email = "ada@example.com", password = "secret-pass") {
-  fireEvent.click(screen.getByRole("button", { name: /sign in with email/i }));
-  fireEvent.change(screen.getByLabelText("Email"), {
+  fireEvent.change(screen.getByLabelText("Email address"), {
     target: { value: email },
   });
   fireEvent.change(screen.getByLabelText("Password"), {
@@ -206,14 +209,13 @@ function fillEmailForm(email = "ada@example.com", password = "secret-pass") {
 }
 
 function submitEmailForm() {
-  fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
+  fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
 }
 
 /** Switch to the registration form and fill it in. */
 function fillRegisterForm(password: string, email = "new@example.com") {
-  fireEvent.click(screen.getByRole("button", { name: /sign in with email/i }));
-  fireEvent.click(screen.getByRole("button", { name: /create an account/i }));
-  fireEvent.change(screen.getByLabelText("Email"), {
+  fireEvent.click(screen.getByRole("button", { name: /sign up/i }));
+  fireEvent.change(screen.getByLabelText("Email address"), {
     target: { value: email },
   });
   fireEvent.change(screen.getByLabelText("Password"), {
@@ -647,6 +649,57 @@ describe("LoginClient: Google Identity Services flow", () => {
   });
 });
 
+describe("LoginClient: forgot password", () => {
+  it("sends a reset email to the address in the email field", async () => {
+    render(<LoginClient />);
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "ada@example.com" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /forgot password/i }));
+
+    await waitFor(() =>
+      expect(h.sendPasswordResetEmail).toHaveBeenCalledWith(
+        { name: "test-auth" },
+        "ada@example.com",
+        expect.anything()
+      )
+    );
+    // The reply must not reveal whether the account exists.
+    expect(h.success).toHaveBeenCalledWith(
+      expect.stringMatching(/reset link is on its way/)
+    );
+    expect(h.error).not.toHaveBeenCalled();
+  });
+
+  it("asks for an email first instead of sending to nothing", async () => {
+    render(<LoginClient />);
+
+    fireEvent.click(screen.getByRole("button", { name: /forgot password/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/enter your email/i);
+    expect(h.sendPasswordResetEmail).not.toHaveBeenCalled();
+  });
+
+  it("never turns a reset failure into an account-existence hint", async () => {
+    h.sendPasswordResetEmail.mockRejectedValue({ code: "auth/user-not-found" });
+    render(<LoginClient />);
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "nobody@example.com" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /forgot password/i }));
+
+    await waitFor(() =>
+      expect(h.success).toHaveBeenCalledWith(
+        expect.stringMatching(/reset link is on its way/)
+      )
+    );
+    expect(h.error).not.toHaveBeenCalled();
+  });
+});
+
 describe("LoginClient: App Check errors", () => {
   it("explains a Google sign-in blocked by App Check", async () => {
     h.signInWithRedirect.mockRejectedValue({
@@ -711,7 +764,7 @@ describe("LoginClient: App Check errors", () => {
     expect(h.replace).not.toHaveBeenCalled();
     // The form stays usable so an admin can be asked to fix the project.
     expect(
-      screen.getByRole("button", { name: /^sign in$/i })
+      screen.getByRole("button", { name: /^continue$/i })
     ).not.toBeDisabled();
   });
 
