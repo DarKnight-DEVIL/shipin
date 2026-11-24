@@ -212,6 +212,13 @@ Scanned every source file for importers (excluding its own test):
 - **`src/stores/index.ts` (123 LOC) is imported by nothing.** It is the only file that
   imports `zustand`, so the dependency (`apps/web/package.json:86`) exists solely for dead
   code.
+
+**Fixed (partly).** Deleted: the whole second landing implementation
+(`src/components/landing/*`, 19 files), `src/config/landing.ts` (only the dead components
+imported it), `src/stores/index.ts` and the `zustand` dependency. The remaining orphans
+(checkout, request, admin-dashboard, globe-dashboard components, `firebaseLazy.ts`,
+`env-requirements.ts`) are still open, as are the workspace packages, the unused schemas
+and the `POST` stub.
 - **Three of four workspace packages have no consumers.** `@shipin/config` is imported
   once (`SITE_CONFIG`); `@shipin/ui`, `@shipin/shared` and `@shipin/utils` are built,
   tested and listed in `transpilePackages`, and no app file imports them.
@@ -273,6 +280,25 @@ at 100).
 Either implement tiers in `PRICING` or make the page describe the bracket model it actually
 charges.
 
+**Fixed — the page now describes the bracket model.** The pricing section renders three
+bands derived from the code that bills (`src/config/serviceBands.ts` reads `PRICING` and
+`warehousePolicy`; `LandingShell` renders `SERVICE_BANDS`), so the copy cannot drift
+silently again: `src/config/serviceBands.test.ts` feeds representative order values
+through `calculateServiceFee` and fails if the advertised price, the thresholds or the
+storage window (3–14 days, then $3/day) stop matching. The fictional tier is gone from
+everywhere it was sold:
+
+- the landing cards ("Free / Flat fee / 10% of products", CTA straight to
+  `/requests/new` — the `?plan=` parameter was read by nothing),
+- the FAQ answer that claimed "Express includes consolidation" against a seven-day window
+  nothing implemented,
+- `/terms` and `/refund-policy`, which promised refunds of an "Express tier fee" that could
+  never be charged (§2.3 of the refund policy is now about the service fee, and the terms
+  test asserts the new wording).
+
+Still open, and deliberately so: whether "up to 3 SKUs per request" should exist is a
+product decision — the cap is unenforced in the request flow either way.
+
 ### 2.10 P2 — the component layer is effectively untested
 
 143 `.tsx` component files, 14 with tests. `vitest.config.ts:44-55` excludes
@@ -321,9 +347,10 @@ allowlist gate has never run in CI.
    message names the real variable, and `test:e2e:local` runs green (30 passed).
 2. ~~§2.3b~~ — **done**: the admin queue receives whole documents, with Timestamps
    restored, so items, quotes, refund flags and the purchase-history sort work.
-3. §2.6 + §2.9 — delete the two landing implementations' dead half and the unused state
-   layer, then reconcile the pricing copy with `PRICING` (this is a customer-facing promise,
-   so it is a product decision, not a cleanup).
+3. ~~§2.6 (landing half) + §2.9~~ — **done**: the dead landing implementation, the unused
+   store and `zustand` are gone, and the pricing copy is generated from `PRICING` and
+   `warehousePolicy` with a test that fails on drift. Remaining §2.6 orphans (checkout,
+   request, dashboard components, workspace packages, unused schemas) are still open.
 4. §2.3 / §2.4 — pagination on the admin lists, and `in`-chunking before the order book
    grows.
 5. §2.5 — either wire the rights endpoints into Settings or delete the routes and the

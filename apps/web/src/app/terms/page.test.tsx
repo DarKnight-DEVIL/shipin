@@ -27,15 +27,16 @@ describe("Terms refunds", () => {
     // The footer links the same page, so look for any of them pointing at the
     // policy rather than assuming this clause owns the only one.
     const links = screen.getAllByRole("link", { name: /refund policy/i });
-    expect(links.some((link) => link.getAttribute("href") === "/refund-policy"))
-      .toBe(true);
+    expect(
+      links.some((link) => link.getAttribute("href") === "/refund-policy")
+    ).toBe(true);
   });
 
   it("states the pre-procurement full refund the policy promises", () => {
     renderTerms();
 
     expect(
-      screen.getByText(/refunded in full, including any Express tier fee/i)
+      screen.getByText(/refunded in full, including the service fee/i)
     ).toBeInTheDocument();
     expect(
       screen.getByText(/less any seller restocking charge/i)

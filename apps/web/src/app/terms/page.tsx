@@ -195,7 +195,7 @@ export default function TermsPage() {
             <ul className="list-disc list-inside space-y-2 mb-4">
               <li>
                 Cancel before we have paid the seller and you are refunded in
-                full, including any Express tier fee.
+                full, including the service fee.
               </li>
               <li>
                 Once we have paid the seller, we ask them for a return where

@@ -7,6 +7,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Bricolage_Grotesque } from "next/font/google";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { PRICING } from "@/config/pricing";
+import type { ServiceBand } from "@/config/serviceBands";
+import { formatUsd, SERVICE_BANDS } from "@/config/serviceBands";
 import type Lenis from "lenis";
 import "lenis/dist/lenis.css";
 import "../landing.css";
@@ -22,69 +25,6 @@ const display = Bricolage_Grotesque({
   variable: "--font-display",
   display: "swap",
 });
-
-type PlanId = "standard" | "express" | "merchant";
-
-type Plan = {
-  id: PlanId;
-  code: string;
-  name: string;
-  price: string;
-  unit: string;
-  description: string;
-  features: string[];
-  cta: string;
-  featured?: boolean;
-};
-
-const plans: Plan[] = [
-  {
-    id: "standard",
-    code: "Tier 01",
-    name: "Standard",
-    price: "$0",
-    unit: "service fee per request",
-    description: "For a first order or a single item you cannot get shipped.",
-    features: [
-      "Standard inspection at the hub",
-      "Up to 3 SKUs per request",
-      "2 origin stores",
-      "Email support, Mon to Sat",
-    ],
-    cta: "Select Standard",
-  },
-  {
-    id: "express",
-    code: "Tier 02",
-    name: "Express",
-    price: "$9",
-    unit: "service fee per request",
-    description: "For launches, samples and anything with a date attached.",
-    features: [
-      "Priority queue at every checkpoint",
-      "Photo QA before dispatch",
-      "30 days of free warehousing",
-      "Consolidation included",
-    ],
-    cta: "Select Express",
-    featured: true,
-  },
-  {
-    id: "merchant",
-    code: "Tier 03",
-    name: "Merchant",
-    price: "Freight",
-    unit: "quoted per lane",
-    description: "For teams moving 50 or more parcels a month.",
-    features: [
-      "Unlimited SKUs and stores",
-      "Negotiated freight rates",
-      "Dedicated account lead",
-      "Net 15 terms on approval",
-    ],
-    cta: "Request a quote",
-  },
-];
 
 const corridors = [
   { route: "Mumbai to London", transit: "5 to 7 days", cutoff: "Tue, Fri" },
@@ -133,7 +73,8 @@ const metrics = [
   {
     value: "1",
     label: "Quote before purchase",
-    detail: "Product, freight, service fee and duties itemised before you approve.",
+    detail:
+      "Product, freight, service fee and duties itemised before you approve.",
   },
   {
     value: "0",
@@ -183,7 +124,7 @@ const faqs = [
   {
     question: "Can I combine orders from different stores?",
     answer:
-      "Yes. Orders that reach the hub inside the same seven day window ship as one manifest. Express includes consolidation; on Standard it is added per parcel.",
+      "Yes. Orders that reach the hub inside the free storage window ship as one manifest, so several stores can arrive as a single parcel.",
   },
   {
     question: "What happens if an item arrives damaged?",
@@ -242,7 +183,7 @@ function Check() {
 
 export default function Home() {
   const [loggedIn, setLoggedIn] = useState(false);
-  const [activePlan, setActivePlan] = useState<Plan | null>(null);
+  const [activePlan, setActivePlan] = useState<ServiceBand | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [globeMotion, setGlobeMotion] = useState(true);
 
@@ -490,8 +431,13 @@ export default function Home() {
     };
   }, []);
 
-  const requestHref = (planId: PlanId) => {
-    const target = `/requests/new?plan=${planId}`;
+  /*
+   * No plan parameter: nothing downstream reads one — `/requests/new` prices
+   * the order from the quote — so `?plan=express` used to carry a tier the
+   * checkout had no way to honour.
+   */
+  const requestHref = () => {
+    const target = "/requests/new";
     return loggedIn ? target : `/login?next=${encodeURIComponent(target)}`;
   };
 
@@ -996,13 +942,13 @@ export default function Home() {
                 <h2>Pricing that follows the work.</h2>
               </div>
               <p className="lede">
-                No subscription. Pay per request for small batches, or move to
-                freight rates once volume justifies a lane.
+                No subscription and no tiers: the service fee is the one the
+                quote charges, based on the value of what you are buying.
               </p>
             </div>
 
             <div className="pricing__grid">
-              {plans.map((plan) => (
+              {SERVICE_BANDS.map((plan) => (
                 <article
                   key={plan.id}
                   className={plan.featured ? "plan plan--featured" : "plan"}
@@ -1010,7 +956,7 @@ export default function Home() {
                   <div className="plan__head">
                     <span className="plan__code">{plan.code}</span>
                     {plan.featured && (
-                      <span className="chip chip--outline">Time-critical</span>
+                      <span className="chip chip--outline">Most orders</span>
                     )}
                   </div>
                   <h3 className="plan__name">{plan.name}</h3>
@@ -1053,7 +999,8 @@ export default function Home() {
                 approve.
               </span>
               <span>
-                Cancel free before procurement starts — see the{" "}
+                Above {formatUsd(PRICING.PERCENTAGE_LIMIT)} of products we quote
+                by hand. Cancel free before procurement starts — see the{" "}
                 <a href="/refund-policy">Refund Policy</a>.
               </span>
             </div>
@@ -1250,7 +1197,7 @@ export default function Home() {
                 type="button"
                 className="plan-dialog__close"
                 onClick={closePlan}
-                aria-label="Close plan details"
+                aria-label="Close fee details"
               >
                 <svg
                   viewBox="0 0 16 16"
@@ -1286,15 +1233,15 @@ export default function Home() {
 
             <div className="plan-dialog__actions">
               <Link
-                href={requestHref(activePlan.id)}
+                href={requestHref()}
                 className="btn btn--primary plan-dialog__cta"
                 onClick={closePlan}
               >
-                Continue with {activePlan.name}
+                Start a request
                 <ArrowUpRight />
               </Link>
               <button type="button" className="text-link" onClick={closePlan}>
-                Compare tiers again
+                Compare fees again
               </button>
             </div>
             <p className="mono-note plan-dialog__note">

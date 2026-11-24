@@ -103,14 +103,13 @@ import { serverEnv, clientEnv } from "@/config/env";
 const paypalSecret = serverEnv.PAYPAL_CLIENT_SECRET;
 ```
 
-### 5. State Management (Zustand)
+### 5. State Management
 
-Stores in `src/stores/index.ts`:
-- `useProfileStore` — user profile cache across navigation
-- `useUiStore` — modals, active tabs, global loading overlay
-- `useNotificationsStore` — unread count
-- `useRequestsStore` — selected request, filter state
-- `useWalletStore` — cached wallet balance
+No global client state library. Server state is fetched per view with Firestore
+listeners (`onSnapshot`) and local UI state stays in component hooks — the
+Zustand layer that once lived in `src/stores/index.ts` was imported by nothing
+and has been deleted. If cross-page caching is ever needed, prefer React
+`cache` + Firestore listeners over re-introducing a store.
 
 ---
 

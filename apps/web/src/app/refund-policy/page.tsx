@@ -29,14 +29,28 @@ export default function RefundPolicyPage() {
           ]),
         ]}
       />
-      <LegalDocument title="Refund & Cancellation Policy" updated="November 20, 2026">
+      <LegalDocument
+        title="Refund & Cancellation Policy"
+        updated="November 24, 2026"
+      >
         <section id="summary" className="mb-12">
           <h2>1. In short</h2>
           <ul className="list-disc list-inside space-y-2">
-            <li>Cancel before we buy: refunded in full, including the tier fee.</li>
-            <li>Cancel after we buy: we resell or return what we can and refund the balance.</li>
-            <li>Wrong, damaged or missing: photographed at the hub, then refunded or replaced.</li>
-            <li>No restocking fee, no cancellation penalty, no fee to open a claim.</li>
+            <li>
+              Cancel before we buy: refunded in full, including the service fee.
+            </li>
+            <li>
+              Cancel after we buy: we resell or return what we can and refund
+              the balance.
+            </li>
+            <li>
+              Wrong, damaged or missing: photographed at the hub, then refunded
+              or replaced.
+            </li>
+            <li>
+              No restocking fee, no cancellation penalty, no fee to open a
+              claim.
+            </li>
           </ul>
         </section>
 
@@ -45,10 +59,10 @@ export default function RefundPolicyPage() {
           <h3>2.1 Before procurement starts</h3>
           <p>
             A request is not charged until you approve its quote. While the
-            request is still in{" "}
-            <em>quote pending</em> or <em>quote approved, not yet purchased</em>,
-            you can cancel from the request page and everything you paid is
-            refunded — the full quoted amount, including any Express tier fee.
+            request is still in <em>quote pending</em> or{" "}
+            <em>quote approved, not yet purchased</em>, you can cancel from the
+            request page and everything you paid is refunded — the full quoted
+            amount, including the service fee and any add-ons you selected.
           </p>
           <h3>2.2 After procurement starts</h3>
           <p>
@@ -59,11 +73,12 @@ export default function RefundPolicyPage() {
             domestic shipping already spent. We tell you the exact figure before
             we act on it; nothing further is deducted silently.
           </p>
-          <h3>2.3 Express tier fee</h3>
+          <h3>2.3 Service fee</h3>
           <p>
-            The Express fee buys priority handling. It is refunded in full if the
-            request never dispatches, and is not charged again if a request is
-            re-created after a cancellation.
+            The service fee is calculated from the value of the products in your
+            quote and is part of the quoted amount, so it is refunded with it
+            under 2.1. The same applies to the optional add-ons — detailed
+            inspection and hold. Nothing recurring is charged.
           </p>
         </section>
 
@@ -76,8 +91,9 @@ export default function RefundPolicyPage() {
           </p>
           <ul className="list-disc list-inside space-y-2">
             <li>
-              Open a support ticket from the request within <strong>7 days</strong>{" "}
-              of delivery, with photos of the item and the packaging.
+              Open a support ticket from the request within{" "}
+              <strong>7 days</strong> of delivery, with photos of the item and
+              the packaging.
             </li>
             <li>
               We compare your photos with the hub inspection record and the
@@ -115,7 +131,9 @@ export default function RefundPolicyPage() {
                   <td className="px-4 py-3">Immediately, once approved</td>
                 </tr>
                 <tr>
-                  <td className="px-4 py-3">PayPal (original payment method)</td>
+                  <td className="px-4 py-3">
+                    PayPal (original payment method)
+                  </td>
                   <td className="px-4 py-3">
                     5–10 business days, as processed by PayPal
                   </td>
@@ -125,8 +143,8 @@ export default function RefundPolicyPage() {
           </div>
           <p>
             You choose the method when the refund is agreed. A refund to PayPal
-            can only go to the account that paid for the request; a wallet credit
-            is always available and can be used on any future request.
+            can only go to the account that paid for the request; a wallet
+            credit is always available and can be used on any future request.
           </p>
         </section>
 
@@ -144,8 +162,8 @@ export default function RefundPolicyPage() {
               customer.
             </li>
             <li>
-              Storage beyond the free period, where the customer asked us to hold
-              the parcel.
+              Storage beyond the free period, where the customer asked us to
+              hold the parcel.
             </li>
           </ul>
         </section>
@@ -155,8 +173,8 @@ export default function RefundPolicyPage() {
           <p>
             Contact support first. A chargeback freezes the request while the
             payment provider investigates, which usually delays the outcome you
-            want. We resolve the overwhelming majority of claims directly, and we
-            answer every claim in writing.
+            want. We resolve the overwhelming majority of claims directly, and
+            we answer every claim in writing.
           </p>
         </section>
 
@@ -175,7 +193,10 @@ export default function RefundPolicyPage() {
           <p>
             Open a support ticket from the request itself — it carries the
             request ID and inspection photos — or email{" "}
-            <a href="mailto:support@shipin.co" className="text-orange-700 dark:text-orange-300 hover:underline">
+            <a
+              href="mailto:support@shipin.co"
+              className="text-orange-700 dark:text-orange-300 hover:underline"
+            >
               support@shipin.co
             </a>
             . We answer refund questions within one business day.
