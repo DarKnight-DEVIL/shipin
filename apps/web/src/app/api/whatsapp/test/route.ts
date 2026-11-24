@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withErrorHandler } from "@/utils/errors";
 
-import { requireAuthWithProfile } from "@/lib/auth";
+import { getAdminAuthError, requireAdmin } from "@/lib/adminAuth";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 
-import { whatsappTestBodySchema, validateBody } from "@/lib/validation";
+import { readAndValidateBody, whatsappTestBodySchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
@@ -13,53 +13,42 @@ const NO_STORE = { "Cache-Control": "no-store" } as const;
 /**
  * POST /api/whatsapp/test
  *
- * INTERNAL TEST ENDPOINT — requires admin authentication.
+ * INTERNAL TEST ENDPOINT — proves the WhatsApp credentials work.
  *
- * Security controls:
- *   1. Requires a verified admin Firebase ID token (Bearer Authorization header).
- *   2. Phone numbers are validated server-side: digits only, 10-15 digits.
- *   3. No secret/third-party error details are echoed to the caller.
- *
- * This route proves the WhatsApp credentials work and would
- * otherwise be a spam/conduit endpoint.
+ * `requireAdmin` is the same gate every other admin route passes: App Check,
+ * a verified admin ID token, the admin role, and an enrolled second factor
+ * with a per-request code. This endpoint drives the business WhatsApp
+ * account, so a weaker gate — an authenticated admin token with no MFA
+ * proof — would be enough to send messages through it.
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
-  // --- 1. Authenticate the caller (admin only) ---
-  const auth = await requireAuthWithProfile(request);
-  if (auth instanceof NextResponse) return auth;
+  // --- 1. Authenticate the caller through the full admin gate ---
+  try {
+    await requireAdmin(request);
+  } catch (error) {
+    const authError = getAdminAuthError(error);
 
-  // Verify the authenticated user has the admin role.
-  // requireAuthWithProfile checks user existence but not role,
-  // so we enforce the role here.
-  if (auth.profile.role !== "admin") {
     return NextResponse.json(
-      {
-        success: false,
-        error: "Administrator access required.",
-        code: "ADMIN_ACCESS_REQUIRED",
-      },
-      { status: 403, headers: NO_STORE }
+      { success: false, error: authError.error },
+      { status: authError.status, headers: NO_STORE }
     );
   }
 
-  // --- 2. Validate input with strict schema ---
-  const parseResult = validateBody(
-    await request.json(),
-    whatsappTestBodySchema
-  );
-  if (!parseResult.success) {
+  // --- 2. Validate input with strict schema (guarded parse) ---
+  const parsed = await readAndValidateBody(request, whatsappTestBodySchema);
+
+  if (!parsed.success) {
     return NextResponse.json(
       {
         success: false,
-        error: "Invalid request body.",
+        error: parsed.error,
         code: "INVALID_REQUEST_BODY",
-        errors: parseResult.errors,
       },
       { status: 400, headers: NO_STORE }
     );
   }
 
-  const { phone } = parseResult.data;
+  const { phone } = parsed.data;
 
   // --- 3. Send the message (server-only service, never user-controllable) ---
   try {

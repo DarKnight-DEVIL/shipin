@@ -1,21 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
-  requireAuthWithProfile: vi.fn(),
+  requireAdmin: vi.fn(),
+  getAdminAuthError: vi.fn(),
   sendWhatsAppTemplate: vi.fn(),
-  validateBody: vi.fn(),
 }));
 
-vi.mock("@/lib/auth", () => ({
-  requireAuthWithProfile: mocks.requireAuthWithProfile,
+vi.mock("@/lib/adminAuth", () => ({
+  requireAdmin: mocks.requireAdmin,
+  getAdminAuthError: mocks.getAdminAuthError,
 }));
 vi.mock("@/lib/whatsapp", () => ({
   sendWhatsAppTemplate: mocks.sendWhatsAppTemplate,
-}));
-vi.mock("@/lib/validation", () => ({
-  whatsappTestBodySchema: {},
-  validateBody: mocks.validateBody,
 }));
 
 import { POST } from "./route";
@@ -27,14 +24,14 @@ const request = (body: unknown = { phone: "919876543210" }) =>
   });
 
 beforeEach(() => {
-  mocks.requireAuthWithProfile
+  mocks.requireAdmin.mockReset().mockResolvedValue({ uid: "admin-1" });
+  mocks.getAdminAuthError
     .mockReset()
-    .mockResolvedValue({ profile: { uid: "admin-1", role: "admin" } });
+    .mockReturnValue({
+      status: 500,
+      error: "Unable to verify administrator access.",
+    });
   mocks.sendWhatsAppTemplate.mockReset().mockResolvedValue(undefined);
-  mocks.validateBody.mockReset().mockReturnValue({
-    success: true,
-    data: { phone: "919876543210" },
-  });
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -43,10 +40,20 @@ afterEach(() => {
 });
 
 describe("POST /api/whatsapp/test", () => {
+  it("passes the full admin gate before touching WhatsApp", async () => {
+    const response = await POST(request());
+
+    expect(mocks.requireAdmin).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ success: true });
+  });
+
   it("rejects unauthenticated callers", async () => {
-    mocks.requireAuthWithProfile.mockResolvedValue(
-      NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    );
+    mocks.requireAdmin.mockRejectedValue(new Error("AUTHENTICATION_REQUIRED"));
+    mocks.getAdminAuthError.mockReturnValue({
+      status: 401,
+      error: "Authentication required.",
+    });
 
     const response = await POST(request());
 
@@ -54,31 +61,51 @@ describe("POST /api/whatsapp/test", () => {
     expect(mocks.sendWhatsAppTemplate).not.toHaveBeenCalled();
   });
 
-  it("requires an administrator", async () => {
-    mocks.requireAuthWithProfile.mockResolvedValue({
-      profile: { uid: "user-1", role: "customer" },
+  it("rejects a caller without the admin role", async () => {
+    mocks.requireAdmin.mockRejectedValue(new Error("ADMIN_ACCESS_REQUIRED"));
+    mocks.getAdminAuthError.mockReturnValue({
+      status: 403,
+      error: "Administrator access required.",
     });
 
     const response = await POST(request());
 
     expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      code: "ADMIN_ACCESS_REQUIRED",
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Administrator access required.",
     });
+    expect(mocks.sendWhatsAppTemplate).not.toHaveBeenCalled();
+  });
+
+  it("rejects an admin who has not completed MFA", async () => {
+    mocks.requireAdmin.mockRejectedValue(new Error("MFA_REQUIRED"));
+    mocks.getAdminAuthError.mockReturnValue({
+      status: 401,
+      error:
+        "Multi-factor authentication required. Provide a TOTP code, a backup code, or sign in again so Identity Platform completes your SMS second factor.",
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(401);
+    expect(mocks.sendWhatsAppTemplate).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid phone number", async () => {
-    mocks.validateBody.mockReturnValue({
-      success: false,
-      errors: [{ message: "Phone number must be 10-15 digits." }],
-    });
-
     const response = await POST(request({ phone: "12" }));
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       code: "INVALID_REQUEST_BODY",
     });
+    expect(mocks.sendWhatsAppTemplate).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unreadable body", async () => {
+    const response = await POST(request("{nope"));
+
+    expect(response.status).toBe(400);
     expect(mocks.sendWhatsAppTemplate).not.toHaveBeenCalled();
   });
 
