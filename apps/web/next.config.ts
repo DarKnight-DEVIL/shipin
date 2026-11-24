@@ -83,6 +83,13 @@ const nextConfig: NextConfig = {
         source: "/__/auth/:path*",
         destination: `${FIREBASE_AUTH_HELPER_ORIGIN}/__/auth/:path*`,
       },
+      // The SDK also fetches its Firebase Hosting config file from the auth
+      // domain; on this origin it would 404 on every load (harmless but
+      // noisy), so serve the real one through the same proxy.
+      {
+        source: "/__/firebase/:path*",
+        destination: `${FIREBASE_AUTH_HELPER_ORIGIN}/__/firebase/:path*`,
+      },
     ];
   },
   async headers() {

@@ -31,6 +31,7 @@ vi.unmock("@/components/AuthRedirectHandler");
 
 const h = vi.hoisted(() => ({
   getRedirectResult: vi.fn(),
+  currentUser: null as { uid: string } | null,
   ensureUserProfile: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
@@ -40,7 +41,11 @@ const h = vi.hoisted(() => ({
   router: { replace: vi.fn(), refresh: vi.fn() },
 }));
 
-vi.mock("@/lib/firebase", () => ({ auth: { name: "test-auth" } }));
+vi.mock("@/lib/firebase", () => ({
+  auth: { name: "test-auth", get currentUser() {
+    return h.currentUser;
+  } },
+}));
 
 vi.mock("firebase/auth", () => ({
   getRedirectResult: (...args: unknown[]) => h.getRedirectResult(...args),
@@ -80,6 +85,7 @@ function seedUser(displayName: string | null = "Ada") {
 }
 
 beforeEach(() => {
+  h.currentUser = null;
   h.getRedirectResult.mockReset().mockResolvedValue(null);
   h.ensureUserProfile.mockReset().mockResolvedValue({ role: "customer" });
   h.success.mockReset();
@@ -119,7 +125,9 @@ describe("AuthRedirectHandler", () => {
 
     await waitFor(() => expect(h.getRedirectResult).toHaveBeenCalled());
     // The auth instance comes from `@/lib/firebase`, not a second initialisation.
-    expect(h.getRedirectResult).toHaveBeenCalledWith({ name: "test-auth" });
+    expect(h.getRedirectResult).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "test-auth" })
+    );
   });
 
   it("does nothing when the browser is not returning from a redirect", async () => {
@@ -234,6 +242,34 @@ describe("AuthRedirectHandler", () => {
       )
     );
     expect(h.router.replace).not.toHaveBeenCalled();
+  });
+
+  it("routes normally when the result errors but a session already exists", async () => {
+    // Observed in production: Identity Toolkit answered the sign-in (200) and
+    // then 503'd the duplicate bookkeeping call, so `getRedirectResult` threw
+    // `auth/error-code:-40` while `auth.currentUser` was already set. Telling
+    // that user "sign-in failed" and stranding them on the login page is
+    // wrong: the session is valid, so finish the normal routing.
+    h.getRedirectResult.mockRejectedValue(
+      Object.assign(new Error("bookkeeping failed"), {
+        code: "auth/error-code:-40",
+      })
+    );
+    h.currentUser = {
+      uid: "user-1",
+      displayName: "Ada",
+      email: "ada@example.com",
+      photoURL: null,
+    };
+
+    render(<AuthRedirectHandler />);
+
+    await waitFor(() => expect(h.router.replace).toHaveBeenCalledWith("/dashboard"));
+    expect(h.success).toHaveBeenCalledWith("Welcome, Ada!");
+    expect(h.ensureUserProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ uid: "user-1" })
+    );
+    expect(h.error).not.toHaveBeenCalled();
   });
 
   it("does not navigate after unmount when redirect result resolves later", async () => {
