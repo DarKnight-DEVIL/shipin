@@ -129,6 +129,11 @@ export default function LoginClient() {
   // click navigate in under a second. Best-effort: a failed warm-up only means
   // the click pays the cost, as before.
   useEffect(() => {
+    // Marks which login-flow build this loaded page is running. The login
+    // sequence changed several times in quick succession; a stale cached tab
+    // silently keeps the old behaviour, and this line makes that visible in
+    // the browser console instead of guessable.
+    console.info("[ShipIN] login flow: popup-only v2 (loader after account pick)");
     void getAppCheckToken();
     void initializeRecaptchaConfig(auth).catch(() => {});
     // The warm-up handlers only touch module-level Firebase singletons, so
