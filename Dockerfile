@@ -5,12 +5,11 @@ WORKDIR /app
 
 # Manifests first so the dependency layer is cached independently of sources.
 # A workspace install needs the root lockfile plus every workspace manifest.
+# (packages/config is the only workspace package; ui/shared/utils were removed
+# in the §2.6 orphan cleanup.)
 COPY package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/config/package.json ./packages/config/
-COPY packages/shared/package.json ./packages/shared/
-COPY packages/ui/package.json ./packages/ui/
-COPY packages/utils/package.json ./packages/utils/
 RUN npm ci
 
 # Copy source code

@@ -1,0 +1,100 @@
+name: Dependency Gate Daily
+
+# `ci.yml` runs both gates on every push. That is exactly the gap this covers:
+# an advisory published today cannot fail a build that already ran, and an
+# allowlist entry reaches its expiry date without anyone committing anything.
+# Once a day, against the committed lockfile:
+#
+#   - `audit:gate` asks the registry for advisories *now*, so a newly published
+#     high/critical vulnerability in the production closure turns this red
+#     without waiting for the next commit;
+#   - `check:licenses` re-evaluates the production closure and its allowlist
+#     dates, so an exception expires on schedule instead of at the next push.
+#
+# Both already answer with a non-zero exit and a `::error::` annotation, which
+# is what makes the run red.
+on:
+  schedule:
+    # 04:20 UTC — after the nightly test run (03:17) and before the working day
+    # in Mumbai. Off the hour so it does not queue behind the other crons.
+    - cron: "20 4 * * *"
+  # Allows a manual run when an advisory lands and nobody wants to wait a day.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+
+concurrency:
+  # Verdicts are the point, so never let a newer scheduled run cancel one that
+  # is still working through `npm ci`.
+  group: dependency-gate
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Audit + licence gate
+    runs-on: ubuntu-latest
+    # A registry outage must not hold a runner for the default six hours.
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          package-manager: npm@12.2.2
+
+      - name: Enable corepack (respects packageManager field)
+        run: corepack enable
+
+      # `npm audit` inspects the installed tree, so install what the push build
+      # installs. `check:licenses` reads package-lock.json directly and would
+      # pass without this; both gates should judge the same tree.
+      - name: Install dependencies
+        id: deps
+        run: npm ci
+
+      - name: npm audit (production dependencies, high/critical)
+        run: npm run audit:gate
+
+      # Runs even when the audit gate failed: these are two independent verdicts,
+      # and a licence problem must not stay hidden behind an advisory until
+      # tomorrow. `deps` guards the case where the install itself failed, since
+      # then there is no lockfile verdict worth reporting.
+      - name: Check dependency licenses (production closure)
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: npm run check:licenses
+
+      # Scheduled workflows fail quietly: nobody pushed, so the failure is not
+      # attached to a commit anyone is watching. Mirror the other crons — a
+      # summary plus the optional webhook — so a red run reaches a person.
+      - name: Report a failed run
+        if: failure()
+        run: |
+          {
+            echo "### Dependency gate failed"
+            echo ""
+            echo "The production dependency closure has an unallowlisted advisory"
+            echo "or a licence without a decision (or an allowlist entry has"
+            echo "expired). Nothing was pushed to trigger this: it is the daily"
+            echo "check against the committed lockfile. Run locally with:"
+            echo ""
+            echo '```'
+            echo "npm run audit:gate && npm run check:licenses"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "${{ secrets.ALERT_WEBHOOK_URL }}" ]; then
+            curl --fail-with-body -sS -X POST \
+              -H 'Content-Type: application/json' \
+              -d '{"text":"ShipIN: the daily dependency gate (npm audit + licence check) failed."}' \
+              "${{ secrets.ALERT_WEBHOOK_URL }}" || true
+          else
+            echo "::error::ALERT_WEBHOOK_URL is not set, so this failure reached nobody. Configure the repository secret (see DEPLOYMENT.md -> Cron alerting)."
+          fi

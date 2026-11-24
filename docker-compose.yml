@@ -9,7 +9,7 @@
 # Documented in DEPLOYMENT.md ("Local full stack with docker compose").
 #
 # Server secrets are loaded from .env.local (gitignored). Create it from
-# .env.local.example and fill in real values for local testing against the
+# .env.example and fill in real values for local testing against the
 # emulators. If .env.local is missing, the stack will fail fast with a clear
 # error instead of silently using placeholders.
 name: shipin-local

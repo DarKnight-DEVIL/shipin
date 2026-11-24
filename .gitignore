@@ -57,7 +57,6 @@ test-results/
 
 # Version control, editor and agent tooling
 .git
-.github/
 .vscode/
 .idea/
 .claude/
