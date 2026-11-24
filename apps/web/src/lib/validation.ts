@@ -404,6 +404,48 @@ export const additionalItemRequestBodySchema = z.object({
     .max(99, "Quantity must be at most 99."),
 });
 
+/** One product line on a request — a SKU. */
+export const requestItemSchema = z.object({
+  name: z
+    .string({ error: "Product name is required." })
+    .trim()
+    .min(1, "Product name is required.")
+    .max(200, "Product name is too long (max 200 characters)."),
+  url: z
+    .url({ error: "Product URL must be a valid URL." })
+    .trim()
+    .max(2048, "Product URL is too long."),
+  quantity: z
+    .number({ error: "Quantity must be a whole number between 1 and 999." })
+    .int("Quantity must be a whole number between 1 and 999.")
+    .min(1, "Quantity must be at least 1.")
+    .max(999, "Quantity must be at most 999."),
+});
+
+/**
+ * POST /api/requests — a new request.
+ *
+ * The SKU cap lives here: a request carries at most 3 product lines. More
+ * items belong in `additionalItemRequests`, which the admin quotes and bills
+ * separately — the original quote is priced per request, so an unbounded
+ * `items` array would let one request carry a warehouse's worth of stock
+ * under one service fee.
+ */
+export const createRequestBodySchema = z.object({
+  items: z
+    .array(requestItemSchema)
+    .min(1, "Add at least one product.")
+    .max(3, "A request can include up to 3 products."),
+  addressId: namedIdSchema("Address"),
+  serviceSelections: z
+    .object({
+      inspection: z.enum(["none", "standard", "detailed"]),
+      shippingPreference: z.enum(["auto", "approval", "hold"]),
+    })
+    .default({ inspection: "standard", shippingPreference: "approval" }),
+  notes: messageSchema.optional(),
+});
+
 /**
  * PATCH /api/admin/requests/[id]/additional-items.
  *
@@ -633,7 +675,13 @@ export function validateBody<T extends z.ZodType>(
 
 export type ParsedBody<T> =
   | { success: true; data: T }
-  | { success: false; reason: "parse" | "schema"; error: string };
+  | {
+      success: false;
+      reason: "parse" | "schema";
+      error: string;
+      /** First schema issue, present on schema failures only. */
+      message?: string;
+    };
 
 /**
  * Reads and validates a JSON request body in one guarded step.
@@ -663,6 +711,10 @@ export async function readAndValidateBody<T extends z.ZodType>(
       success: false,
       reason: "schema",
       error: "Invalid request body.",
+      // The first issue, verbatim from the schema: routes that talk to a human
+      // (a form submit) surface this instead of the generic envelope. It is
+      // our own copy — the schemas carry the user-facing wording.
+      message: result.error.issues[0]?.message,
     };
   }
 

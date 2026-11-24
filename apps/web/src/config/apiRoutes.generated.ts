@@ -67,6 +67,7 @@ export const API_ROUTE_PATHS: readonly string[] = [
   "/api/profile/preferences",
   "/api/r2/upload",
   "/api/r2/view",
+  "/api/requests",
   "/api/requests/[requestId]/additional-items",
   "/api/requests/[requestId]/approve-quote",
   "/api/requests/[requestId]/quote",

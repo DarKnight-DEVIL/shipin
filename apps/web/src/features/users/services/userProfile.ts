@@ -71,6 +71,9 @@ export interface UserProfile {
 
   updatedAt?: unknown;
 
+  /** ISO date (YYYY-MM-DD). Drives the DPDP age gate. */
+  dateOfBirth?: string;
+
   /** Document schema version for migrations. Default: 1 */
   schemaVersion?: number;
 }
@@ -218,6 +221,8 @@ export async function updateUserProfile(
     phone?: string;
 
     photoURL?: string;
+
+    dateOfBirth?: string;
   }
 ) {
   try {

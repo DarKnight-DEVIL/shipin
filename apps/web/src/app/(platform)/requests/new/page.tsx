@@ -20,7 +20,7 @@ import AddressPicker from "@/components/address/AddressPicker";
 import Modal from "@/components/ui/Modal";
 import PageHeader from "@/components/ui/PageHeader";
 import { auth } from "@/lib/firebase";
-import { customerApi } from "@/lib/customerApiClient";
+import { CustomerApiError, customerApi } from "@/lib/customerApiClient";
 import {
   getAddresses,
   addAddress,
@@ -46,6 +46,10 @@ const emptyItem = (): ItemDraft => ({
   url: "",
   quantity: 1,
 });
+
+/** The SKU cap the API enforces; the form mirrors it so nobody types 4 items
+ * into a request the server would reject. */
+const MAX_ITEMS = 3;
 
 export default function NewRequestPage() {
   const router = useRouter();
@@ -88,7 +92,10 @@ export default function NewRequestPage() {
     return () => unsubscribe();
   }, []);
 
-  const addItem = () => setItems((prev) => [...prev, emptyItem()]);
+  const addItem = () =>
+    setItems((prev) =>
+      prev.length >= MAX_ITEMS ? prev : [...prev, emptyItem()]
+    );
 
   const removeItem = (index: number) => {
     setItems((prev) => prev.filter((_, i) => i !== index));
@@ -132,7 +139,7 @@ export default function NewRequestPage() {
 
     setSubmitting(true);
     try {
-      await customerApi<{ requestId: string }>("/api/requests", {
+      await customerApi<{ requestId: string }>('/api/requests', {
         method: "POST",
         body: {
           items: items.map((i) => ({
@@ -140,7 +147,7 @@ export default function NewRequestPage() {
             url: i.url.trim(),
             quantity: i.quantity,
           })),
-          shippingAddress: selectedAddress,
+          addressId: selectedAddress.id,
           serviceSelections: {
             inspection,
             shippingPreference,
@@ -163,7 +170,14 @@ export default function NewRequestPage() {
       router.push("/requests");
     } catch (error) {
       console.error(error);
-      toast.error("Failed to submit request.");
+      // The API's message is written for this form ("A request can include up
+      // to 3 products.", "Address not found."); a network failure is not, so
+      // only surface it when it is one of ours.
+      toast.error(
+        error instanceof CustomerApiError
+          ? error.message
+          : "Failed to submit request."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -196,7 +210,13 @@ export default function NewRequestPage() {
               <button
                 type="button"
                 onClick={addItem}
-                className="app-btn app-btn-secondary app-btn-sm"
+                disabled={items.length >= MAX_ITEMS}
+                title={
+                  items.length >= MAX_ITEMS
+                    ? "A request can include up to 3 products. Add more later as additional items."
+                    : undefined
+                }
+                className="app-btn app-btn-secondary app-btn-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Plus size={14} />
                 Add item

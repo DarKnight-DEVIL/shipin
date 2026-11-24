@@ -32,6 +32,20 @@ const updateProfileSchema = z.object({
   email: profileEmailSchema.optional(),
   phone: z.string().trim().max(30).optional(),
   photoURL: z.string().trim().max(2048).optional(),
+  // Stored as an ISO date (YYYY-MM-DD): the age gate parses it with
+  // calculateAge, and a date-only value leaks nothing about the time of birth.
+  dateOfBirth: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Date of birth must be a valid date.")
+    .refine((value) => {
+      const parsed = new Date(`${value}T00:00:00.000Z`);
+      return (
+        !Number.isNaN(parsed.getTime()) &&
+        parsed.toISOString().slice(0, 10) === value &&
+        parsed.getTime() <= Date.now()
+      );
+    }, "Date of birth must be a valid date.")
+    .optional(),
 });
 
 function parseJsonBody<T>(body: unknown, schema: z.ZodType<T>): T {
@@ -104,7 +118,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 /**
  * PATCH /api/profile
  *
- * Updates the signed-in user's display name, contact number, or photo.
+ * Updates the signed-in user's display name, contact number, photo, or date
+ * of birth (which drives the DPDP age gate and the parental-consent flow).
  */
 export const PATCH = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);

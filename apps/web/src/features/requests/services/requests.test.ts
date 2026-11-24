@@ -36,7 +36,6 @@ vi.mock("@/lib/firebaseDb", () => ({ db: {} }));
 
 import {
   approveAdditionalItem,
-  createRequest,
   getRequestById,
   getRequests,
   rejectAdditionalItem,
@@ -69,57 +68,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-});
-
-describe("createRequest", () => {
-  it("stores a submitted request with defaults", async () => {
-    await expect(createRequest(createData as never, "user-1")).resolves.toBe(
-      "req-new"
-    );
-
-    expect(mocks.addDoc.mock.calls[0][1]).toEqual({
-      userId: "user-1",
-      customerName: "Ada",
-      email: "ada@example.com",
-      items: [],
-      shippingAddress: { country: "GB" },
-      notes: "",
-      serviceSelections: {
-        inspection: "standard",
-        shippingPreference: "approval",
-      },
-      status: "submitted",
-      createdAt: "__SERVER_TS__",
-      updatedAt: "__SERVER_TS__",
-    });
-  });
-
-  it("keeps provided notes and service selections", async () => {
-    await createRequest(
-      {
-        ...createData,
-        notes: "Fragile",
-        serviceSelections: {
-          inspection: "premium",
-          shippingPreference: "hold",
-        },
-      } as never,
-      "user-1"
-    );
-
-    expect(mocks.addDoc.mock.calls[0][1]).toMatchObject({
-      notes: "Fragile",
-      serviceSelections: { inspection: "premium", shippingPreference: "hold" },
-    });
-  });
-
-  it("wraps write failures", async () => {
-    mocks.addDoc.mockRejectedValue(new Error("offline"));
-
-    await expect(
-      createRequest(createData as never, "user-1")
-    ).rejects.toBeInstanceOf(Error);
-  });
 });
 
 describe("getRequests", () => {

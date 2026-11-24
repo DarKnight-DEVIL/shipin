@@ -1,6 +1,5 @@
 import {
   collection,
-  addDoc,
   getDocs,
   getDoc,
   query,
@@ -36,41 +35,6 @@ const EMPTY_REQUEST = {
   additionalItemRequests: [] as Request["additionalItemRequests"],
 };
 
-export interface CreateRequestData {
-  customerName: string;
-  email: string;
-  items: Request["items"];
-  shippingAddress: Address;
-  notes?: string;
-  serviceSelections?: Request["serviceSelections"];
-}
-
-export async function createRequest(
-  data: CreateRequestData,
-  userId: string
-): Promise<string> {
-  try {
-    const docRef = await addDoc(collection(db, "requests"), {
-      userId,
-      customerName: data.customerName,
-      email: data.email,
-      items: data.items,
-      shippingAddress: data.shippingAddress,
-      notes: data.notes ?? "",
-      serviceSelections: {
-        inspection: data.serviceSelections?.inspection ?? "standard",
-        shippingPreference:
-          data.serviceSelections?.shippingPreference ?? "approval",
-      },
-      status: "submitted",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    return docRef.id;
-  } catch (error) {
-    throw toShipINError(error);
-  }
-}
 
 /**
  * Sortable columns.

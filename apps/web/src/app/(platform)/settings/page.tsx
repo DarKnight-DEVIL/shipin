@@ -83,6 +83,19 @@ const DataRightsSection = dynamic(
   }
 );
 
+const AgeVerificationSection = dynamic(
+  () =>
+    import("@/components/settings/AgeVerificationSection").then(
+      (mod) => mod.default
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-40 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+    ),
+  }
+);
+
 const DataPrivacySection = dynamic(
   () =>
     import("@/components/settings/DataPrivacySection").then(
@@ -155,6 +168,8 @@ export default function SettingsPage() {
           <DashboardMetricsSection settings={dashboardSettings} />
 
           <NotificationsSettings settings={notificationSettings} />
+
+          <AgeVerificationSection />
 
           <DataRightsSection />
 

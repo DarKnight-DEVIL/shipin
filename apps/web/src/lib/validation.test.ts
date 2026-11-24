@@ -226,10 +226,15 @@ describe("readAndValidateBody", () => {
       schema
     );
 
+    const expectedIssue = schema.safeParse({ amount: -1 });
+
     expect(parsed).toEqual({
       success: false,
       reason: "schema",
       error: "Invalid request body.",
+      // The first issue, verbatim, for routes that talk to a human.
+      message: expectedIssue.success ? undefined : expectedIssue.error.issues[0]
+        .message,
     });
   });
 });
