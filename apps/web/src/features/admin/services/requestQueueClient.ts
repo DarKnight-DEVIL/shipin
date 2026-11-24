@@ -6,39 +6,71 @@ import type { Request } from "@/types/request";
 
 export type AdminRequestFilter = string | null;
 
-// Restore a serialized Firestore Timestamp into a real one, so code that
-// checks `instanceof Timestamp` or writes the value back keeps working.
-type TSSerialized = { seconds: number; nanoseconds: number };
+/**
+ * A Timestamp as it arrives over JSON. Both keys must be present: a plain
+ * object that merely happens to have a `seconds` field is data, not a time.
+ */
+type SerializedTimestamp = { seconds: number; nanoseconds: number };
 
-function restoreTs(ts?: TSSerialized): Timestamp | undefined {
-  if (!ts || typeof ts.seconds !== "number") return undefined;
-  return new Timestamp(ts.seconds, ts.nanoseconds ?? 0);
+function isSerializedTimestamp(value: unknown): value is SerializedTimestamp {
+  if (typeof value !== "object" || value === null) return false;
+
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+
+  return (
+    keys.length === 2 &&
+    keys.includes("seconds") &&
+    keys.includes("nanoseconds") &&
+    typeof record.seconds === "number" &&
+    Number.isFinite(record.seconds) &&
+    typeof record.nanoseconds === "number" &&
+    Number.isFinite(record.nanoseconds)
+  );
+}
+
+/**
+ * Rebuild every serialized Timestamp in a document as a real one, so code that
+ * calls `.toMillis()`, checks `instanceof Timestamp`, or writes the value back
+ * to Firestore keeps working.
+ */
+function restoreTimestamps(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(restoreTimestamps);
+  if (typeof value !== "object" || value === null) return value;
+
+  if (isSerializedTimestamp(value)) {
+    return new Timestamp(value.seconds, value.nanoseconds);
+  }
+
+  const result: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    result[key] = restoreTimestamps(entry);
+  }
+
+  return result;
 }
 
 export async function getAllRequests(): Promise<Request[]> {
   try {
     const result = await customerApi<{
       success: boolean;
-      requests: Array<{
-        id: string;
-        userId: string;
-        customerName: string;
-        email: string;
-        status: string;
-        createdAt?: TSSerialized;
-        updatedAt?: TSSerialized;
-      }>;
+      requests: Array<Record<string, unknown> & { id: string }>;
     }>("/api/admin/requests", { method: "GET" });
 
-    return result.requests.map((doc) => ({
-      id: doc.id,
-      userId: doc.userId,
-      customerName: doc.customerName,
-      email: doc.email,
-      status: doc.status,
-      createdAt: restoreTs(doc.createdAt),
-      updatedAt: restoreTs(doc.updatedAt),
-    })) as unknown as Request[];
+    return result.requests.map((doc) => {
+      // One boundary assertion, over a payload the route sends whole. It used
+      // to be an unchecked `as unknown as Request[]` layered on a seven-field
+      // projection, so the queue's `items`, `quote`, `refundRequest` and
+      // `refundOffer` reads were always `undefined` and rendered as blanks.
+      const restored = restoreTimestamps(doc) as Record<string, unknown>;
+
+      return {
+        ...restored,
+        // Required by the type and rendered without a guard in the purchasing
+        // queue: a legacy document without items must not take the list down.
+        items: Array.isArray(restored.items) ? restored.items : [],
+      } as unknown as Request;
+    });
   } catch (error) {
     throw toShipINError(error);
   }

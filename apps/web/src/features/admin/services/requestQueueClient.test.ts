@@ -46,8 +46,7 @@ describe("getAllRequests", () => {
         customerName: "",
         email: "",
         status: "submitted",
-        createdAt: undefined,
-        updatedAt: undefined,
+        items: [],
       },
       {
         id: "r-2",
@@ -55,8 +54,7 @@ describe("getAllRequests", () => {
         customerName: "",
         email: "",
         status: "paid",
-        createdAt: undefined,
-        updatedAt: undefined,
+        items: [],
       },
     ]);
   });
@@ -82,6 +80,93 @@ describe("getAllRequests", () => {
     expect(record.createdAt!.toDate().toISOString()).toBe(
       new Date(1_800_000_000_500).toISOString()
     );
+  });
+
+  it("keeps the fields the queue and the filters read", async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      requests: [
+        {
+          id: "r-1",
+          userId: "u-1",
+          customerName: "Ada",
+          email: "ada@example.com",
+          status: "purchased",
+          items: [{ name: "Toy car", quantity: 2 }],
+          quote: { breakdown: { grandTotal: 523.33 } },
+          refundRequest: { status: "requested" },
+          quoteRegenerationRequested: true,
+          purchases: [
+            {
+              vendor: "Amazon",
+              amount: 42,
+              recordedAt: { seconds: 1_700_000_200, nanoseconds: 0 },
+            },
+          ],
+          // Written by POST /api/admin/requests/[id]/purchase; the purchasing
+          // page sorts its history on it.
+          purchasedAt: { seconds: 1_700_000_300, nanoseconds: 0 },
+        },
+      ],
+    });
+
+    const [record] = await getAllRequests();
+
+    expect(record.items).toEqual([{ name: "Toy car", quantity: 2 }]);
+    expect(record.quote?.breakdown?.grandTotal).toBe(523.33);
+    expect(record.refundRequest?.status).toBe("requested");
+    expect(record.quoteRegenerationRequested).toBe(true);
+    // Timestamps are restored at any depth: the page calls
+    // `request.purchasedAt.toMillis()` and the receipt list reads
+    // `purchases[].recordedAt`.
+    expect(record.purchasedAt).toBeInstanceOf(Timestamp);
+    expect(record.purchasedAt?.toMillis()).toBe(1_700_000_300_000);
+    expect(record.purchases?.[0]?.recordedAt).toBeInstanceOf(Timestamp);
+    expect(record.purchases?.[0]?.recordedAt?.toMillis()).toBe(
+      1_700_000_200_000
+    );
+  });
+
+  it("defaults items rather than dropping the document", async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      requests: [
+        {
+          id: "r-legacy",
+          userId: "u-1",
+          customerName: "",
+          email: "",
+          status: "paid",
+        },
+      ],
+    });
+
+    const [record] = await getAllRequests();
+
+    expect(record.items).toEqual([]);
+    expect(record.id).toBe("r-legacy");
+  });
+
+  it("leaves a plain object with a seconds field alone", async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      requests: [
+        {
+          id: "r-1",
+          userId: "u-1",
+          customerName: "",
+          email: "",
+          status: "paid",
+          items: [],
+          // Not a serialized Timestamp: no nanoseconds key.
+          storage: { seconds: 30 },
+        },
+      ],
+    });
+
+    const [record] = await getAllRequests();
+
+    expect(record.storage).toEqual({ seconds: 30 });
   });
 
   it("wraps read failures", async () => {
@@ -239,9 +324,13 @@ describe("getAdminRequestQueue", () => {
 
     const queue = await getAdminRequestQueue(null);
 
+    // Priority first: "regen" (quote regeneration, 1) outranks "refund" (2),
+    // then "submitted" (3) and "delivered" (10). This is the ordering the
+    // screen promises; it used to come out as refund-before-regen because the
+    // client dropped `quoteRegenerationRequested` and `refundRequest`.
     expect(queue.map((item) => item.id)).toEqual([
-      "refund",
       "regen",
+      "refund",
       "submitted",
       "delivered",
     ]);

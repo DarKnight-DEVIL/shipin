@@ -2,46 +2,45 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { getAdminAuthError, requireAdmin } from "@/lib/adminAuth";
+import { serializeFirestoreJson } from "@/lib/firestoreJson";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
-export interface AdminRequestData {
-  id: string;
-  userId: string;
-  customerName: string;
-  email: string;
-  status: string;
-  createdAt?: { seconds: number; nanoseconds: number };
-  updatedAt?: { seconds: number; nanoseconds: number };
-}
-
+/**
+ * Every request document, whole.
+ *
+ * This used to project seven fields (id, userId, customerName, email, status,
+ * createdAt, updatedAt) and the client cast the result `as unknown as
+ * Request[]`. Nothing type-checks across that boundary, so the missing fields
+ * showed up as blank screens instead of an error: the purchasing queue read
+ * `items` and `quote.breakdown.grandTotal`, the refund/quote filters read
+ * `refundRequest` and `quoteRegenerationRequested`, and the queue sort read
+ * `purchasedAt`. Returning the document intact is also no more expensive —
+ * `get()` already reads every document in full and Firestore bills reads, not
+ * bytes on the wire.
+ *
+ * What this route still needs is pagination: it reads the whole collection
+ * (see docs/AUDIT.md §2.3).
+ */
 async function handleGetRequests(request: NextRequest): Promise<NextResponse> {
   await requireAdmin(request);
 
   const snapshot = await adminDb.collection("requests").get();
 
-  // Serialize Firestore Timestamps to plain objects for JSON transport
-  const serializeTimestamp = (
-    val: unknown
-  ): { seconds: number; nanoseconds: number } | undefined => {
-    if (!val || typeof val !== "object") return undefined;
-    const ts = val as { seconds?: number; nanoseconds?: number };
-    if (typeof ts.seconds === "number") {
-      return { seconds: ts.seconds, nanoseconds: ts.nanoseconds ?? 0 };
-    }
-    return undefined;
-  };
+  const requests = snapshot.docs.map((doc) => {
+    const data = doc.data() as Record<string, unknown>;
+    const serialized = serializeFirestoreJson(data) as Record<string, unknown>;
 
-  const requests: AdminRequestData[] = snapshot.docs.map((doc) => {
-    const d = doc.data() as Record<string, unknown>;
     return {
+      ...serialized,
       id: doc.id,
-      userId: String(d.userId || ""),
-      customerName: String(d.customerName || ""),
-      email: String(d.email || ""),
-      status: String(d.status || ""),
-      createdAt: serializeTimestamp(d.createdAt),
-      updatedAt: serializeTimestamp(d.updatedAt),
+      // The queue renders these four directly, so a legacy row without them
+      // would print "undefined" in a table cell rather than nothing at all.
+      userId: typeof data.userId === "string" ? data.userId : "",
+      customerName:
+        typeof data.customerName === "string" ? data.customerName : "",
+      email: typeof data.email === "string" ? data.email : "",
+      status: typeof data.status === "string" ? data.status : "",
     };
   });
 

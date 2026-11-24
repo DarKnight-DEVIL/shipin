@@ -51,7 +51,7 @@ beforeEach(() => {
 });
 
 describe("GET /api/admin/requests", () => {
-  it("serializes timestamps and defaults missing fields", async () => {
+  it("returns the whole document, not a projection", async () => {
     mocks.get.mockResolvedValue({
       docs: [
         doc("req-1", {
@@ -59,8 +59,26 @@ describe("GET /api/admin/requests", () => {
           customerName: "Ada",
           email: "ada@example.com",
           status: "submitted",
-          createdAt: { seconds: 1700000000, nanoseconds: 500 },
-          updatedAt: { seconds: 1700000100 },
+          // What the Admin SDK hands back for a Firestore Timestamp.
+          createdAt: {
+            seconds: 1700000000,
+            nanoseconds: 500,
+            toDate: () => new Date(1700000000500),
+          },
+          // Already-serialized timestamps, as written by another route.
+          updatedAt: { seconds: 1700000100, nanoseconds: 0 },
+          // The fields the purchasing queue and the queue filters read. Each
+          // one used to be dropped here and arrived as `undefined`.
+          items: [{ name: "Toy car", quantity: 2 }],
+          quote: { breakdown: { grandTotal: 523.33 } },
+          refundRequest: { status: "requested" },
+          purchases: [
+            {
+              vendor: "Amazon",
+              purchasedAt: { seconds: 1700000200, nanoseconds: 0 },
+            },
+          ],
+          quoteRegenerationRequested: true,
         }),
         doc("req-2", {}),
         doc("req-3", {
@@ -84,24 +102,28 @@ describe("GET /api/admin/requests", () => {
         status: "submitted",
         createdAt: { seconds: 1700000000, nanoseconds: 500 },
         updatedAt: { seconds: 1700000100, nanoseconds: 0 },
+        items: [{ name: "Toy car", quantity: 2 }],
+        quote: { breakdown: { grandTotal: 523.33 } },
+        refundRequest: { status: "requested" },
+        purchases: [
+          {
+            vendor: "Amazon",
+            purchasedAt: { seconds: 1700000200, nanoseconds: 0 },
+          },
+        ],
+        quoteRegenerationRequested: true,
       },
-      {
-        id: "req-2",
-        userId: "",
-        customerName: "",
-        email: "",
-        status: "",
-        createdAt: undefined,
-        updatedAt: undefined,
-      },
+      { id: "req-2", userId: "", customerName: "", email: "", status: "" },
+      // Nothing here is a Timestamp, so nothing is rewritten: the route copies
+      // documents, it does not repair them.
       {
         id: "req-3",
         userId: "",
         customerName: "",
         email: "",
         status: "",
-        createdAt: undefined,
-        updatedAt: undefined,
+        createdAt: "not-a-timestamp",
+        updatedAt: { seconds: "soon" },
       },
     ]);
   });

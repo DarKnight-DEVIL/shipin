@@ -143,6 +143,26 @@ permission failure, just empty data. Return the whole document (once paginated) 
 the projection to the fields these screens use, and drop the `as unknown as` cast so the
 next mismatch is a compile error.
 
+**Fixed.** The route now returns each document whole
+(`src/lib/firestoreJson.ts` serializes Timestamps at any depth;
+`requestQueueClient.ts` restores them), and the client's single boundary assertion covers a
+payload that is no longer truncated. Three more silent failures fell out of the same
+projection while fixing it:
+
+- `getAdminRequestPriority` (`requestQueueClient.ts`) reads `refundRequest` and
+  `quoteRegenerationRequested`; both were always `undefined`, so the queue sorted as if no
+  request had ever asked for a refund or a re-quote.
+- `admin/purchasing/page.tsx:230-235` sorts the purchase history on
+  `request.purchasedAt`, which the projection dropped — the history was in arbitrary order.
+  (The fixture in `requestQueueClient.test.ts` asserted the wrong order, so the broken sort
+  was pinned by a test; it now asserts priority order.)
+- `matchesAdminRequestFilter` had the same blind spots, so the "refund requested" and
+  "quote requested" filters selected nothing.
+
+Pagination (§2.3) is still open: the route reads the whole collection. It is no more
+*reads* than before — `get()` already fetched every document — but the response body is now
+proportionally larger.
+
 ### 2.4 P1 — shipments break past 30 consolidation members
 
 `src/features/shipments/services/shipments.ts:133`:
@@ -299,8 +319,8 @@ allowlist gate has never run in CI.
 
 1. ~~§2.0 / §2.1 / §2.2~~ — **done**: the opt-out is honoured on the request path, the
    message names the real variable, and `test:e2e:local` runs green (30 passed).
-2. §2.3b — stop casting the truncated admin projection `as unknown as Request[]`; the
-   purchasing queue already renders no items and no quote total.
+2. ~~§2.3b~~ — **done**: the admin queue receives whole documents, with Timestamps
+   restored, so items, quotes, refund flags and the purchase-history sort work.
 3. §2.6 + §2.9 — delete the two landing implementations' dead half and the unused state
    layer, then reconcile the pricing copy with `PRICING` (this is a customer-facing promise,
    so it is a product decision, not a cleanup).
