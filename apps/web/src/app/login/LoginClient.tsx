@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Bricolage_Grotesque } from "next/font/google";
 import {
   GoogleAuthProvider,
+  initializeRecaptchaConfig,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
@@ -24,7 +25,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft, ArrowUpRight, Mail } from "lucide-react";
 import { toast } from "sonner";
 
-import { auth } from "@/lib/firebase";
+import { auth, getAppCheckToken } from "@/lib/firebase";
 import { verificationEmailOptions } from "@/lib/emailVerification";
 // The profile service is imported on demand below: it pulls in the Firestore
 // SDK, and the login page only needs it after a successful sign-in.
@@ -107,6 +108,18 @@ export default function LoginClient() {
   const [mfaError, setMfaError] = useState("");
 
   const requestedNext = searchParams.get("next");
+
+  // Warm up the slow parts of the sign-in path while the page is still
+  // interactive. App Check mints its token lazily on first use and Auth
+  // fetches the reCAPTCHA config before its first protected call; paying both
+  // at click time adds 2-3s to "Continue with Google", long enough that users
+  // click again. Minting here (auto-refresh then keeps it current) makes the
+  // click navigate in under a second. Best-effort: a failed warm-up only means
+  // the click pays the cost, as before.
+  useEffect(() => {
+    void getAppCheckToken();
+    void initializeRecaptchaConfig(auth).catch(() => {});
+  }, []);
 
   const safeRequestedNext =
     requestedNext?.startsWith("/") && !requestedNext.startsWith("//")

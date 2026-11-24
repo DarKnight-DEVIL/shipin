@@ -17,6 +17,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
+  initializeRecaptchaConfig: vi.fn(),
+  getAppCheckToken: vi.fn(),
   signInWithEmailAndPassword: vi.fn(),
   createUserWithEmailAndPassword: vi.fn(),
   sendEmailVerification: vi.fn(),
@@ -34,10 +36,13 @@ const h = vi.hoisted(() => ({
 
 vi.mock("@/lib/firebase", () => ({
   auth: { name: "test-auth" },
+  getAppCheckToken: (...args: unknown[]) => h.getAppCheckToken(...args),
 }));
 
 vi.mock("firebase/auth", () => ({
   GoogleAuthProvider: class GoogleAuthProvider {},
+  initializeRecaptchaConfig: (...args: unknown[]) =>
+    h.initializeRecaptchaConfig(...args),
   signInWithEmailAndPassword: (...args: unknown[]) =>
     h.signInWithEmailAndPassword(...args),
   createUserWithEmailAndPassword: (...args: unknown[]) =>
@@ -128,6 +133,8 @@ const gateResponse = (status: number, retryAfter?: string) => ({
 });
 
 beforeEach(() => {
+  h.initializeRecaptchaConfig.mockReset().mockResolvedValue(undefined);
+  h.getAppCheckToken.mockReset().mockResolvedValue(null);
   h.signInWithEmailAndPassword.mockReset();
   h.createUserWithEmailAndPassword.mockReset();
   h.sendEmailVerification.mockReset().mockResolvedValue(undefined);
@@ -488,6 +495,21 @@ describe("LoginClient: rate-limit gate", () => {
       expect(h.replace).toHaveBeenCalledWith("/verify-email")
     );
     expect(h.signInWithEmailAndPassword).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("LoginClient: sign-in warm-up", () => {
+  it("pre-mints the App Check token and reCAPTCHA config on mount", async () => {
+    // Both are lazy in the SDK; paying them at click time added 2-3s to
+    // "Continue with Google" — long enough for users to click again and trip
+    // the rate limiter. Warming them while the page is interactive makes the
+    // click navigate immediately.
+    render(<LoginClient />);
+
+    await waitFor(() => expect(h.getAppCheckToken).toHaveBeenCalledTimes(1));
+    expect(h.initializeRecaptchaConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "test-auth" })
+    );
   });
 });
 
