@@ -8,63 +8,30 @@ import {
   updateRightsRequest,
 } from "@/lib/compliance/rightsOps2";
 
-export const POST = withErrorHandler(async (request: NextRequest) => {
-  const auth = await requireAuthWithProfile(request);
-  if (auth instanceof NextResponse) return auth;
-
-  // Log the portability request
-  const requestId = await logRightsRequest({
-    userId: auth.profile.uid,
-    right: "portability",
-    details: "User requested data export",
-  });
-
-  return NextResponse.json(
-    {
-      success: true,
-      requestId,
-      message:
-        "Export request submitted. You will receive a download link when ready.",
-    },
-    { status: 202 }
-  );
-});
-
+/*
+ * Data portability export per DPDP Act Sec 11(2)/13 and GDPR Art 20.
+ *
+ * The export is produced immediately, in the request itself: an earlier
+ * revision recorded a rights request and answered "You will receive a
+ * download link when ready", but nothing in the repo ever generated or sent
+ * that link (docs/AUDIT.md §2.5). A promise the product cannot keep is worse
+ * than no promise, so `GET /api/user/export` now always returns the bundle as
+ * a downloadable JSON file.
+ */
 export const GET = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
-  // Check for existing completed export request
-  const { getUserRightsRequests } = await import("@/lib/compliance/rightsOps2");
-  const requests = await getUserRightsRequests(auth.profile.uid);
-  const exportRequests = requests.filter(
-    (r) => r.right === "portability" && r.status === "completed"
-  );
+  return buildExportResponse(auth.profile.uid);
+});
 
-  if (exportRequests.length > 0) {
-    const latest = exportRequests[0];
-    if (
-      latest.completedAt &&
-      new Date().getTime() - new Date(latest.completedAt).getTime() <
-        24 * 60 * 60 * 1000
-    ) {
-      // Return cached export if less than 24 hours old
-      return NextResponse.json({
-        success: true,
-        cached: true,
-        exportedAt: latest.completedAt,
-        message: "Recent export available. Generating new one...",
-      });
-    }
-  }
-
-  // Log new export request
+async function buildExportResponse(uid: string): Promise<NextResponse> {
+  // Log the portability request so the rights ledger shows it was exercised.
   const requestId = await logRightsRequest({
-    userId: auth.profile.uid,
+    userId: uid,
     right: "portability",
-    details: "User requested fresh data export",
+    details: "User requested data export",
   });
-  void requestId;
 
   try {
     // Collect all user data
@@ -78,34 +45,21 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
       consentLogsSnap,
       rightsReqsSnap,
     ] = await Promise.all([
-      adminDb.collection("users").doc(auth.profile.uid).get(),
-      adminDb
-        .collection("requests")
-        .where("userId", "==", auth.profile.uid)
-        .get(),
-      adminDb.collection("wallets").doc(auth.profile.uid).get(),
-      adminDb
-        .collection("users")
-        .doc(auth.profile.uid)
-        .collection("addresses")
-        .get(),
-      adminDb
-        .collection("notifications")
-        .where("userId", "==", auth.profile.uid)
-        .get(),
-      adminDb
-        .collection("supportTickets")
-        .where("customerId", "==", auth.profile.uid)
-        .get(),
+      adminDb.collection("users").doc(uid).get(),
+      adminDb.collection("requests").where("userId", "==", uid).get(),
+      adminDb.collection("wallets").doc(uid).get(),
+      adminDb.collection("users").doc(uid).collection("addresses").get(),
+      adminDb.collection("notifications").where("userId", "==", uid).get(),
+      adminDb.collection("supportTickets").where("customerId", "==", uid).get(),
       adminDb
         .collection("consentLogs")
-        .where("userId", "==", auth.profile.uid)
+        .where("userId", "==", uid)
         .orderBy("timestamp", "desc")
         .limit(100)
         .get(),
       adminDb
         .collection("rightsRequests")
-        .where("userId", "==", auth.profile.uid)
+        .where("userId", "==", uid)
         .orderBy("createdAt", "desc")
         .limit(50)
         .get(),
@@ -143,7 +97,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
       status: 200,
       headers: {
         "Content-Type": "application/json",
-        "Content-Disposition": `attachment; filename="shipin-data-${auth.profile.uid}-${Date.now()}.json"`,
+        "Content-Disposition": `attachment; filename="shipin-data-${uid}-${Date.now()}.json"`,
       },
     });
   } catch (error) {
@@ -164,4 +118,4 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
       { status: 500 }
     );
   }
-});
+}

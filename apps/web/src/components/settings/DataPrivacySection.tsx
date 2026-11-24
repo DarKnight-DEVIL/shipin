@@ -42,9 +42,10 @@ export default function DataPrivacySection() {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const payload = (await response.json().catch(() => null)) as
-        | { success?: boolean; error?: string }
-        | null;
+      const payload = (await response.json().catch(() => null)) as {
+        success?: boolean;
+        error?: string;
+      } | null;
 
       if (!response.ok || !payload?.success) {
         setError(
@@ -67,18 +68,15 @@ export default function DataPrivacySection() {
   }
 
   return (
-    <section
-      id="privacy"
-      className="rounded-2xl border border-red-900/40 bg-red-950/20 p-5"
-    >
+    <section className="rounded-2xl border border-red-900/40 bg-red-950/20 p-5">
       <h2 className="text-base font-semibold text-white">
         Delete my account and data
       </h2>
       <p className="mt-2 text-sm text-slate-300">
         This anonymises your profile and request records, deletes your sign-in
         account and cannot be undone. Requests that still have an open payment,
-        refund or shipment are blocked until they are settled, so nothing is lost
-        mid-transaction. See the{" "}
+        refund or shipment are blocked until they are settled, so nothing is
+        lost mid-transaction. See the{" "}
         <a
           href="/privacy-policy#your-rights"
           className="text-orange-300 underline hover:text-orange-200"
@@ -88,7 +86,10 @@ export default function DataPrivacySection() {
         of our Privacy Policy.
       </p>
 
-      <label className="mt-4 block text-sm text-slate-300" htmlFor="erase-confirm">
+      <label
+        className="mt-4 block text-sm text-slate-300"
+        htmlFor="erase-confirm"
+      >
         Type <strong>{CONFIRMATION}</strong> to confirm
       </label>
       <input

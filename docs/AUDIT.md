@@ -192,11 +192,28 @@ page, component, script or E2E spec (verified by scanning every non-API `.ts/.ts
 customer cannot exercise access, portability, consent or grievance rights from the product
 even though the code implements them.
 
-Worse, the portability promise has no fulfiller: `POST /api/user/export:15-25` records a
-rights request and answers "You will receive a download link when ready", but nothing in
-the repo generates or sends that link. `src/lib/compliance/portability.ts:16` — the module
-named for the obligation — returns
-`data: {} as Record<string, unknown>` with a comment saying the caller must implement it.
+**Fixed (customer rights).** A new `src/components/settings/DataRightsSection.tsx`,
+rendered at the top of the "Your data" settings section, wires the customer-facing rights:
+
+- **Access & portability** — a "Download my data" button calls `GET /api/user/export`,
+  which now produces the bundle immediately as a downloadable JSON file. The old flow
+  recorded a request and answered "You will receive a download link when ready" with
+  nothing in the repo to generate or send that link; `POST /api/user/export` and its
+  broken "cached" branch (which returned a promise instead of data) were removed.
+- **Consent** — toggles for every category in `PERSONAL_DATA_CATEGORIES`, backed by
+  `GET/POST /api/user/consent` (grants post `method: "explicit"`, withdrawals
+  `method: "withdrawn"`; every change lands in the consent log).
+- **Grievance** — a free-text form posting to `/api/user/grievance`, which logs the rights
+  request and answers with the 30-day response commitment.
+
+`src/lib/compliance/portability.ts` — the module named for the obligation whose exporter
+returned `data: {}` with a comment saying the caller must implement it — had no importers
+and was deleted; the obligation is fulfilled by the export route itself.
+
+Still unreachable from any UI: `/api/user/age-verification` (a signup-time parental-consent
+flow with OTP email, not a Settings concern), plus the admin/internal endpoints
+`/api/compliance/dashboard`, `/api/admin/wallet/balance` and
+`/api/admin/shipments/[shipmentId]`.
 
 ### 2.6 P2 — dead code: 2,534 LOC in 28 orphan modules, plus a whole state layer
 
@@ -358,7 +375,9 @@ allowlist gate has never run in CI.
 4. ~~§2.3 / §2.4~~ — **done**: the four admin list routes page via `?limit`/`?cursor`
    (`adminPagination.ts`), analytics projects and caches for 60 s, customers loads wallet
    balances in 30-value chunks, and `getShipmentRequests` chunks past the `in` cap.
-5. §2.5 — either wire the rights endpoints into Settings or delete the routes and the
-   promise in `POST /api/user/export`; a compliance endpoint nobody can call is worse than
-   none.
+5. ~~§2.5 (customer rights)~~ — **done**: access/portability, consent and grievance are
+   wired into a new "Your data rights" settings section; `GET /api/user/export` fulfils
+   exports immediately, the never-fulfilled `POST` and the placeholder
+   `portability.ts` module are gone. Age-verification and the admin/internal endpoints
+   remain unwired (see §2.5).
 6. §2.7 — adopt the 14 existing schemas in the routes they were written for.
