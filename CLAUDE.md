@@ -12,8 +12,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Storage**: Cloudflare R2 (uploaded via AWS SDK)
 - **Payments**: PayPal (client-side via PayPal SDK, backend verification)
 - **Email**: Firebase Admin SDK (server-side) + Resend (for customer emails)
-- **PDF Generation**: react-pdf/renderer and jspdf (client-side), firebase-admin-pdfkit (server-side)
-- **3D/Animations**: Spline (hero section), Framer Motion (page transitions), Motion
+- **PDF Generation**: react-pdf/renderer and jspdf (client-side)
+- **3D/Animations**: three.js (dashboard globe, dynamically imported), Framer Motion (page transitions), Motion
 - **UI Components**: Lucide React (icons), Sonner (toasts), yet-another-react-lightbox (gallery)
 - **Analytics**: Vercel Analytics + Speed Insights
 
@@ -216,9 +216,10 @@ PostCSS plugin wired up in `apps/web/postcss.config.mjs` (`@tailwindcss/postcss`
   sets, and `@theme inline { … }` mapping tokens (`--color-background`,
   `--font-sans`, …) onto the `--background` / `--font-geist-sans` variables defined
   in the same file.
-- `@source "../../../../packages/ui/src"` is required: shared workspace UI lives
-  outside this app, so Tailwind would otherwise never scan its classes.
 - Adding a design token means editing `globals.css`, not a config object.
+- There is no `@source` for workspace packages: `packages/config` is the only
+  remaining workspace (ui/shared/utils were removed in the §2.6 orphan
+  cleanup) and it ships no UI classes.
 
 ## Code Organization Principles
 

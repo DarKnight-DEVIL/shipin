@@ -1,4 +1,4 @@
-import { serverEnv } from "@/config/env";
+import { isProduction, serverEnv } from "@/config/env";
 import { childLogger } from "../../../lib/logger";
 
 import { createIndiaPostProvider } from "./indiaPostProvider";
@@ -26,6 +26,42 @@ function warnPlaceholderInUse(missing: string[]): void {
   childLogger({ service: "tracking" }).warn(
     `India Post is not configured (missing: ${missing.join(", ")}); customer tracking is serving the placeholder feed, not carrier data.`
   );
+}
+
+/**
+ * Configuration status of the carrier feed, shared by the startup warning and
+ * /api/health so both read one definition (the same split the rate-limit
+ * store uses). A missing configuration in production is a degraded
+ * deployment, not a fatal one: the tracking page keeps working and discloses
+ * the placeholder, but monitoring must see the gap.
+ */
+export interface IndiaPostStatus {
+  configured: boolean;
+  /** True only in production without the full credential set. */
+  degraded: boolean;
+}
+
+export function getIndiaPostStatus(): IndiaPostStatus {
+  const configured = isIndiaPostConfigured();
+  return { configured, degraded: isProduction && !configured };
+}
+
+/**
+ * Startup reporter for instrumentation.ts. Mirrors
+ * `reportRateLimitStoreStatus`: warn (never throw) so a human can fix the
+ * variables live, while /api/health reports `degraded` for monitoring.
+ */
+export function reportIndiaPostStatus(): IndiaPostStatus {
+  const status = getIndiaPostStatus();
+
+  if (status.degraded) {
+    childLogger({ service: "tracking" }).warn(
+      "[Tracking] INDIA_POST_TRACKING_URL / INDIA_POST_CLIENT_ID / INDIA_POST_CLIENT_SECRET are not fully set in production. " +
+        "Customer tracking is serving the placeholder feed; /api/health reports this as degraded."
+    );
+  }
+
+  return status;
 }
 
 export function getTrackingProvider(): TrackingProvider {

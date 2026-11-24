@@ -50,6 +50,7 @@ import {
   getRateLimitStoreStatus,
   RATE_LIMIT_ERROR_WINDOW_MS,
 } from "@/lib/redisRateLimiter";
+import { getIndiaPostStatus } from "@/features/shipments/carriers";
 
 export async function GET() {
   // One derivation, shared with the limiter that enforces the limits. The
@@ -81,6 +82,12 @@ export async function GET() {
   // Relative to this request, not to module load: a long-lived instance must
   // not keep reporting errors from hours ago as "recent".
   const cutoff = Date.now() - RATE_LIMIT_ERROR_WINDOW_MS;
+
+  // The carrier feed shares the rate-limit store's reporting contract: missing
+  // credentials in production keep the app serving (the tracking page
+  // discloses the placeholder) but mark the deployment degraded.
+  const { configured: indiaPostConfigured, degraded: trackingPlaceholder } =
+    getIndiaPostStatus();
 
   const limiters: Array<{ name: string; limiter: typeof webRateLimiter }> = [
     { name: "web", limiter: webRateLimiter },
@@ -114,7 +121,8 @@ export async function GET() {
   );
 
   const hasRecentErrors = redisErrors.some((e) => e.recentErrors > 0);
-  const degraded = missingSharedStore || hasRecentErrors || appCheckBroken;
+  const degraded =
+    missingSharedStore || hasRecentErrors || appCheckBroken || trackingPlaceholder;
   const status = degraded ? "degraded" : "healthy";
 
   return NextResponse.json(
@@ -154,10 +162,24 @@ export async function GET() {
             }
           : {}),
       },
+      tracking: {
+        configured: indiaPostConfigured,
+        status: indiaPostConfigured
+          ? "india-post"
+          : isProduction
+            ? "placeholder"
+            : "placeholder (development only)",
+      },
       ...(missingSharedStore
         ? {
             warning:
               "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are not set in production; rate limits are per-instance.",
+          }
+        : {}),
+      ...(trackingPlaceholder
+        ? {
+            trackingWarning:
+              "INDIA_POST_TRACKING_URL / INDIA_POST_CLIENT_ID / INDIA_POST_CLIENT_SECRET are not fully set in production; customer tracking serves the placeholder feed.",
           }
         : {}),
     },

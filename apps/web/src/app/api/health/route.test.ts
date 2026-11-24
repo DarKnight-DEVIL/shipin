@@ -15,6 +15,9 @@ const state = vi.hoisted(() => ({
   token: "",
   appCheckSiteKey: "",
   appCheckEnforcement: "",
+  indiaPostUrl: "",
+  indiaPostClientId: "",
+  indiaPostClientSecret: "",
   errors: { web: 0, api: 0, strict: 0, login: 0 } as Record<string, number>,
 }));
 
@@ -33,6 +36,15 @@ vi.mock("@/config/env", () => ({
     },
     get UPSTASH_REDIS_REST_TOKEN() {
       return state.token;
+    },
+    get INDIA_POST_TRACKING_URL() {
+      return state.indiaPostUrl;
+    },
+    get INDIA_POST_CLIENT_ID() {
+      return state.indiaPostClientId;
+    },
+    get INDIA_POST_CLIENT_SECRET() {
+      return state.indiaPostClientSecret;
     },
   },
 }));
@@ -142,6 +154,11 @@ describe("GET /api/health", () => {
     state.isProduction = true;
     state.url = "https://t.upstash.io";
     state.token = "tok";
+    // The carrier feed counts toward health too: a fully configured
+    // deployment must not read as degraded just because tracking is live.
+    state.indiaPostUrl = "https://tracking.example";
+    state.indiaPostClientId = "client";
+    state.indiaPostClientSecret = "secret";
 
     const response = await GET();
     const body = await response.json();
@@ -149,6 +166,29 @@ describe("GET /api/health", () => {
     expect(response.status).toBe(200);
     expect(body.status).toBe("healthy");
     expect(body.redis.status).toBe("connected");
+    expect(body.tracking).toEqual({ configured: true, status: "india-post" });
+  });
+
+  it("reports degraded when production tracking serves the placeholder feed", async () => {
+    state.isProduction = true;
+    state.url = "https://t.upstash.io";
+    state.token = "tok";
+    state.indiaPostUrl = "https://tracking.example";
+    // A partial credential set falls back to the placeholder feed: the app
+    // keeps serving, but the probe must say degraded so monitoring sees it.
+    state.indiaPostClientId = "";
+    state.indiaPostClientSecret = "";
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("degraded");
+    expect(body.tracking).toEqual({
+      configured: false,
+      status: "placeholder",
+    });
+    expect(body.trackingWarning).toMatch(/placeholder feed/);
   });
 
   it("reports degraded when the shared store URL is set but unusable", async () => {

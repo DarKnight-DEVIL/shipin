@@ -1,9 +1,5 @@
 @import "tailwindcss";
 
-/* Shared workspace UI lives outside this app; without this Tailwind would
-   never scan the classes those components use. */
-@source "../../../../packages/ui/src";
-
 /*
  * Make Tailwind's dark: utilities respond
  * to the .dark class added by next-themes.

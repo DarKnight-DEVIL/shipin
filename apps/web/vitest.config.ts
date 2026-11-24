@@ -46,11 +46,9 @@ export default defineConfig({
         "src/features/**/*.ts",
         "src/app/api/**/*.ts",
         "src/components/**/*.ts",
-        // Package-level source files
-        "packages/ui/src/**",
-        "packages/utils/src/**",
+        // The one remaining workspace package (ui/shared/utils were removed in
+        // the §2.6 orphan cleanup).
         "packages/config/src/**",
-        "packages/shared/src/**",
       ],
       exclude: [
         "src/app/api/**/route.test.ts", // test files are not production code

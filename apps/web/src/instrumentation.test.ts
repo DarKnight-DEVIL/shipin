@@ -15,6 +15,7 @@ const hooks = vi.hoisted(() => ({
   validate: vi.fn(),
   reportRateLimit: vi.fn(),
   reportAppCheck: vi.fn(),
+  reportIndiaPost: vi.fn(),
   assertRoutes: vi.fn(),
 }));
 
@@ -45,6 +46,13 @@ vi.mock("@/lib/appCheck", () => ({
   },
 }));
 
+// The carrier status reporter is imported dynamically (Node runtime only), so
+// it needs its own stub: the real module pulls in @/config/env's serverEnv,
+// which this file's env mock does not provide.
+vi.mock("@/features/shipments/carriers", () => ({
+  reportIndiaPostStatus: hooks.reportIndiaPost,
+}));
+
 // The real module walks src/app/api on disk; the boot behaviour under test is
 // what register() does with its verdict, not the walk itself (which
 // routeClassification.test.ts covers against the real tree).
@@ -58,6 +66,7 @@ beforeEach(() => {
   hooks.validate.mockReset();
   hooks.reportRateLimit.mockReset();
   hooks.reportAppCheck.mockReset();
+  hooks.reportIndiaPost.mockReset();
   hooks.assertRoutes.mockReset();
   hooks.assertRoutes.mockReturnValue({ checked: 75 });
 });
@@ -70,6 +79,7 @@ describe("register", () => {
     expect(hooks.assertRoutes).toHaveBeenCalledTimes(1);
     expect(hooks.reportRateLimit).toHaveBeenCalledTimes(1);
     expect(hooks.reportAppCheck).toHaveBeenCalledTimes(1);
+    expect(hooks.reportIndiaPost).toHaveBeenCalledTimes(1);
 
     // Order matters: a missing required variable is a boot failure, so it must
     // raise before the warning-only reporters run.
