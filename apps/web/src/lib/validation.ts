@@ -384,6 +384,27 @@ export const adminUserRoleBodySchema = z.object({
 });
 
 /**
+ * POST /api/requests/[id]/additional-items — the customer asks the team to
+ * source an extra item for an already-paid request.
+ */
+export const additionalItemRequestBodySchema = z.object({
+  name: z
+    .string({ error: "Product name is required." })
+    .trim()
+    .min(1, "Product name is required.")
+    .max(200, "Product name is too long (max 200 characters)."),
+  url: z
+    .url({ error: "Product URL must be a valid URL." })
+    .trim()
+    .max(2048, "Product URL is too long."),
+  quantity: z
+    .number({ error: "Quantity must be a whole number between 1 and 99." })
+    .int("Quantity must be a whole number between 1 and 99.")
+    .min(1, "Quantity must be at least 1.")
+    .max(99, "Quantity must be at most 99."),
+});
+
+/**
  * PATCH /api/admin/requests/[id]/additional-items.
  *
  * The additional-item records are written back wholesale, so their inner shape

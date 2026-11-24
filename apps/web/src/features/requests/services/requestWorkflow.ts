@@ -82,6 +82,19 @@ export const REQUOTABLE_STATUSES: readonly RequestStatus[] = [
   REQUEST_STATUS.awaiting_payment,
 ] as const;
 
+/**
+ * Statuses where the customer may still ask for an additional item — after
+ * payment, before the parcel leaves the warehouse. Mirrors the gate the
+ * `AddItemRequest` dialog enforces client-side; the API re-checks it.
+ */
+export const ADDITIONAL_ITEM_STATUSES: readonly RequestStatus[] = [
+  REQUEST_STATUS.paid,
+  REQUEST_STATUS.purchased,
+  REQUEST_STATUS.warehouse_received,
+  REQUEST_STATUS.ready_for_international_shipping,
+  REQUEST_STATUS.packed,
+] as const;
+
 export function isOneOf(
   value: string | undefined,
   allowed: readonly RequestStatus[]

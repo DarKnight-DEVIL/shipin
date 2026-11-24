@@ -215,7 +215,7 @@ flow with OTP email, not a Settings concern), plus the admin/internal endpoints
 `/api/compliance/dashboard`, `/api/admin/wallet/balance` and
 `/api/admin/shipments/[shipmentId]`.
 
-### 2.6 P2 — dead code: 2,534 LOC in 28 orphan modules, plus a whole state layer
+### 2.6 P2 — ~~dead code: 2,534 LOC in 28 orphan modules, plus a whole state layer~~ **done**
 
 Scanned every source file for importers (excluding its own test):
 
@@ -234,12 +234,40 @@ Scanned every source file for importers (excluding its own test):
   imports `zustand`, so the dependency (`apps/web/package.json:86`) exists solely for dead
   code.
 
-**Fixed (partly).** Deleted: the whole second landing implementation
+**Fixed.** Deleted: the whole second landing implementation
 (`src/components/landing/*`, 19 files), `src/config/landing.ts` (only the dead components
-imported it), `src/stores/index.ts` and the `zustand` dependency. The remaining orphans
-(checkout, request, admin-dashboard, globe-dashboard components, `firebaseLazy.ts`,
-`env-requirements.ts`) are still open, as are the workspace packages, the unused schemas
-and the `POST` stub.
+imported it), `src/stores/index.ts` and the `zustand` dependency. Deleted in the follow-up
+orphan pass: the dead checkout components (`OrderSummary`, `CostBreakdown`,
+`CheckoutHeader`, `HelpCard`), the dead request components (`TrackingCard`,
+`RequestProgress`, `PackingPhotos`), `admin/dashboard/KPICard.tsx`, the duplicate
+globe-dashboard panels (`LocationsPanel`, `MotionToggle` — `GlobeDashboard.tsx` declares
+its own), `lib/firebaseLazy.ts` (its docstring claimed `LandingShell` imports it; it
+imports `firebase/auth` directly) and `config/env/env-requirements.ts` (a stale third
+copy of the required-env lists that nothing imported — `index.ts` and `production.ts`
+have their own, by design, and `entrypoint.test.ts` keeps `production.ts` import-free).
+
+The three unconsumed workspace packages (`@shipin/ui`, `@shipin/shared`, `@shipin/utils`)
+are gone: no app file imported them, they imported nothing of the app, and only
+`@shipin/web` is referenced by scripts and CI. `@shipin/config` stays (used for
+`SITE_CONFIG`). `transpilePackages`, `apps/web/package.json` and the lockfile were
+updated to match.
+
+`/api/tracking/[trackingId]` no longer exports the always-501 `POST` stub.
+
+The orphan scan also surfaced a live bug: the additional-item feature was wired to a
+route that did not exist. `ProductsPanel` PATCHed `/api/requests/[id]/additional-items`
+(the admin route lives under `/api/admin/requests/...`) and the customer's
+`AddItemRequest` dialog POSTed the same nonexistent path — every add-item action 404ed.
+Fixed: the admin panel now calls the real admin route, and a new owner-only
+`POST /api/requests/[requestId]/additional-items` replaces the never-called client-side
+Firestore write (`addAdditionalItemRequest`, deleted with its tests) and appends the
+pending item in the nested shape the admin panel reads. The admin
+`/api/admin/shipments/[shipmentId]` PATCH is deliberately kept despite having no UI
+caller: it is the only write path for courier and dimension corrections on a shipment,
+is fully gated and schema-validated, and is the endpoint an ops tool or future admin
+screen would use.
+
+The 14 unused schemas were adopted by the routes in §2.7.
 - **Three of four workspace packages have no consumers.** `@shipin/config` is imported
   once (`SITE_CONFIG`); `@shipin/ui`, `@shipin/shared` and `@shipin/utils` are built,
   tested and listed in `transpilePackages`, and no app file imports them.
@@ -378,3 +406,7 @@ allowlist gate has never run in CI.
    (`407b1c0`).
 7. ~~§2.8 — the WhatsApp test endpoint's weak gate~~ — **done**: it now passes
    `requireAdmin` like every other admin route (`e11f958`).
+8. ~~§2.6 — the remaining orphans~~ — **done**: dead components, `firebaseLazy.ts`,
+   `env-requirements.ts`, the three unconsumed workspace packages and the tracking
+   `POST` stub are deleted; the additional-item clients now reach real routes (a new
+   owner-only customer `POST` replaces the dead client-side write).

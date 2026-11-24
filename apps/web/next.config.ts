@@ -31,12 +31,7 @@ const nextConfig: NextConfig = {
   // Next has to compile them as part of the app graph.
   // firebase-admin/jose/jwks-rsa are NOT transpiled — they are server-only.
   // Each file that imports them must have `import 'server-only'` at the top.
-  transpilePackages: [
-    "@shipin/config",
-    "@shipin/shared",
-    "@shipin/ui",
-    "@shipin/utils",
-  ],
+  transpilePackages: ["@shipin/config"],
   images: {
     // AVIF first, WebP next: both are far smaller than the source JPEG/PNG for
     // the same visual quality, which is an LCP win on the photo-heavy request

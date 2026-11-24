@@ -14,7 +14,7 @@ vi.mock("@/features/shipments/services/trackingSync", () => ({
 }));
 
 import { CarrierRequestError } from "@/features/shipments/carriers";
-import { GET, POST } from "./route";
+import { GET } from "./route";
 
 const context = (trackingId: string) => ({ params: { trackingId } });
 
@@ -113,15 +113,5 @@ describe("GET /api/tracking/:trackingId", () => {
 
     expect(response.status).toBe(502);
     expect(body.code).toBe("TRACKING_UPSTREAM_ERROR");
-  });
-});
-
-describe("POST /api/tracking/:trackingId", () => {
-  it("is not implemented yet", async () => {
-    const response = await POST(
-      new NextRequest("http://localhost/api/tracking/SHP-1", { method: "POST" })
-    );
-
-    expect(response.status).toBe(501);
   });
 });

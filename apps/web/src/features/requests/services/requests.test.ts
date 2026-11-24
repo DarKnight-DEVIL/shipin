@@ -35,7 +35,6 @@ vi.mock("firebase/firestore", () => ({
 vi.mock("@/lib/firebaseDb", () => ({ db: {} }));
 
 import {
-  addAdditionalItemRequest,
   approveAdditionalItem,
   createRequest,
   getRequestById,
@@ -268,68 +267,6 @@ describe("subscriptions", () => {
     subscribeToRequest("req-1", () => {}, onError);
 
     expect(emitError()).toBe(onError);
-  });
-});
-
-describe("addAdditionalItemRequest", () => {
-  const item = { name: "Cable", url: "https://shop/cable", quantity: 2 };
-
-  it("appends the item and starts an order change", async () => {
-    mocks.getDoc.mockResolvedValue(
-      docSnapshot({ status: "warehouse_received", additionalItemRequests: [] })
-    );
-
-    await addAdditionalItemRequest("req-1", item);
-
-    const update = mocks.updateDoc.mock.calls[0][1];
-    expect(update.additionalItemRequests).toEqual([
-      {
-        id: "uuid-1",
-        name: "Cable",
-        url: "https://shop/cable",
-        quantity: 2,
-        status: "pending",
-        repackingFee: 0,
-        storageFee: 0,
-        amountPaid: 0,
-        orderChangeHold: true,
-        requestedAt: "__SERVER_TS__",
-      },
-    ]);
-    expect(update.orderChange).toMatchObject({
-      active: true,
-      requiresRepacking: false,
-      repackingFee: 0,
-    });
-  });
-
-  it("charges repacking for an already packed order", async () => {
-    mocks.getDoc.mockResolvedValue(docSnapshot({ status: "packed" }));
-
-    await addAdditionalItemRequest("req-1", item);
-
-    expect(mocks.updateDoc.mock.calls[0][1].orderChange).toMatchObject({
-      requiresRepacking: true,
-      repackingFee: 2,
-    });
-  });
-
-  it("copes with a missing request document", async () => {
-    mocks.getDoc.mockResolvedValue(docSnapshot(undefined));
-
-    await addAdditionalItemRequest("req-1", item);
-
-    expect(
-      mocks.updateDoc.mock.calls[0][1].additionalItemRequests
-    ).toHaveLength(1);
-  });
-
-  it("wraps failures", async () => {
-    mocks.updateDoc.mockRejectedValue(new Error("offline"));
-
-    await expect(
-      addAdditionalItemRequest("req-1", item)
-    ).rejects.toBeInstanceOf(Error);
   });
 });
 

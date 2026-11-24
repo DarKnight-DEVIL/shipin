@@ -116,6 +116,7 @@ clients branch on it rather than on the status alone.
 | `/api/r2/upload` | customer |
 | `/api/r2/view` | customer |
 | `/api/requests/[requestId]/approve-quote` | customer |
+| `/api/requests/[requestId]/additional-items` | customer |
 | `/api/requests/[requestId]/quote` | customer |
 | `/api/requests/[requestId]/request-new-quote` | customer |
 | `/api/requests/[requestId]/shipment-status` | customer |

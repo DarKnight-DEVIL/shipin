@@ -251,51 +251,6 @@ export function subscribeToRequest(
   );
 }
 
-export async function addAdditionalItemRequest(
-  requestId: string,
-  item: { name: string; url: string; quantity: number }
-): Promise<void> {
-  try {
-    const requestRef = doc(db, "requests", requestId);
-    const snapshot = await getDoc(requestRef);
-    const latestRequest = snapshot.exists()
-      ? (snapshot.data() as Request)
-      : ({ ...EMPTY_REQUEST, id: "" } as Request);
-
-    const newItemId = crypto.randomUUID();
-    const newItem = {
-      id: newItemId,
-      name: item.name,
-      url: item.url,
-      quantity: item.quantity,
-      status: "pending" as const,
-      repackingFee: 0,
-      storageFee: 0,
-      amountPaid: 0,
-      orderChangeHold: true,
-      requestedAt: serverTimestamp(),
-    };
-
-    await updateDoc(requestRef, {
-      additionalItemRequests: [
-        ...(latestRequest.additionalItemRequests || []),
-        newItem,
-      ],
-      orderChange: {
-        active: true,
-        requiresRepacking: latestRequest.status === "packed",
-        repackingFee: latestRequest.status === "packed" ? 2 : 0,
-        storageFee: 0,
-        storageFeeApplied: false,
-        startedAt: serverTimestamp(),
-      },
-      updatedAt: serverTimestamp(),
-    });
-  } catch (error) {
-    throw toShipINError(error);
-  }
-}
-
 export async function approveAdditionalItem(
   requestId: string,
   additionalItemId: string,

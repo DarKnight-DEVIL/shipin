@@ -71,7 +71,3 @@ export const GET = withErrorHandler(
     }
   }
 );
-
-export const POST = withErrorHandler(async (_req: NextRequest) => {
-  return NextResponse.json({ error: "not implemented" }, { status: 501 });
-});

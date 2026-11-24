@@ -11,8 +11,9 @@
   // project would drown in false unresolved-import errors.
   //
   // The project-wide check is `npm run typecheck` → `turbo run typecheck`,
-  // which runs `tsc --noEmit` in all five workspaces (verified: config, shared,
-  // UI, utils, web). CI runs exactly that. A bare root `tsc` now fails with
+  // which runs `tsc --noEmit` in the two remaining workspaces (config, web);
+  // the unused ui/shared/utils packages were removed in the §2.6 orphan
+  // cleanup. CI runs exactly that. A bare root `tsc` now fails with
   // TS18002 ("The 'files' list in config file is empty") instead of reporting a
   // partial pass.
   "files": [],
