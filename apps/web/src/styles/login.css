@@ -1,5 +1,7 @@
 /* ShipIN login: split-screen with a sign-in card. Brand panel on the left,
-   card on the right — Google first, divider, then email/password. */
+   card on the right — Google first, divider, then email/password. Layout
+   follows the reference mockup; the theme (dark palette, orange accent)
+   is the app's own. */
 .login {
   --fg: #f6f0e6;
   --fg-soft: #9a9284;
