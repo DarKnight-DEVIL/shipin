@@ -133,7 +133,7 @@ export default function LoginClient() {
     // sequence changed several times in quick succession; a stale cached tab
     // silently keeps the old behaviour, and this line makes that visible in
     // the browser console instead of guessable.
-    console.info("[ShipIN] login flow: popup-only v2 (loader after account pick)");
+    console.warn("[ShipIN] login flow: popup-only v2 (loader after account pick)");
     void getAppCheckToken();
     void initializeRecaptchaConfig(auth).catch(() => {});
     // The warm-up handlers only touch module-level Firebase singletons, so
@@ -188,6 +188,7 @@ export default function LoginClient() {
     }
 
     toast.success(`Welcome${user.displayName ? `, ${user.displayName}` : ""}!`);
+    console.warn("[ShipIN] google: routing to", destination);
     router.replace(destination);
     router.refresh();
   }
@@ -259,12 +260,15 @@ export default function LoginClient() {
     // chooser → loader → dashboard is the order users expect. Until then the
     // button's own spinner is the feedback.
     setLoading(true);
+    console.warn("[ShipIN] google: opening popup chooser");
     try {
       const result = await signInWithPopup(auth, new GoogleAuthProvider());
+      console.warn("[ShipIN] google: popup resolved — showing loader, finishing sign-in");
       setGooglePending(true);
       await finishSignIn(result.user);
     } catch (error) {
       const code = (error as { code?: string })?.code;
+      console.warn("[ShipIN] google: popup flow rejected with", code ?? error);
 
       // Closing the chooser, or a second click superseding the first, is the
       // user changing their mind — not a failure to apologise for.
@@ -272,6 +276,7 @@ export default function LoginClient() {
         code === "auth/popup-closed-by-user" ||
         code === "auth/cancelled-popup-request"
       ) {
+        console.warn("[ShipIN] google: treated as intentional cancellation");
         setLoading(false);
         setGooglePending(false);
         return;
@@ -283,6 +288,7 @@ export default function LoginClient() {
       // Google, and the return must render the interstitial instead of
       // flashing the login form back.
       if (code === "auth/popup-blocked") {
+        console.warn("[ShipIN] google: popup blocked — switching to redirect fallback");
         markAuthRedirectPending();
         setGooglePending(true);
         try {
