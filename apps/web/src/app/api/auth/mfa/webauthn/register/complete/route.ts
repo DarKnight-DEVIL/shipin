@@ -9,6 +9,10 @@ import {
   type WebAuthnRecord,
 } from "@/lib/webauthn";
 import { withErrorHandler } from "@/utils/errors";
+import {
+  readAndValidateBody,
+  webauthnRegisterBodySchema,
+} from "@/lib/validation";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -22,13 +26,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
-  const body = await request.json();
-  const { credential, credentialName } = body as {
-    credential?: unknown;
-    credentialName?: string;
-  };
+  const parsed = await readAndValidateBody(request, webauthnRegisterBodySchema);
 
-  if (!credential || typeof credential !== "object") {
+  if (!parsed.success) {
     return NextResponse.json(
       {
         success: false,
@@ -38,6 +38,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       { status: 400, headers: NO_STORE }
     );
   }
+
+  const { credential, credentialName } = parsed.data;
 
   const userSnapshot = await adminDb
     .collection("users")

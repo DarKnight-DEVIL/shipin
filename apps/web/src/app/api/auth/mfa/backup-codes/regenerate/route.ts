@@ -5,6 +5,10 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { generateBackupCodes, hashBackupCode, verifyTotp } from "@/lib/mfa";
+import {
+  readAndValidateBody,
+  regenerateBackupCodesBodySchema,
+} from "@/lib/validation";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -18,10 +22,12 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
-  const body = await request.json();
-  const { totpCode } = body as { totpCode?: unknown };
+  const parsed = await readAndValidateBody(
+    request,
+    regenerateBackupCodesBodySchema
+  );
 
-  if (typeof totpCode !== "string" || totpCode.length !== 6) {
+  if (!parsed.success) {
     return NextResponse.json(
       {
         success: false,
@@ -31,6 +37,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       { status: 400, headers: NO_STORE }
     );
   }
+
+  const { totpCode } = parsed.data;
 
   const userSnapshot = await adminDb
     .collection("users")

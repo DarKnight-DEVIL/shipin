@@ -5,6 +5,7 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { withErrorHandler } from "@/utils/errors";
 import { requireAdmin, getAdminAuthError } from "@/lib/adminAuth";
 import { recordAdminAudit } from "@/lib/adminAudit";
+import { readAndValidateBody, refundOfferBodySchema } from "@/lib/validation";
 
 export const POST = withErrorHandler(
   async (
@@ -36,11 +37,9 @@ export const POST = withErrorHandler(
 
       const request = snapshot.data();
 
-      const body = await req.json();
+      const parsed = await readAndValidateBody(req, refundOfferBodySchema);
 
-      const reason = typeof body.reason === "string" ? body.reason.trim() : "";
-
-      if (!reason) {
+      if (!parsed.success) {
         return NextResponse.json(
           {
             success: false,
@@ -49,6 +48,8 @@ export const POST = withErrorHandler(
           { status: 400 }
         );
       }
+
+      const reason = parsed.data.reason;
 
       if (request?.status !== "purchased") {
         return NextResponse.json(

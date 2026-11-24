@@ -2,64 +2,34 @@ import { NextRequest, NextResponse } from "next/server";
 import { withErrorHandler } from "@/utils/errors";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { logRightsRequest } from "@/lib/compliance/rightsOps2";
+import { grievanceBodySchema, readAndValidateBody } from "@/lib/validation";
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { success: false, error: "Invalid JSON body.", code: "INVALID_JSON" },
-      { status: 400 }
-    );
-  }
+  const parsed = await readAndValidateBody(request, grievanceBodySchema);
 
-  const right = (body as Record<string, unknown>)?.right;
-  const details = (body as Record<string, unknown>)?.details;
-
-  if (!right || typeof right !== "string") {
+  if (!parsed.success) {
     return NextResponse.json(
       {
         success: false,
-        error: "Right type is required.",
+        error:
+          parsed.reason === "parse"
+            ? "Invalid JSON body."
+            : "Invalid request body.",
         code: "VALIDATION_ERROR",
       },
       { status: 400 }
     );
   }
 
-  const validRights = [
-    "access",
-    "correction",
-    "erasure",
-    "portability",
-    "grievance",
-    "nominee",
-  ];
-  if (!validRights.includes(right)) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Invalid right type.",
-        code: "VALIDATION_ERROR",
-      },
-      { status: 400 }
-    );
-  }
+  const { right, details } = parsed.data;
 
   const requestId = await logRightsRequest({
     userId: auth.profile.uid,
-    right: right as
-      | "access"
-      | "correction"
-      | "erasure"
-      | "portability"
-      | "grievance"
-      | "nominee",
-    details: typeof details === "string" ? details : undefined,
+    right,
+    details,
   });
 
   return NextResponse.json(

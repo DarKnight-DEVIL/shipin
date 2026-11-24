@@ -4,6 +4,10 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { requireAdmin, getAdminAuthError } from "@/lib/adminAuth";
 import { withErrorHandler } from "@/utils/errors";
+import {
+  readAndValidateBody,
+  shipmentUpdateBodySchema,
+} from "@/lib/validation";
 
 /**
  * PATCH /api/admin/shipments/[shipmentId]
@@ -14,15 +18,6 @@ import { withErrorHandler } from "@/utils/errors";
  * Only the fields present in the body are written, so a partial edit cannot
  * blank out values the client did not send.
  */
-
-type ShipmentUpdate = {
-  courier?: string;
-  tracking?: string;
-  weight?: number;
-  length?: number;
-  width?: number;
-  height?: number;
-};
 
 function readDimension(value: unknown): number | undefined {
   if (value === undefined || value === null || value === "") return undefined;
@@ -62,29 +57,30 @@ export const PATCH = withErrorHandler(
         );
       }
 
-      let body: unknown;
+      const parsed = await readAndValidateBody(
+        request,
+        shipmentUpdateBodySchema
+      );
 
-      try {
-        body = await request.json();
-      } catch {
+      if (!parsed.success) {
         return NextResponse.json(
           { success: false, error: "Invalid request body." },
           { status: 400 }
         );
       }
 
-      const payload = (body ?? {}) as ShipmentUpdate;
+      const payload = parsed.data;
 
       const update: Record<string, unknown> = {
         updatedAt: FieldValue.serverTimestamp(),
       };
 
-      if (typeof payload.courier === "string") {
-        update.courier = payload.courier.trim();
+      if (payload.courier !== undefined) {
+        update.courier = payload.courier;
       }
 
-      if (typeof payload.tracking === "string") {
-        update.tracking = payload.tracking.trim();
+      if (payload.tracking !== undefined) {
+        update.tracking = payload.tracking;
       }
 
       try {

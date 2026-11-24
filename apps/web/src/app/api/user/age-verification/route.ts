@@ -7,94 +7,57 @@ import {
   hasParentalConsent,
   enforceAgeGate,
 } from "@/lib/compliance/ageOps";
+import {
+  ageVerificationBodySchema,
+  readAndValidateBody,
+} from "@/lib/validation";
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
+  const parsed = await readAndValidateBody(request, ageVerificationBodySchema);
+
+  if (!parsed.success) {
     return NextResponse.json(
-      { success: false, error: "Invalid JSON body.", code: "INVALID_JSON" },
+      {
+        success: false,
+        error:
+          parsed.reason === "parse"
+            ? "Invalid JSON body."
+            : "Invalid request body.",
+        code: "VALIDATION_ERROR",
+      },
       { status: 400 }
     );
   }
 
-  const action = (body as Record<string, unknown>)?.action;
+  const body = parsed.data;
 
-  if (action === "request") {
-    const { parentEmail, method } = body as Record<string, unknown>;
-
-    if (!parentEmail || typeof parentEmail !== "string") {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Parent email required.",
-          code: "VALIDATION_ERROR",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (
-      !method ||
-      !["otp", "digital_signature", "video_kyc", "aadhaar"].includes(
-        method as string
-      )
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Valid method required (otp/digital_signature/video_kyc/aadhaar).",
-          code: "VALIDATION_ERROR",
-        },
-        { status: 400 }
-      );
-    }
+  if (body.action === "request") {
+    const { parentEmail, method } = body;
 
     const result = await verifyParentalConsent({
       childUid: auth.profile.uid,
-      parentEmail: parentEmail as string,
-      consentMethod: method as
-        "otp" | "digital_signature" | "video_kyc" | "aadhaar",
+      parentEmail,
+      consentMethod: method,
     });
 
     return NextResponse.json(result);
   }
 
-  if (action === "verify-otp") {
-    const { consentId, otp } = body as Record<string, unknown>;
-
-    if (!consentId || typeof consentId !== "string") {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Consent ID required.",
-          code: "VALIDATION_ERROR",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (!otp || typeof otp !== "string") {
-      return NextResponse.json(
-        { success: false, error: "OTP required.", code: "VALIDATION_ERROR" },
-        { status: 400 }
-      );
-    }
+  if (body.action === "verify-otp") {
+    const { consentId, otp } = body;
 
     const result = await verifyParentalConsentOTP({
-      consentId: consentId as string,
-      otp: otp as string,
+      consentId,
+      otp,
     });
 
     return NextResponse.json(result);
   }
 
-  if (action === "check") {
+  if (body.action === "check") {
     // Check if user needs parental consent
     const gate = await enforceAgeGate(auth.profile.uid);
     return NextResponse.json(gate);

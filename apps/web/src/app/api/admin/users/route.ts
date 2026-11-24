@@ -9,6 +9,7 @@ import {
   toAdminPage,
 } from "@/lib/adminPagination";
 import { childLogger } from "../../../../lib/logger";
+import { adminUserRoleBodySchema, readAndValidateBody } from "@/lib/validation";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -115,11 +116,9 @@ async function handleGet(request: NextRequest): Promise<NextResponse> {
 async function handlePatch(request: NextRequest): Promise<NextResponse> {
   const admin = await requireAdmin(request);
 
-  let body: unknown;
+  const parsed = await readAndValidateBody(request, adminUserRoleBodySchema);
 
-  try {
-    body = await request.json();
-  } catch {
+  if (!parsed.success) {
     return NextResponse.json(
       {
         success: false,
@@ -130,29 +129,7 @@ async function handlePatch(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const { uid, role } = (body ?? {}) as { uid?: unknown; role?: unknown };
-
-  if (typeof uid !== "string" || !uid) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "A user id is required.",
-        code: "INVALID_REQUEST_BODY",
-      },
-      { status: 400, headers: NO_STORE }
-    );
-  }
-
-  if (typeof role !== "string" || !ROLES.includes(role as AssignableRole)) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Role must be 'admin' or 'customer'.",
-        code: "INVALID_ROLE",
-      },
-      { status: 400, headers: NO_STORE }
-    );
-  }
+  const { uid, role } = parsed.data;
 
   if (uid === admin.uid) {
     return NextResponse.json(

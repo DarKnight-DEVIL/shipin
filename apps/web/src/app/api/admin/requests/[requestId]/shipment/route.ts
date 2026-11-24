@@ -9,6 +9,7 @@ import { sendNotification } from "@/features/notifications/services/notification
 import { WHATSAPP_TEMPLATES } from "@/features/notifications/templates";
 import type { NotificationCategory } from "@/features/notifications/services/notificationService";
 import { withErrorHandler } from "@/utils/errors";
+import { readAndValidateBody, shipmentBodySchema } from "@/lib/validation";
 
 interface RouteContext {
   params: Promise<{
@@ -54,7 +55,17 @@ export const POST = withErrorHandler(
 
     const { requestId } = await context.params;
 
-    const body = await request.json();
+    const parsed = await readAndValidateBody(request, shipmentBodySchema);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Request ID, carrier, and tracking number are required.",
+        },
+        { status: 400 }
+      );
+    }
 
     const {
       internalTrackingId,
@@ -63,9 +74,9 @@ export const POST = withErrorHandler(
       estimatedDelivery,
       trackingUrl,
       createdAt,
-    } = body;
+    } = parsed.data;
 
-    if (!requestId || !carrier || !trackingNumber) {
+    if (!requestId) {
       return NextResponse.json(
         {
           success: false,

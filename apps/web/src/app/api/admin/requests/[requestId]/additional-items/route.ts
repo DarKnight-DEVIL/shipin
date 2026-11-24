@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { requireAdmin } from "@/lib/adminAuth";
 import { withErrorHandler } from "@/utils/errors";
+import {
+  additionalItemsBodySchema,
+  readAndValidateBody,
+} from "@/lib/validation";
 
 export const PATCH = withErrorHandler(
   async (
@@ -21,8 +25,15 @@ export const PATCH = withErrorHandler(
         );
       }
 
-      const body = await req.json();
-      const { additionalItemRequests, status } = body;
+      const parsed = await readAndValidateBody(req, additionalItemsBodySchema);
+      if (!parsed.success) {
+        return NextResponse.json(
+          { success: false, error: parsed.error },
+          { status: 400 }
+        );
+      }
+
+      const { additionalItemRequests, status } = parsed.data;
 
       const requestRef = adminDb.collection("requests").doc(requestId);
       const snapshot = await requestRef.get();

@@ -7,6 +7,10 @@ import { requireAuthWithProfile } from "@/lib/auth";
 
 import { sendNotification } from "@/features/notifications/services/notificationService";
 import { WHATSAPP_TEMPLATES } from "@/features/notifications/templates";
+import {
+  readAndValidateBody,
+  supportMessageBodySchema,
+} from "@/lib/validation";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -24,23 +28,28 @@ export const POST = withErrorHandler(
 
     const { ticketId } = await context.params;
 
-    const body = (await request.json()) as {
-      sender?: unknown;
-      message?: unknown;
-    };
+    const parsed = await readAndValidateBody(request, supportMessageBodySchema);
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Ticket ID, sender and message are required.",
+          code: "INVALID_REQUEST_BODY",
+        },
+        {
+          status: 400,
+          headers: NO_STORE,
+        }
+      );
+    }
 
-    const sender =
-      body.sender === "admin"
-        ? "admin"
-        : body.sender === "customer"
-          ? "customer"
-          : "";
+    const { sender, message } = parsed.data;
 
-    // Trim once to preserve intentional internal whitespace while rejecting empty content.
-    const rawMessage =
-      typeof body.message === "string" ? body.message.trim() : "";
+    // Trim once to preserve intentional internal whitespace while rejecting
+    // empty content.
+    const rawMessage = message.trim();
 
-    if (!ticketId || !sender || !rawMessage) {
+    if (!ticketId || !rawMessage) {
       return NextResponse.json(
         {
           success: false,

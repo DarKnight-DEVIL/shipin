@@ -28,7 +28,7 @@ describe("POST /api/auth/password-leak-check", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      code: "INVALID_JSON",
+      code: "INVALID_REQUEST_BODY",
     });
   });
 

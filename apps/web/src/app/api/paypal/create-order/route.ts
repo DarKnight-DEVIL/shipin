@@ -26,9 +26,9 @@ import { PAYPAL_FIXED_FEE, PAYPAL_PERCENTAGE } from "@/config/constants";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { roundMoney, sameCents, toNumber } from "@/lib/paypal/amounts";
 import { createPayPalOrder } from "@/lib/paypal/createPayPalOrder";
-import type { PaymentType } from "@/lib/paypal/types";
 import type { AdditionalItemRequest } from "@/types/request";
 import { withErrorHandler } from "@/utils/errors";
+import { createOrderBodySchema, readAndValidateBody } from "@/lib/validation";
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
   // --- 1. Authenticate the caller ---
@@ -36,41 +36,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const body = await request.json();
-
-    const {
-      requestId,
-      amount,
-      paymentType = "main",
-      additionalItemRequestId,
-    }: {
-      requestId?: string;
-      amount?: number;
-      paymentType?: PaymentType;
-      additionalItemRequestId?: string;
-    } = body;
-
-    // --- 2. Validate the body ---
-    if (!requestId) {
+    const parsed = await readAndValidateBody(request, createOrderBodySchema);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Request ID is required." },
+        { success: false, error: parsed.error },
         { status: 400 }
       );
     }
 
-    if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
-      return NextResponse.json(
-        { success: false, error: "A valid PayPal payment amount is required." },
-        { status: 400 }
-      );
-    }
-
-    if (paymentType !== "main" && paymentType !== "additional_item") {
-      return NextResponse.json(
-        { success: false, error: "Invalid payment type." },
-        { status: 400 }
-      );
-    }
+    const { requestId, amount, paymentType, additionalItemRequestId } =
+      parsed.data;
 
     if (paymentType === "additional_item" && !additionalItemRequestId) {
       return NextResponse.json(
@@ -251,7 +226,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
     // Use a transaction to atomically check wallet balance and create payment order.
     // This prevents TOCTOU where another request drains the wallet between check and create.
-    let paymentOrderResult: { walletApplied: number; expectedPayPalAmount: number };
+    let paymentOrderResult: {
+      walletApplied: number;
+      expectedPayPalAmount: number;
+    };
     try {
       paymentOrderResult = await adminDb.runTransaction(async (transaction) => {
         const walletSnapshot = await transaction.get(walletRef);
@@ -318,7 +296,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             );
           case "PAYMENT_AMOUNT_MISMATCH":
             return NextResponse.json(
-              { success: false, error: "Payment amount could not be verified." },
+              {
+                success: false,
+                error: "Payment amount could not be verified.",
+              },
               { status: 400 }
             );
         }

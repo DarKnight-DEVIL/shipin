@@ -158,9 +158,9 @@ describe("POST /api/paypal/create-wallet-topup", () => {
     });
   });
 
-  it("reports an unreadable body as a server error", async () => {
+  it("reports an unreadable body as a bad request", async () => {
     const response = await POST(request("not json"));
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
   });
 });

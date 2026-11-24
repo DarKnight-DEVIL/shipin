@@ -5,6 +5,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { generateBackupCodes, hashBackupCode, verifyTotp } from "@/lib/mfa";
 import { withErrorHandler } from "@/utils/errors";
+import { readAndValidateBody, verifyTotpBodySchema } from "@/lib/validation";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -22,36 +23,26 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   if (auth instanceof NextResponse) return auth;
 
-  let body: unknown;
+  const parsed = await readAndValidateBody(request, verifyTotpBodySchema);
 
-  try {
-    body = await request.json();
-  } catch {
+  if (!parsed.success) {
     return NextResponse.json(
       {
         success: false,
-        error: "Invalid request body.",
-        code: "INVALID_REQUEST_BODY",
+        error:
+          parsed.reason === "parse"
+            ? "Invalid request body."
+            : "Enter the 6-digit code from your authenticator app.",
+        code:
+          parsed.reason === "parse"
+            ? "INVALID_REQUEST_BODY"
+            : "INVALID_TOTP_CODE",
       },
       { status: 400, headers: NO_STORE }
     );
   }
 
-  const code =
-    typeof (body as { code?: unknown })?.code === "string"
-      ? (body as { code: string }).code.replace(/\s+/g, "")
-      : "";
-
-  if (!/^\d{6}$/.test(code)) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Enter the 6-digit code from your authenticator app.",
-        code: "INVALID_TOTP_CODE",
-      },
-      { status: 400, headers: NO_STORE }
-    );
-  }
+  const code = parsed.data.code;
 
   const snapshot = await adminDb
     .collection("users")

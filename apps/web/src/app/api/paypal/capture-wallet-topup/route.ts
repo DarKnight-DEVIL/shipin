@@ -11,6 +11,7 @@ import { fetchWithTimeout } from "@/lib/http";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { withErrorHandler } from "@/utils/errors";
 import { serverEnv } from "@/config/env";
+import { captureTopupBodySchema, readAndValidateBody } from "@/lib/validation";
 
 /**
  * PayPal answers ORDER_ALREADY_CAPTURED when a capture for this order exists.
@@ -43,41 +44,18 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      * ========================================
      */
 
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, error: "Invalid JSON body.", code: "INVALID_JSON" },
-        { status: 400 }
-      );
-    }
-
-    const bodyObj = body as Record<string, unknown> | null;
-    const orderID =
-      typeof bodyObj?.orderID === "string" ? bodyObj.orderID.trim() : "";
-    const requestedAmount =
-      typeof bodyObj?.amount === "number" ? bodyObj.amount : NaN;
-
-    if (!orderID) {
+    const parsed = await readAndValidateBody(request, captureTopupBodySchema);
+    if (!parsed.success) {
       return NextResponse.json(
         {
           success: false,
-          error: "PayPal Order ID is required.",
+          error: "Invalid request body.",
         },
         { status: 400 }
       );
     }
 
-    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Invalid top-up amount.",
-        },
-        { status: 400 }
-      );
-    }
+    const { orderID, amount: requestedAmount } = parsed.data;
 
     /*
      * ========================================
@@ -208,7 +186,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       }
 
       const walletLogger = childLogger({ service: "capture-wallet-topup" });
-walletLogger.warn(
+      walletLogger.warn(
         "[capture-wallet-topup] reconciling an already-captured order",
         {
           orderID,

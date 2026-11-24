@@ -113,13 +113,13 @@ describe("POST /api/admin/wallet/credit", () => {
     });
   });
 
-  it("requires a customer id", async () => {
+  it("rejects a blank customer id", async () => {
     const response = await POST(request({ customerId: "   ", amount: 10 }));
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       success: false,
-      error: "Customer ID is required.",
+      error: "Invalid request body.",
     });
   });
 
@@ -286,7 +286,7 @@ describe("POST /api/admin/wallet/credit", () => {
     const response = await POST(
       request({
         customerId: "customer-1",
-        amount: 15.555,
+        amount: 15.55,
         description: "  Goodwill  ",
       })
     );
@@ -439,9 +439,9 @@ describe("POST /api/admin/wallet/credit", () => {
     });
   });
 
-  it("reports an unreadable body as a server error", async () => {
+  it("reports an unreadable body as a bad request", async () => {
     const response = await POST(request("not json"));
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
   });
 });

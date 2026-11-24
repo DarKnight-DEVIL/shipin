@@ -441,16 +441,16 @@ describe("POST /api/auth/mfa/session", () => {
     );
   });
 
-  it("treats an unknown method as unspecified", async () => {
+  it("rejects an unknown method", async () => {
     const response = await POST(
       authRequest({ method: "carrier-pigeon", code: "123456" })
     );
 
-    expect(response.status).toBe(200);
-    expect(mocks.verifyMfaProof).toHaveBeenCalledWith(adminProfile, {
-      totp: undefined,
-      backup: undefined,
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "INVALID_REQUEST_BODY",
     });
+    expect(mocks.verifyMfaProof).not.toHaveBeenCalled();
   });
 });
 

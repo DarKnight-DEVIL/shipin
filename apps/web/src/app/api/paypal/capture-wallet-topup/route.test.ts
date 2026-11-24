@@ -159,7 +159,7 @@ describe("POST /api/paypal/capture-wallet-topup", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       success: false,
-      error: "PayPal Order ID is required.",
+      error: "Invalid request body.",
     });
   });
 
@@ -530,13 +530,45 @@ describe("POST /api/paypal/capture-wallet-topup", () => {
     expect(mocks.txSet).not.toHaveBeenCalled();
   });
 
+  it("reports zero when the processed transaction lost its balance", async () => {
+    mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
+      ref.__kind === "wallet"
+        ? snap({ balance: 10 })
+        : { exists: true, data: () => null }
+    );
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        success: true,
+        alreadyProcessed: true,
+        balance: 0,
+      })
+    );
+    expect(mocks.txSet).not.toHaveBeenCalled();
+  });
+
+  it("reports an unexpected failure as a server error", async () => {
+    mocks.fetch.mockRejectedValue(new Error("connection reset"));
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Internal server error",
+    });
+  });
+
   it("rejects malformed JSON bodies", async () => {
     const response = await POST(request("not json"));
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       success: false,
-      code: "INVALID_JSON",
+      error: "Invalid request body.",
     });
   });
 

@@ -114,35 +114,38 @@ describe("POST /api/user/consent", () => {
     const body = await response.json();
 
     expect(response.status).toBe(400);
-    expect(body.code).toBe("INVALID_JSON");
+    expect(body.code).toBe("VALIDATION_ERROR");
   });
 
   it.each([
-    [{ granted: true, version: "v2" }, "Category is required."],
-    [
-      { category: "marketting", granted: true, version: "v2" },
-      "Unknown consent category.",
-    ],
-    [
-      { category: "marketing", granted: "yes", version: "v2" },
-      "Granted must be boolean.",
-    ],
-    [{ category: "marketing", granted: true }, "Version is required."],
-    [
-      {
-        category: "marketing",
-        granted: true,
-        version: "v2",
-        method: "implied",
-      },
-      "Invalid method.",
-    ],
-  ])("rejects %j", async (payload, message) => {
+    { granted: true, version: "v2" },
+    { category: "marketing", granted: "yes", version: "v2" },
+    { category: "marketing", granted: true },
+    {
+      category: "marketing",
+      granted: true,
+      version: "v2",
+      method: "implied",
+    },
+  ])("rejects %j", async (payload) => {
     const response = await POST(request({ body: payload }));
     const body = await response.json();
 
     expect(response.status).toBe(400);
-    expect(body.error).toBe(message);
+    expect(body.error).toBe("Invalid request body.");
+    expect(mocks.updateUserConsent).not.toHaveBeenCalled();
+  });
+
+  it("rejects a well-formed body for an unknown category", async () => {
+    const response = await POST(
+      request({
+        body: { category: "marketting", granted: true, version: "v2" },
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("Unknown consent category.");
     expect(mocks.updateUserConsent).not.toHaveBeenCalled();
   });
 

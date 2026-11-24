@@ -250,24 +250,26 @@ export const quoteBodySchema = z.object({
 });
 
 /** PATCH /api/requests/[id]/status (admin) */
+export const requestStatusEnum = z.enum([
+  "submitted",
+  "review",
+  "awaiting_payment",
+  "paid",
+  "purchased",
+  "warehouse_received",
+  "ready_for_international_shipping",
+  "packed",
+  "shipped",
+  "out_for_delivery",
+  "delivered",
+  "refund_requested",
+  "refund_offered",
+  "refunded",
+  "rejected",
+]);
+
 export const requestStatusBodySchema = z.object({
-  status: z.enum([
-    "submitted",
-    "review",
-    "awaiting_payment",
-    "paid",
-    "purchased",
-    "warehouse_received",
-    "ready_for_international_shipping",
-    "packed",
-    "shipped",
-    "out_for_delivery",
-    "delivered",
-    "refund_requested",
-    "refund_offered",
-    "refunded",
-    "rejected",
-  ]),
+  status: requestStatusEnum,
   rejectionReason: z.string().trim().max(500).optional(),
 });
 
@@ -364,11 +366,207 @@ export const completeWalletBodySchema = z.object({
   requestId: namedIdSchema("Request ID"),
 });
 
-
-
 /** POST /api/whatsapp/test */
 export const whatsappTestBodySchema = z.object({
   phone: whatsappPhoneSchema,
+});
+
+// ---------------------------------------------------------------------------
+// Admin: users, request workflow, shipments
+// ---------------------------------------------------------------------------
+
+/** PATCH /api/admin/users — a role change. */
+export const adminUserRoleBodySchema = z.object({
+  uid: namedIdSchema("User ID"),
+  role: z.enum(["admin", "customer"], {
+    error: "Role must be 'admin' or 'customer'.",
+  }),
+});
+
+/**
+ * PATCH /api/admin/requests/[id]/additional-items.
+ *
+ * The additional-item records are written back wholesale, so their inner shape
+ * is the client's; what the schema owns is that the body is an object, the
+ * list is bounded, and an optional status is a real status.
+ */
+export const additionalItemsBodySchema = z.object({
+  additionalItemRequests: z.array(z.record(z.string(), z.unknown())).max(100),
+  status: requestStatusEnum.optional(),
+  orderChange: z.record(z.string(), z.unknown()).optional(),
+});
+
+/** POST /api/admin/requests/[id]/refund-offer */
+export const refundOfferBodySchema = z.object({
+  reason: adminReasonSchema,
+});
+
+/**
+ * POST /api/admin/requests/[id]/shipment — record the carrier tracking.
+ *
+ * `createdAt` is the shipment creation time an edit must preserve, passed
+ * through as the client serialized it (a Firestore timestamp shape), so it is
+ * not validated beyond "present or absent".
+ */
+export const shipmentBodySchema = z.object({
+  internalTrackingId: idSchema.optional(),
+  carrier: labelSchema,
+  trackingNumber: z
+    .string()
+    .trim()
+    .min(1, "Tracking number is required.")
+    .max(120, "Tracking number is too long."),
+  estimatedDelivery: z.string().trim().max(60).optional(),
+  trackingUrl: z.string().trim().max(2048).optional(),
+  createdAt: z.unknown().optional(),
+});
+
+/**
+ * PATCH /api/admin/shipments/[shipmentId].
+ *
+ * The weight/dimension fields keep the route's own `readDimension` check so
+ * its specific error message survives; the schema owns the parse guard and
+ * the two text fields.
+ */
+export const shipmentUpdateBodySchema = z.object({
+  courier: z.string().trim().max(120).optional(),
+  tracking: z.string().trim().max(120).optional(),
+  weight: z.unknown().optional(),
+  length: z.unknown().optional(),
+  width: z.unknown().optional(),
+  height: z.unknown().optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Auth: MFA step-up and password utilities
+// ---------------------------------------------------------------------------
+
+/** A six-digit TOTP code, tolerant of the spaces a phone keyboard inserts. */
+export const totpCodeSchema = z
+  .string({ error: "Invalid TOTP code." })
+  .transform((v) => v.replace(/\s+/g, ""))
+  .refine((v) => /^\d{6}$/.test(v), "Invalid TOTP code.");
+
+/** POST /api/auth/mfa/backup-codes/regenerate */
+export const regenerateBackupCodesBodySchema = z.object({
+  totpCode: totpCodeSchema,
+});
+
+/** POST /api/auth/mfa/totp/verify */
+export const verifyTotpBodySchema = z.object({
+  code: totpCodeSchema,
+});
+
+/** POST /api/auth/mfa/session — the second-factor step-up. */
+export const mfaSessionBodySchema = z.object({
+  method: z.enum(["totp", "backup", "webauthn"]).optional(),
+  // A TOTP code is 6 digits; a backup code is XXXX-XXXX-XXXX-XXXX.
+  code: z.string().max(32).optional(),
+  credential: z.unknown().optional(),
+});
+
+/** DELETE /api/auth/mfa/webauthn/credentials */
+export const webauthnDeleteBodySchema = z.object({
+  id: z.string().trim().min(1, "A credential id is required.").max(512),
+});
+
+/** POST /api/auth/mfa/webauthn/register/complete */
+export const webauthnRegisterBodySchema = z.object({
+  credential: z.record(z.string(), z.unknown()),
+  credentialName: z.string().trim().max(100).optional(),
+});
+
+/** POST /api/auth/password-leak-check — a k-anonymity hash prefix. */
+export const passwordLeakCheckBodySchema = z.object({
+  prefix: z
+    .string({ error: "Invalid prefix." })
+    .trim()
+    .transform((v) => v.toUpperCase())
+    .refine((v) => /^[0-9A-F]{5}$/.test(v), "Invalid prefix."),
+});
+
+/** POST /api/user/password — change or first-time set. */
+export const passwordChangeBodySchema = z.object({
+  currentPassword: z.string().max(128).optional(),
+  newPassword: z.string().min(1, "A new password is required.").max(128),
+});
+
+// ---------------------------------------------------------------------------
+// Compliance, storage and data rights
+// ---------------------------------------------------------------------------
+
+/** POST /api/compliance/breach with action "record". */
+export const breachRecordBodySchema = z.object({
+  action: z.literal("record"),
+  severity: z.enum(["low", "medium", "high", "critical"]),
+  description: z.string().trim().min(1).max(2000),
+  affectedCategories: z.array(z.string().trim().min(1).max(64)).min(1).max(20),
+  estimatedAffectedUsers: z.number().int().min(0),
+  discoveredAt: z.string().trim().min(1).max(40),
+  containedAt: z.string().trim().max(40).optional(),
+  rootCause: z.string().trim().max(2000).optional(),
+  remediationSteps: z.array(z.string().trim().max(500)).max(50).optional(),
+  reportedToBoard: z.boolean().optional(),
+  reportedToUsers: z.boolean().optional(),
+});
+
+/** PATCH /api/compliance/breach — update an existing breach record. */
+export const breachUpdateBodySchema = z.object({
+  breachId: idSchema,
+  containedAt: z.string().trim().max(40).optional(),
+  rootCause: z.string().trim().max(2000).optional(),
+  remediationSteps: z.array(z.string().trim().max(500)).max(50).optional(),
+  reportedToBoard: z.boolean().optional(),
+  reportedToUsers: z.boolean().optional(),
+  status: z.enum(["open", "contained", "resolved", "closed"]).optional(),
+});
+
+/** POST /api/compliance/dashboard — the admin compliance console actions. */
+export const complianceDashboardBodySchema = z.object({
+  action: z.enum(["generate-ropa", "escalate-rights", "escalate-breach"]),
+  requestId: idSchema.optional(),
+  breachId: idSchema.optional(),
+});
+
+/** POST /api/r2/view — the key of the inspection photo to sign. */
+export const r2ViewBodySchema = z.object({
+  key: z.string().trim().min(1, "R2 object key is required.").max(1024),
+});
+
+/** POST /api/user/age-verification — parental-consent actions. */
+export const ageVerificationBodySchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("request"),
+    parentEmail: emailSchema,
+    method: z.enum(["otp", "digital_signature", "video_kyc", "aadhaar"]),
+  }),
+  z.object({
+    action: z.literal("verify-otp"),
+    consentId: namedIdSchema("Consent ID"),
+    otp: z.string().trim().min(1, "OTP required.").max(10),
+  }),
+  z.object({ action: z.literal("check") }),
+]);
+
+/** POST /api/user/consent — grant or withdraw one consent category. */
+export const consentBodySchema = z.object({
+  category: z.string().trim().min(1, "Category is required.").max(40),
+  granted: z.boolean({ error: "Granted must be boolean." }),
+  version: z.string().trim().min(1, "Version is required.").max(40),
+  method: z.enum(["explicit", "withdrawn"]).optional().default("explicit"),
+});
+
+/** POST /api/user/grievance — log a data-rights request or complaint. */
+export const grievanceBodySchema = z.object({
+  right: z.enum([
+    "access",
+    "correction",
+    "erasure",
+    "portability",
+    "grievance",
+    "nominee",
+  ]),
+  details: z.string().trim().max(2000).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -378,11 +576,9 @@ export const whatsappTestBodySchema = z.object({
 export const requestIdSchema = z.object({ requestId: idSchema });
 export const ticketIdSchema = z.object({ ticketId: idSchema });
 
-
 // ---------------------------------------------------------------------------
 // Utility: validate and coerce a JSON body.
 // ---------------------------------------------------------------------------
-
 export interface ValidationResult<T> {
   success: true;
   data: T;
@@ -407,5 +603,47 @@ export function validateBody<T extends z.ZodType>(
       })),
     };
   }
+  return { success: true, data: result.data };
+}
+
+// ---------------------------------------------------------------------------
+// Guarded body reader
+// ---------------------------------------------------------------------------
+
+export type ParsedBody<T> =
+  | { success: true; data: T }
+  | { success: false; reason: "parse" | "schema"; error: string };
+
+/**
+ * Reads and validates a JSON request body in one guarded step.
+ *
+ * A dozen routes read `request.json()` outside a try, so a malformed body
+ * became a 500 from the JSON parser instead of a 400 (docs/AUDIT.md §2.7).
+ * `reason` separates an unreadable body from one that failed the schema, so
+ * a route can keep its specific "enter the 6-digit code" wording for the
+ * latter while still answering 400 for both.
+ */
+export async function readAndValidateBody<T extends z.ZodType>(
+  request: Request,
+  schema: T
+): Promise<ParsedBody<z.infer<T>>> {
+  let raw: unknown;
+
+  try {
+    raw = await request.json();
+  } catch {
+    return { success: false, reason: "parse", error: "Invalid JSON body." };
+  }
+
+  const result = schema.safeParse(raw);
+
+  if (!result.success) {
+    return {
+      success: false,
+      reason: "schema",
+      error: "Invalid request body.",
+    };
+  }
+
   return { success: true, data: result.data };
 }

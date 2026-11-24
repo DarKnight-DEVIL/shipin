@@ -5,6 +5,10 @@ import { requireAuthWithProfile } from "@/lib/auth";
 import { availableMfaMethods } from "@/lib/mfaProof";
 import { readStoredCredentials, type WebAuthnRecord } from "@/lib/webauthn";
 import { withErrorHandler } from "@/utils/errors";
+import {
+  readAndValidateBody,
+  webauthnDeleteBodySchema,
+} from "@/lib/validation";
 
 export const runtime = "nodejs";
 
@@ -21,10 +25,9 @@ export const DELETE = withErrorHandler(async (request: NextRequest) => {
 
   if (auth instanceof NextResponse) return auth;
 
-  const body = await request.json().catch(() => null);
-  const id = (body as { id?: unknown } | null)?.id;
+  const parsed = await readAndValidateBody(request, webauthnDeleteBodySchema);
 
-  if (typeof id !== "string" || !id) {
+  if (!parsed.success) {
     return NextResponse.json(
       {
         success: false,
@@ -34,6 +37,8 @@ export const DELETE = withErrorHandler(async (request: NextRequest) => {
       { status: 400, headers: NO_STORE }
     );
   }
+
+  const id = parsed.data.id;
 
   const userRef = adminDb.collection("users").doc(auth.profile.uid);
   const snapshot = await userRef.get();

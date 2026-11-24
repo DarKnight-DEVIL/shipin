@@ -852,9 +852,41 @@ describe("POST /api/paypal/capture-order", () => {
     const response = await POST(request("not json"));
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       success: false,
-      code: "INVALID_JSON",
+      error: "Invalid JSON body.",
+    });
+  });
+
+  it("404s when the request document exists but has no data", async () => {
+    mocks.requestGet.mockResolvedValue({ exists: true, data: () => null });
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Request data not found.",
+    });
+  });
+
+  it("403s when the payment order document exists but has no data", async () => {
+    mocks.orderGet.mockResolvedValue({ exists: true, data: () => null });
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(403);
+  });
+
+  it("reports an unexpected failure as a server error", async () => {
+    mocks.fetch.mockRejectedValue(new Error("connection reset"));
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Internal server error",
     });
   });
 });

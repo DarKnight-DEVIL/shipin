@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withErrorHandler } from "@/utils/errors";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { getClientIp } from "@/lib/clientIp";
+import { consentBodySchema, readAndValidateBody } from "@/lib/validation";
 import {
   getUserConsentState,
   updateUserConsent,
@@ -32,31 +33,20 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { success: false, error: "Invalid JSON body.", code: "INVALID_JSON" },
-      { status: 400 }
-    );
-  }
+  const parsed = await readAndValidateBody(request, consentBodySchema);
 
-  const { category, granted, version, method } = body as Record<
-    string,
-    unknown
-  >;
-
-  if (!category || typeof category !== "string") {
+  if (!parsed.success) {
     return NextResponse.json(
       {
         success: false,
-        error: "Category is required.",
+        error: "Invalid request body.",
         code: "VALIDATION_ERROR",
       },
       { status: 400 }
     );
   }
+
+  const { category, granted, version, method: methodStr } = parsed.data;
 
   // A category is a fixed vocabulary, not free text: anything else would record
   // consent for a category that does not exist.
@@ -71,37 +61,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  if (typeof granted !== "boolean") {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Granted must be boolean.",
-        code: "VALIDATION_ERROR",
-      },
-      { status: 400 }
-    );
-  }
-
-  if (!version || typeof version !== "string") {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Version is required.",
-        code: "VALIDATION_ERROR",
-      },
-      { status: 400 }
-    );
-  }
-
-  const validMethods = ["explicit", "withdrawn"];
-  const methodStr = typeof method === "string" ? method : "explicit";
-  if (!validMethods.includes(methodStr)) {
-    return NextResponse.json(
-      { success: false, error: "Invalid method.", code: "VALIDATION_ERROR" },
-      { status: 400 }
-    );
-  }
-
   const clientIp = getClientIp(request) ?? "unknown";
   const userAgent = request.headers.get("user-agent") || "unknown";
 
@@ -110,7 +69,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     category,
     granted,
     version,
-    method: methodStr as "explicit" | "withdrawn",
+    method: methodStr,
     ip: clientIp,
     userAgent,
   });

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withErrorHandler } from "@/utils/errors";
+import {
+  passwordLeakCheckBodySchema,
+  readAndValidateBody,
+} from "@/lib/validation";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -20,19 +24,12 @@ const NO_STORE = { "Cache-Control": "no-store" } as const;
  * Rate-limited to prevent scraping.
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
-  let body: { prefix?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { success: false, error: "Invalid request.", code: "INVALID_JSON" },
-      { status: 400, headers: NO_STORE }
-    );
-  }
+  const parsed = await readAndValidateBody(
+    request,
+    passwordLeakCheckBodySchema
+  );
 
-  const prefix =
-    typeof body.prefix === "string" ? body.prefix.trim().toUpperCase() : "";
-  if (!/^[0-9A-F]{5}$/.test(prefix)) {
+  if (!parsed.success) {
     return NextResponse.json(
       {
         success: false,
@@ -42,6 +39,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       { status: 400, headers: NO_STORE }
     );
   }
+
+  const { prefix } = parsed.data;
 
   try {
     const response = await fetch(

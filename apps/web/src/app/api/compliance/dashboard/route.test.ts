@@ -121,7 +121,18 @@ describe("POST /api/compliance/dashboard", () => {
   it("rejects malformed JSON", async () => {
     const response = await POST(request("{oops"));
     expect(response.status).toBe(400);
-    expect((await response.json()).code).toBe("INVALID_JSON");
+    expect((await response.json()).code).toBe("VALIDATION_ERROR");
+  });
+
+  it("rejects a caller without the admin role", async () => {
+    mocks.admin.mockResolvedValue(
+      NextResponse.json({ success: false }, { status: 403 })
+    );
+
+    const response = await POST(request({ action: "generate-ropa" }));
+
+    expect(response.status).toBe(403);
+    expect(mocks.escalateRightsRequest).not.toHaveBeenCalled();
   });
 
   it("exports a draft ROPA as a download", async () => {
@@ -182,6 +193,6 @@ describe("POST /api/compliance/dashboard", () => {
     const response = await POST(request({ action: "shutdown" }));
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe("Unknown action.");
+    expect((await response.json()).error).toBe("Invalid request body.");
   });
 });

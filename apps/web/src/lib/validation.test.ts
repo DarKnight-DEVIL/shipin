@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { z } from "zod";
 import {
   emailSchema,
   whatsappPhoneSchema,
@@ -12,6 +13,11 @@ import {
   captureOrderBodySchema,
   createOrderBodySchema,
   validateBody,
+  readAndValidateBody,
+  mfaSessionBodySchema,
+  shipmentBodySchema,
+  totpCodeSchema,
+  consentBodySchema,
 } from "@/lib/validation";
 
 describe("emailSchema", () => {
@@ -183,5 +189,87 @@ describe("idSchema", () => {
     expect(idSchema.safeParse("").success).toBe(false);
     expect(idSchema.safeParse("x".repeat(65)).success).toBe(false);
     expect(idSchema.safeParse("id; delete from users").success).toBe(false);
+  });
+});
+
+describe("readAndValidateBody", () => {
+  const jsonRequest = (payload: unknown) =>
+    new Request("http://localhost/api/test", {
+      method: "POST",
+      body: typeof payload === "string" ? payload : JSON.stringify(payload),
+    });
+
+  const schema = z.object({ amount: moneySchema });
+
+  it("returns the parsed data for a valid body", async () => {
+    const parsed = await readAndValidateBody(
+      jsonRequest({ amount: 10 }),
+      schema
+    );
+
+    expect(parsed).toEqual({ success: true, data: { amount: 10 } });
+  });
+
+  it("reports an unreadable body as a parse failure", async () => {
+    const parsed = await readAndValidateBody(jsonRequest("{nope"), schema);
+
+    expect(parsed).toEqual({
+      success: false,
+      reason: "parse",
+      error: "Invalid JSON body.",
+    });
+  });
+
+  it("reports a schema failure distinctly from a parse failure", async () => {
+    const parsed = await readAndValidateBody(
+      jsonRequest({ amount: -1 }),
+      schema
+    );
+
+    expect(parsed).toEqual({
+      success: false,
+      reason: "schema",
+      error: "Invalid request body.",
+    });
+  });
+});
+
+describe("route body schemas added for §2.7", () => {
+  it("accepts a backup code in the MFA session body", () => {
+    expect(
+      mfaSessionBodySchema.safeParse({
+        method: "backup",
+        code: "ABCD-EFGH-IJKL-MNOP",
+      }).success
+    ).toBe(true);
+  });
+
+  it("strips spaces from a TOTP code and rejects anything else", () => {
+    expect(totpCodeSchema.safeParse("123 456").success).toBe(true);
+    expect(totpCodeSchema.safeParse("12345").success).toBe(false);
+    expect(totpCodeSchema.safeParse("abcdef").success).toBe(false);
+  });
+
+  it("keeps the shipment createdAt as an opaque passthrough", () => {
+    const parsed = shipmentBodySchema.safeParse({
+      carrier: "DHL",
+      trackingNumber: "ABC123",
+      createdAt: { seconds: 1, nanoseconds: 0 },
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("defaults the consent method to explicit", () => {
+    const parsed = consentBodySchema.safeParse({
+      category: "marketing",
+      granted: true,
+      version: "v2",
+    });
+
+    expect(parsed).toMatchObject({
+      success: true,
+      data: { method: "explicit" },
+    });
   });
 });

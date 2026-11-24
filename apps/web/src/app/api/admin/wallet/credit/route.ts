@@ -7,6 +7,7 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { requireAdmin, getAdminAuthError } from "@/lib/adminAuth";
 import { withErrorHandler } from "@/utils/errors";
 import { recordAdminAudit } from "@/lib/adminAudit";
+import { adminCreditBodySchema, readAndValidateBody } from "@/lib/validation";
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
   try {
@@ -24,60 +25,29 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      * ========================================
      */
 
-    const body = await request.json();
+    const parsed = await readAndValidateBody(request, adminCreditBodySchema);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { success: false, error: parsed.error },
+        { status: 400 }
+      );
+    }
 
-    const customerId =
-      typeof body.customerId === "string" ? body.customerId.trim() : "";
+    const { customerId, amount, description, type } = parsed.data;
+    const requestId = parsed.data.requestId ?? null;
 
-    const amount = Number(body.amount);
-
-    const description =
-      typeof body.description === "string" && body.description.trim()
-        ? body.description.trim()
-        : "Credit issued by admin";
-
-    const requestId =
-      typeof body.requestId === "string" && body.requestId.trim()
-        ? body.requestId.trim()
-        : null;
-
-    const isRefund = body.type === "refund";
+    const isRefund = type === "refund";
 
     /*
      * ========================================
      * VALIDATE CUSTOMER
      * ========================================
+     *
+     * `adminCreditBodySchema` already rejects an empty or whitespace id and a
+     * non-positive or over-precise amount, so there is no second check here:
+     * it would be unreachable, and unreachable money handling reads as
+     * protection that does not exist.
      */
-
-    if (!customerId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Customer ID is required.",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    /*
-     * ========================================
-     * VALIDATE CREDIT AMOUNT
-     * ========================================
-     */
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Credit amount must be greater than zero.",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
 
     const creditAmount = Number(amount.toFixed(2));
 

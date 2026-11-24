@@ -100,11 +100,11 @@ describe("PATCH /api/admin/requests/[requestId]/additional-items", () => {
     });
   });
 
-  it("reports an unreadable body as a failure", async () => {
+  it("reports an unreadable body as a bad request", async () => {
     const response = await PATCH(request("{broken"), context());
 
-    expect(response.status).toBe(500);
-    expect(console.error).toHaveBeenCalled();
+    expect(response.status).toBe(400);
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 });
 

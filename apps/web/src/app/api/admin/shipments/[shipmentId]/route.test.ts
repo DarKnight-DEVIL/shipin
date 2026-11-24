@@ -158,10 +158,14 @@ describe("PATCH /api/admin/shipments/[shipmentId]", () => {
     expect(updateCall.height).toBe(0);
   });
 
-  it("ignores non-string courier values", async () => {
-    await PATCH(request({ courier: 42, weight: 2 }), context());
+  it("rejects a non-string courier value", async () => {
+    const response = await PATCH(
+      request({ courier: 42, weight: 2 }),
+      context()
+    );
 
-    expect(mocks.update.mock.calls[0][0]).not.toHaveProperty("courier");
+    expect(response.status).toBe(400);
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 
   it("reports a write failure", async () => {

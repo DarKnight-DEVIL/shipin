@@ -5,6 +5,10 @@ import { getOverdueRightsRequests } from "@/lib/compliance/rightsOps2";
 import { getActiveBreaches } from "@/lib/compliance/breach";
 import { getAllBreaches } from "@/lib/compliance/breach";
 import { getAllRightsRequests } from "@/lib/compliance/rightsOps2";
+import {
+  complianceDashboardBodySchema,
+  readAndValidateBody,
+} from "@/lib/validation";
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAdmin(request);
@@ -60,17 +64,26 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
+  const parsed = await readAndValidateBody(
+    request,
+    complianceDashboardBodySchema
+  );
+
+  if (!parsed.success) {
     return NextResponse.json(
-      { success: false, error: "Invalid JSON body.", code: "INVALID_JSON" },
+      {
+        success: false,
+        error:
+          parsed.reason === "parse"
+            ? "Invalid JSON body."
+            : "Invalid request body.",
+        code: "VALIDATION_ERROR",
+      },
       { status: 400 }
     );
   }
 
-  const action = (body as Record<string, unknown>)?.action;
+  const { action, requestId, breachId } = parsed.data;
 
   if (action === "generate-ropa") {
     const ropa = {
@@ -88,8 +101,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   }
 
   if (action === "escalate-rights") {
-    const requestId = (body as Record<string, unknown>)?.requestId;
-    if (!requestId || typeof requestId !== "string") {
+    if (!requestId) {
       return NextResponse.json(
         {
           success: false,
@@ -110,30 +122,26 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     });
   }
 
-  if (action === "escalate-breach") {
-    const breachId = (body as Record<string, unknown>)?.breachId;
-    if (!breachId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Breach ID required.",
-          code: "VALIDATION_ERROR",
-        },
-        { status: 400 }
-      );
-    }
-
-    // In production: trigger PagerDuty/Slack/email to DPO + CTO
-    console.error("BREACH ESCALATED MANUALLY:", breachId);
-
-    return NextResponse.json({
-      success: true,
-      message: "Breach escalated to DPO and CTO",
-    });
+  /*
+   * The schema left only "escalate-breach" at this point: the two earlier
+   * actions returned, so the narrowed action needs no further guard.
+   */
+  if (!breachId) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Breach ID required.",
+        code: "VALIDATION_ERROR",
+      },
+      { status: 400 }
+    );
   }
 
-  return NextResponse.json(
-    { success: false, error: "Unknown action.", code: "VALIDATION_ERROR" },
-    { status: 400 }
-  );
+  // In production: trigger PagerDuty/Slack/email to DPO + CTO
+  console.error("BREACH ESCALATED MANUALLY:", breachId);
+
+  return NextResponse.json({
+    success: true,
+    message: "Breach escalated to DPO and CTO",
+  });
 });

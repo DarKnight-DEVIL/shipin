@@ -5,6 +5,7 @@ import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { getPayPalAccessToken } from "@/lib/paypal";
 import { withErrorHandler } from "@/utils/errors";
 import { serverEnv } from "@/config/env";
+import { createTopupBodySchema, readAndValidateBody } from "@/lib/validation";
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
   try {
@@ -32,11 +33,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     /*
      * Validate amount.
      */
-    const body = await request.json();
-
-    const numericAmount = Number(body.amount);
-
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    const parsed = await readAndValidateBody(request, createTopupBodySchema);
+    if (!parsed.success) {
       return NextResponse.json(
         {
           success: false,
@@ -45,6 +43,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         { status: 400 }
       );
     }
+
+    const numericAmount = parsed.data.amount;
 
     if (numericAmount < 1 || numericAmount > 10000) {
       return NextResponse.json(

@@ -5,6 +5,10 @@ import { adminAuth } from "@/lib/firebaseAdmin";
 import { clientEnv } from "@/config/env";
 import { validatePassword } from "@/lib/passwordPolicy";
 import { withErrorHandler } from "@/utils/errors";
+import {
+  passwordChangeBodySchema,
+  readAndValidateBody,
+} from "@/lib/validation";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -49,19 +53,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { success: false, error: "Invalid JSON body.", code: "INVALID_JSON" },
-      { status: 400, headers: NO_STORE }
-    );
-  }
+  const parsed = await readAndValidateBody(request, passwordChangeBodySchema);
 
-  const { currentPassword, newPassword } = body as Record<string, unknown>;
-
-  if (typeof newPassword !== "string") {
+  if (!parsed.success) {
     return NextResponse.json(
       {
         success: false,
@@ -71,6 +65,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       { status: 400, headers: NO_STORE }
     );
   }
+
+  const { currentPassword, newPassword } = parsed.data;
 
   const user = await adminAuth.getUser(auth.profile.uid);
   const email = user.email ?? null;

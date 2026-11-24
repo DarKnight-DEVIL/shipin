@@ -100,7 +100,7 @@ describe("POST /api/admin/requests/[requestId]/shipment", () => {
   });
 
   it("stores trimmed tracking details", async () => {
-    const createdAt = new Date("2026-06-01T00:00:00Z");
+    const createdAt = { seconds: 1780272000, nanoseconds: 0 };
     mocks.get.mockResolvedValue({
       exists: true,
       data: () => ({ status: "paid" }),
@@ -108,7 +108,7 @@ describe("POST /api/admin/requests/[requestId]/shipment", () => {
 
     const response = await call({
       ...body,
-      estimatedDelivery: new Date("2026-06-10T00:00:00Z"),
+      estimatedDelivery: "2026-06-10T00:00:00.000Z",
       trackingUrl: "https://dhl.example/track",
       createdAt,
     });
@@ -118,7 +118,7 @@ describe("POST /api/admin/requests/[requestId]/shipment", () => {
         internalTrackingId: "SHP-2026-000001",
         carrier: "DHL",
         trackingNumber: "ABC123",
-        estimatedDelivery: new Date("2026-06-10T00:00:00Z"),
+        estimatedDelivery: "2026-06-10T00:00:00.000Z",
         trackingUrl: "https://dhl.example/track",
         createdAt,
       },

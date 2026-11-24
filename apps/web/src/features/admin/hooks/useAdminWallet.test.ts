@@ -114,7 +114,7 @@ describe("useAdminWallet — crediting", () => {
 
     expect(mocks.customerApi).toHaveBeenCalledWith("/api/admin/wallet/credit", {
       method: "POST",
-      body: { userId: "c1", amount: 12.5, description: "Goodwill" },
+      body: { customerId: "c1", amount: 12.5, description: "Goodwill" },
     });
     expect(result.current.successMessage).toBe(
       "$12.50 credited to Ada Lovelace."

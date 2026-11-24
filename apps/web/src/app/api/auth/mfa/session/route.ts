@@ -27,6 +27,7 @@ import {
 } from "@/lib/rateLimiter";
 import { verifyAppCheckRequest } from "@/lib/appCheck";
 import { withErrorHandler } from "@/utils/errors";
+import { mfaSessionBodySchema, readAndValidateBody } from "@/lib/validation";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -207,13 +208,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   );
 });
 
-interface SessionRequestBody {
-  method?: string;
-  code?: string;
-  /** present when method === "webauthn" */
-  credential?: unknown;
-}
-
 /**
  * POST /api/auth/mfa/session
  *
@@ -244,11 +238,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   if (caller instanceof NextResponse) return caller;
 
-  let body: SessionRequestBody;
+  const parsed = await readAndValidateBody(request, mfaSessionBodySchema);
 
-  try {
-    body = (await request.json()) as SessionRequestBody;
-  } catch {
+  if (!parsed.success) {
     return NextResponse.json(
       {
         success: false,
@@ -258,6 +250,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       { status: 400, headers: NO_STORE }
     );
   }
+
+  const body = parsed.data;
 
   if (body.method === "webauthn") {
     const assertion = readAssertion(body.credential);

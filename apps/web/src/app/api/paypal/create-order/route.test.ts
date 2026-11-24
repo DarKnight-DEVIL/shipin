@@ -118,7 +118,7 @@ describe("POST /api/paypal/create-order", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       success: false,
-      error: "Request ID is required.",
+      error: "Invalid request body.",
     });
   });
 
@@ -137,7 +137,7 @@ describe("POST /api/paypal/create-order", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       success: false,
-      error: "Invalid payment type.",
+      error: "Invalid request body.",
     });
   });
 
@@ -477,9 +477,49 @@ describe("POST /api/paypal/create-order", () => {
     });
   });
 
-  it("reports an unreadable body as a server error", async () => {
+  it("reports an unreadable body as a bad request", async () => {
     const response = await POST(request("not json"));
 
+    expect(response.status).toBe(400);
+  });
+
+  it("404s when the request document exists but has no data", async () => {
+    mocks.requestGet.mockResolvedValue({ exists: true, data: () => null });
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Request data not found.",
+    });
+  });
+
+  it("404s when the additional item is not on the request", async () => {
+    const response = await POST(
+      request({
+        ...body,
+        paymentType: "additional_item",
+        additionalItemRequestId: "ghost-item",
+      })
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Additional item request could not be found.",
+    });
+  });
+
+  it("reports an unexpected failure as a server error", async () => {
+    mocks.fetch.mockRejectedValue(new Error("connection reset"));
+
+    const response = await POST(request(body));
+
     expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Internal server error",
+    });
   });
 });

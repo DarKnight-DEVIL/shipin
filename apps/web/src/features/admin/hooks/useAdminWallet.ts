@@ -134,7 +134,7 @@ export function useAdminWallet(): AdminWalletState & AdminWalletActions {
         {
           method: "POST",
           body: {
-            userId: selectedCustomer.id,
+            customerId: selectedCustomer.id,
             amount: numericAmount,
             description:
               description.trim() || (refundMode ? "Refund" : "Admin credit"),

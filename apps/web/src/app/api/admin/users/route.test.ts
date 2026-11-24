@@ -197,9 +197,9 @@ describe("GET /api/admin/users", () => {
 
     expect(second.status).toBe(200);
     const startAfter = calls.find((call) => call.method === "startAfter");
-    expect(
-      (startAfter?.args[0] as { toMillis: () => number }).toMillis()
-    ).toBe(5_000);
+    expect((startAfter?.args[0] as { toMillis: () => number }).toMillis()).toBe(
+      5_000
+    );
   });
 
   it("rejects a cursor it cannot read", async () => {
@@ -305,8 +305,8 @@ describe("PATCH /api/admin/users", () => {
   it.each([
     [{ role: "admin" }, "INVALID_REQUEST_BODY"],
     [{ uid: 42, role: "admin" }, "INVALID_REQUEST_BODY"],
-    [{ uid: "user-2" }, "INVALID_ROLE"],
-    [{ uid: "user-2", role: "superuser" }, "INVALID_ROLE"],
+    [{ uid: "user-2" }, "INVALID_REQUEST_BODY"],
+    [{ uid: "user-2", role: "superuser" }, "INVALID_REQUEST_BODY"],
   ])("rejects the body %j", async (body, code) => {
     const response = await PATCH(patchRequest(body));
 

@@ -59,13 +59,13 @@ describe("POST /api/user/age-verification", () => {
   it("rejects malformed JSON", async () => {
     const response = await POST(request("{bad"));
     expect(response.status).toBe(400);
-    expect((await response.json()).code).toBe("INVALID_JSON");
+    expect((await response.json()).code).toBe("VALIDATION_ERROR");
   });
 
   it("requires a parent email when requesting consent", async () => {
     const response = await POST(request({ action: "request" }));
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe("Parent email required.");
+    expect((await response.json()).error).toBe("Invalid request body.");
   });
 
   it("requires a supported consent method", async () => {
@@ -77,7 +77,7 @@ describe("POST /api/user/age-verification", () => {
       })
     );
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toMatch(/Valid method required/);
+    expect((await response.json()).error).toBe("Invalid request body.");
   });
 
   it("creates a parental consent request", async () => {
@@ -106,7 +106,7 @@ describe("POST /api/user/age-verification", () => {
       request({ action: "verify-otp", otp: "123456" })
     );
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe("Consent ID required.");
+    expect((await response.json()).error).toBe("Invalid request body.");
   });
 
   it("requires the OTP itself", async () => {
@@ -114,7 +114,7 @@ describe("POST /api/user/age-verification", () => {
       request({ action: "verify-otp", consentId: "consent-1" })
     );
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe("OTP required.");
+    expect((await response.json()).error).toBe("Invalid request body.");
   });
 
   it("delegates OTP verification", async () => {
@@ -146,7 +146,7 @@ describe("POST /api/user/age-verification", () => {
   it("rejects an unknown action", async () => {
     const response = await POST(request({ action: "explode" }));
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe("Unknown action.");
+    expect((await response.json()).error).toBe("Invalid request body.");
   });
 });
 

@@ -10,6 +10,7 @@ import { getR2Client, getR2BucketName } from "@/lib/r2";
 import { adminAuth } from "@/lib/firebaseAdmin";
 
 import { authorizeInspectionAccess, parseInspectionKey } from "@/lib/r2Access";
+import { readAndValidateBody, r2ViewBodySchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
@@ -54,11 +55,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  const body = (await request.json()) as { key?: unknown };
+  const parsed = await readAndValidateBody(request, r2ViewBodySchema);
 
-  const key = body?.key;
-
-  if (typeof key !== "string" || !key.trim()) {
+  if (!parsed.success) {
     return NextResponse.json(
       {
         success: false,
@@ -71,6 +70,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       }
     );
   }
+
+  const { key } = parsed.data;
 
   /*
    * Inspection images should only come

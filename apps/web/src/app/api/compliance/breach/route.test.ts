@@ -69,37 +69,34 @@ describe("GET /api/compliance/breach", () => {
 });
 
 describe("POST /api/compliance/breach", () => {
+  it("rejects a non-admin caller", async () => {
+    mocks.admin.mockResolvedValue(
+      NextResponse.json({ error: "nope" }, { status: 403 })
+    );
+
+    expect((await POST(request("POST", validRecord))).status).toBe(403);
+    expect(mocks.recordBreach).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed JSON", async () => {
     const response = await POST(request("POST", "{oops"));
     expect(response.status).toBe(400);
-    expect((await response.json()).code).toBe("INVALID_JSON");
+    expect((await response.json()).code).toBe("VALIDATION_ERROR");
   });
 
   it.each([
-    [{ ...validRecord, severity: "catastrophic" }, "Valid severity required"],
-    [{ ...validRecord, description: "" }, "Description required."],
-    [
-      { ...validRecord, affectedCategories: [] },
-      "Affected categories required.",
-    ],
-    [
-      { ...validRecord, affectedCategories: "shipping" },
-      "Affected categories required.",
-    ],
-    [
-      { ...validRecord, estimatedAffectedUsers: -1 },
-      "Estimated affected users must be a number.",
-    ],
-    [
-      { ...validRecord, estimatedAffectedUsers: "many" },
-      "Estimated affected users must be a number.",
-    ],
-    [{ ...validRecord, discoveredAt: undefined }, "Discovered date required."],
-  ])("rejects %j", async (payload, message) => {
+    { ...validRecord, severity: "catastrophic" },
+    { ...validRecord, description: "" },
+    { ...validRecord, affectedCategories: [] },
+    { ...validRecord, affectedCategories: "shipping" },
+    { ...validRecord, estimatedAffectedUsers: -1 },
+    { ...validRecord, estimatedAffectedUsers: "many" },
+    { ...validRecord, discoveredAt: undefined },
+  ])("rejects %j", async (payload) => {
     const response = await POST(request("POST", payload));
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toContain(message);
+    expect((await response.json()).error).toBe("Invalid request body.");
     expect(mocks.recordBreach).not.toHaveBeenCalled();
   });
 
@@ -133,14 +130,8 @@ describe("POST /api/compliance/breach", () => {
     });
   });
 
-  it("defaults the optional fields when they are absent or mistyped", async () => {
-    await POST(
-      request("POST", {
-        ...validRecord,
-        rootCause: 42,
-        remediationSteps: "not-an-array",
-      })
-    );
+  it("defaults the optional fields when they are absent", async () => {
+    await POST(request("POST", { ...validRecord }));
 
     expect(mocks.recordBreach).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -156,21 +147,32 @@ describe("POST /api/compliance/breach", () => {
   it("rejects an unknown action", async () => {
     const response = await POST(request("POST", { action: "delete" }));
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe("Unknown action.");
+    expect((await response.json()).error).toBe("Invalid request body.");
   });
 });
 
 describe("PATCH /api/compliance/breach", () => {
+  it("rejects a non-admin caller", async () => {
+    mocks.admin.mockResolvedValue(
+      NextResponse.json({ error: "nope" }, { status: 403 })
+    );
+
+    expect(
+      (await PATCH(request("PATCH", { breachId: "breach-1" }))).status
+    ).toBe(403);
+    expect(mocks.updateBreach).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed JSON", async () => {
     const response = await PATCH(request("PATCH", "{oops"));
     expect(response.status).toBe(400);
-    expect((await response.json()).code).toBe("INVALID_JSON");
+    expect((await response.json()).code).toBe("VALIDATION_ERROR");
   });
 
   it("requires a breach id", async () => {
     const response = await PATCH(request("PATCH", { status: "contained" }));
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe("Breach ID required.");
+    expect((await response.json()).error).toBe("Invalid request body.");
   });
 
   it("applies only the supplied fields", async () => {

@@ -1,5 +1,5 @@
 /** `POST /api/paypal/capture-order` — turn a PayPal approval into a paid request.
- * 
+ *
  * HTTP handler only — all business logic moved to @/lib/paypal services.
  */
 
@@ -12,13 +12,20 @@ import { requireAuthWithProfile } from "@/lib/auth";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { claimCapture, releaseCaptureClaim } from "@/lib/paypal/captureClaim";
 import { capturePayPalPayment } from "@/lib/paypal/capturePayPalPayment";
-import { settleMainPayment, settleAdditionalItemPayment } from "@/lib/paypal/settlement";
+import {
+  settleMainPayment,
+  settleAdditionalItemPayment,
+} from "@/lib/paypal/settlement";
 import { sendNotification } from "@/features/notifications/services/notificationService";
 import { buildPaymentReceivedNotification } from "@/lib/paypal/paymentReceivedNotification";
 import { roundMoney, sameCents, toNumber } from "@/lib/paypal/amounts";
+import { captureOrderBodySchema, readAndValidateBody } from "@/lib/validation";
 
 const fail = (failure: { error: string; status: number }) =>
-  NextResponse.json({ success: false, error: failure.error }, { status: failure.status });
+  NextResponse.json(
+    { success: false, error: failure.error },
+    { status: failure.status }
+  );
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
   // --- 1. Authenticate the caller ---
@@ -29,58 +36,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   let paymentOrderRef: DocumentReference | undefined;
 
   try {
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch (error) {
+    const parsed = await readAndValidateBody(request, captureOrderBodySchema);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Invalid JSON body.", code: "INVALID_JSON" },
+        { success: false, error: parsed.error },
         { status: 400 }
       );
     }
 
-    const {
-      requestId,
-      orderID,
-      amount,
-      paymentType = "main",
-      additionalItemRequestId,
-    }: {
-      requestId?: string;
-      orderID?: string;
-      amount?: number;
-      paymentType?: "main" | "additional_item";
-      additionalItemRequestId?: string;
-    } = body as Record<string, unknown>;
-
-    // --- 2. Validate the body ---
-    if (!requestId) {
-      return NextResponse.json(
-        { success: false, error: "Request ID is required." },
-        { status: 400 }
-      );
-    }
-
-    if (!orderID) {
-      return NextResponse.json(
-        { success: false, error: "PayPal Order ID is required." },
-        { status: 400 }
-      );
-    }
-
-    if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
-      return NextResponse.json(
-        { success: false, error: "A valid PayPal payment amount is required." },
-        { status: 400 }
-      );
-    }
-
-    if (paymentType !== "main" && paymentType !== "additional_item") {
-      return NextResponse.json(
-        { success: false, error: "Invalid payment type." },
-        { status: 400 }
-      );
-    }
+    const { requestId, orderID, amount, paymentType, additionalItemRequestId } =
+      parsed.data;
 
     if (paymentType === "additional_item" && !additionalItemRequestId) {
       return NextResponse.json(
@@ -110,15 +75,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     }
 
     // --- 4. Load the payment order ShipIN stored for this PayPal order ---
-    paymentOrderRef = adminDb
-      .collection("paypalPaymentOrders")
-      .doc(orderID);
+    paymentOrderRef = adminDb.collection("paypalPaymentOrders").doc(orderID);
 
     const paymentOrderSnapshot = await paymentOrderRef.get();
 
     if (!paymentOrderSnapshot.exists) {
       return NextResponse.json(
-        { success: false, error: "PayPal payment order could not be verified." },
+        {
+          success: false,
+          error: "PayPal payment order could not be verified.",
+        },
         { status: 403 }
       );
     }
@@ -127,7 +93,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
     if (!paymentOrder) {
       return NextResponse.json(
-        { success: false, error: "PayPal payment order data could not be verified." },
+        {
+          success: false,
+          error: "PayPal payment order data could not be verified.",
+        },
         { status: 403 }
       );
     }
@@ -135,14 +104,20 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     // --- 5. The order must be for this request, this payment type, this item ---
     if (paymentOrder.requestId !== requestId) {
       return NextResponse.json(
-        { success: false, error: "This payment does not belong to the requested order." },
+        {
+          success: false,
+          error: "This payment does not belong to the requested order.",
+        },
         { status: 403 }
       );
     }
 
     if (paymentOrder.paymentType !== paymentType) {
       return NextResponse.json(
-        { success: false, error: "Payment type does not match the PayPal order." },
+        {
+          success: false,
+          error: "Payment type does not match the PayPal order.",
+        },
         { status: 403 }
       );
     }
@@ -152,7 +127,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       (additionalItemRequestId || null)
     ) {
       return NextResponse.json(
-        { success: false, error: "Additional item payment does not match the PayPal order." },
+        {
+          success: false,
+          error: "Additional item payment does not match the PayPal order.",
+        },
         { status: 403 }
       );
     }
@@ -168,7 +146,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       requestUserId !== auth.profile.uid
     ) {
       return NextResponse.json(
-        { success: false, error: "This payment does not belong to the authenticated account." },
+        {
+          success: false,
+          error: "This payment does not belong to the authenticated account.",
+        },
         { status: 403 }
       );
     }
@@ -184,11 +165,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     }
 
     // --- 8. What the browser paid must be what ShipIN stored ---
-    const expectedPayPalAmount = roundMoney(toNumber(paymentOrder.paypalAmount));
+    const expectedPayPalAmount = roundMoney(
+      toNumber(paymentOrder.paypalAmount)
+    );
 
     if (!sameCents(roundMoney(amount), expectedPayPalAmount)) {
       return NextResponse.json(
-        { success: false, error: "The PayPal payment amount could not be verified." },
+        {
+          success: false,
+          error: "The PayPal payment amount could not be verified.",
+        },
         { status: 400 }
       );
     }
@@ -217,7 +203,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         {
           success: false,
           inProgress: true,
-          error: "This payment is already being processed. Please wait a moment and refresh.",
+          error:
+            "This payment is already being processed. Please wait a moment and refresh.",
         },
         { status: 409 }
       );
@@ -230,10 +217,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       expectedPayPalAmount,
     });
 
-    if (!captured.ok) return NextResponse.json(
-        { success: false, error: captured.error || "Unable to process payment. Please try again." },
+    if (!captured.ok)
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            captured.error || "Unable to process payment. Please try again.",
+        },
         { status: captured.status ?? 400 }
-    );
+      );
 
     const { captureId, capturedAmount, capturedCurrency } = captured;
 
@@ -253,7 +245,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         capturedCurrency,
       });
 
-      if (!settlement.ok) return fail({ error: settlement.error || "Settlement failed", status: settlement.status ?? 500 });
+      if (!settlement.ok)
+        return fail({
+          error: settlement.error || "Settlement failed",
+          status: settlement.status ?? 500,
+        });
 
       captureSettled = true;
 
@@ -279,7 +275,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       expectedPayPalAmount,
     });
 
-    if (!settlement.ok) return fail({ error: settlement.error || "Settlement failed", status: settlement.status ?? 500 });
+    if (!settlement.ok)
+      return fail({
+        error: settlement.error || "Settlement failed",
+        status: settlement.status ?? 500,
+      });
 
     captureSettled = true;
 
@@ -290,7 +290,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
           userId: requestData.userId,
           requestId,
           customerName:
-            requestData.customerName || requestData.shippingAddress?.firstName || "Customer",
+            requestData.customerName ||
+            requestData.shippingAddress?.firstName ||
+            "Customer",
         })
       );
     } catch (error) {

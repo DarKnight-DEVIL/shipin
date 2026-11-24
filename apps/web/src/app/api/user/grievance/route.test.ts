@@ -48,19 +48,19 @@ describe("POST /api/user/grievance", () => {
   it("rejects malformed JSON", async () => {
     const response = await POST(request("{not json"));
     expect(response.status).toBe(400);
-    expect((await response.json()).code).toBe("INVALID_JSON");
+    expect((await response.json()).code).toBe("VALIDATION_ERROR");
   });
 
   it("requires a right type", async () => {
     const response = await POST(request({ details: "help" }));
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe("Right type is required.");
+    expect((await response.json()).error).toBe("Invalid request body.");
   });
 
   it("rejects a right outside the statutory list", async () => {
     const response = await POST(request({ right: "refund" }));
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe("Invalid right type.");
+    expect((await response.json()).error).toBe("Invalid request body.");
     expect(mocks.logRightsRequest).not.toHaveBeenCalled();
   });
 
@@ -84,14 +84,13 @@ describe("POST /api/user/grievance", () => {
     });
   });
 
-  it("drops a non-string details payload", async () => {
-    await POST(request({ right: "access", details: { nested: true } }));
+  it("rejects a non-string details payload", async () => {
+    const response = await POST(
+      request({ right: "access", details: { nested: true } })
+    );
 
-    expect(mocks.logRightsRequest).toHaveBeenCalledWith({
-      userId: "user-1",
-      right: "access",
-      details: undefined,
-    });
+    expect(response.status).toBe(400);
+    expect(mocks.logRightsRequest).not.toHaveBeenCalled();
   });
 });
 
