@@ -108,6 +108,9 @@ export function getDevCSP(): string {
     // every render of the top-up button.
     "https://www.paypal.com https://www.sandbox.paypal.com " +
     "https://graph.facebook.com https://www.google.com https://www.google.com/recaptcha/ https://www.googletagmanager.com " +
+    // Google Identity Services posts from the page to accounts.google.com
+    // during the in-page credential flow.
+    "https://accounts.google.com " +
     "https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com " +
     "https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com https://va.vercel-scripts.com " +
     // Firebase Realtime Database sockets, then the dev-only transports: HMR on
@@ -283,6 +286,9 @@ export function getProductionCSP(): string {
     // production policy below for the same pair.
     "https://www.paypal.com https://www.sandbox.paypal.com " +
     "https://graph.facebook.com https://www.google.com https://www.google.com/recaptcha/ https://www.googletagmanager.com " +
+    // Google Identity Services posts from the page to accounts.google.com
+    // during the in-page credential flow.
+    "https://accounts.google.com " +
     "https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com " +
     "https://fonts.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com " +
     // Narrowed from a blanket `wss: https:`: every host the app actually

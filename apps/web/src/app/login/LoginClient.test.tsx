@@ -23,6 +23,9 @@ const h = vi.hoisted(() => ({
   createUserWithEmailAndPassword: vi.fn(),
   sendEmailVerification: vi.fn(),
   signInWithRedirect: vi.fn(),
+  signInWithCredential: vi.fn(),
+  loadGoogleIdentity: vi.fn(),
+  promptGoogleSignIn: vi.fn(),
   replace: vi.fn(),
   refresh: vi.fn(),
   searchParams: new URLSearchParams(),
@@ -40,7 +43,11 @@ vi.mock("@/lib/firebase", () => ({
 }));
 
 vi.mock("firebase/auth", () => ({
-  GoogleAuthProvider: class GoogleAuthProvider {},
+  GoogleAuthProvider: class GoogleAuthProvider {
+    static credential(idToken: string) {
+      return { providerId: "google.com", idToken };
+    }
+  },
   initializeRecaptchaConfig: (...args: unknown[]) =>
     h.initializeRecaptchaConfig(...args),
   signInWithEmailAndPassword: (...args: unknown[]) =>
@@ -50,6 +57,14 @@ vi.mock("firebase/auth", () => ({
   sendEmailVerification: (...args: unknown[]) =>
     h.sendEmailVerification(...args),
   signInWithRedirect: (...args: unknown[]) => h.signInWithRedirect(...args),
+  signInWithCredential: (...args: unknown[]) =>
+    h.signInWithCredential(...args),
+}));
+
+vi.mock("@/lib/googleIdentity", () => ({
+  FIREBASE_MANAGED_GOOGLE_CLIENT_ID: "test-gsi-client-id",
+  loadGoogleIdentity: (...args: unknown[]) => h.loadGoogleIdentity(...args),
+  promptGoogleSignIn: (...args: unknown[]) => h.promptGoogleSignIn(...args),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -139,6 +154,20 @@ beforeEach(() => {
   h.createUserWithEmailAndPassword.mockReset();
   h.sendEmailVerification.mockReset().mockResolvedValue(undefined);
   h.signInWithRedirect.mockReset();
+  h.signInWithCredential.mockReset();
+  h.loadGoogleIdentity.mockReset().mockResolvedValue(undefined);
+  // Default: One Tap cannot show, so the click falls through to the
+  // redirect flow — the behaviour every pre-GIS test asserts.
+  h.promptGoogleSignIn
+    .mockReset()
+    .mockImplementation(
+      (
+        _clientId: string,
+        { onUnavailable }: { onUnavailable: () => void }
+      ) => {
+        onUnavailable();
+      }
+    );
   h.replace.mockReset();
   h.refresh.mockReset();
   h.success.mockReset();
@@ -510,6 +539,111 @@ describe("LoginClient: sign-in warm-up", () => {
     expect(h.initializeRecaptchaConfig).toHaveBeenCalledWith(
       expect.objectContaining({ name: "test-auth" })
     );
+    // The GIS script is preloaded too, so the in-page credential flow is
+    // ready before the first click.
+    expect(h.loadGoogleIdentity).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("LoginClient: Google Identity Services flow", () => {
+  it("signs in from the GIS credential without a redirect", async () => {
+    h.promptGoogleSignIn.mockImplementation(
+      (
+        _clientId: string,
+        {
+          onCredential,
+        }: { onCredential: (credential: string) => void }
+      ) => {
+        onCredential("google-id-token");
+      }
+    );
+    h.signInWithCredential.mockResolvedValue({
+      user: profile({ emailVerified: true }),
+    });
+    render(<LoginClient />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i })
+    );
+
+    await waitFor(() =>
+      expect(h.signInWithCredential).toHaveBeenCalledWith(
+        { name: "test-auth" },
+        { providerId: "google.com", idToken: "google-id-token" }
+      )
+    );
+    await waitFor(() => expect(h.replace).toHaveBeenCalledWith("/dashboard"));
+    // The whole point of the GIS flow: the browser never leaves the page.
+    expect(h.signInWithRedirect).not.toHaveBeenCalled();
+    expect(h.error).not.toHaveBeenCalled();
+  });
+
+  it("passes the configured Google client id to GIS", async () => {
+    h.promptGoogleSignIn.mockImplementation(() => {});
+    render(<LoginClient />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i })
+    );
+
+    expect(h.promptGoogleSignIn).toHaveBeenCalledWith(
+      "test-gsi-client-id",
+      expect.objectContaining({
+        onCredential: expect.any(Function),
+        onUnavailable: expect.any(Function),
+        onDismissed: expect.any(Function),
+      })
+    );
+  });
+
+  it("maps App Check failures from the credential flow too", async () => {
+    h.promptGoogleSignIn.mockImplementation(
+      (
+        _clientId: string,
+        {
+          onCredential,
+        }: { onCredential: (credential: string) => void }
+      ) => {
+        onCredential("google-id-token");
+      }
+    );
+    h.signInWithCredential.mockRejectedValue({
+      code: "auth/firebase-app-check-token-is-invalid",
+    });
+    render(<LoginClient />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i })
+    );
+
+    await waitFor(() =>
+      expect(h.error).toHaveBeenCalledWith(expect.stringContaining("App Check"))
+    );
+    expect(h.replace).not.toHaveBeenCalled();
+  });
+
+  it("hands control back when the user dismisses the chooser", async () => {
+    h.promptGoogleSignIn.mockImplementation(
+      (
+        _clientId: string,
+        { onDismissed }: { onDismissed: () => void }
+      ) => {
+        onDismissed();
+      }
+    );
+    render(<LoginClient />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i })
+    );
+
+    // No spinner left behind and no fallback navigation after a dismissal.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /continue with google/i })
+      ).not.toBeDisabled()
+    );
+    expect(h.signInWithRedirect).not.toHaveBeenCalled();
   });
 });
 
@@ -537,13 +671,15 @@ describe("LoginClient: App Check errors", () => {
     expect(h.replace).not.toHaveBeenCalled();
   });
 
-  it("starts Google sign-in with a redirect, not a popup", async () => {
+  it("falls back to a redirect when One Tap cannot show", async () => {
     // Regression: the popup flow hangs forever after the account chooser.
     // The chooser and the Firebase auth handler send a Cross-Origin-Opener-Policy
     // that severs the popup from this page (console: "Cross-Origin-Opener-Policy
     // policy would block the window.closed call"), so the signInWithPopup
     // promise never settles: no error, no navigation. The redirect flow is
     // immune to COOP, and AuthRedirectHandler in the root layout completes it.
+    // GIS is the primary flow now; the redirect only fires when One Tap
+    // cannot show (no Google session, dismissal cooldown, load failure).
     h.signInWithRedirect.mockResolvedValue(undefined);
     render(<LoginClient />);
 

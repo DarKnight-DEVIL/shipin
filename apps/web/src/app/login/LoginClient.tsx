@@ -7,6 +7,7 @@ import { Bricolage_Grotesque } from "next/font/google";
 import {
   GoogleAuthProvider,
   initializeRecaptchaConfig,
+  signInWithCredential,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
@@ -26,6 +27,12 @@ import { ArrowLeft, ArrowUpRight, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import { auth, getAppCheckToken } from "@/lib/firebase";
+import {
+  FIREBASE_MANAGED_GOOGLE_CLIENT_ID,
+  loadGoogleIdentity,
+  promptGoogleSignIn,
+} from "@/lib/googleIdentity";
+import { clientEnv } from "@/config/env";
 import { verificationEmailOptions } from "@/lib/emailVerification";
 // The profile service is imported on demand below: it pulls in the Firestore
 // SDK, and the login page only needs it after a successful sign-in.
@@ -75,6 +82,14 @@ function Logo({ small = false }: { small?: boolean }) {
 const AUTHORIZED_DOMAINS_DOC =
   "https://support.google.com/firebase/answer/6400741";
 
+/**
+ * Google OAuth client for the in-page GIS flow. Defaults to the
+ * Firebase-managed web client for this project; NEXT_PUBLIC_GOOGLE_CLIENT_ID
+ * overrides it.
+ */
+const GOOGLE_CLIENT_ID =
+  clientEnv.NEXT_PUBLIC_GOOGLE_CLIENT_ID || FIREBASE_MANAGED_GOOGLE_CLIENT_ID;
+
 export default function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -119,6 +134,9 @@ export default function LoginClient() {
   useEffect(() => {
     void getAppCheckToken();
     void initializeRecaptchaConfig(auth).catch(() => {});
+    // Preload the Google Identity Services script so the in-page credential
+    // flow is ready before the first click.
+    void loadGoogleIdentity().catch(() => {});
   }, []);
 
   const safeRequestedNext =
@@ -229,6 +247,41 @@ export default function LoginClient() {
   }
 
   async function handleGoogleLogin() {
+    // In-page Google Identity Services flow first: it hands a Google ID
+    // token to a callback without leaving the page, so sign-in completes in
+    // well under a second instead of paying the redirect handshake's three
+    // sequential round-trips. The redirect flow is the fallback for when
+    // One Tap cannot show: no Google session in the browser, a dismissal
+    // cooldown, or GIS failing to load.
+    setLoading(true);
+    promptGoogleSignIn(GOOGLE_CLIENT_ID, {
+      onCredential: (credential) => {
+        void completeGoogleCredential(credential);
+      },
+      onUnavailable: () => {
+        void signInViaGoogleRedirect();
+      },
+      onDismissed: () => {
+        // The user closed the chooser; hand control back instead of
+        // leaving the button spinning.
+        setLoading(false);
+      },
+    });
+  }
+
+  async function completeGoogleCredential(credential: string) {
+    try {
+      const result = await signInWithCredential(
+        auth,
+        GoogleAuthProvider.credential(credential)
+      );
+      await finishSignIn(result.user);
+    } catch (error) {
+      await handleAuthFailure(error);
+    }
+  }
+
+  async function signInViaGoogleRedirect() {
     try {
       // Redirect, not popup. The Google account chooser and the Firebase
       // auth handler send a Cross-Origin-Opener-Policy that severs the
@@ -239,79 +292,87 @@ export default function LoginClient() {
       // is immune to COOP and popup blockers, and AuthRedirectHandler in
       // the root layout completes the sign-in when the browser returns.
       const provider = new GoogleAuthProvider();
-      setLoading(true);
       await signInWithRedirect(auth, provider);
       // The browser leaves this page; AuthRedirectHandler finishes the
       // flow, including the best-effort login-intent ping.
     } catch (error) {
-      if (await beginSecondFactor(error)) {
-        setLoading(false);
-        return;
-      }
-
-      setLoading(false);
-      // The previous inline error is about a different attempt, so it must
-      // not outlive this one. Clearing it also unmounts any documentation
-      // link, which only renders beside an inline error.
-      setFormError("");
-      // Log full error details for debugging â€” Firebase error codes are
-      // often buried in nested properties, so stringify everything.
-      console.error("FULL AUTH ERROR:", JSON.stringify(error, null, 2));
-      console.error(
-        "Error code:",
-        error instanceof Error ? (error as { code?: string }).code : "N/A"
-      );
-      console.error(
-        "Error message:",
-        error instanceof Error ? error.message : String(error)
-      );
-
-      const err = error as { code?: string; message?: string };
-      const errorCode = err?.code;
-
-      // Map common Firebase Auth error codes to actionable user messages
-      let userMessage = "Unable to sign in with Google.";
-
-      if (errorCode === "auth/internal-error") {
-        userMessage =
-          "Google sign-in failed due to an internal error. This usually means the Google provider isn't properly configured in Firebase Console. Please contact support or try email sign-in.";
-      } else if (errorCode === "auth/unauthorized-domain") {
-        // The message named support and nothing else, so the one fact that
-        // fixes it - this host is missing from the authorized list - never
-        // reached anyone. Shown inline as well as toasted, because a toast
-        // cannot carry the link.
-        userMessage =
-          "This domain isn't authorized for sign-in. Add it to Firebase Auth " +
-          "> Settings > Authorized domains - every preview deployment needs " +
-          "its own host added.";
-        setFormError(userMessage);
-        setFormErrorHelp({
-          href: AUTHORIZED_DOMAINS_DOC,
-          label: "See the authorized domains documentation",
-        });
-      } else if (errorCode === "auth/operation-not-allowed") {
-        userMessage =
-          "Google sign-in is not enabled. Please contact support to enable it.";
-      } else if (errorCode?.includes("app-check")) {
-        // Firebase App Check enforcement on Identity Toolkit rejects every
-        // sign-in, for every provider, before credentials are even checked.
-        // Without this branch it read as "internal error" and looked like an
-        // OAuth misconfiguration.
-        userMessage =
-          "Sign-in is blocked by Firebase App Check for this project. An administrator must disable App Check enforcement on Identity Toolkit, or register this web app in App Check.";
-        console.error(
-          "[auth] App Check is enforced on Identity Toolkit and the web client has no valid token. In Firebase Console → App Check → APIs, set Identity Toolkit / Identity Platform to Unenforced (or register the web app with a reCAPTCHA v3 key)."
-        );
-      } else if (errorCode === "auth/network-request-failed") {
-        userMessage =
-          "Network error. Please check your connection and try again.";
-      } else if (errorCode === "auth/too-many-requests") {
-        userMessage = "Too many attempts. Please wait a moment and try again.";
-      }
-
-      toast.error(userMessage);
-      setLoading(false);
+      await handleAuthFailure(error);
     }
+  }
+
+  /**
+   * Shared failure path for every Google sign-in attempt (credential and
+   * redirect flows): maps Firebase error codes to actionable user messages
+   * and surfaces them inline as well as in a toast.
+   */
+  async function handleAuthFailure(error: unknown) {
+    if (await beginSecondFactor(error)) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(false);
+    // The previous inline error is about a different attempt, so it must
+    // not outlive this one. Clearing it also unmounts any documentation
+    // link, which only renders beside an inline error.
+    setFormError("");
+    // Log full error details for debugging — Firebase error codes are
+    // often buried in nested properties, so stringify everything.
+    console.error("FULL AUTH ERROR:", JSON.stringify(error, null, 2));
+    console.error(
+      "Error code:",
+      error instanceof Error ? (error as { code?: string }).code : "N/A"
+    );
+    console.error(
+      "Error message:",
+      error instanceof Error ? error.message : String(error)
+    );
+
+    const err = error as { code?: string; message?: string };
+    const errorCode = err?.code;
+
+    // Map common Firebase Auth error codes to actionable user messages
+    let userMessage = "Unable to sign in with Google.";
+
+    if (errorCode === "auth/internal-error") {
+      userMessage =
+        "Google sign-in failed due to an internal error. This usually means the Google provider isn't properly configured in Firebase Console. Please contact support or try email sign-in.";
+    } else if (errorCode === "auth/unauthorized-domain") {
+      // The message named support and nothing else, so the one fact that
+      // fixes it - this host is missing from the authorized list - never
+      // reached anyone. Shown inline as well as toasted, because a toast
+      // cannot carry the link.
+      userMessage =
+        "This domain isn't authorized for sign-in. Add it to Firebase Auth " +
+        "> Settings > Authorized domains - every preview deployment needs " +
+        "its own host added.";
+      setFormError(userMessage);
+      setFormErrorHelp({
+        href: AUTHORIZED_DOMAINS_DOC,
+        label: "See the authorized domains documentation",
+      });
+    } else if (errorCode === "auth/operation-not-allowed") {
+      userMessage =
+        "Google sign-in is not enabled. Please contact support to enable it.";
+    } else if (errorCode?.includes("app-check")) {
+      // Firebase App Check enforcement on Identity Toolkit rejects every
+      // sign-in, for every provider, before credentials are even checked.
+      // Without this branch it read as "internal error" and looked like an
+      // OAuth misconfiguration.
+      userMessage =
+        "Sign-in is blocked by Firebase App Check for this project. An administrator must disable App Check enforcement on Identity Toolkit, or register this web app in App Check.";
+      console.error(
+        "[auth] App Check is enforced on Identity Toolkit and the web client has no valid token. In Firebase Console → App Check → APIs, set Identity Toolkit / Identity Platform to Unenforced (or register the web app with a reCAPTCHA v3 key)."
+      );
+    } else if (errorCode === "auth/network-request-failed") {
+      userMessage =
+        "Network error. Please check your connection and try again.";
+    } else if (errorCode === "auth/too-many-requests") {
+      userMessage = "Too many attempts. Please wait a moment and try again.";
+    }
+
+    toast.error(userMessage);
+    setLoading(false);
   }
 
   /**
