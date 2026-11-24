@@ -2,13 +2,11 @@
  * Google Identity Services (GIS) — the in-page credential flow for Google
  * sign-in.
  *
- * The redirect flow (`signInWithRedirect`) costs 2-3 seconds per attempt:
- * the SDK runs origin validation, the auth iframe re-checks the project
- * config and `createAuthUri`, and only then navigates to Google — three
- * sequential round-trips that read as "broken" to users and invite
- * double-clicks. GIS instead returns a Google ID token to an in-page
- * callback, which `signInWithCredential` exchanges without ever leaving the
- * page: sub-second sign-in, no handshake, no popup, no COOP.
+ * One Tap is auto-prompted when the login page loads: the browser-native
+ * (FedCM) chooser is then already on screen before the user reaches for the
+ * button, and `auto_select` signs returning users in with zero clicks. The
+ * "Continue with Google" button itself uses the classic popup flow — the two
+ * choosers stay independent.
  *
  * The client ID is the Firebase-managed Google OAuth web client for this
  * project (a public identifier; it appears in every OAuth URL). It can be
@@ -29,17 +27,12 @@ interface GoogleIdApi {
     auto_select?: boolean;
   }): void;
   /**
-   * Shows the One Tap / FedCM account chooser. The callback reports whether
-   * the prompt was actually shown — a skipped or suppressed prompt (no
-   * Google session, previous dismissal cooldown) means the caller must fall
-   * back to the redirect flow.
+   * Shows the One Tap / FedCM account chooser. The optional callback reports
+   * display outcomes; the auto-prompt ignores them on purpose — when One Tap
+   * cannot show (no Google session, dismissal cooldown), the popup button
+   * and its redirect fallback remain the path in.
    */
-  prompt(callback?: (notification: {
-    isNotDisplayed(): boolean;
-    isSkippedMoment(): boolean;
-    isDisplayed(): boolean;
-    isDismissedMoment(): boolean;
-  }) => void): void;
+  prompt(callback?: (notification: unknown) => void): void;
   disableAutoSelect(): void;
 }
 
@@ -85,54 +78,12 @@ export function loadGoogleIdentity(): Promise<GoogleIdApi> {
   return loadPromise;
 }
 
-export interface GoogleSignInPrompt {
-  /** Fires with the Google ID token when the user picks an account. */
-  onCredential: (credential: string) => void;
-  /** Fires when the prompt could not or would not be shown. */
-  onUnavailable: () => void;
-  /** Fires when the prompt was shown but the user closed it. */
-  onDismissed: () => void;
-}
-
-/**
- * Initializes GIS with the credential callback and shows the account chooser.
- *
- * `onUnavailable` fires when One Tap cannot display (no Google session in the
- * browser, dismissal cooldown, FedCM refusal) — the sign-in then needs the
- * redirect fallback. It also fires when GIS itself fails to load.
- */
-export function promptGoogleSignIn(
-  clientId: string,
-  { onCredential, onUnavailable, onDismissed }: GoogleSignInPrompt
-): void {
-  loadGoogleIdentity()
-    .then((api) => {
-      api.initialize({
-        client_id: clientId,
-        callback: (response) => onCredential(response.credential),
-        // FedCM is the browser-native account chooser: it needs no third-party
-        // cookies, which Chrome partitions away — the same class of breakage
-        // that killed the popup flow.
-        use_fedcm_for_prompt: true,
-      });
-      api.prompt((notification) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          onUnavailable();
-        } else if (notification.isDismissedMoment()) {
-          onDismissed();
-        }
-      });
-    })
-    .catch(onUnavailable);
-}
-
 /**
  * Auto-prompts One Tap as the page loads, the way Google recommends One Tap
  * be used on sign-in pages. The chooser is then already on screen before the
  * user reaches for the button — the click-time FedCM round trip (fetch the
  * account list, ~0.5s) happens while the page is still loading instead.
- * `auto_select` signs returning users in with zero clicks. Failures are
- * silent: the button and its redirect fallback remain the path in.
+ * Failures are silent: the popup button remains the path in.
  */
 export function autoPromptGoogleSignIn(
   clientId: string,

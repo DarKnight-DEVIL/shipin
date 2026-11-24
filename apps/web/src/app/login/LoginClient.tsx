@@ -12,6 +12,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
+  signInWithPopup,
   signInWithRedirect,
 } from "firebase/auth";
 import type { User } from "firebase/auth";
@@ -32,7 +33,6 @@ import {
   FIREBASE_MANAGED_GOOGLE_CLIENT_ID,
   autoPromptGoogleSignIn,
   loadGoogleIdentity,
-  promptGoogleSignIn,
 } from "@/lib/googleIdentity";
 import { clientEnv } from "@/config/env";
 import { verificationEmailOptions } from "@/lib/emailVerification";
@@ -261,26 +261,46 @@ export default function LoginClient() {
   }
 
   async function handleGoogleLogin() {
-    // In-page Google Identity Services flow first: it hands a Google ID
-    // token to a callback without leaving the page, so sign-in completes in
-    // well under a second instead of paying the redirect handshake's three
-    // sequential round-trips. The redirect flow is the fallback for when
-    // One Tap cannot show: no Google session in the browser, a dismissal
-    // cooldown, or GIS failing to load.
+    // The button opens the classic Google chooser in a popup. The One Tap
+    // chooser auto-prompted on page load stays independent — this is the
+    // explicit path for people who dismissed it or landed without it. The
+    // popup works because /__/auth is served same-origin (see next.config.ts)
+    // and the auth helper frames are allowed by our own frame headers; before
+    // that, the popup's result never came back and redirect was the only
+    // flow that worked.
     setLoading(true);
-    promptGoogleSignIn(GOOGLE_CLIENT_ID, {
-      onCredential: (credential) => {
-        void completeGoogleCredential(credential);
-      },
-      onUnavailable: () => {
-        void signInViaGoogleRedirect();
-      },
-      onDismissed: () => {
-        // The user closed the chooser; hand control back instead of
-        // leaving the button spinning.
+    try {
+      const result = await signInWithPopup(auth, new GoogleAuthProvider());
+      await finishSignIn(result.user);
+    } catch (error) {
+      const code = (error as { code?: string })?.code;
+
+      // Closing the chooser, or a second click superseding the first, is the
+      // user changing their mind — not a failure to apologise for.
+      if (
+        code === "auth/popup-closed-by-user" ||
+        code === "auth/cancelled-popup-request"
+      ) {
         setLoading(false);
-      },
-    });
+        return;
+      }
+
+      // A blocker killed the popup before it opened. The redirect flow (with
+      // AuthRedirectHandler completing it on return) is the fallback.
+      if (code === "auth/popup-blocked") {
+        try {
+          await signInWithRedirect(auth, new GoogleAuthProvider());
+          // The browser leaves this page; AuthRedirectHandler finishes the
+          // flow, including the best-effort login-intent ping.
+          return;
+        } catch (redirectError) {
+          await handleAuthFailure(redirectError);
+          return;
+        }
+      }
+
+      await handleAuthFailure(error);
+    }
   }
 
   async function completeGoogleCredential(credential: string) {
@@ -290,25 +310,6 @@ export default function LoginClient() {
         GoogleAuthProvider.credential(credential)
       );
       await finishSignIn(result.user);
-    } catch (error) {
-      await handleAuthFailure(error);
-    }
-  }
-
-  async function signInViaGoogleRedirect() {
-    try {
-      // Redirect, not popup. The Google account chooser and the Firebase
-      // auth handler send a Cross-Origin-Opener-Policy that severs the
-      // popup from this page (console: "Cross-Origin-Opener-Policy policy
-      // would block the window.closed call"), so once the account is
-      // chosen the signInWithPopup promise never settles: no error, no
-      // navigation, the user is just left on the form. The redirect flow
-      // is immune to COOP and popup blockers, and AuthRedirectHandler in
-      // the root layout completes the sign-in when the browser returns.
-      const provider = new GoogleAuthProvider();
-      await signInWithRedirect(auth, provider);
-      // The browser leaves this page; AuthRedirectHandler finishes the
-      // flow, including the best-effort login-intent ping.
     } catch (error) {
       await handleAuthFailure(error);
     }
