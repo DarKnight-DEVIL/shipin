@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getDoc: vi.fn(),
   updateDoc: vi.fn(),
   createNotification: vi.fn(),
+  getAdminRequestPage: vi.fn(),
   arrayUnion: vi.fn((value: unknown) => ({ __union: value })),
   arrayRemove: vi.fn((value: unknown) => ({ __remove: value })),
 }));
@@ -27,6 +28,9 @@ vi.mock("@/lib/firebaseDb", () => ({ db: {} }));
 vi.mock("@/features/notifications/services", () => ({
   createNotification: mocks.createNotification,
 }));
+vi.mock("@/features/admin/services/requestQueueClient", () => ({
+  getAdminRequestPage: mocks.getAdminRequestPage,
+}));
 
 import {
   approveInternationalShipment,
@@ -47,21 +51,53 @@ beforeEach(() => {
   });
   mocks.updateDoc.mockReset().mockResolvedValue(undefined);
   mocks.createNotification.mockReset().mockResolvedValue("n-1");
+  mocks.getAdminRequestPage.mockReset().mockResolvedValue({
+    requests: [],
+    nextCursor: null,
+    hasMore: false,
+  });
 });
 
 describe("getWarehouseInventory", () => {
-  it("maps the warehouse requests", async () => {
-    mocks.getDocs.mockResolvedValue({
-      docs: [{ id: "r-1", data: () => ({ status: "packed" }) }],
-    });
+  it("pages the warehouse statuses through the admin API", async () => {
+    mocks.getAdminRequestPage
+      .mockResolvedValueOnce({
+        requests: [{ id: "r-1", status: "packed" }],
+        nextCursor: "cur-1",
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        requests: [{ id: "r-2", status: "warehouse_received" }],
+        nextCursor: null,
+        hasMore: false,
+      });
 
     await expect(getWarehouseInventory()).resolves.toEqual([
       { id: "r-1", status: "packed" },
+      { id: "r-2", status: "warehouse_received" },
     ]);
+
+    expect(mocks.getAdminRequestPage).toHaveBeenCalledTimes(2);
+    expect(mocks.getAdminRequestPage).toHaveBeenNthCalledWith(1, {
+      statuses: [
+        "warehouse_received",
+        "ready_for_international_shipping",
+        "packed",
+      ],
+      cursor: null,
+    });
+    expect(mocks.getAdminRequestPage).toHaveBeenNthCalledWith(2, {
+      statuses: [
+        "warehouse_received",
+        "ready_for_international_shipping",
+        "packed",
+      ],
+      cursor: "cur-1",
+    });
   });
 
   it("wraps read failures", async () => {
-    mocks.getDocs.mockRejectedValue(new Error("offline"));
+    mocks.getAdminRequestPage.mockRejectedValue(new Error("offline"));
 
     await expect(getWarehouseInventory()).rejects.toBeInstanceOf(Error);
   });

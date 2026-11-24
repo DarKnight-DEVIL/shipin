@@ -103,9 +103,10 @@ runner below `apps/web/scripts/migrations/` exists, `npm run migrate` wraps it.
 ## Verification
 
 - TypeScript: `npx tsc --noEmit` passes with no errors.
-- Vitest: 10 files, 95 tests passed on the audit date. As of 2026-11-19 the
-  suite is 228 files / 2,415 tests across the workspace — 213 files / 2,325
-  tests in `apps/web`, plus the four package suites (config 13, shared 12,
-  utils 28, ui 37). Recounted with `npm test`; the numbers move, so read them
+- Vitest: 10 files, 95 tests passed on the audit date. As of 2026-11-24 the
+  suite is 252 files / 2,652 tests across the workspace — 250 files / 2,639
+  tests in `apps/web`, plus the `@shipin/config` suite (2 files / 13 tests);
+  the unused `shared`/`utils`/`ui` packages were removed in the §2.6 orphan
+  cleanup. Recounted with `npm test`; the numbers move, so read them
   from that command rather than from this line.
 - No runtime flow was exercised against Firebase or PayPal.

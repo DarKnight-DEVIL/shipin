@@ -22,9 +22,10 @@ const REQUEST_STATUSES: string[] = Object.values(REQUEST_STATUS);
  *
  * This used to read the whole collection and return it as one body (see
  * docs/AUDIT.md §2.3). It now serves `?limit`/`?cursor` pages, newest first,
- * and an optional `?status=` filter so a queue for one status reads only that
- * status — the equality filter plus the `createdAt` order is exactly the
- * composite index declared for `requests` in `firestore.indexes.json`.
+ * and an optional `?status=` filter — a single status or a comma-separated
+ * list (served as a Firestore `in`, still one composite-indexed query) so the
+ * warehouse inventory can ask for its three statuses in one paged read
+ * instead of scanning the collection client-side.
  *
  * Each page carries the document whole. This used to project seven fields
  * (id, userId, customerName, email, status, createdAt, updatedAt) and the
@@ -56,21 +57,35 @@ async function handleGetRequests(request: NextRequest): Promise<NextResponse> {
     throw error;
   }
 
-  const status = url.searchParams.get("status");
-  if (status !== null && !REQUEST_STATUSES.includes(status)) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Unknown request status.",
-        code: "UNKNOWN_STATUS",
-      },
-      { status: 400, headers: NO_STORE }
+  const statusParam = url.searchParams.get("status");
+  let statuses: string[] = [];
+
+  if (statusParam !== null) {
+    statuses = [...new Set(statusParam.split(",").map((s) => s.trim()))].filter(
+      Boolean
     );
+
+    if (
+      statuses.length === 0 ||
+      statuses.length > 30 ||
+      statuses.some((s) => !REQUEST_STATUSES.includes(s))
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unknown request status.",
+          code: "UNKNOWN_STATUS",
+        },
+        { status: 400, headers: NO_STORE }
+      );
+    }
   }
 
   let query: Query<DocumentData> = adminDb.collection("requests");
-  if (status) {
-    query = query.where("status", "==", status);
+  if (statuses.length === 1) {
+    query = query.where("status", "==", statuses[0]);
+  } else if (statuses.length > 1) {
+    query = query.where("status", "in", statuses);
   }
   query = query.orderBy("createdAt", "desc").limit(params.limit);
   if (params.cursorMs !== null) {

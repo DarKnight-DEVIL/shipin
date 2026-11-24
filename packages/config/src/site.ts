@@ -37,24 +37,3 @@ export const SITE_CONFIG = {
     github: "https://github.com/shipin",
   },
 } as const;
-
-export const ROUTES = {
-  home: "/",
-  login: "/login",
-  dashboard: "/dashboard",
-  requests: "/requests",
-  tracking: "/track",
-  verifyEmail: "/verify-email",
-  admin: "/admin",
-} as const;
-
-export const API_ROUTES = {
-  auth: {
-    login: "/api/auth/login-intent",
-    mfaStatus: "/api/auth/mfa/status",
-  },
-  tracking: "/api/tracking",
-  requests: "/api/requests",
-  paypal: "/api/paypal",
-  support: "/api/support",
-} as const;

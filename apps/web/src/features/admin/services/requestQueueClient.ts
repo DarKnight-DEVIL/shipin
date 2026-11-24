@@ -54,6 +54,8 @@ function restoreTimestamps(value: unknown): unknown {
 export async function getAdminRequestPage(
   options: {
     status?: string | null;
+    /** Comma-separated list, served by the route as a Firestore `in`. */
+    statuses?: readonly string[];
     cursor?: string | null;
     limit?: number;
   } = {}
@@ -65,6 +67,8 @@ export async function getAdminRequestPage(
   try {
     const search = new URLSearchParams();
     if (options.status) search.set("status", options.status);
+    if (options.statuses?.length)
+      search.set("status", options.statuses.join(","));
     if (options.cursor) search.set("cursor", options.cursor);
     if (options.limit) search.set("limit", String(options.limit));
 

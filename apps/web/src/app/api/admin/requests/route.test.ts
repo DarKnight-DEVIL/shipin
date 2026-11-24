@@ -207,6 +207,43 @@ describe("GET /api/admin/requests", () => {
     expect(calls).toEqual([]);
   });
 
+  it("serves a comma-separated status list as one `in` query", async () => {
+    mocks.get.mockResolvedValue({ docs: [] });
+
+    const response = await GET(
+      request("?status=warehouse_received,packed,warehouse_received")
+    );
+
+    expect(response.status).toBe(200);
+    expect(calls[0].args).toEqual([
+      "status",
+      "in",
+      ["warehouse_received", "packed"],
+    ]);
+  });
+
+  it("rejects a status list with an unknown member", async () => {
+    const response = await GET(request("?status=paid,express"));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "UNKNOWN_STATUS",
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("rejects an empty status parameter", async () => {
+    const response = await GET(request("?status="));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "UNKNOWN_STATUS",
+    });
+    expect(calls).toEqual([]);
+  });
+
   it("continues after the cursor the previous page returned", async () => {
     const lastCreatedAt = 1_700_000_500_000;
     mocks.get.mockResolvedValue({
@@ -224,9 +261,9 @@ describe("GET /api/admin/requests", () => {
 
     expect(second.status).toBe(200);
     const startAfter = calls.find((call) => call.method === "startAfter");
-    expect(
-      (startAfter?.args[0] as { toMillis: () => number }).toMillis()
-    ).toBe(lastCreatedAt);
+    expect((startAfter?.args[0] as { toMillis: () => number }).toMillis()).toBe(
+      lastCreatedAt
+    );
   });
 
   it("rejects a cursor it cannot read", async () => {

@@ -4,37 +4,53 @@ import {
   doc,
   arrayUnion,
   getDoc,
-  getDocs,
-  collection,
-  query,
-  where,
   arrayRemove,
 } from "firebase/firestore";
 import { db } from "@/lib/firebaseDb";
 import { toShipINError } from "@/utils/errors";
 import { createNotification } from "@/features/notifications/services";
+import { getAdminRequestPage } from "@/features/admin/services/requestQueueClient";
+import { REQUEST_STATUS } from "./requestStatus";
 import type { Request } from "@/types/request";
 import { getStorageParams } from "./warehousePolicy";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** The statuses the warehouse board shows, as one `in` query server-side. */
+const WAREHOUSE_STATUSES = [
+  REQUEST_STATUS.warehouse_received,
+  REQUEST_STATUS.ready_for_international_shipping,
+  REQUEST_STATUS.packed,
+] as const;
+
+/**
+ * The warehouse board, in bounded pages.
+ *
+ * This used to be a client-SDK `getDocs` over every request in three
+ * statuses — the same unbounded read the admin queue shipped with (see
+ * docs/AUDIT.md §2.3). It now pages through `/api/admin/requests`, which
+ * serves the three statuses as one `in` query and returns whole documents,
+ * so the page renders the same rows without re-fetching the collection on
+ * every visit.
+ */
 export async function getWarehouseInventory(): Promise<Request[]> {
   try {
-    const snapshot = await getDocs(
-      query(
-        collection(db, "requests"),
-        where("status", "in", [
-          "warehouse_received",
-          "ready_for_international_shipping",
-          "packed",
-        ])
-      )
-    );
+    const collected: Request[] = [];
+    let cursor: string | null = null;
 
-    return snapshot.docs.map((document) => ({
-      id: document.id,
-      ...(document.data() as Omit<Request, "id">),
-    }));
+    // Same safety net as the admin queue client: 200 pages is 20,000 rows.
+    for (let page = 0; page < 200; page += 1) {
+      const result = await getAdminRequestPage({
+        statuses: WAREHOUSE_STATUSES,
+        cursor,
+      });
+      collected.push(...result.requests);
+
+      if (!result.hasMore || !result.nextCursor) return collected;
+      cursor = result.nextCursor;
+    }
+
+    return collected;
   } catch (error) {
     throw toShipINError(error);
   }

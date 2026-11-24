@@ -130,11 +130,17 @@ refund/quote synthetic filters stay client-side — `refund_requested` collides 
 status value, and pushing it down would have returned a different, narrower set than the
 filter promises.
 
-Still open from this finding: the client-side equivalents `getWarehouseInventory()`
-(`src/features/requests/services/warehouse.ts:21`) and
-`subscribeToAllSupportTickets()` (`src/features/support/services/index.ts:202`), and the
-aggregate/mirror document for analytics (the cache bounds the cost per refresh, not per
-write).
+Still open from this finding: `subscribeToAllSupportTickets()`
+(`src/features/support/services/index.ts:202`) subscribes to every ticket, unbounded.
+Accepted with rationale: support tickets are human-scale (conversations, not requests),
+the sidebar's unread badge is computed from the live set, and capping the snapshot would
+make the badge lie about older unread tickets — the honest fix is an aggregate/mirror
+document, which is the same design the analytics mirror needs (below). The warehouse
+board's read was fixed: `getWarehouseInventory()` now pages through
+`/api/admin/requests?status=a,b,c` (the route serves a comma-separated status list as
+one `in` query on the same composite index) instead of a client-SDK `getDocs` over the
+collection. The aggregate/mirror document for analytics remains open as a design task:
+the cache bounds the cost per refresh, not per write.
 
 ### 2.3b P1 — that same endpoint hands the admin screens documents typed as `Request`
 
@@ -341,7 +347,7 @@ everywhere it was sold:
 Still open, and deliberately so: whether "up to 3 SKUs per request" should exist is a
 product decision — the cap is unenforced in the request flow either way.
 
-### 2.10 P2 — the component layer is effectively untested
+### 2.10 P2 — ~~the component layer is effectively untested~~ **premise resolved; floor still open**
 
 143 `.tsx` component files, 14 with tests. `vitest.config.ts:44-55` excludes
 `src/components/**/*.tsx` from coverage on the grounds that "they are covered by the E2E
@@ -350,25 +356,33 @@ So the `.tsx` surface (checkout, admin console, settings, dashboard) has neither
 browser coverage behind a gate. Either wire the E2E job, or measure the components and set
 a floor.
 
+**Update.** The premise is fixed: §2.2 repaired `test:e2e:local`, the CI e2e job runs it
+(30 specs passing, exit 0 locally and in CI), so the `.tsx` surface now has the browser
+coverage the exclusion claims. Measuring the components and setting a per-glob floor
+remains open as its own piece of work — it is a coverage-numbering exercise, not a defect.
+
 Also of note: `check:authorized-domains` is not referenced by any workflow, and skips
 itself without credentials — `Skipped: no Firebase project id configured` — so the domain
-allowlist gate has never run in CI.
+allowlist gate has never run in CI. Wiring it up requires a real Firebase project secret
+in CI; until then it stays a local, credential-gated check.
 
-### 2.11 P3 — smaller items
+### 2.11 P3 — ~~smaller items~~ **done**
 
-- `src/app/sitemap.ts:19-40` hardcodes `lastModified` dates (`"2026-09-01"`, …). Search
-  engines learn to ignore a stale `lastmod`; derive it from build time or content.
-- Docs drift: `README.md:13-14` says "TypeScript 5" (actual 7.0.2) and "React 19.2" (actual
-  19.3.1); its layout block lists `stores/` (dead, §2.6) and "hooks/ … axe accessibility
-  scans" (the scanner is `src/lib/axeScan.ts`, dev-only).
-  `docs/ARCHITECTURE_AUDIT.md:107` says 228 files / 2,415 tests (actual 249 / 2,573) and
-  `:23` still points at `src/middleware.ts`; `SECURITY_AUDIT.md` references a
-  `src/lib/csrf.ts` that no longer exists.
-- `packages/config/src/site.ts` exports `API_ROUTES` (`ROUTES`, `API_ROUTES`) with entries
-  such as `/api/support` and `/api/requests` that are not routes in this app; nothing
-  imports them.
-- `src/app/api/tracking/[trackingId]/route.ts` `POST` → 501 (§2.6) is still classified and
-  rate-limited as a real endpoint.
+- ~~`src/app/sitemap.ts:19-40` hardcodes `lastModified` dates~~ — **reviewed, kept**: the
+  in-code docblock records that build-time stamping was tried and rejected (every deploy
+  claimed every page changed, and crawlers discount `lastmod` that moves without content
+  changes). The per-route dates are bumped when that page's content changes, which is the
+  design the audit was asking for.
+- ~~Docs drift~~ — **fixed**: `README.md` now says TypeScript 7 / React 19.3, drops the
+  dead `stores/` entry and the wrong `hooks/` axe note, and lists the one remaining
+  workspace package; `docs/ARCHITECTURE_AUDIT.md` carries current counts. The `:23`
+  `src/middleware.ts` line already carried its own correction (the proxy lives at
+  `src/proxy.ts`), and `SECURITY_AUDIT.md`'s `csrf.ts` mention documents the module's
+  *absence* and why — both were the audit misreading the docs, not drift.
+- ~~`packages/config/src/site.ts` exports `API_ROUTES` (`ROUTES`, `API_ROUTES`)~~ —
+  **fixed**: both exports deleted; nothing imported them.
+- ~~`/api/tracking/[trackingId]` `POST` → 501~~ — **fixed** in §2.6: the stub export is
+  gone.
 
 ---
 
@@ -410,3 +424,12 @@ allowlist gate has never run in CI.
    `env-requirements.ts`, the three unconsumed workspace packages and the tracking
    `POST` stub are deleted; the additional-item clients now reach real routes (a new
    owner-only customer `POST` replaces the dead client-side write).
+9. ~~§2.11 — the smaller items~~ — **done**: docs drift fixed, the dead `ROUTES`/
+   `API_ROUTES` exports deleted, the stale `apps/web/firestore.indexes.json` orphan
+   deleted; the sitemap dates are deliberate per the in-code rationale.
+10. ~~§2.3 — the last unbounded client read~~ — **done**: `getWarehouseInventory()` pages
+   through the admin API's new comma-separated status filter; the support-tickets
+   subscription is accepted with rationale (see §2.3).
+11. ~~§2.10 — the untested component layer~~ — **premise resolved**: the E2E pass the
+   coverage exclusion leaned on now runs locally and in CI; measuring components for a
+   per-glob floor remains open as its own piece of work.

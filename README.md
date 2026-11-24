@@ -10,8 +10,8 @@ Firebase-authenticated customer portal and an MFA-protected admin console.
 
 | Area | Technology |
 | --- | --- |
-| Framework | Next.js 16.4 (App Router, Turbopack), React 19.2 |
-| Language | TypeScript 5 (strict) |
+| Framework | Next.js 16.4 (App Router, Turbopack), React 19.3 |
+| Language | TypeScript 7 (strict) |
 | Styling | Tailwind CSS 4, lucide-react, framer-motion |
 | Auth | Firebase Auth (client) + Firebase Admin SDK (server) |
 | Data | Firestore (client and admin access) |
@@ -31,15 +31,14 @@ src/
   components/      Shared UI (marketing, dashboard, admin, invoice, support)
   features/        Domain services: requests, quotes, payments, shipments,
                    warehouse, notifications, finance, admin
-  hooks/           Client hooks (auth, support, axe accessibility scans)
+  hooks/           Client hooks (auth, support)
   lib/             Server/client primitives: auth, adminAuth, firebaseAdmin,
                    paypal, wallet, mfa, webauthn, rate limiting, mailer
   config/env/      Validated server and client environment access
   proxy.ts         Request proxy (security headers, rate limiting, CORS)
-  stores/          Zustand stores
   types/           Shared domain types
 packages/
-  config, shared, ui, utils   Workspace packages
+  config           Workspace package (site URL + brand config)
 ```
 
 ## Prerequisites
