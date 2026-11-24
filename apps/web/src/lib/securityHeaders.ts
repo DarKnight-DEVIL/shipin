@@ -305,6 +305,21 @@ export function getProductionCSP(): string {
 }
 
 /**
+ * CSP for the Firebase auth helper responses (`/__/auth/*`, proxied to
+ * `<project>.firebaseapp.com` by next.config.ts). The SDK embeds this helper
+ * in a hidden iframe on the app's own pages to deliver sign-in results, so it
+ * must be frameable from the app origin: the app-wide
+ * `frame-ancestors 'none'` blocks that even same-origin and kills every
+ * popup and redirect sign-in with a silent hang.
+ */
+export function getAuthHelperCSP(): string {
+  return getProductionCSP().replace(
+    "frame-ancestors 'none';",
+    "frame-ancestors 'self';"
+  );
+}
+
+/**
  * Cookie security options for session/auth cookies.
  *
  * Returns options that enforce Secure, HttpOnly, SameSite=Strict,

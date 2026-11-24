@@ -19,6 +19,7 @@ import {
 } from "@/lib/rateLimiter";
 import {
   SECURITY_HEADERS,
+  getAuthHelperCSP,
   getProductionCSP,
   getDevCSP,
 } from "@/lib/securityHeaders";
@@ -211,7 +212,14 @@ export default async function proxy(request: NextRequest) {
   }
 
   const isDev = process.env.NODE_ENV === "development";
-  const csp = isDev ? getDevCSP() : getProductionCSP();
+  // The proxied Firebase auth helper is embedded in the app's own pages, so
+  // it must be frameable same-origin (see getAuthHelperCSP).
+  const isAuthHelper = pathname.startsWith("/__/auth/");
+  const csp = isAuthHelper
+    ? getAuthHelperCSP()
+    : isDev
+      ? getDevCSP()
+      : getProductionCSP();
 
   // No nonce is generated or forwarded: every page is statically prerendered,
   // so its inline bootstrap is already in the HTML before this runs and a
@@ -222,7 +230,14 @@ export default async function proxy(request: NextRequest) {
   response.headers.set("Content-Security-Policy", csp);
 
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
-    if (name !== "Content-Security-Policy") response.headers.set(name, value);
+    if (name === "Content-Security-Policy") continue;
+    if (isAuthHelper && name === "X-Frame-Options") {
+      // Same exception as the CSP above: the auth helper iframe is embedded
+      // by this app's own pages, so DENY would break every sign-in.
+      response.headers.set(name, "SAMEORIGIN");
+      continue;
+    }
+    response.headers.set(name, value);
   }
 
   // Apply CORS headers for API routes with allowed origins
