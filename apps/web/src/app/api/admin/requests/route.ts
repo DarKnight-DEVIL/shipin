@@ -87,6 +87,7 @@ async function handleGetRequests(request: NextRequest): Promise<NextResponse> {
   } else if (statuses.length > 1) {
     query = query.where("status", "in", statuses);
   }
+  // firestore-list: pagination — cursor + hasMore per page.
   query = query.orderBy("createdAt", "desc").limit(params.limit);
   if (params.cursorMs !== null) {
     query = query.startAfter(Timestamp.fromMillis(params.cursorMs));

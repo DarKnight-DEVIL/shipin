@@ -61,6 +61,30 @@ describe("DataRightsSection", () => {
     );
   });
 
+  it("renders the consent history and discloses the 50-entry cap", async () => {
+    customerApiMock.mockResolvedValue({
+      success: true,
+      consentState: {},
+      consentLog: [
+        {
+          id: "log-1",
+          category: "marketing",
+          granted: true,
+          method: "explicit",
+          timestamp: "2026-11-01T00:00:00.000Z",
+        },
+      ],
+      consentLogMeta: { limit: 50, truncated: true },
+    });
+
+    render(<DataRightsSection />);
+
+    expect(await screen.findByText(/Granted: marketing/)).toBeTruthy();
+    expect(
+      await screen.findByText(/Showing your 50 most recent consent changes/)
+    ).toBeTruthy();
+  });
+
   it("posts the exact consent payload when a toggle changes", async () => {
     render(<DataRightsSection />);
     await waitFor(() => {

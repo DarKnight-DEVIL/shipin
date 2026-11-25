@@ -93,9 +93,24 @@ describe("GET /api/user/consent", () => {
       success: true,
       consentState: { marketing: { granted: true, version: "v1" } },
       consentLog: [{ id: "log-1" }],
+      consentLogMeta: { limit: 50, truncated: false },
       grantedCategories: ["marketing"],
     });
-    expect(mocks.getConsentLog).toHaveBeenCalledWith("user-1", 50);
+    // N + 1: the extra row is what makes truncation knowable.
+    expect(mocks.getConsentLog).toHaveBeenCalledWith("user-1", 51);
+  });
+
+  it("trims the log but reports that it was truncated", async () => {
+    mocks.getConsentLog.mockResolvedValue(
+      Array.from({ length: 51 }, (_, index) => ({ id: `log-${index}` }))
+    );
+
+    const response = await GET(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.consentLog).toHaveLength(50);
+    expect(body.consentLogMeta).toEqual({ limit: 50, truncated: true });
   });
 });
 

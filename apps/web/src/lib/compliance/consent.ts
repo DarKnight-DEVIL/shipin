@@ -173,6 +173,8 @@ export async function getConsentLog(
     .collection("consentLogs")
     .where("userId", "==", userId)
     .orderBy("timestamp", "desc")
+    // firestore-list: visible — the settings route asks for limit + 1 and
+    // returns `consentLogMeta.truncated`; the history shows that cap.
     .limit(limit)
     .get();
 

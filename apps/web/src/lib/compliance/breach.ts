@@ -197,6 +197,7 @@ export async function getAllBreaches(
     query = query.where("status", "==", status);
   }
 
+  // firestore-list: internal — DPO dashboard page; not a customer's complete list.
   const snapshot = await query.limit(limit).get();
 
   return snapshot.docs.map((doc) => {

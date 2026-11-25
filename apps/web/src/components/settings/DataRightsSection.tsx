@@ -36,9 +36,42 @@ interface ConsentEntry {
 
 type ConsentState = Record<string, ConsentEntry>;
 
+interface ConsentHistoryEntry {
+  id: string;
+  category: string;
+  granted: boolean;
+  method: string;
+  timestamp?: unknown;
+}
+
+interface ConsentLogMeta {
+  limit: number;
+  truncated: boolean;
+}
+
 interface ConsentResponse {
   success: boolean;
   consentState: ConsentState;
+  consentLog?: ConsentHistoryEntry[];
+  consentLogMeta?: ConsentLogMeta;
+}
+
+/**
+ * A consent timestamp arrives as an ISO string or a Firestore timestamp,
+ * depending on how the response was serialized; an unreadable value renders
+ * without a date rather than as "Invalid Date".
+ */
+function consentDate(value: unknown): string | null {
+  const date =
+    value instanceof Date
+      ? value
+      : typeof value === "string" || typeof value === "number"
+        ? new Date(value)
+        : null;
+
+  return date && !Number.isNaN(date.getTime())
+    ? date.toLocaleDateString()
+    : null;
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -47,6 +80,11 @@ function errorMessage(error: unknown, fallback: string): string {
 
 export default function DataRightsSection() {
   const [consentState, setConsentState] = useState<ConsentState | null>(null);
+  const [consentLog, setConsentLog] = useState<ConsentHistoryEntry[]>([]);
+  const [consentLogMeta, setConsentLogMeta] = useState<ConsentLogMeta>({
+    limit: 50,
+    truncated: false,
+  });
   const [loadingConsent, setLoadingConsent] = useState(true);
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
 
@@ -68,7 +106,13 @@ export default function DataRightsSection() {
           "/api/user/consent",
           { method: "GET" }
         );
-        if (!cancelled) setConsentState(response.consentState ?? {});
+        if (!cancelled) {
+          setConsentState(response.consentState ?? {});
+          setConsentLog(response.consentLog ?? []);
+          setConsentLogMeta(
+            response.consentLogMeta ?? { limit: 50, truncated: false }
+          );
+        }
       } catch (error) {
         if (!cancelled) {
           setConsentState({});
@@ -247,6 +291,38 @@ export default function DataRightsSection() {
             <p className="mt-2 text-[12px] text-[var(--muted)]" role="status">
               Saving…
             </p>
+          )}
+
+          {consentLog.length > 0 && (
+            <div className="mt-4">
+              <h4 className="text-[13px] font-semibold text-[var(--foreground)]">
+                Consent history
+              </h4>
+              <ul className="mt-2 space-y-1">
+                {consentLog.map((entry) => {
+                  const date = consentDate(entry.timestamp);
+                  return (
+                    <li
+                      key={entry.id}
+                      className="text-[12px] text-[var(--muted)]"
+                    >
+                      {entry.granted ? "Granted" : "Withdrawn"}: {" "}
+                      {entry.category}
+                      {date ? ` · ${date}` : ""} · {entry.method}
+                    </li>
+                  );
+                })}
+              </ul>
+              {consentLogMeta.truncated && (
+                <p
+                  role="status"
+                  className="mt-2 text-[12px] text-[var(--muted)]"
+                >
+                  Showing your {consentLogMeta.limit} most recent consent
+                  changes. Download your data for the complete history.
+                </p>
+              )}
+            </div>
           )}
         </div>
 

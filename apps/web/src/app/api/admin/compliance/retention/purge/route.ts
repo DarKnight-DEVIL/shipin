@@ -87,6 +87,7 @@ async function purgeExpiredPhotos(
     .collection("requests")
     .where("deliveredAt", "<=", cutoff) as FirebaseQuery;
 
+  // firestore-list: internal — one purge page; the cursor loop drains the backlog.
   query = query.orderBy("deliveredAt", "asc").limit(PAGE_SIZE);
   if (cursor) query = query.startAfter(cursor);
 
@@ -144,6 +145,7 @@ async function purgeExpiredSupport(
     .collection("supportTickets")
     .where("resolvedAt", "<=", cutoff) as FirebaseQuery;
 
+  // firestore-list: internal — one purge page; the cursor loop drains the backlog.
   query = query.orderBy("resolvedAt", "asc").limit(PAGE_SIZE);
   if (cursor) query = query.startAfter(cursor);
 

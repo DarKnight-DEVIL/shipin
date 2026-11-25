@@ -38,6 +38,7 @@
     "check:env-inlining": "npm run check:env-inlining --workspace=@shipin/web",
     "check:licenses": "npm run check:licenses --workspace=@shipin/web",
     "check:firestore-indexes": "npm run check:firestore-indexes --workspace=@shipin/web",
+    "check:firestore-list-caps": "npm run check:firestore-list-caps --workspace=@shipin/web",
     "check:orphan-modules": "npm run check:orphan-modules --workspace=@shipin/web",
     "check:workflows": "node scripts/check-workflow-encoding.mjs",
     "audit:gate": "node scripts/audit-gate.mjs"

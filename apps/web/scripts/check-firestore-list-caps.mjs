@@ -156,6 +156,12 @@ for (const file of sourceFiles(sourceRoot)) {
     // Check if this line has a limit call, including aliased versions
     if (line.trim().startsWith("//") || line.trim().startsWith("*")) return;
 
+    // A method declaration in a local structural type
+    // (`limit(count: number): FirebaseQuery;`) is not a query. The purge route
+    // declares one so its two `as FirebaseQuery` casts stay honest; requiring a
+    // cap tag there would document code that never runs.
+    if (/^\s*limit\s*\([^)]*\)\s*:/.test(line)) return;
+
     if (!LIMIT_CALL.test(line)) return;
 
     boundedReads += 1;

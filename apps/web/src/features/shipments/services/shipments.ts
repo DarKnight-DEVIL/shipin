@@ -195,6 +195,7 @@ export async function getUserShipmentsPage(
   const constraints: QueryConstraint[] = [
     where("userId", "==", userId),
     orderBy("createdAt", "desc"),
+    // firestore-list: pagination — nextPageAfter carries the cursor.
     limit(pageSize),
   ];
 

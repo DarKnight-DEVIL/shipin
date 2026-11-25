@@ -31,6 +31,8 @@ const mocks = vi.hoisted(() => {
   const state = {
     orders: [] as FakeDoc[],
     requests: [] as FakeDoc[],
+    topups: [] as FakeDoc[],
+    transactions: [] as FakeDoc[],
     writes: [] as Array<{ path: string; value: Record<string, unknown> }>,
     /** `system/*` documents, which is where the last verdict is stored. */
     system: {} as Record<string, Record<string, unknown>>,
@@ -75,7 +77,11 @@ const mocks = vi.hoisted(() => {
         ? state.orders
         : name === "requests"
           ? state.requests
-          : [];
+          : name === "walletTopupOrders"
+            ? state.topups
+            : name === "walletTransactions"
+              ? state.transactions
+              : [];
 
     const filters: FakeFilter[] = [];
 
@@ -176,6 +182,40 @@ function paidRequest(
   });
 }
 
+const STALE_MINUTES = 30;
+
+function minutesAgo(minutes: number): Date {
+  return new Date(Date.now() - minutes * 60_000);
+}
+
+function topupOrder(
+  overrides: Partial<FakeDoc["fields"]> = {},
+  id = "TOPUP-1"
+) {
+  mocks.state.topups.push({
+    id,
+    fields: {
+      userId: "user-1",
+      amount: 50,
+      currency: "USD",
+      orderId: id,
+      status: "completed",
+      captureId: "CAPTURE-TOPUP-1",
+      capturedAmount: 50,
+      capturePending: false,
+      completedAt: daysAgo(1),
+      ...overrides,
+    },
+  });
+}
+
+function topupCredit(captureId = "CAPTURE-TOPUP-1") {
+  mocks.state.transactions.push({
+    id: captureId,
+    fields: { userId: "user-1", type: "deposit", amount: 50, captureId },
+  });
+}
+
 function signedRequest(query = ""): NextRequest {
   const timestamp = String(Date.now());
   const signature = crypto
@@ -198,6 +238,8 @@ function signedRequest(query = ""): NextRequest {
 beforeEach(() => {
   mocks.state.orders = [];
   mocks.state.requests = [];
+  mocks.state.topups = [];
+  mocks.state.transactions = [];
   mocks.state.writes = [];
   mocks.state.system = {};
   vi.stubEnv("CRON_SECRET", SECRET);
@@ -266,6 +308,8 @@ describe("POST /api/admin/payments/reconcile — agreement", () => {
     expect(body.checked).toEqual({
       completedOrders: 1,
       paypalPaidRequests: 1,
+      completedTopups: 0,
+      pendingTopups: 0,
     });
   });
 
@@ -397,6 +441,8 @@ describe("POST /api/admin/payments/reconcile — unresolved drift", () => {
     expect(secondBody.checked).toEqual({
       completedOrders: 0,
       paypalPaidRequests: 0,
+      completedTopups: 0,
+      pendingTopups: 0,
     });
     expect(secondBody.drift).toEqual([
       expect.objectContaining({
@@ -608,7 +654,12 @@ describe("POST /api/admin/payments/reconcile — window and summary", () => {
         value: expect.objectContaining({
           windowDays: 7,
           driftCount: 0,
-          checked: { completedOrders: 1, paypalPaidRequests: 1 },
+          checked: {
+            completedOrders: 1,
+            paypalPaidRequests: 1,
+            completedTopups: 0,
+            pendingTopups: 0,
+          },
           truncated: false,
         }),
       }),
@@ -683,6 +734,8 @@ describe("POST /api/admin/payments/reconcile — defensive reads", () => {
     expect(body.checked).toEqual({
       completedOrders: 2000,
       paypalPaidRequests: 2000,
+      completedTopups: 0,
+      pendingTopups: 0,
     });
   });
 
@@ -741,6 +794,162 @@ describe("POST /api/admin/payments/reconcile — defensive reads", () => {
       kind: "order_completed_addon_not_settled",
     });
     expect(body.drift[0].detail).toContain("add-on (unknown)");
+  });
+});
+
+/**
+ * Wallet top-ups are a separate collection and ledger convention from request
+ * payments. Before this, `capturePending` was written and never read: a charge
+ * whose credit failed was invisible to every job in the repo.
+ */
+describe("POST /api/admin/payments/reconcile — wallet top-ups", () => {
+  it("accepts a completed top-up whose credit exists", async () => {
+    topupOrder();
+    topupCredit();
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.drift).toEqual([]);
+    expect(body.checked).toMatchObject({
+      completedTopups: 1,
+      pendingTopups: 0,
+    });
+  });
+
+  it("flags a completed top-up with no wallet credit", async () => {
+    topupOrder();
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.drift).toEqual([
+      expect.objectContaining({
+        kind: "topup_completed_uncredited",
+        orderId: "TOPUP-1",
+        requestId: "",
+      }),
+    ]);
+  });
+
+  it("flags a completed top-up whose capture id is missing", async () => {
+    topupOrder({ captureId: undefined });
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.drift[0]).toMatchObject({
+      kind: "topup_completed_unverifiable",
+      orderId: "TOPUP-1",
+    });
+  });
+
+  it("does not flag a capture that is still in flight", async () => {
+    topupOrder({
+      status: "created",
+      captureId: undefined,
+      capturePending: true,
+      captureStartedAt: minutesAgo(5),
+      completedAt: undefined,
+    });
+
+    const response = await POST(signedRequest());
+
+    expect(response.status).toBe(200);
+  });
+
+  it("flags a capturePending order with no credit after the window", async () => {
+    topupOrder({
+      status: "created",
+      capturePending: true,
+      captureStartedAt: minutesAgo(STALE_MINUTES + 1),
+      completedAt: undefined,
+    });
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.drift[0]).toMatchObject({
+      kind: "topup_capture_pending_uncredited",
+      orderId: "TOPUP-1",
+    });
+    expect(body.drift[0].detail).toContain("may have succeeded at PayPal");
+  });
+
+  it("flags a stale pending capture whose credit already landed", async () => {
+    topupOrder({
+      status: "created",
+      capturePending: true,
+      captureStartedAt: minutesAgo(STALE_MINUTES + 1),
+      completedAt: undefined,
+    });
+    topupCredit();
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.drift[0].kind).toBe("topup_capture_pending_uncredited");
+    expect(body.drift[0].detail).toContain("never marked complete");
+  });
+
+  it("flags a stale pending capture with no capture id", async () => {
+    topupOrder({
+      status: "created",
+      captureId: undefined,
+      capturePending: true,
+      captureStartedAt: minutesAgo(STALE_MINUTES + 1),
+      completedAt: undefined,
+    });
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.drift[0].detail).toContain("cannot be reconciled");
+  });
+
+  it("flags a capturePending flag with no start time instead of trusting it", async () => {
+    topupOrder({
+      status: "created",
+      capturePending: true,
+      captureStartedAt: undefined,
+      completedAt: undefined,
+    });
+
+    const response = await POST(signedRequest());
+
+    expect(response.status).toBe(409);
+  });
+
+  it("stops reporting a top-up case once its credit lands", async () => {
+    topupOrder({
+      status: "created",
+      capturePending: true,
+      captureStartedAt: minutesAgo(STALE_MINUTES + 1),
+      completedAt: undefined,
+    });
+
+    expect((await POST(signedRequest())).status).toBe(409);
+
+    // The retry path finishes the job: credit written, order completed and the
+    // flag cleared. The carried case must close rather than persist forever.
+    topupCredit();
+    mocks.state.topups[0].fields.status = "completed";
+    mocks.state.topups[0].fields.capturePending = false;
+    mocks.state.topups[0].fields.completedAt = daysAgo(1);
+
+    const second = await POST(signedRequest());
+
+    expect(second.status).toBe(200);
+    await expect(second.json()).resolves.toMatchObject({
+      drift: [],
+      carriedForward: 0,
+    });
   });
 });
 

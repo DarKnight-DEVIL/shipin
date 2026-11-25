@@ -378,9 +378,9 @@ Fixing the checker also surfaced a real regression from the §2.6 package deleti
 `packages/ui`, `packages/utils` and `packages/shared` threshold globs had matched no
 files since, so those gates were silently absent — removed.
 
-Also of note: `check:authorized-domains` now runs in the CI lint/typecheck job, but it
+Also of note: `check:authorized-domains` runs in no workflow, because it needs a Firebase access token. Run by hand before a domain change, it
 still skips itself without credentials — `Skipped: no Firebase project id configured`.
-It becomes a real gate only where a Firebase project secret exists; until then it
+It becomes a CI gate only if that token is added as a secret; until then it
 remains a local, credential-gated check rather than an absent one.
 
 ### 2.11 P3 — ~~smaller items~~ **done**

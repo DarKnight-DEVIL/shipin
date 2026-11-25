@@ -156,6 +156,7 @@ export function subscribeToNotifications(
     collection(db, "notifications"),
     where("userId", "==", userId),
     orderBy("createdAt", "desc"),
+    // firestore-list: internal — the unread badge saturates at this window.
     limit(NOTIFICATION_FEED_LIMIT)
   );
   return onSnapshot(q, (snapshot) => {

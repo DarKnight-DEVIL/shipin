@@ -197,6 +197,7 @@ async function findRequest(trackingId: string): Promise<FoundRequest | null> {
   const byInternalId = await adminDb
     .collection("requests")
     .where("tracking.internalTrackingId", "==", trackingId)
+    // firestore-list: internal — uniqueness probe, not a list.
     .limit(1)
     .get();
 

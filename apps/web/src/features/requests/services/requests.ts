@@ -113,6 +113,7 @@ export async function getRequests(
       q = query(q, startAfterFn(startAfter));
     }
 
+    // firestore-list: pagination — N + 1 detects the next page.
     q = query(q, limit(pageSize + 1)); // +1 to detect hasMore
 
     const snapshot = await getDocs(q);
@@ -169,6 +170,7 @@ export function subscribeToRequests(
     collection(db, "requests"),
     where("userId", "==", userId),
     orderBy("createdAt", "desc"),
+    // firestore-list: visible — the header renders 200+ when the cap is hit.
     limit(REQUEST_SUBSCRIPTION_LIMIT)
   );
 

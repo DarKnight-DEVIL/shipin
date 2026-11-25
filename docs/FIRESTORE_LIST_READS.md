@@ -46,11 +46,11 @@ changed, so the decision is reviewable.
 |---|---|---|---|---|
 | Request queue | `/api/admin/requests` → `getAdminRequestQueue` | **pagination** | Priority ordering, status filters and search now run server-side with cursor-based pagination. Each page returns `hasMore` and `nextCursor`. **Trigger for pagination removal:** queue under ~5,000 rows and API latency below ~200 ms. |
 | Customers | `/api/admin/customers` | **pagination** | Directory now uses cursor-based pagination with server-side filtering. Search and wallet balance are joined per-page. **Trigger for pagination removal:** customer count makes two reads inexpensive. |
-| Users / roles | `/api/admin/users` | none | **unbounded** | The role audit must see every account; admin-only |
+| Users / roles | `/api/admin/users` | `limit(params.limit)` + cursor | **pagination** | Cursor-based pages with `hasMore`; the role audit reads every account page by page |
 | Analytics | `/api/admin/analytics` | none (all requests) | **unbounded** | Aggregate dashboard. Correct end state is counters/aggregation documents, not a full scan; tracked as follow-up |
 | Support inbox | `subscribeToAllSupportTickets` | none | **unbounded** | Admin needs the active queue plus resolved context; resolved tickets are removed by the retention purge, which bounds the set |
 | Rights requests / breaches | `lib/compliance/rightsOps2.ts`, `breach.ts` | caller-supplied `limit` | **internal** | Admin listing, not a customer's complete history |
-| Consent logs | `lib/compliance/consent.ts` | caller-supplied `limit` | **internal** | Admin summary |
+| Consent logs | `lib/compliance/consent.ts` | caller-supplied `limit` (50 from settings) | **visible** | The route fetches 51 and returns `consentLogMeta.truncated`; Settings renders the history and a "showing 50 most recent" notice. The complete log is in `/api/user/export` |
 
 ## Internal scans
 

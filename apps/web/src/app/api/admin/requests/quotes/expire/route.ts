@@ -72,6 +72,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     .where("quote.expired", "==", false)
     .where("quote.expiresAt", "<=", new Date(now))
     .orderBy("quote.expiresAt", "asc")
+    // firestore-list: internal — hourly sweep; the next run drains the backlog.
     .limit(SWEEP_LIMIT)
     .get();
 

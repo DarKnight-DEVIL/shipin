@@ -39,7 +39,15 @@
  *     `PAYMENT.CAPTURE.REFUNDED` webhook is acknowledged and not processed), so
  *     the order still settles the request. Because of that, a refund made
  *     directly in the PayPal dashboard is invisible here: this job reports
- *     accepted charges that were never reflected, not refunds that were.
+  * accepted charges that were never reflected, not refunds that were.
+ *
+ * Wallet top-ups are a third path with the same failure shape: the capture
+ * route writes `walletTopupOrders/{id}.capturePending` before calling PayPal,
+ * and the credit lands in `walletTransactions/{captureId}` in one transaction.
+ * A crash between them leaves a charged customer, a flag no other code reads,
+ * and no ledger entry. This job therefore also reports a stale pending capture
+ * and a completed top-up whose credit is missing. `requestId` is empty for
+ * those cases; the top-up order id keys them.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -76,6 +84,9 @@ const MAX_PAGES = 10;
 /** Mismatches stored in `system/paymentReconciliation` (the response carries all). */
 const MAX_STORED_DRIFT = 50;
 
+/** A capture still pending after this long needs a human, not more retries. */
+const STALE_CAPTURE_PENDING_MS = 30 * 60 * 1000;
+
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 type DriftKind =
@@ -84,7 +95,10 @@ type DriftKind =
   | "order_completed_addon_not_settled"
   | "order_without_request"
   | "request_paid_order_missing"
-  | "request_paid_order_not_completed";
+  | "request_paid_order_not_completed"
+  | "topup_capture_pending_uncredited"
+  | "topup_completed_uncredited"
+  | "topup_completed_unverifiable";
 
 interface Drift {
   kind: DriftKind;
@@ -176,6 +190,132 @@ function scanPaidRequests(cutoff: Date): Promise<Scan> {
         .orderBy("payment.paidAt", "asc"),
     "payment.paidAt"
   );
+}
+
+/** Captures of wallet top-ups completed inside the window, oldest first. */
+function scanCompletedTopups(cutoff: Date): Promise<Scan> {
+  return pageThrough(
+    () =>
+      adminDb
+        .collection("walletTopupOrders")
+        // Range and order on the same field: the automatic single-field index,
+        // so the daily scan needs no composite entry in firestore.indexes.json.
+        .where("completedAt", ">=", cutoff)
+        .orderBy("completedAt", "asc"),
+    "completedAt"
+  );
+}
+
+/**
+ * Orders whose capture never reported back.
+ *
+ * Deliberately no date range in the query: `capturePending == true` is small by
+ * construction (one row per in-flight checkout), and a range on a second field
+ * would need a composite index. Age is judged below instead.
+ */
+async function scanPendingTopups(): Promise<Scan> {
+  const snapshot = await adminDb
+    .collection("walletTopupOrders")
+    .where("capturePending", "==", true)
+    // firestore-list: internal — in-flight checkouts only; stale ones are reported.
+    .limit(PAGE_SIZE)
+    .get();
+
+  return {
+    rows: snapshot.docs.map((doc) => ({ id: doc.id, snapshot: doc })),
+    truncated: snapshot.size === PAGE_SIZE,
+  };
+}
+
+/**
+ * Whether the credit a top-up writes exists.
+ *
+ * `capture-wallet-topup` uses the raw capture id as the ledger document id,
+ * while request settlements write `paypal_<captureId>`. A top-up is only ever
+ * credited by its own route, so the raw id is the correct lookup here —
+ * checking the other convention would report every healthy top-up as missing.
+ */
+async function topupCreditExists(captureId: string): Promise<boolean> {
+  if (!captureId) return false;
+
+  const snapshot = await adminDb
+    .collection("walletTransactions")
+    .doc(captureId)
+    .get();
+
+  return snapshot.exists;
+}
+
+/**
+ * Report a top-up whose charge and credit disagree.
+ *
+ * Three shapes matter: a capture that has been "in flight" long past any
+ * plausible PayPal call, a completed order with no ledger entry, and a
+ * completed order with no capture id to check. The first is the one that hides
+ * a charged customer: the flag is the only trace, and nothing else reads it.
+ */
+async function inspectTopupOrder(
+  orderId: string,
+  snapshot: DocumentSnapshot,
+  drift: Drift[],
+  now: Date
+): Promise<void> {
+  const capturePending = snapshot.get("capturePending") === true;
+  const captureId =
+    typeof snapshot.get("captureId") === "string"
+      ? (snapshot.get("captureId") as string)
+      : "";
+  const startedAt = asDate(snapshot.get("captureStartedAt"));
+  const completedAt = asDate(snapshot.get("completedAt"));
+
+  if (capturePending) {
+    // A recent flag is a capture still in progress, not drift: PayPal can take
+    // seconds and the route clears the flag in the credit transaction.
+    if (
+      startedAt &&
+      now.getTime() - startedAt.getTime() < STALE_CAPTURE_PENDING_MS
+    ) {
+      return;
+    }
+
+    const since = startedAt ? startedAt.toISOString() : "an unrecorded time";
+    const credited = await topupCreditExists(captureId);
+
+    drift.push({
+      kind: "topup_capture_pending_uncredited",
+      orderId,
+      requestId: "",
+      detail: captureId
+        ? credited
+          ? `wallet top-up ${orderId} is still capturePending since ${since}, but its credit ${captureId} exists and the order was never marked complete`
+          : `wallet top-up ${orderId} has been capturePending since ${since} with no credit for ${captureId}; the capture may have succeeded at PayPal`
+        : `wallet top-up ${orderId} has been capturePending since ${since} with no captureId, so it cannot be reconciled from Firestore`,
+    });
+    return;
+  }
+
+  if (snapshot.get("status") !== "completed") return;
+
+  if (!captureId) {
+    drift.push({
+      kind: "topup_completed_unverifiable",
+      orderId,
+      requestId: "",
+      detail: `wallet top-up ${orderId} is completed but has no captureId, so its credit cannot be verified`,
+    });
+    return;
+  }
+
+  if (!(await topupCreditExists(captureId))) {
+    drift.push({
+      kind: "topup_completed_uncredited",
+      orderId,
+      requestId: "",
+      detail: `wallet top-up ${orderId} completed${
+        completedAt ? ` at ${completedAt.toISOString()}` : ""
+      } but has no walletTransactions/${captureId} credit`,
+    });
+  }
 }
 
 /** Wallet-only payments have no PayPal order and nothing to compare. */
@@ -341,8 +481,25 @@ function driftKey(entry: Pick<Drift, "orderId" | "requestId">): string {
  * and a pair that changed shape (request restored but still unsettled) reports
  * its current kind. Reads only — this job still repairs nothing.
  */
-async function recheckOpenCase(entry: Drift): Promise<Drift[]> {
+async function recheckOpenCase(entry: Drift, now: Date): Promise<Drift[]> {
   const fresh: Drift[] = [];
+
+  // Top-up cases live in their own collection and have no request pair to
+  // re-derive from; re-inspecting the order is the whole recheck.
+  if (entry.kind.startsWith("topup_")) {
+    if (!entry.orderId) return fresh;
+
+    const snapshot = await adminDb
+      .collection("walletTopupOrders")
+      .doc(entry.orderId)
+      .get();
+
+    if (snapshot.exists) {
+      await inspectTopupOrder(entry.orderId, snapshot, fresh, now);
+    }
+
+    return fresh;
+  }
 
   if (entry.orderId) {
     const orderSnapshot = await adminDb
@@ -415,6 +572,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const orders = await scanCompletedOrders(cutoff);
   const paidRequests = await scanPaidRequests(cutoff);
+  const completedTopups = await scanCompletedTopups(cutoff);
+  const pendingTopups = await scanPendingTopups();
 
   const drift: Drift[] = [];
 
@@ -426,7 +585,19 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     await inspectPaidRequest(id, snapshot, drift);
   }
 
-  const truncated = orders.truncated || paidRequests.truncated;
+  for (const { id, snapshot } of completedTopups.rows) {
+    await inspectTopupOrder(id, snapshot, drift, now);
+  }
+
+  for (const { id, snapshot } of pendingTopups.rows) {
+    await inspectTopupOrder(id, snapshot, drift, now);
+  }
+
+  const truncated =
+    orders.truncated ||
+    paidRequests.truncated ||
+    completedTopups.truncated ||
+    pendingTopups.truncated;
 
   const statusRef = adminDb.collection("system").doc("paymentReconciliation");
   const previousRun = await statusRef.get();
@@ -459,7 +630,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       continue;
     }
 
-    for (const current of await recheckOpenCase(open)) {
+    for (const current of await recheckOpenCase(open, now)) {
       const currentKey = driftKey(current);
       if (reported.has(currentKey)) continue;
 
@@ -485,6 +656,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     checked: {
       completedOrders: orders.rows.length,
       paypalPaidRequests: paidRequests.rows.length,
+      completedTopups: completedTopups.rows.length,
+      pendingTopups: pendingTopups.rows.length,
     },
     driftCount: driftNow.length,
     carriedForward,
@@ -507,6 +680,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     checked: {
       completedOrders: orders.rows.length,
       paypalPaidRequests: paidRequests.rows.length,
+      completedTopups: completedTopups.rows.length,
+      pendingTopups: pendingTopups.rows.length,
     },
     drift: driftNow,
     carriedForward,

@@ -114,6 +114,7 @@ async function handleGetCustomers(request: NextRequest): Promise<NextResponse> {
   let usersQuery = adminDb
     .collection("users")
     .orderBy("createdAt", "desc")
+    // firestore-list: pagination — cursor + hasMore per page.
     .limit(params.limit);
 
   if (params.cursorMs !== null) {

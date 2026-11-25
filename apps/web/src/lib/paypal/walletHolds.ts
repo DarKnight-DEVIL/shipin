@@ -130,6 +130,7 @@ export async function releaseExpiredWalletHolds(
 
   // One range filter keeps this on Firestore's automatic single-field index;
   // adding an equality filter here would need a composite index.
+  // firestore-list: internal — best-effort sweep on the next checkout, not a list.
   const expired = await holds.where("expiresAt", "<", now).limit(25).get();
 
   let released = 0;

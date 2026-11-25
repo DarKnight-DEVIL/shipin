@@ -64,6 +64,18 @@ jobs:
       - name: TypeScript check
         run: npm run typecheck
 
+      # Two gates that existed as npm scripts but ran in no workflow, so the
+      # docs claimed protection CI did not provide. `check:orphan-modules` fails
+      # on a source module nothing imports — dead money code is invisible in
+      # review. `check:firestore-list-caps` requires every `.limit()` to declare
+      # whether its cap is visible, paginated or internal, so a silently capped
+      # list cannot ship as if it were complete.
+      - name: Verify no orphan source modules
+        run: npm run check:orphan-modules
+
+      - name: Verify Firestore list caps are declared
+        run: npm run check:firestore-list-caps
+
       # A UTF-16 workflow file is invisible to GitHub: no run, no failure, no
       # notification. expire-quotes-cron.yml sat that way, so the hourly job
       # never ran at all. Encoding needs a machine, not a reviewer.
@@ -159,6 +171,13 @@ jobs:
         # which route grew and by how much.
         run: npm run check:bundle-budget
 
+      # Next.js inlines NEXT_PUBLIC_* into the client bundle by static
+      # analysis. A dynamic read (`process.env[name]`) fails silently and the
+      # browser sees `undefined`, so scan the client output of the build that
+      # just ran — the same artifact the budgets measured.
+      - name: Verify NEXT_PUBLIC_* variables were inlined
+        run: npm run check:env-inlining
+
   test:
     name: Tests
     runs-on: ubuntu-latest
@@ -201,6 +220,33 @@ jobs:
         run: npm run test:coverage
         env:
           # Dummy env vars for build-time validation
+          PAYPAL_CLIENT_ID: "test"
+          PAYPAL_CLIENT_SECRET: "test"
+          NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
+          PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
+          PAYPAL_ENV: "sandbox"
+          SMTP_EMAIL: "test@test.com"
+          SMTP_PASSWORD: "test"
+          FIREBASE_ADMIN_PROJECT_ID: "test"
+          FIREBASE_ADMIN_CLIENT_EMAIL: "test@test.com"
+          FIREBASE_ADMIN_PRIVATE_KEY: "test"
+          R2_ACCOUNT_ID: "test"
+          R2_ACCESS_KEY_ID: "test"
+          R2_SECRET_ACCESS_KEY: "test"
+          R2_BUCKET_NAME: "test"
+          WHATSAPP_ACCESS_TOKEN: "test"
+          WHATSAPP_PHONE_NUMBER_ID: "test"
+          UPSTASH_REDIS_REST_URL: ""
+          UPSTASH_REDIS_REST_TOKEN: ""
+          NODE_ENV: "test"
+
+      # The component .tsx files cannot join the main coverage aggregate (121
+      # mostly-untested files would drag the global floor down), so they have
+      # their own run and floor. The config existed but no CI step ran it, which
+      # made the floor advisory only.
+      - name: Run component coverage gate
+        run: npm run test:coverage:components
+        env:
           PAYPAL_CLIENT_ID: "test"
           PAYPAL_CLIENT_SECRET: "test"
           NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"

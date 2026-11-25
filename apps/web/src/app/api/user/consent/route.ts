@@ -11,20 +11,34 @@ import {
   isConsentCategory,
 } from "@/lib/compliance/consent";
 
+/**
+ * Consent changes shown in Settings.
+ *
+ * The cap is a window, not the history: the route fetches one extra row so
+ * "more than this" is knowable without a count query, and returns that fact as
+ * `consentLogMeta.truncated` for the UI to disclose. The complete log is in
+ * `/api/user/export`.
+ */
+const CONSENT_LOG_LIMIT = 50;
+
 export const GET = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
   const [state, log, granted] = await Promise.all([
     getUserConsentState(auth.profile.uid),
-    getConsentLog(auth.profile.uid, 50),
+    getConsentLog(auth.profile.uid, CONSENT_LOG_LIMIT + 1),
     getGrantedCategories(auth.profile.uid),
   ]);
 
   return NextResponse.json({
     success: true,
     consentState: state,
-    consentLog: log,
+    consentLog: log.slice(0, CONSENT_LOG_LIMIT),
+    consentLogMeta: {
+      limit: CONSENT_LOG_LIMIT,
+      truncated: log.length > CONSENT_LOG_LIMIT,
+    },
     grantedCategories: granted,
   });
 });

@@ -290,6 +290,7 @@ export async function getAllRightsRequests(
     query = query.where("status", "==", status);
   }
 
+  // firestore-list: internal — admin listing page, not a complete history.
   const snapshot = await query.limit(limit).get();
 
   return snapshot.docs.map((doc) => {

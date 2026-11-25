@@ -295,6 +295,16 @@
       ]
     },
     {
+      "collectionGroup": "walletTopupOrders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "completedAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "paypalPaymentOrders",
       "queryScope": "COLLECTION",
       "fields": [
