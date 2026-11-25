@@ -91,7 +91,7 @@ describe("GET /api/health with a real App Check spike", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     for (let i = 0; i < APP_CHECK_SPIKE_THRESHOLD + 3; i += 1) {
-      recordAppCheckRejection();
+      recordAppCheckRejection("invalid");
     }
 
     const response = await GET();
@@ -145,7 +145,7 @@ describe("GET /api/health with a real App Check spike", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     for (let i = 0; i < APP_CHECK_SPIKE_THRESHOLD; i += 1) {
-      recordAppCheckRejection();
+      recordAppCheckRejection("invalid");
     }
 
     const response = await GET();
@@ -160,7 +160,7 @@ describe("GET /api/health with a real App Check spike", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("discord down")));
 
     for (let i = 0; i < APP_CHECK_SPIKE_THRESHOLD; i += 1) {
-      recordAppCheckRejection();
+      recordAppCheckRejection("invalid");
     }
 
     const response = await GET();

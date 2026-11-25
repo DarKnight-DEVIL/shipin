@@ -94,6 +94,8 @@ vi.mock("@/lib/appCheckMetrics", () => ({
   readAppCheckRejections: async () => ({
     recentRejections: state.appCheckRejections,
     spike: state.appCheckSpike,
+    missing: state.appCheckRejections,
+    invalid: 0,
   }),
   reportAppCheckSpike: () => {
     state.alertSent = state.appCheckSpike;
@@ -241,6 +243,10 @@ describe("GET /api/health", () => {
 
     expect(body.status).toBe("healthy");
     expect(body.appCheck.rejectionsLast10Min).toBe(2);
+    // Why it refused, not just how often: a state written before this existed
+    // could not tell a browser that cannot mint a token from keys that disagree.
+    expect(body.appCheck.rejectionsMissingToken).toBe(2);
+    expect(body.appCheck.rejectionsInvalidToken).toBe(0);
     expect(body.appCheck.warning).toBeUndefined();
     expect(body.appCheckSpikeAlerted).toBeUndefined();
   });
@@ -325,6 +331,8 @@ describe("GET /api/health", () => {
       enforced: false,
       status: "disabled",
       rejectionsLast10Min: 0,
+      rejectionsMissingToken: 0,
+      rejectionsInvalidToken: 0,
     });
   });
 
@@ -339,6 +347,8 @@ describe("GET /api/health", () => {
       enforced: false,
       status: "configured",
       rejectionsLast10Min: 0,
+      rejectionsMissingToken: 0,
+      rejectionsInvalidToken: 0,
     });
   });
 
@@ -354,6 +364,8 @@ describe("GET /api/health", () => {
       enforced: true,
       status: "enforced",
       rejectionsLast10Min: 0,
+      rejectionsMissingToken: 0,
+      rejectionsInvalidToken: 0,
     });
     expect(body.appCheck.warning).toBeUndefined();
   });
@@ -370,6 +382,8 @@ describe("GET /api/health", () => {
       enforced: true,
       status: "misconfigured",
       rejectionsLast10Min: 0,
+      rejectionsMissingToken: 0,
+      rejectionsInvalidToken: 0,
       warning: expect.stringContaining("APP_CHECK_FAILED"),
     });
     // Healthy here would hide a deployment that rejects every browser request.

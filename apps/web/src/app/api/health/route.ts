@@ -166,6 +166,8 @@ export async function GET() {
         enforced: appCheckEnforced,
         status: appCheckStatus,
         rejectionsLast10Min: appCheckRejections.recentRejections,
+        rejectionsMissingToken: appCheckRejections.missing,
+        rejectionsInvalidToken: appCheckRejections.invalid,
         ...(appCheckSpike
           ? {
               warning:

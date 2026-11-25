@@ -89,7 +89,7 @@ async function verifyRequest(
     // Counted for /api/health: a spike means clients cannot mint App Check
     // tokens at all (quota exhaustion or broken attestation), which is a
     // deployment-wide outage of the API surface, not one user's problem.
-    recordAppCheckRejection();
+    recordAppCheckRejection(appCheck);
     return NextResponse.json(
       {
         success: false,

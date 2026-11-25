@@ -86,8 +86,8 @@ afterEach(() => {
 describe("recordAppCheckRejection / readAppCheckRejections", () => {
   it("counts rejections in memory when no shared store is configured", async () => {
     const now = bucketAt(0);
-    recordAppCheckRejection(now);
-    recordAppCheckRejection(now + 1000);
+    recordAppCheckRejection("invalid", now);
+    recordAppCheckRejection("invalid", now + 1000);
 
     const status = await readAppCheckRejections(now + 2000);
     expect(status.recentRejections).toBe(2);
@@ -97,7 +97,7 @@ describe("recordAppCheckRejection / readAppCheckRejections", () => {
   it("marks a spike once the window total crosses the threshold", async () => {
     const now = bucketAt(0);
     for (let i = 0; i < APP_CHECK_SPIKE_THRESHOLD; i += 1) {
-      recordAppCheckRejection(now + i);
+      recordAppCheckRejection("invalid", now + i);
     }
 
     const status = await readAppCheckRejections(now + BUCKET_MS);
@@ -107,9 +107,9 @@ describe("recordAppCheckRejection / readAppCheckRejections", () => {
 
   it("forgets buckets older than the ten-minute window", async () => {
     const old = bucketAt(-3); // two buckets before the window starts
-    recordAppCheckRejection(old);
-    recordAppCheckRejection(old + 1);
-    recordAppCheckRejection(old + 2);
+    recordAppCheckRejection("invalid", old);
+    recordAppCheckRejection("invalid", old + 1);
+    recordAppCheckRejection("invalid", old + 2);
 
     const status = await readAppCheckRejections(bucketAt(0));
     expect(status.recentRejections).toBe(0);
@@ -135,7 +135,7 @@ describe("recordAppCheckRejection / readAppCheckRejections", () => {
 
   it("falls back to local counts when the shared store read fails", async () => {
     const now = bucketAt(0);
-    recordAppCheckRejection(now);
+    recordAppCheckRejection("invalid", now);
     state.redis = {
       hincrby: vi.fn().mockResolvedValue(1),
       expire: vi.fn().mockResolvedValue(1),
@@ -147,6 +147,36 @@ describe("recordAppCheckRejection / readAppCheckRejections", () => {
     expect(status.recentRejections).toBe(1);
   });
 
+  it("reports why requests were refused, not just how many", async () => {
+    // "missing" is a browser that could not mint a token; "invalid" is a key or
+    // project that does not match. The fixes are opposite, so a bare total is
+    // not enough to act on.
+    const now = bucketAt(0);
+    recordAppCheckRejection("missing", now);
+    recordAppCheckRejection("missing", now);
+    recordAppCheckRejection("invalid", now);
+
+    const status = await readAppCheckRejections(now);
+    expect(status.recentRejections).toBe(3);
+    expect(status.missing).toBe(2);
+    expect(status.invalid).toBe(1);
+  });
+
+  it("writes the reason alongside the total", async () => {
+    const hincrby = vi.fn().mockResolvedValue(1);
+    state.redis = { hincrby, expire: vi.fn().mockResolvedValue(1), hgetall: vi.fn().mockResolvedValue({}) };
+
+    recordAppCheckRejection("missing", bucketAt(0));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(hincrby).toHaveBeenCalledWith(
+      "shipin:appcheck:rejection-reasons",
+      expect.stringMatching(/:missing$/),
+      1
+    );
+  });
+
   it("writes rejections through to the shared store when configured", async () => {
     const hincrby = vi.fn().mockResolvedValue(1);
     const expire = vi.fn().mockResolvedValue(1);
@@ -156,7 +186,7 @@ describe("recordAppCheckRejection / readAppCheckRejections", () => {
       hgetall: vi.fn().mockResolvedValue({}),
     };
 
-    recordAppCheckRejection(bucketAt(0));
+    recordAppCheckRejection("invalid", bucketAt(0));
     // The write is fire-and-forget; give the microtask queue a tick.
     await Promise.resolve();
     await Promise.resolve();
@@ -172,7 +202,7 @@ describe("recordAppCheckRejection / readAppCheckRejections", () => {
 
 describe("reportAppCheckSpike", () => {
   it("alerts once per bucket and not again for the same window", () => {
-    const status = { recentRejections: 50, spike: true };
+    const status = { recentRejections: 50, spike: true, missing: 0, invalid: 0 };
 
     expect(reportAppCheckSpike(status, bucketAt(0))).toBe(true);
     expect(captureAlert).toHaveBeenCalledTimes(1);
@@ -183,7 +213,7 @@ describe("reportAppCheckSpike", () => {
   });
 
   it("alerts again only when a new bucket spikes", () => {
-    const status = { recentRejections: 50, spike: true };
+    const status = { recentRejections: 50, spike: true, missing: 0, invalid: 0 };
     reportAppCheckSpike(status, bucketAt(0));
 
     expect(reportAppCheckSpike(status, bucketAt(1))).toBe(true);
@@ -192,7 +222,7 @@ describe("reportAppCheckSpike", () => {
 
   it("stays silent below the threshold", () => {
     expect(
-      reportAppCheckSpike({ recentRejections: 3, spike: false }, bucketAt(0))
+      reportAppCheckSpike({ recentRejections: 3, spike: false, missing: 0, invalid: 0 }, bucketAt(0))
     ).toBe(false);
     expect(captureAlert).not.toHaveBeenCalled();
   });
@@ -202,7 +232,7 @@ describe("buildAppCheckAlertPayload", () => {
   it("carries the title, the count, the threshold and a timestamp", () => {
     const now = bucketAt(0);
     const payload = buildAppCheckAlertPayload(
-      { recentRejections: 42, spike: true },
+      { recentRejections: 42, spike: true, missing: 0, invalid: 0 },
       now
     );
 
@@ -227,7 +257,7 @@ describe("buildAppCheckAlertPayload", () => {
   it("names the deployment environment from VERCEL_ENV when present", () => {
     process.env.VERCEL_ENV = "production";
     const payload = buildAppCheckAlertPayload(
-      { recentRejections: 30, spike: true },
+      { recentRejections: 30, spike: true, missing: 0, invalid: 0 },
       bucketAt(0)
     );
 
@@ -241,7 +271,7 @@ describe("buildAppCheckAlertPayload", () => {
 
   it("reminds the on-call of the escape hatch", () => {
     const payload = buildAppCheckAlertPayload(
-      { recentRejections: 99, spike: true },
+      { recentRejections: 99, spike: true, missing: 0, invalid: 0 },
       bucketAt(0)
     );
     const remediation = payload.embeds[0].fields.find(
@@ -309,7 +339,7 @@ describe("getAppCheckAlertTarget", () => {
 
 describe("dispatchAppCheckAlert", () => {
   const payload = buildAppCheckAlertPayload(
-    { recentRejections: 25, spike: true },
+    { recentRejections: 25, spike: true, missing: 0, invalid: 0 },
     1_700_000_000_000
   );
 
@@ -363,7 +393,7 @@ describe("dispatchAppCheckAlert", () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
     vi.stubGlobal("fetch", fetchMock);
 
-    expect(reportAppCheckSpike({ recentRejections: 40, spike: true }, bucketAt(0)))
+    expect(reportAppCheckSpike({ recentRejections: 40, spike: true, missing: 0, invalid: 0 }, bucketAt(0)))
       .toBe(true);
 
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));

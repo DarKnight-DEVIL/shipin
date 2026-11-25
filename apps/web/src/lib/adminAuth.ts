@@ -60,7 +60,7 @@ export async function requireAdmin(request: Request): Promise<AdminUser> {
 
   if (appCheck === "missing" || appCheck === "invalid") {
     // Counted for /api/health, same as the customer gate in lib/auth.ts.
-    recordAppCheckRejection();
+    recordAppCheckRejection(appCheck);
     throw new Error("APP_CHECK_FAILED");
   }
 

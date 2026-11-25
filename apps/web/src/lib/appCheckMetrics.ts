@@ -20,6 +20,17 @@ import { childLogger } from "./logger";
 import { getSharedRedisClient } from "./redisRateLimiter";
 
 const REJECTION_HASH = "shipin:appcheck:rejections";
+/**
+ * Why a request was refused, alongside the plain count above.
+ *
+ * "missing" means the browser sent no token at all - it could not mint one, so
+ * the cause is client-side (reCAPTCHA blocked by an extension, the key's domain
+ * list, a quota denial reaching the browser). "invalid" means it sent one and
+ * the server refused it, so the cause is configuration: a key or project that
+ * does not match this deployment. Those two need opposite fixes, and a single
+ * total cannot tell them apart.
+ */
+const REASON_HASH = "shipin:appcheck:rejection-reasons";
 const BUCKET_MS = 5 * 60 * 1000;
 /** Current bucket plus the one before it: a ten-minute view. */
 const WINDOW_BUCKETS = 2;
@@ -39,6 +50,9 @@ function currentBucket(now = Date.now()): number {
 
 /** In-memory fallback, used only when no shared store is configured. */
 const localBuckets = new Map<number, number>();
+const localReasons = new Map<string, number>();
+
+export type AppCheckRejectionReason = "missing" | "invalid";
 
 function pruneLocalBuckets(now = Date.now()): void {
   const oldest = currentBucket(now) - WINDOW_BUCKETS;
@@ -51,23 +65,30 @@ function pruneLocalBuckets(now = Date.now()): void {
  * Count one APP_CHECK_FAILED rejection. Fire-and-forget: the rejection path in
  * the auth gates must never wait on — or fail because of — the counter.
  */
-export function recordAppCheckRejection(now = Date.now()): void {
+export function recordAppCheckRejection(
+  reason: AppCheckRejectionReason,
+  now = Date.now()
+): void {
   const bucket = currentBucket(now);
+  const reasonField = `${bucket}:${reason}`;
 
   const client = getSharedRedisClient();
   if (client) {
-    void client
-      .hincrby(REJECTION_HASH, String(bucket), 1)
-      .then(() => client.expire(REJECTION_HASH, HASH_TTL_SECONDS))
-      .catch((error: unknown) => {
-        logger.warn(
-          "Could not record an App Check rejection in the shared store",
-          { error: error instanceof Error ? error.message : String(error) }
-        );
+    // Three independent writes, not a chain: the caller is a rejected request
+    // that must not wait on the counter, and a chain would put the reason and
+    // the TTL behind the first write's latency.
+    const warn = (error: unknown) =>
+      logger.warn("Could not record an App Check rejection in the shared store", {
+        error: error instanceof Error ? error.message : String(error),
       });
+
+    void client.hincrby(REJECTION_HASH, String(bucket), 1).catch(warn);
+    void client.hincrby(REASON_HASH, reasonField, 1).catch(warn);
+    void client.expire(REJECTION_HASH, HASH_TTL_SECONDS).catch(warn);
   }
 
   localBuckets.set(bucket, (localBuckets.get(bucket) ?? 0) + 1);
+  localReasons.set(reasonField, (localReasons.get(reasonField) ?? 0) + 1);
   pruneLocalBuckets(now);
 }
 
@@ -76,6 +97,10 @@ export interface AppCheckRejectionStatus {
   recentRejections: number;
   /** True when recentRejections crosses the spike threshold. */
   spike: boolean;
+  /** Of the above, requests that carried no token at all. */
+  missing: number;
+  /** Of the above, requests that carried a token the server refused. */
+  invalid: number;
 }
 
 export async function readAppCheckRejections(
@@ -83,6 +108,16 @@ export async function readAppCheckRejections(
 ): Promise<AppCheckRejectionStatus> {
   const oldest = currentBucket(now) - (WINDOW_BUCKETS - 1);
   let total = 0;
+  let missing = 0;
+  let invalid = 0;
+
+  const countReason = (field: string, raw: unknown) => {
+    const [bucket, reason] = field.split(":");
+    if (Number(bucket) < oldest) return;
+    const count = Number(raw) || 0;
+    if (reason === "missing") missing += count;
+    else if (reason === "invalid") invalid += count;
+  };
 
   const client = getSharedRedisClient();
   if (client) {
@@ -94,7 +129,16 @@ export async function readAppCheckRejections(
         if (Number(bucket) < oldest) continue;
         total += Number(raw) || 0;
       }
-      return { recentRejections: total, spike: total >= APP_CHECK_SPIKE_THRESHOLD };
+      const reasons = await client.hgetall<Record<string, unknown>>(REASON_HASH);
+      for (const [field, raw] of Object.entries(reasons ?? {})) {
+        countReason(field, raw);
+      }
+      return {
+        recentRejections: total,
+        spike: total >= APP_CHECK_SPIKE_THRESHOLD,
+        missing,
+        invalid,
+      };
     } catch (error) {
       logger.warn(
         "Could not read App Check rejections from the shared store",
@@ -108,7 +152,15 @@ export async function readAppCheckRejections(
   for (const [bucket, count] of localBuckets) {
     if (bucket >= oldest) total += count;
   }
-  return { recentRejections: total, spike: total >= APP_CHECK_SPIKE_THRESHOLD };
+  for (const [field, count] of localReasons) {
+    if (Number(field.split(":")[0]) >= oldest) countReason(field, count);
+  }
+  return {
+    recentRejections: total,
+    spike: total >= APP_CHECK_SPIKE_THRESHOLD,
+    missing,
+    invalid,
+  };
 }
 
 // --- Discord webhook alerting ---------------------------------------------
@@ -299,6 +351,7 @@ export function reportAppCheckSpike(
 /** Test hook: reset the dedupe state, local counters, and alert sender. */
 export function resetAppCheckMetricsForTests(): void {
   localBuckets.clear();
+  localReasons.clear();
   lastAlertedBucket = -1;
   sendAlert = defaultAlertSender;
 }
