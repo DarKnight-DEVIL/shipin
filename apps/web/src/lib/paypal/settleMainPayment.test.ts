@@ -101,6 +101,7 @@ describe("settleMainPayment", () => {
       expect.objectContaining({ __kind: "wallets" }),
       {
         balance: 80,
+        balanceMinor: 8000,
         reserved: 0,
         currency: "USD",
         updatedAt: "__SERVER_TS__",
@@ -117,6 +118,8 @@ describe("settleMainPayment", () => {
         type: "payment",
         amount: -20,
         balanceAfter: 80,
+        amountMinor: -2000,
+        balanceAfterMinor: 8000,
         requestId: "req-1",
         description: "Request Payment",
         createdAt: "__SERVER_TS__",

@@ -380,14 +380,16 @@ describe("POST /api/webhook", () => {
     // reserved once the hold is consumed.
     expect(mocks.txSet).toHaveBeenCalledWith(
       expect.objectContaining({ path: "wallets/user-1" }),
-      expect.objectContaining({ balance: 30, reserved: 0 })
+      expect.objectContaining({ balance: 30, balanceMinor: 3000, reserved: 0 })
     );
     expect(mocks.txSet).toHaveBeenCalledWith(
       expect.objectContaining({ path: "walletTransactions/paypal_CAPTURE-1" }),
       expect.objectContaining({
         amount: -20,
+        amountMinor: -2000,
         type: "payment",
         balanceAfter: 30,
+        balanceAfterMinor: 3000,
         userId: "user-1",
       })
     );

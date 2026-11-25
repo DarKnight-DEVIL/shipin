@@ -165,8 +165,10 @@ export async function processWalletPayment(
       const newBalance = toDecimal(newBalanceMinor);
 
       // Deduct from wallet.
+      // ADR-0008 phase 3: both representations, one atomic write.
       transaction.update(walletRef, {
         balance: newBalance,
+        balanceMinor: newBalanceMinor,
         updatedAt: FieldValue.serverTimestamp(),
       });
 
@@ -177,6 +179,8 @@ export async function processWalletPayment(
         type: "payment",
         amount: -amount,
         balanceAfter: newBalance,
+        amountMinor: -amountMinor,
+        balanceAfterMinor: newBalanceMinor,
         requestId,
         description: "Request Payment",
         createdAt: FieldValue.serverTimestamp(),

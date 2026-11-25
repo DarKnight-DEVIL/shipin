@@ -168,7 +168,9 @@ export async function settleMainPayment({
       transaction.set(
         walletRef,
         {
+          // ADR-0008 phase 3: both representations, one atomic write.
           balance: newBalance,
+          balanceMinor: newBalanceMinor,
           reserved: reservedAfterRelease(walletSnapshot, holdSnapshot),
           currency: walletSnapshot.exists
             ? walletSnapshot.data()?.currency || "USD"
@@ -185,6 +187,8 @@ export async function settleMainPayment({
         type: "payment",
         amount: -walletApplied,
         balanceAfter: newBalance,
+        amountMinor: -walletAppliedMinor,
+        balanceAfterMinor: newBalanceMinor,
         requestId,
         description: "Request Payment",
         createdAt: FieldValue.serverTimestamp(),

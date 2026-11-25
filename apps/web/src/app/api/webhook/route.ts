@@ -381,6 +381,11 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
         walletRef,
         {
           balance: newBalance,
+          // ADR-0008 phase 3: both representations, written in one atomic
+          // transaction. The decimal stays until phase 4 so a reader that has
+          // not been migrated (and the admin invariants check) still sees the
+          // same number.
+          balanceMinor: newBalanceMinor,
           reserved: reservedAfterRelease(walletSnapshot, holdSnapshot),
           updatedAt: FieldValue.serverTimestamp(),
         },
@@ -392,6 +397,8 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
         type: "payment",
         amount: -walletApplied,
         balanceAfter: newBalance,
+        amountMinor: -walletAppliedMinor,
+        balanceAfterMinor: newBalanceMinor,
         requestId,
         description: "Request Payment",
         createdAt: FieldValue.serverTimestamp(),
