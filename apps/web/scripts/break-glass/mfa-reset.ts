@@ -36,6 +36,12 @@
 import { getApps, initializeApp, cert, type App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { generateSecret, verifySync } from "otplib";
+
+import { hashBackupCode } from "../../src/lib/mfaBackupCodes";
+import { randomBytes } from "node:crypto";
+import { writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const MFA_FIELDS = ["mfa.totp", "mfa.sms", "mfa.webauthn"] as const;
 
@@ -166,6 +172,214 @@ export async function applyReset(
 }
 
 /* -------------------------------------------------------------------------- */
+/* Authenticator (TOTP) enrolment                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The app's own enrolment screen is the normal way to add an authenticator, and
+ * when it works it is better than this: it shows a QR and confirms a code before
+ * anything is enabled. It is here for the case where it does not work — a code
+ * that is refused on every attempt leaves the account with no factor at all,
+ * which is exactly the state the gate calls "not configured" and refuses to
+ * move past.
+ *
+ * Two steps, so a wrong secret never becomes an active factor:
+ *
+ *   --enrol-totp            writes a pending secret (enabled: false) and saves
+ *                           the otpauth:// URL to a local file
+ *   --enrol-totp --code NNNNNN
+ *                           verifies the code against that secret, then enables
+ *                           it and issues backup codes
+ *
+ * The secret is written to a file rather than printed, so it does not end up in
+ * a shell history or a transcript. Nothing is enabled without a code that the
+ * script itself verified.
+ */
+
+export interface EnrolTarget {
+  uid: string;
+  email: string;
+  pendingSecret: string | null;
+  enabled: boolean;
+  backupCodes: number;
+}
+
+export interface EnrolDeps {
+  getUserByEmail(email: string): Promise<{ uid: string; email?: string }>;
+  readUserDoc(uid: string): Promise<Record<string, unknown> | undefined>;
+  writePendingSecret(uid: string, secret: string): Promise<void>;
+  enableTotp(
+    uid: string,
+    secret: string,
+    backupCodes: string[]
+  ): Promise<void>;
+  writeAudit(entry: Record<string, unknown>): Promise<void>;
+  generateSecret(): string;
+  verifyCode(secret: string, code: string): boolean;
+  generateBackupCodes(count: number): string[];
+  /** Must match the app's scrypt hashing, or stored codes can never verify. */
+  hashBackupCode(code: string): string;
+}
+
+export type EnrolResolution =
+  | { ok: false; error: string }
+  | { ok: true; target: EnrolTarget };
+
+export async function resolveEnrolTarget(
+  email: string,
+  deps: EnrolDeps
+): Promise<EnrolResolution> {
+  const trimmed = email.trim();
+  if (!trimmed) return { ok: false, error: "An email address is required." };
+
+  let user: { uid: string; email?: string };
+  try {
+    user = await deps.getUserByEmail(trimmed);
+  } catch {
+    return { ok: false, error: `No account for ${trimmed}.` };
+  }
+
+  const doc = (await deps.readUserDoc(user.uid)) ?? {};
+  if (doc.role !== "admin") {
+    return { ok: false, error: `${trimmed} is not an admin.` };
+  }
+
+  const totp = ((doc.mfa ?? {}) as { totp?: Record<string, unknown> }).totp;
+
+  return {
+    ok: true,
+    target: {
+      uid: user.uid,
+      email: user.email ?? trimmed,
+      pendingSecret:
+        typeof totp?.secret === "string" && totp.enabled !== true
+          ? totp.secret
+          : null,
+      enabled: totp?.enabled === true,
+      backupCodes: Array.isArray(totp?.backupCodes) ? totp.backupCodes.length : 0,
+    },
+  };
+}
+
+/** RFC 6238 discovery URL; the same parameters the app's QR encodes. */
+export function buildOtpauthUrl(secret: string, account: string): string {
+  const label = encodeURIComponent(`ShipIN Admin:${account}`);
+  const query = new URLSearchParams({
+    secret,
+    issuer: "ShipIN Admin",
+    algorithm: "SHA1",
+    digits: "6",
+    period: "30",
+  });
+
+  return `otpauth://totp/${label}?${query.toString()}`;
+}
+
+/**
+ * Step one: mint a secret and store it as pending. An already-enabled factor is
+ * never silently replaced — that would lock out the very person this helps.
+ */
+export async function stageTotpEnrolment(
+  email: string,
+  deps: EnrolDeps
+): Promise<{
+  ok: boolean;
+  message: string;
+  secret?: string;
+  otpauthUrl?: string;
+}> {
+  const resolved = await resolveEnrolTarget(email, deps);
+  if (!resolved.ok) return { ok: false, message: resolved.error };
+
+  if (resolved.target.enabled) {
+    return {
+      ok: false,
+      message:
+        `${resolved.target.email} already has an enabled authenticator. Run this without ` +
+        "--code only after a reset (which removes it), or use the app's own replacement flow.",
+    };
+  }
+
+  const secret = deps.generateSecret();
+  await deps.writePendingSecret(resolved.target.uid, secret);
+  await deps.writeAudit({
+    actorUid: "break-glass-script",
+    actorEmail: null,
+    action: "mfa.break_glass_enrol_staged",
+    targetType: "user",
+    targetId: resolved.target.uid,
+  });
+
+  return {
+    ok: true,
+    message: "Pending secret written. Add it to your authenticator app, then confirm with --code.",
+    secret,
+    otpauthUrl: buildOtpauthUrl(secret, resolved.target.email),
+  };
+}
+
+/**
+ * Step two: verify the code, then (and only then) enable the factor and issue
+ * backup codes. A pending secret left unconfirmed stays disabled, exactly like
+ * an abandoned enrolment in the UI.
+ */
+export async function confirmTotpEnrolment(
+  email: string,
+  code: string | undefined,
+  deps: EnrolDeps
+): Promise<{ ok: boolean; message: string; backupCodes?: string[] }> {
+  const resolved = await resolveEnrolTarget(email, deps);
+  if (!resolved.ok) return { ok: false, message: resolved.error };
+
+  const { target } = resolved;
+
+  if (!target.pendingSecret) {
+    return {
+      ok: false,
+      message: "No pending authenticator secret. Run --enrol-totp first to get one.",
+    };
+  }
+
+  const trimmed = (code ?? "").trim();
+  if (!/^\d{6}$/.test(trimmed)) {
+    return { ok: false, message: "--code must be the 6 digits the app is showing." };
+  }
+
+  if (!deps.verifyCode(target.pendingSecret, trimmed)) {
+    return {
+      ok: false,
+      message:
+        "That code does not match the pending secret. If your app shows a different entry, " +
+        "scan the saved otpauth:// URL again; if the digits match but fail, the phone clock is off.",
+    };
+  }
+
+  const backupCodes = deps.generateBackupCodes(10);
+
+  // The app stores backup codes as scrypt hashes, never plaintext: matching that
+  // is not optional, because a plaintext entry can never verify. The plaintext
+  // is returned once, for the file the operator reads.
+  await deps.enableTotp(
+    target.uid,
+    target.pendingSecret,
+    backupCodes.map(deps.hashBackupCode)
+  );
+  await deps.writeAudit({
+    actorUid: "break-glass-script",
+    actorEmail: null,
+    action: "mfa.break_glass_enrol_confirmed",
+    targetType: "user",
+    targetId: target.uid,
+  });
+
+  return {
+    ok: true,
+    message: `Authenticator enabled for ${target.email}.`,
+    backupCodes,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /* CLI                                                                        */
 /* -------------------------------------------------------------------------- */
 
@@ -200,10 +414,17 @@ async function main() {
   const email = arg("email");
   const reason = arg("reason") ?? "";
   const confirm = arg("confirm");
+  const enrol = process.argv.includes("--enrol-totp");
+  const code = arg("code");
 
   if (!email) {
     console.error(
-      "Usage: mfa-reset.ts --email <address> --reason <why> [--confirm <address>]"
+      [
+        "Usage:",
+        "  mfa-reset.ts --email <address> --reason <why> [--confirm <address>]",
+        "  mfa-reset.ts --email <address> --enrol-totp",
+        "  mfa-reset.ts --email <address> --enrol-totp --code <6 digits>",
+      ].join("\n")
     );
     process.exit(1);
   }
@@ -211,6 +432,112 @@ async function main() {
   const app = adminApp();
   const auth = getAuth(app);
   const db = getFirestore(app);
+
+  if (enrol) {
+    const enrolDeps: EnrolDeps = {
+      getUserByEmail: (address) => auth.getUserByEmail(address),
+      readUserDoc: async (uid) =>
+        (await db.collection("users").doc(uid).get()).data(),
+      writePendingSecret: async (uid, secret) => {
+        await db.collection("users").doc(uid).update({
+          "mfa.totp": { secret, enabled: false, backupCodes: [] },
+          "mfa.required": true,
+          "mfa.enrolStagedAt": FieldValue.serverTimestamp(),
+        });
+      },
+      enableTotp: async (uid, secret, backupCodes) => {
+        await db.collection("users").doc(uid).update({
+          "mfa.totp": { secret, enabled: true, backupCodes },
+          "mfa.enrolledAt": FieldValue.serverTimestamp(),
+          "mfa.enrolledBy": "break-glass",
+        });
+      },
+      writeAudit: async (entry) => {
+        await db.collection("adminAuditLog").add({
+          ...entry,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      },
+      generateSecret: () => generateSecret(),
+      verifyCode: (secret, candidate) => {
+        try {
+          return verifySync({
+            secret,
+            token: candidate,
+            epochTolerance: 30,
+          }).valid;
+        } catch {
+          return false;
+        }
+      },
+      generateBackupCodes: (count) => {
+        const codes: string[] = [];
+        for (let i = 0; i < count; i++) {
+          const raw = randomBytes(8).toString("hex").toUpperCase();
+          codes.push(
+            `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}`
+          );
+        }
+        return codes;
+      },
+      hashBackupCode: (code) => hashBackupCode(code),
+    };
+
+    if (code) {
+      const result = await confirmTotpEnrolment(email, code, enrolDeps);
+      console.log(result.message);
+
+      if (!result.ok) process.exit(1);
+
+      if (result.backupCodes) {
+        const file = resolve("break-glass-backup-codes.txt");
+        writeFileSync(
+          file,
+          [
+            `Backup codes for ${email}`,
+            "Each one works once, in place of an authenticator code.",
+            "",
+            ...result.backupCodes,
+            "",
+          ].join("\n"),
+          { mode: 0o600 }
+        );
+        console.log(`Backup codes written to ${file} (read once, then delete it).`);
+      }
+
+      return;
+    }
+
+    const staged = await stageTotpEnrolment(email, enrolDeps);
+
+    if (!staged.ok || !staged.otpauthUrl || !staged.secret) {
+      console.error(staged.message);
+      process.exit(1);
+    }
+
+    const file = resolve("break-glass-otpauth.txt");
+    writeFileSync(
+      file,
+      [
+        "Add this to your authenticator app (most apps accept a URL or a manual key).",
+        "",
+        staged.otpauthUrl,
+        "",
+        `manual key: ${staged.secret}`,
+        "",
+        "Then run the same command again with --code <the 6 digits it shows>.",
+        "",
+      ].join("\n"),
+      { mode: 0o600 }
+    );
+
+    console.log(staged.message);
+    console.log(`\nOpen ${file} for the setup URL and key.`);
+    console.log(
+      "If your app already shows a ShipIN Admin entry, delete it first so you are not reading the old one's codes."
+    );
+    return;
+  }
 
   const deps: ResetDeps = {
     getUserByEmail: (address) => auth.getUserByEmail(address),
