@@ -103,6 +103,7 @@ describe("settleMainPayment", () => {
         balance: 80,
         balanceMinor: 8000,
         reserved: 0,
+        reservedMinor: 0,
         currency: "USD",
         updatedAt: "__SERVER_TS__",
       },

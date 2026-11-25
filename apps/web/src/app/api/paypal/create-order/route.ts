@@ -24,13 +24,14 @@ import { isQuoteExpired } from "@/features/requests/services/quoteExpiry";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { PAYPAL_FIXED_FEE, PAYPAL_PERCENTAGE } from "@/config/constants";
 import { adminDb } from "@/lib/firebaseAdmin";
+import { minorFromStored, storedMinor } from "@/lib/money";
 import { roundMoney, sameCents, toNumber } from "@/lib/paypal/amounts";
+import { reservedFields } from "@/lib/moneyMode";
 import { createPayPalOrder } from "@/lib/paypal/createPayPalOrder";
 import {
   availableWalletBalance,
   releaseExpiredWalletHolds,
   releaseWalletHold,
-  reservedBalance,
   walletHoldDocId,
   WALLET_HOLD_TTL_MS,
   WALLET_HOLDS_COLLECTION,
@@ -294,16 +295,22 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             ? roundMoney(Math.max(0, toNumber(previousHold?.amount)))
             : 0;
 
-        const reserved = roundMoney(
-          Math.max(
-            0,
-            reservedBalance(walletSnapshot.data()) - previousHoldAmount
-          )
+        const reservedMinor = Math.max(
+          0,
+          storedMinor(walletSnapshot.data(), "reserved") -
+            minorFromStored(previousHoldAmount)
         );
-
+        /*
+         * Pass the wallet through as stored, overriding only the reservation.
+         * Rebuilding it as `{ balance, reserved }` dropped the minor fields, so
+         * a migrated wallet reported nothing available and the wallet share of
+         * every order silently became zero (ADR-0008, phase 2 follow-up). The
+         * override still matters: this order replaces the previous hold, so
+         * that hold must not count against what the customer can spend.
+         */
         const walletBalance = availableWalletBalance({
-          balance: walletSnapshot.data()?.balance,
-          reserved,
+          ...(walletSnapshot.data() ?? {}),
+          reservedMinor,
         });
 
         const requestedWalletAmount = roundMoney(
@@ -346,7 +353,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
           transaction.set(
             walletRef,
             {
-              reserved: roundMoney(reserved + walletApplied),
+              ...reservedFields(reservedMinor + minorFromStored(walletApplied)),
               updatedAt: new Date(),
             },
             { merge: true }
@@ -374,7 +381,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             transaction.set(
               walletRef,
               {
-                reserved,
+                ...reservedFields(reservedMinor),
                 updatedAt: new Date(),
               },
               { merge: true }

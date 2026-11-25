@@ -5,7 +5,8 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { calculatePayment } from "@/features/finance/services/calculatePayment";
 import type { QuoteBreakdown } from "@/types/request";
 import { toShipINError } from "@/utils/errors";
-import { minorFromStored, storedMinor, toDecimal } from "@/lib/money";
+import { minorFromStored, storedMinor } from "@/lib/money";
+import { balanceFields, ledgerFields } from "@/lib/moneyMode";
 
 // ---------------------------------------------------------------------------
 // Result type
@@ -162,13 +163,10 @@ export async function processWalletPayment(
       }
 
       const newBalanceMinor = currentBalanceMinor - amountMinor;
-      const newBalance = toDecimal(newBalanceMinor);
 
       // Deduct from wallet.
-      // ADR-0008 phase 3: both representations, one atomic write.
       transaction.update(walletRef, {
-        balance: newBalance,
-        balanceMinor: newBalanceMinor,
+        ...balanceFields(newBalanceMinor),
         updatedAt: FieldValue.serverTimestamp(),
       });
 
@@ -177,10 +175,7 @@ export async function processWalletPayment(
       transaction.set(transactionRef, {
         userId,
         type: "payment",
-        amount: -amount,
-        balanceAfter: newBalance,
-        amountMinor: -amountMinor,
-        balanceAfterMinor: newBalanceMinor,
+        ...ledgerFields(-amountMinor, newBalanceMinor),
         requestId,
         description: "Request Payment",
         createdAt: FieldValue.serverTimestamp(),

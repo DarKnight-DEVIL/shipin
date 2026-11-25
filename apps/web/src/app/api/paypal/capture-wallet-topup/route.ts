@@ -11,6 +11,7 @@ import { fetchWithTimeout } from "@/lib/http";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { withErrorHandler } from "@/utils/errors";
 import { minorFromStored, storedMinor, toDecimal } from "@/lib/money";
+import { balanceFields, isMinorOnlyMode, ledgerFields } from "@/lib/moneyMode";
 import { serverEnv } from "@/config/env";
 import { captureTopupBodySchema, readAndValidateBody } from "@/lib/validation";
 
@@ -356,7 +357,12 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
        */
       if (walletSnapshot.exists) {
         transaction.update(walletRef, {
-          balance: FieldValue.increment(capturedAmount),
+          // The decimal is an increment, so it cannot come from `balanceFields`;
+          // the minor balance is absolute because incrementing a field a legacy
+          // wallet does not have would start from zero.
+          ...(isMinorOnlyMode()
+            ? {}
+            : { balance: FieldValue.increment(capturedAmount) }),
 
           balanceMinor: newBalanceMinor,
 
@@ -366,9 +372,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         });
       } else {
         transaction.set(walletRef, {
-          balance: capturedAmount,
-
-          balanceMinor: newBalanceMinor,
+          ...balanceFields(newBalanceMinor),
 
           currency: "USD",
 
@@ -386,13 +390,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
         type: "deposit",
 
-        amount: capturedAmount,
-
-        balanceAfter: newBalance,
-
-        amountMinor: minorFromStored(capturedAmount),
-
-        balanceAfterMinor: newBalanceMinor,
+        ...ledgerFields(minorFromStored(capturedAmount), newBalanceMinor),
 
         description: "PayPal Wallet Top Up",
 

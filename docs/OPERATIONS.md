@@ -104,6 +104,35 @@ mismatch count means stop and reconcile before phase 4 retires the decimals.
 30-minute TTL rather than a ledger amount, so it converts with phase 4 (or gets
 dropped in favour of `walletHolds`) rather than in this backfill.
 
+### `MONEY_MINOR_ONLY` — the phase 4 switch
+
+Every wallet writer produces both representations. `MONEY_MINOR_ONLY=1` stops
+them writing the decimals, leaving only `balanceMinor`, `amountMinor`,
+`balanceAfterMinor`, `reservedMinor`. The decision lives in
+`apps/web/src/lib/moneyMode.ts` and nowhere else.
+
+**Do not set it until all four of these are true**, because each one is a way for
+the switch to turn money into zero rather than into a smaller number:
+
+1. `npm run migrate -- 003-money-minor-units --dry-run` against production
+   reports `0 mismatch(es)` and `0 unreadable`.
+2. The backfill has been *applied*, not just dry-run — a wallet created after a
+dry run but before the apply has no minor field, and once the switch is on it
+reads as empty.
+3. Every reader is on `storedMinor`. The known hold-out is
+   `src/app/api/admin/wallet/invariants/route.ts`, which reads `balance`
+   directly; with the switch on it will report every wallet as empty.
+4. Mobile or long-lived clients that query Firestore for `balance` directly are
+   gone. The web app goes through the API, but a client holding a Firestore
+   listener is not something a deploy can fix.
+
+Readers keep accepting both shapes in either mode. That is a deliberate
+departure from ADR-0008, which called for dropping the fallback: the fallback is
+what makes a document the backfill missed read as money instead of as zero, and
+it costs a `typeof` check. Retiring it is only worth doing once the decimal
+fields are actually gone, which is a separate change from turning off the
+writes.
+
 ### Migration procedure (four steps, two deploys minimum)
 
 ```

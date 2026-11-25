@@ -353,6 +353,45 @@ describe("POST /api/webhook", () => {
     });
   });
 
+  it("stops writing the decimal fields once MONEY_MINOR_ONLY is on", async () => {
+    // ADR-0008 phase 4. Flipping the switch must remove the decimals from what
+    // is written, not just add the integer ones. `restoreAllMocks` does not undo
+    // `stubEnv`, so the mode is unset explicitly rather than leaking into the
+    // next test in this file.
+    vi.stubEnv("MONEY_MINOR_ONLY", "1");
+
+    try {
+      seedOrder({ walletApplied: 20, walletHoldId: "hold-1" });
+      seedRequest();
+      mocks.docs["wallets/user-1"] = { balance: 50, reserved: 20, balanceMinor: 5000 };
+      mocks.docs["walletHolds/hold-1"] = {
+        userId: "user-1",
+        amount: 20,
+        status: "reserved",
+      };
+
+      await POST(request(captureEvent()));
+
+      const walletWrite = mocks.txSet.mock.calls.find(
+        ([ref]) => ref?.path === "wallets/user-1"
+      );
+      expect(Object.keys(walletWrite?.[1] ?? {})).not.toContain("balance");
+      expect(walletWrite?.[1]).toEqual(
+        expect.objectContaining({ balanceMinor: 3000, reservedMinor: 0 })
+      );
+
+      const ledgerWrite = mocks.txSet.mock.calls.find(
+        ([ref]) => ref?.path === "walletTransactions/paypal_CAPTURE-1"
+      );
+      expect(Object.keys(ledgerWrite?.[1] ?? {})).not.toContain("amount");
+      expect(ledgerWrite?.[1]).toEqual(
+        expect.objectContaining({ amountMinor: -2000, balanceAfterMinor: 3000 })
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("uses the request's customer name, not the payment order", async () => {
     seedOrder();
     seedRequest({ customerName: "Grace" });

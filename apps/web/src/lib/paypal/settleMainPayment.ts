@@ -20,11 +20,12 @@ import {
 import { adminDb } from "@/lib/firebaseAdmin";
 
 import { roundMoney, toNumber } from "./amounts";
-import { minorFromStored, storedMinor, toDecimal } from "@/lib/money";
+import { minorFromStored, storedMinor } from "@/lib/money";
+import { balanceFields, ledgerFields, reservedFields } from "@/lib/moneyMode";
 import type { PaymentFailure } from "./types";
 import {
   deleteConsumedWalletHold,
-  reservedAfterRelease,
+  reservedAfterReleaseMinor,
   WALLET_HOLDS_COLLECTION,
 } from "./walletHolds";
 
@@ -161,17 +162,16 @@ export async function settleMainPayment({
     }
 
     const newBalanceMinor = currentBalanceMinor - walletAppliedMinor;
-    const newBalance = toDecimal(newBalanceMinor);
 
     if (walletApplied > 0) {
       // Consume the reservation in the same write that debits the balance.
       transaction.set(
         walletRef,
         {
-          // ADR-0008 phase 3: both representations, one atomic write.
-          balance: newBalance,
-          balanceMinor: newBalanceMinor,
-          reserved: reservedAfterRelease(walletSnapshot, holdSnapshot),
+          ...balanceFields(newBalanceMinor),
+          ...reservedFields(
+            reservedAfterReleaseMinor(walletSnapshot, holdSnapshot)
+          ),
           currency: walletSnapshot.exists
             ? walletSnapshot.data()?.currency || "USD"
             : "USD",
@@ -185,10 +185,7 @@ export async function settleMainPayment({
       transaction.set(walletTransactionRef, {
         userId: paymentOrder.userId,
         type: "payment",
-        amount: -walletApplied,
-        balanceAfter: newBalance,
-        amountMinor: -walletAppliedMinor,
-        balanceAfterMinor: newBalanceMinor,
+        ...ledgerFields(-walletAppliedMinor, newBalanceMinor),
         requestId,
         description: "Request Payment",
         createdAt: FieldValue.serverTimestamp(),

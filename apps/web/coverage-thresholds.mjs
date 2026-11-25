@@ -113,6 +113,8 @@ export const COVERAGE_GLOB_THRESHOLDS = {
   // 97.1% statements, 100% functions, 98.9% branches; the missing branch is the
   // unreachable-in-practice `unsupported currency` guard.
   "src/lib/money.ts": PAYMENT_COVERAGE,
+  // Decides whether a wallet write carries the decimal fields (ADR-0008, phase 4).
+  "src/lib/moneyMode.ts": PAYMENT_COVERAGE,
   // The capture claim, PayPal capture/create calls and both settlement steps.
   "src/lib/paypal/**": PAYMENT_COVERAGE,
   "src/features/wallet/**": PAYMENT_COVERAGE,

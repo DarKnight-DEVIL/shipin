@@ -9,6 +9,7 @@ import { withErrorHandler } from "@/utils/errors";
 import { recordAdminAudit } from "@/lib/adminAudit";
 import { adminCreditBodySchema, readAndValidateBody } from "@/lib/validation";
 import { isMinor, minorFromStored, storedMinor, toDecimal } from "@/lib/money";
+import { balanceFields, ledgerFields } from "@/lib/moneyMode";
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
   try {
@@ -224,10 +225,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       transaction.set(
         walletRef,
         {
-          balance: newBalance,
-
-          // ADR-0008 phase 3: both representations, one atomic write.
-          balanceMinor: newBalanceMinor,
+          ...balanceFields(newBalanceMinor),
 
           currency: walletSnapshot.exists
             ? walletSnapshot.data()?.currency || "USD"
@@ -251,13 +249,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
         type: isRefund ? "refund" : "admin_credit",
 
-        amount: creditAmount,
-
-        balanceAfter: newBalance,
-
-        amountMinor: minorFromStored(creditAmount),
-
-        balanceAfterMinor: newBalanceMinor,
+        ...ledgerFields(minorFromStored(creditAmount), newBalanceMinor),
 
         description,
 

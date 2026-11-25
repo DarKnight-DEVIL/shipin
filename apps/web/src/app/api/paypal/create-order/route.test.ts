@@ -277,6 +277,22 @@ describe("POST /api/paypal/create-order", () => {
     });
   });
 
+  it("sees the money in a wallet that only holds integer minor units", async () => {
+    // ADR-0008. The route used to rebuild the wallet as `{ balance, reserved }`
+    // before asking what was available, which read a migrated wallet as empty and
+    // silently put the whole order on PayPal.
+    mocks.walletGet.mockResolvedValue(
+      snap({ balanceMinor: 5000, reservedMinor: 0, currency: "USD" })
+    );
+
+    const response = await POST(request({ ...body, amount: 54.7 }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ walletApplied: 50, paypalAmount: 54.7 })
+    );
+  });
+
   it("treats an empty wallet as zero balance", async () => {
     mocks.walletGet.mockResolvedValue(snap(undefined));
 

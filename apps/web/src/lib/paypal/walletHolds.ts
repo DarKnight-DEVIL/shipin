@@ -26,6 +26,7 @@ import {
 import { adminDb } from "@/lib/firebaseAdmin";
 
 import { storedMinor, toDecimal } from "@/lib/money";
+import { reservedFields } from "@/lib/moneyMode";
 
 export const WALLET_HOLDS_COLLECTION = "walletHolds";
 
@@ -71,19 +72,24 @@ export function availableWalletBalance(
  * The caller writes it in the same single wallet write that debits the balance,
  * because Firestore allows only one write per document in a transaction.
  */
-export function reservedAfterRelease(
+export function reservedAfterReleaseMinor(
   wallet: DocumentSnapshot,
   hold: DocumentSnapshot | null
 ): number {
   const current = storedMinor(wallet.data(), "reserved");
-  if (!hold || !hold.exists) return toDecimal(current);
+  if (!hold || !hold.exists) return current;
 
   const data = hold.data() ?? {};
-  if (data.status !== "reserved") return toDecimal(current);
+  if (data.status !== "reserved") return current;
 
-  return toDecimal(
-    Math.max(0, current - Math.max(0, storedMinor(data, "amount")))
-  );
+  return Math.max(0, current - Math.max(0, storedMinor(data, "amount")));
+}
+
+export function reservedAfterRelease(
+  wallet: DocumentSnapshot,
+  hold: DocumentSnapshot | null
+): number {
+  return toDecimal(reservedAfterReleaseMinor(wallet, hold));
 }
 
 /** Delete a consumed hold. A no-op for a checkout created before holds existed. */
@@ -114,7 +120,7 @@ export async function releaseWalletHold(
       transaction.set(
         walletRef,
         {
-          reserved: reservedAfterRelease(wallet, hold),
+          ...reservedFields(reservedAfterReleaseMinor(wallet, hold)),
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }

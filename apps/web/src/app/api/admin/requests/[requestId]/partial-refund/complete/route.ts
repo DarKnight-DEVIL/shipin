@@ -12,7 +12,8 @@ import {
 } from "@/lib/validation";
 
 import { withErrorHandler, createShipINError } from "@/utils/errors";
-import { minorFromStored, storedMinor, toDecimal } from "@/lib/money";
+import { minorFromStored, storedMinor } from "@/lib/money";
+import { balanceFields, ledgerFields } from "@/lib/moneyMode";
 
 function roundMoney(value: number) {
   return Number(value.toFixed(2));
@@ -199,14 +200,11 @@ export const POST = withErrorHandler(
 
         const newWalletBalanceMinor =
           currentBalanceMinor + minorFromStored(currentWalletRefund);
-        const newWalletBalance = toDecimal(newWalletBalanceMinor);
 
         transaction.set(
           walletRef,
           {
-            balance: newWalletBalance,
-            // ADR-0008 phase 3: both representations, one atomic write.
-            balanceMinor: newWalletBalanceMinor,
+            ...balanceFields(newWalletBalanceMinor),
             currency: walletSnapshot.exists
               ? walletSnapshot.data()?.currency || "USD"
               : "USD",
@@ -218,10 +216,10 @@ export const POST = withErrorHandler(
         transaction.set(walletTransactionRef, {
           userId: currentData.userId,
           type: "refund",
-          amount: currentWalletRefund,
-          balanceAfter: newWalletBalance,
-          amountMinor: minorFromStored(currentWalletRefund),
-          balanceAfterMinor: newWalletBalanceMinor,
+          ...ledgerFields(
+            minorFromStored(currentWalletRefund),
+            newWalletBalanceMinor
+          ),
           description: currentOffer.reason || "Partial refund",
           requestId,
           createdAt: FieldValue.serverTimestamp(),

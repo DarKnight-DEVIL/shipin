@@ -20,9 +20,10 @@ import {
   subtractMinor,
   toDecimal,
 } from "@/lib/money";
+import { balanceFields, ledgerFields, reservedFields } from "@/lib/moneyMode";
 import {
   deleteConsumedWalletHold,
-  reservedAfterRelease,
+  reservedAfterReleaseMinor,
   WALLET_HOLDS_COLLECTION,
 } from "@/lib/paypal/walletHolds";
 
@@ -375,18 +376,13 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
     if (walletApplied > 0 && !ledgerSnapshot.exists) {
       newBalanceMinor = subtractMinor(newBalanceMinor, walletAppliedMinor);
 
-      const newBalance = toDecimal(newBalanceMinor);
-
       transaction.set(
         walletRef,
         {
-          balance: newBalance,
-          // ADR-0008 phase 3: both representations, written in one atomic
-          // transaction. The decimal stays until phase 4 so a reader that has
-          // not been migrated (and the admin invariants check) still sees the
-          // same number.
-          balanceMinor: newBalanceMinor,
-          reserved: reservedAfterRelease(walletSnapshot, holdSnapshot),
+          ...balanceFields(newBalanceMinor),
+          ...reservedFields(
+            reservedAfterReleaseMinor(walletSnapshot, holdSnapshot)
+          ),
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
@@ -395,10 +391,7 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
       transaction.set(walletTransactionRef, {
         userId,
         type: "payment",
-        amount: -walletApplied,
-        balanceAfter: newBalance,
-        amountMinor: -walletAppliedMinor,
-        balanceAfterMinor: newBalanceMinor,
+        ...ledgerFields(-walletAppliedMinor, newBalanceMinor),
         requestId,
         description: "Request Payment",
         createdAt: FieldValue.serverTimestamp(),
