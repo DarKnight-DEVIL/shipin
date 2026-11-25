@@ -127,19 +127,41 @@ the switch to turn money into zero rather than into a smaller number:
 2. The backfill has been *applied*, not just dry-run — a wallet created after a
 dry run but before the apply has no minor field, and once the switch is on it
 reads as empty.
-3. Every reader is on `storedMinor`. The known hold-out is
-   `src/app/api/admin/wallet/invariants/route.ts`, which reads `balance`
-   directly; with the switch on it will report every wallet as empty.
+3. Every reader is on `storedMinor`. The admin wallet invariant sweep was the
+   last hold-out; it reads and compares integer minor units on both sides now.
 4. Mobile or long-lived clients that query Firestore for `balance` directly are
-   gone. The web app goes through the API, but a client holding a Firestore
+   gone. The web app reads through `storedMinor`, but a client holding a Firestore
    listener is not something a deploy can fix.
 
 Readers keep accepting both shapes in either mode. That is a deliberate
 departure from ADR-0008, which called for dropping the fallback: the fallback is
 what makes a document the backfill missed read as money instead of as zero, and
-it costs a `typeof` check. Retiring it is only worth doing once the decimal
-fields are actually gone, which is a separate change from turning off the
-writes.
+it costs a `typeof` check. It is retired last, after 004, because removing it
+while any decimal-only document exists turns that document into zero.
+
+### 004-strip-money-decimals — then the decimals are gone
+
+```bash
+npm run migrate -- 004-strip-money-decimals --dry-run   # report only
+npm run migrate -- 004-strip-money-decimals             # apply
+```
+
+Deletes `balance` / `reserved` from wallets and `amount` / `balanceAfter` from
+ledger rows. Run it only **after** `MONEY_MINOR_ONLY=1` has been live long enough
+that no decimal-writing instance can still be running: the writers read a
+schedule, not a document, so a deploy overlap is the only thing this migration
+can break.
+
+It deletes nothing it cannot replace. A field whose `…Minor` counterpart is
+missing or is not an integer is kept and counted as `incomplete`; a field whose
+integer disagrees with it is kept and counted as a `mismatch`. Run the dry run and
+expect both counters to be **0** before applying. Anything else is a document to
+look at, not a warning to ignore — after this migration the decimal is the only
+evidence of what the value used to be.
+
+`walletHolds.amount` is intentionally left decimal. A hold is deleted when it is
+consumed and never outlives its 30-minute TTL, so there is no history to retire
+and removing a live one only adds a way to lose a reservation.
 
 ### Migration procedure (four steps, two deploys minimum)
 
