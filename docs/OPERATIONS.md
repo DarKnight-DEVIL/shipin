@@ -94,15 +94,23 @@ was verified against the emulator with seeded legacy, already-converted,
 mismatched and unreadable documents, including a page size of 2 to exercise the
 `__name__` cursor.
 
-**After phase 3 the dry run doubles as the divergence check.** Once the writers
-dual-write, `--dry-run` reports as a mismatch every document whose `…Minor` field
-disagrees with its decimal — which is exactly the corruption that dual-writing
-can introduce. Run it after each deploy that touches a money writer; a nonzero
-mismatch count means stop and reconcile before phase 4 retires the decimals.
+**While the writers are dual-writing, the dry run doubles as the divergence
+check.** `--dry-run` reports as a mismatch every document whose `…Minor` field
+disagrees with its decimal — which is exactly the corruption dual-writing can
+introduce. Run it after each deploy that touches a money writer; a nonzero
+mismatch count means stop and reconcile.
+
+**Stop using it the moment `MONEY_MINOR_ONLY=1` is set.** The decimal fields are
+then frozen at their last-written values by design, so every wallet that moves
+money afterwards reports a mismatch. That is expected, not drift — reading those
+counters as an alarm is the fastest way to waste a night. After the flip the
+check is `POST /api/admin/wallet/invariants` (the daily cron), which compares
+balances against the ledger in minor units on both sides.
 
 `reserved` on a wallet is still decimal-only. It is an operational hold with a
 30-minute TTL rather than a ledger amount, so it converts with phase 4 (or gets
-dropped in favour of `walletHolds`) rather than in this backfill.
+dropped in favour of `walletHolds`) rather than in this backfill. `reservedMinor`
+is written alongside it, and the sweep compares the integer side.
 
 ### `MONEY_MINOR_ONLY` — the phase 4 switch
 
