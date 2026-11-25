@@ -81,11 +81,38 @@ function startAppCheck(firebaseApp: FirebaseApp): void {
       // A failed init must not break sign-in: the request still goes out and
       // either succeeds (enforcement off) or fails with a clear App Check error.
       appCheckInit = null;
+      appCheckFailureDetail = describeAppCheckError(error);
       console.error(
         "[app-check] Initialization failed; requests will be rejected while enforcement is on:",
         error
       );
     });
+}
+
+/**
+ * Why the last App Check token attempt failed, for display in the UI.
+ *
+ * The console line is invisible to whoever is locked out, and the generic
+ * "App verification failed" banner cannot distinguish a blocked reCAPTCHA, a
+ * key that does not allow this domain, an exhausted quota, or a debug token
+ * that was never registered. Those need different fixes, so the reason is kept
+ * here and shown next to the banner.
+ */
+let appCheckFailureDetail: string | null = null;
+
+function describeAppCheckError(error: unknown): string {
+  if (error instanceof Error) {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === "string" && code
+      ? `${code}: ${error.message}`
+      : error.message;
+  }
+  return String(error);
+}
+
+/** The last App Check failure, or null when the last attempt succeeded. */
+export function getAppCheckFailureDetail(): string | null {
+  return appCheckFailureDetail;
 }
 
 /**
@@ -112,9 +139,15 @@ export async function getAppCheckToken(
 
   try {
     const { token } = await readAppCheckToken(appCheck, forceRefresh);
-    return token || null;
+    if (token) {
+      appCheckFailureDetail = null;
+      return token;
+    }
+    appCheckFailureDetail = "App Check returned no token.";
+    return null;
   } catch (error) {
     console.error("[app-check] Could not obtain a token:", error);
+    appCheckFailureDetail = describeAppCheckError(error);
     return null;
   }
 }

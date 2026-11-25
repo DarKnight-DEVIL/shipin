@@ -14,6 +14,13 @@ vi.mock("firebase/auth", () => ({
   },
 }));
 
+const appCheckState = vi.hoisted(() => ({ detail: null as string | null }));
+
+vi.mock("@/lib/firebase", () => ({
+  auth: {},
+  getAppCheckFailureDetail: () => appCheckState.detail,
+}));
+
 vi.mock("@/lib/mfaSessionClient", () => ({
   getMfaSessionStatus: vi.fn(),
   startMfaSession: vi.fn(),
@@ -51,6 +58,7 @@ beforeEach(() => {
   vi.mocked(startWebAuthnSession).mockReset();
   vi.mocked(assertSecurityKey).mockReset();
   vi.mocked(isWebAuthnSupported).mockReturnValue(true);
+  appCheckState.detail = null;
 });
 
 describe("AdminMfaGate", () => {
@@ -85,6 +93,22 @@ describe("AdminMfaGate", () => {
     ).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("6-digit code")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Verify" })).not.toBeInTheDocument();
+  });
+
+  it("names the reason App Check gave, so the cause is readable without the console", async () => {
+    // "App verification failed" alone cannot distinguish a blocked reCAPTCHA from
+    // a key that rejects this domain or an exhausted quota - and those need
+    // different fixes. The SDK has the reason; the panel has to show it.
+    appCheckState.detail = "appCheck/recaptcha-error: 403 Forbidden";
+    vi.mocked(getMfaSessionStatus).mockRejectedValue(
+      new MfaApiError("App verification failed.", "APP_CHECK_FAILED", 401)
+    );
+
+    renderGate();
+
+    expect(
+      await screen.findByText(/recaptcha-error: 403 Forbidden/i)
+    ).toBeInTheDocument();
   });
 
   it("points an unenrolled account at enrolment instead of a dead Verify button", async () => {

@@ -16,7 +16,7 @@ import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 
-import { auth } from "@/lib/firebase";
+import { auth, getAppCheckFailureDetail } from "@/lib/firebase";
 import {
   getMfaSessionStatus,
   startMfaSession,
@@ -238,6 +238,10 @@ export default function AdminMfaGate({
   // the old Verify button opened a form that never rendered and did nothing at
   // all. It links to enrolment instead (see the not-configured block below).
   const canElevate = status === "needs-code";
+  // Read once per render: the reason is whatever the last token attempt recorded,
+  // and it is the only way to tell a blocked reCAPTCHA from a key that rejects
+  // this domain once the console has been closed.
+  const appCheckDetail = getAppCheckFailureDetail();
 
   return (
     <>
@@ -399,6 +403,11 @@ export default function AdminMfaGate({
           >
             Reload verification status
           </button>
+          {appCheckDetail ? (
+            <p className="mt-2 text-xs text-red-900/80 break-words">
+              Reported reason: <code>{appCheckDetail}</code>
+            </p>
+          ) : null}
         </div>
       ) : null}
 
