@@ -147,7 +147,7 @@ emulator instead of live Firestore; the E2E suite opts out with `EMULATOR_GUARD_
 5. **✅ DONE**: Added 75 new unit tests covering payment fee math, money precision, support message validation, MFA status shaping, and axe-core contract
 6. **✅ DONE**: Bundle analyzer integrated (`@next/bundle-analyzer`) — run `npm run analyze` to inspect bundle composition
 7. **✅ DONE**: Playwright E2E smoke tests added (`playwright-test/tests/smoke.spec.ts`) — 7 tests covering pages, API health, headers, and auth redirects
-8. **✅ DONE**: CI enhanced with a single Node 24 lane, coverage reporting, E2E job, rules job, and a weekly a11y/security audit workflow
+8. **✅ DONE**: CI enhanced with a single Node 24 lane, coverage reporting, E2E job, rules job, and a weekly security audit workflow
 9. **✅ DONE**: Node 24 pinned in `.nvmrc`, the Dockerfile and CI; `engines` requires >=22.12 as a supported floor
 10. **✅ DONE**: ESLint accessibility rules enabled (`jsx-a11y/*`) — alt text, anchor content, ARIA props, heading content
 11. **✅ DONE**: Production startup warning emits if Redis rate limit store is missing
