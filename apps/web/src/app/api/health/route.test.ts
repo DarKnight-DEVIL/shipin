@@ -21,6 +21,7 @@ const state = vi.hoisted(() => ({
   appCheckRejections: 0,
   appCheckSpike: false,
   alertSent: false,
+  alertSource: "none" as "dedicated" | "breach" | "none",
   errors: { web: 0, api: 0, strict: 0, login: 0 } as Record<string, number>,
 }));
 
@@ -98,6 +99,10 @@ vi.mock("@/lib/appCheckMetrics", () => ({
     state.alertSent = state.appCheckSpike;
     return state.appCheckSpike;
   },
+  getAppCheckAlertTarget: () => ({
+    configured: state.alertSource !== "none",
+    source: state.alertSource,
+  }),
 }));
 
 vi.mock("@/lib/rateLimiter", () => {
@@ -148,6 +153,7 @@ beforeEach(() => {
   state.appCheckRejections = 0;
   state.appCheckSpike = false;
   state.alertSent = false;
+  state.alertSource = "none";
   state.errors = { web: 0, api: 0, strict: 0, login: 0 };
 });
 
@@ -237,6 +243,39 @@ describe("GET /api/health", () => {
     expect(body.appCheck.rejectionsLast10Min).toBe(2);
     expect(body.appCheck.warning).toBeUndefined();
     expect(body.appCheckSpikeAlerted).toBeUndefined();
+  });
+
+  it("publishes the alert channel a spike would use", async () => {
+    state.isProduction = true;
+    state.url = "https://t.upstash.io";
+    state.token = "tok";
+    state.indiaPostUrl = "https://tracking.example";
+    state.indiaPostClientId = "client";
+    state.indiaPostClientSecret = "secret";
+    state.alertSource = "dedicated";
+
+    const body = await (await GET()).json();
+
+    expect(body.alerting).toEqual({ webhook: "dedicated" });
+  });
+
+  it("warns when production has no way to page anyone", async () => {
+    // Not a degraded state on its own — the app serves fine — but a monitor
+    // that only reads `status` would never learn about a quota outage, so the
+    // gap is published explicitly.
+    state.isProduction = true;
+    state.url = "https://t.upstash.io";
+    state.token = "tok";
+    state.indiaPostUrl = "https://tracking.example";
+    state.indiaPostClientId = "client";
+    state.indiaPostClientSecret = "secret";
+    state.alertSource = "none";
+
+    const body = await (await GET()).json();
+
+    expect(body.status).toBe("healthy");
+    expect(body.alerting.webhook).toBe("none");
+    expect(body.alerting.warning).toContain("APP_CHECK_ALERT_WEBHOOK_URL");
   });
 
   it("reports degraded when production tracking serves the placeholder feed", async () => {    state.isProduction = true;

@@ -155,6 +155,26 @@ export function resolveAppCheckAlertWebhookUrl(): string | null {
   return fallback || null;
 }
 
+/**
+ * Which channel a spike alert would use, if any.
+ *
+ * `/api/health` publishes this so an operator can see that the deployment has
+ * no way to page anyone: the probe is then the only signal, and a monitor has
+ * to watch it. The URL itself is a credential and is never reported.
+ */
+export function getAppCheckAlertTarget(): {
+  configured: boolean;
+  source: "dedicated" | "breach" | "none";
+} {
+  if (process.env.APP_CHECK_ALERT_WEBHOOK_URL?.trim()) {
+    return { configured: true, source: "dedicated" };
+  }
+  if (process.env.BREACH_ALERT_WEBHOOK_URL?.trim()) {
+    return { configured: true, source: "breach" };
+  }
+  return { configured: false, source: "none" };
+}
+
 /** The deployment name Discord should show; Vercel sets VERCEL_ENV. */
 function deploymentEnvironment(): string {
   return (

@@ -39,6 +39,7 @@ import {
   setAppCheckAlertSenderForTests,
   buildAppCheckAlertPayload,
   dispatchAppCheckAlert,
+  getAppCheckAlertTarget,
   resolveAppCheckAlertWebhookUrl,
   APP_CHECK_SPIKE_THRESHOLD,
   type AppCheckAlertPayload,
@@ -271,6 +272,38 @@ describe("resolveAppCheckAlertWebhookUrl", () => {
   it("returns null when neither variable is configured", () => {
     // Alerting is optional: an unconfigured deployment must no-op, not throw.
     expect(resolveAppCheckAlertWebhookUrl()).toBeNull();
+  });
+});
+
+describe("getAppCheckAlertTarget", () => {
+  it("names the dedicated channel when both are configured", () => {
+    process.env.APP_CHECK_ALERT_WEBHOOK_URL = "https://discord.test/appcheck";
+    process.env.BREACH_ALERT_WEBHOOK_URL = "https://discord.test/breach";
+
+    expect(getAppCheckAlertTarget()).toEqual({
+      configured: true,
+      source: "dedicated",
+    });
+  });
+
+  it("falls back to the breach channel and reports none when unset", () => {
+    process.env.BREACH_ALERT_WEBHOOK_URL = "https://discord.test/breach";
+    expect(getAppCheckAlertTarget()).toEqual({
+      configured: true,
+      source: "breach",
+    });
+
+    delete process.env.BREACH_ALERT_WEBHOOK_URL;
+    expect(getAppCheckAlertTarget()).toEqual({
+      configured: false,
+      source: "none",
+    });
+  });
+
+  it("treats a blank value as unset rather than configured", () => {
+    process.env.APP_CHECK_ALERT_WEBHOOK_URL = "   ";
+
+    expect(getAppCheckAlertTarget().source).toBe("none");
   });
 });
 

@@ -24,7 +24,9 @@ const ROUTE_META: Record<
   "/privacy-policy": {
     changeFrequency: "monthly",
     priority: 0.7,
-    lastModified: "2026-09-01",
+    // 2026-11-25: sub-processor list edited when the error-reporting SDK was
+    // removed (same edit as /cookie-policy).
+    lastModified: "2026-11-25",
   },
   "/terms": {
     changeFrequency: "monthly",
@@ -39,7 +41,8 @@ const ROUTE_META: Record<
   "/cookie-policy": {
     changeFrequency: "monthly",
     priority: 0.6,
-    lastModified: "2026-11-20",
+    // 2026-11-25: the sub-processor table lost a row in the same edit.
+    lastModified: "2026-11-25",
   },
   "/licences": {
     changeFrequency: "yearly",

@@ -10,6 +10,10 @@
  *     statically prerendered, so Next.js writes the hydration bootstrap into
  *     the HTML at build time and a per-request nonce could never match it — the
  *     comment on getProductionCSP below has the full reasoning.
+ *   - Inline event-handler attributes are blocked (`script-src-attr 'none'`).
+ *     That is the sink `'unsafe-inline'` would otherwise re-open: React never
+ *     emits `onclick="…"`, so nothing legitimate breaks while an injected
+ *     attribute can no longer run script.
  *   - Restrict image sources, fonts, frames, and connect targets. Production
  *     names image hosts instead of carrying a blanket `https:`.
  *   - CSP violation reports are sent to /api/csp-report via report-to.
@@ -94,7 +98,7 @@ const DEV_HMR_SOCKETS =
 export function getDevCSP(): string {
   const base =
     "'self' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/";
-  const scriptSrc = `script-src ${base} 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; `;
+  const scriptSrc = `script-src ${base} 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; script-src-attr 'none'; `;
 
   return (
     "default-src 'self'; " +
@@ -183,7 +187,7 @@ export const SECURITY_HEADERS: Record<string, string> = {
    * permissive CSP from getDevCSP(). This is a fallback for requests that
    * bypass the proxy.
    */
-  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src ${IMAGE_SOURCES}; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com wss://*.firebaseio.com wss://*.firebasedatabase.app; frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://accounts.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to 'csp-endpoint';`,
+  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src ${IMAGE_SOURCES}; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api-m.sandbox.paypal.com https://api-m.paypal.com https://*.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com https://cdn.vercel-insights.com https://analytics.vercel.com wss://*.firebaseio.com wss://*.firebasedatabase.app; frame-src 'self' https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://accounts.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to 'csp-endpoint';`,
 
   /**
    * Client Hints are deliberately not requested here.
@@ -270,7 +274,7 @@ export const SECURITY_HEADERS: Record<string, string> = {
  * `getCSPWithNonce` is in the git history for that day.
  */
 export function getProductionCSP(): string {
-  const scriptSrc = `script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/; `;
+  const scriptSrc = `script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/; script-src-attr 'none'; `;
 
   return (
     "default-src 'self'; " +

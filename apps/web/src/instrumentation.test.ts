@@ -21,6 +21,9 @@ const hooks = vi.hoisted(() => ({
 
 vi.mock("@/config/env", () => ({
   validateProductionRequiredEnv: hooks.validate,
+  // Production boot is what arms the boot-time checks below, so the hook must
+  // see a defined value rather than the mock module's missing export.
+  isProduction: true,
 }));
 
 vi.mock("@/lib/redisRateLimiter", () => ({

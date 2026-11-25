@@ -7,8 +7,9 @@
 
 import { childLogger } from "@/lib/logger";
 import { appCheckLogger } from "@/lib/appCheck";
+import { getAppCheckAlertTarget } from "@/lib/appCheckMetrics";
 
-import { validateProductionRequiredEnv } from "@/config/env";
+import { isProduction, validateProductionRequiredEnv } from "@/config/env";
 import { reportAppCheckStatus } from "@/lib/appCheck";
 import { reportRateLimitStoreStatus } from "@/lib/redisRateLimiter";
 
@@ -125,4 +126,16 @@ export async function register() {
   // the deployment down for a configuration a human can fix live. Logged here,
   // surfaced as `degraded` by /api/health.
   reportAppCheckStatus();
+
+  // A quota outage is silent without a channel to announce it: the probe that
+  // would catch it is only useful if something watches it. Say so once at boot
+  // instead of discovering it during an incident.
+  if (isProduction && process.env.NEXT_RUNTIME !== "edge") {
+    const alertTarget = getAppCheckAlertTarget();
+    if (!alertTarget.configured) {
+      childLogger({ service: "instrumentation" }).warn(
+        "[instrumentation] no alert webhook is configured: set APP_CHECK_ALERT_WEBHOOK_URL (or BREACH_ALERT_WEBHOOK_URL) so an App Check quota outage pages someone, and monitor /api/health regardless"
+      );
+    }
+  }
 }

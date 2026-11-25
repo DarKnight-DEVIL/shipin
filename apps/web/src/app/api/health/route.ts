@@ -52,6 +52,7 @@ import {
 } from "@/lib/redisRateLimiter";
 import { getIndiaPostStatus } from "@/features/shipments/carriers";
 import {
+  getAppCheckAlertTarget,
   readAppCheckRejections,
   reportAppCheckSpike,
 } from "@/lib/appCheckMetrics";
@@ -91,6 +92,12 @@ export async function GET() {
   const appCheckRejections = await readAppCheckRejections();
   const appCheckSpike = appCheckRejections.spike;
   const alerted = reportAppCheckSpike(appCheckRejections);
+
+  // Whether an outage could page anyone at all. This does not affect `status`
+  // on its own — a deployment without a webhook is still serving correctly —
+  // but a monitor that only reads `status` cannot learn about a quota outage
+  // in that state, so it is published explicitly.
+  const alertTarget = getAppCheckAlertTarget();
 
   // Relative to this request, not to module load: a long-lived instance must
   // not keep reporting errors from hours ago as "recent".
@@ -173,6 +180,15 @@ export async function GET() {
           : {}),
       },
       ...(alerted ? { appCheckSpikeAlerted: true } : {}),
+      alerting: {
+        webhook: alertTarget.source,
+        ...(isProduction && !alertTarget.configured
+          ? {
+              warning:
+                "No alert webhook is configured (APP_CHECK_ALERT_WEBHOOK_URL), so an App Check quota outage would be reported only by this probe. Set it to a Discord webhook URL or alert on status != healthy.",
+            }
+          : {}),
+      },
       rateLimits: {
         windowMs: "5m",
         errors: redisErrors,

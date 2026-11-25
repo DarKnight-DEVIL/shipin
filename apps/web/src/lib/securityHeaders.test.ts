@@ -203,6 +203,25 @@ describe("getProductionCSP", () => {
     );
   });
 
+  it("blocks inline event-handler attributes in both policies", async () => {
+    // 'unsafe-inline' cannot be dropped for <script> blocks while routes are
+    // prerendered, but the attribute form is a separate directive and stays
+    // closed: an injected onclick="…" must not run. React never emits one.
+    const prod = await importWithEnv({ isDevelopment: false, isProduction: true });
+    const dev = await importWithEnv({ isDevelopment: true, isProduction: false });
+
+    expect(cspDirective(prod.getProductionCSP(), "script-src-attr")).toBe(
+      "script-src-attr 'none'"
+    );
+    expect(cspDirective(dev.getDevCSP(), "script-src-attr")).toBe(
+      "script-src-attr 'none'"
+    );
+    // The auth-helper policy is the production one with framing relaxed.
+    expect(cspDirective(prod.getAuthHelperCSP(), "script-src-attr")).toBe(
+      "script-src-attr 'none'"
+    );
+  });
+
   it("keeps unsafe-eval out of the production script-src", async () => {
     const { getProductionCSP: prodCsp } = await importWithEnv({
       isDevelopment: false,

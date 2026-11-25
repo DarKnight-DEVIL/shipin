@@ -368,6 +368,18 @@ There is no third-party error-reporting SDK in this deployment. What exists:
 
 Point an uptime monitor at `/api/health` and alert on a non-`healthy` status; that probe is the only signal that does not depend on a webhook being configured.
 
+**The alert channel itself is reported.** `/api/health` publishes
+`alerting.webhook` (`dedicated`, `breach` or `none`), and a production boot with
+neither variable set logs a warning. With no webhook, an App Check quota outage
+shows up only as a `degraded` probe, so the monitor in that state is the whole
+safety net — alert on it.
+
+**Quick way to prove the channel works.** Set `APP_CHECK_SPIKE_THRESHOLD` to
+`1` in a throwaway branch, request an App Check-protected route without a token
+once, and call `/api/health`: the message should arrive within a second, with
+the rejection count, the environment and the `APP_CHECK_ENFORCEMENT=false`
+remediation. Then revert the threshold.
+
 ### Docker Deployment
 
 Build and run locally:
