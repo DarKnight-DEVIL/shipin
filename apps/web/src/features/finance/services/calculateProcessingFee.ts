@@ -1,3 +1,10 @@
+import {
+  divideMinor,
+  minorFromStored,
+  toDecimal,
+  type Minor,
+} from "@/lib/money";
+
 export interface ProcessingFeeResult {
   fee: number;
   totalToCharge: number;
@@ -11,7 +18,7 @@ interface Params {
 }
 
 /** Maximum processing fee that can be charged (USD). Prevents runaway fees on large orders. */
-const MAX_PROCESSING_FEE = 100;
+const MAX_PROCESSING_FEE_MINOR: Minor = 10_000;
 
 /**
  * If absorbFee=true:
@@ -27,38 +34,38 @@ export function calculateProcessingFee({
   fixedFee,
   absorbFee,
 }: Params): ProcessingFeeResult {
+  /*
+   * Everything below is integer cents (ADR-0008). The decimal forms come in
+   * from Firestore and config, get converted once, and the gross-up happens on
+   * integers so the result cannot carry a float tail into a charge.
+   */
+  const amountMinor = minorFromStored(amount);
+
   if (absorbFee) {
     return {
       fee: 0,
-      totalToCharge: amount,
+      totalToCharge: toDecimal(amountMinor),
     };
   }
 
+  const fixedFeeMinor = minorFromStored(fixedFee);
+
+  /* Reverse PayPal fee calculation: total x (1 - percentage) = amount + fixed */
+  let totalMinor = divideMinor(amountMinor + fixedFeeMinor, 1 - percentage);
+
   /*
-   * Reverse PayPal fee calculation
+   * One rounding, half-up, on the grossed-up total. If the rounded total leaves
+   * the fee fractionally short, ShipIN absorbs the sub-cent difference rather
+   * than passing it to the customer.
    */
+  const uncappedFeeMinor = totalMinor - amountMinor;
 
-  const total = (amount + fixedFee) / (1 - percentage);
-
-  /*
-   * Round to nearest cent using banker's rounding (Math.round with epsilon).
-   * This ensures the customer pays exactly the calculated amount without
-   * systematic overcharging. The epsilon strips binary-float noise so an
-   * exact cent (103.30 * 100 = 10330.000000000002) does not become 103.31.
-   *
-   * If the rounded total leaves the fee fractionally short, ShipIN absorbs
-   * the sub-cent difference rather than passing it to the customer.
-   */
-  let totalToCharge = Math.round((total + Number.EPSILON) * 100) / 100;
-
-  // Cap the processing fee at MAX_PROCESSING_FEE
-  const uncappedFee = totalToCharge - amount;
-  if (uncappedFee > MAX_PROCESSING_FEE) {
-    totalToCharge = amount + MAX_PROCESSING_FEE;
+  if (uncappedFeeMinor > MAX_PROCESSING_FEE_MINOR) {
+    totalMinor = amountMinor + MAX_PROCESSING_FEE_MINOR;
   }
 
   return {
-    fee: Number((totalToCharge - amount).toFixed(2)),
-    totalToCharge,
+    fee: toDecimal(totalMinor - amountMinor),
+    totalToCharge: toDecimal(totalMinor),
   };
 }

@@ -42,9 +42,15 @@ const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
  */
 const INCLUDE_ROOTS = ["src/lib", "src/features", "src/app/api"];
 
-/** Path fragments that mark a file as money-path or compliance code. */
+/**
+ * Path fragments that mark a file as money-path or compliance code.
+ *
+ * `money` is here because `lib/money.ts` owns the conversion every amount goes
+ * through and its filename would otherwise read as ordinary utility code — the
+ * first version of this regex missed it, which is the drift the gate exists for.
+ */
 const PROTECTED_NAME =
-  /(paypal|payment|refund|wallet|payout|billing|invoice|compliance)/i;
+  /(paypal|payment|refund|wallet|payout|billing|invoice|compliance|money)/i;
 
 /** Explicit opt-in for money modules whose filename says nothing. */
 const MONEY_MARKER = "@money-path";

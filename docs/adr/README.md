@@ -25,3 +25,4 @@ that was accepted.
 | [0005](0005-dedicated-mfa-session-secret.md) | A dedicated MFA signing secret that fails closed | Accepted |
 | [0006](0006-nonce-csp-for-authenticated-tree.md) | A nonce CSP for the authenticated tree only | Rejected |
 | [0007](0007-trusted-types-report-only.md) | Trusted Types in report-only mode | Accepted |
+| [0008](0008-money-as-integer-minor-units.md) | Money at rest is integer minor units | Accepted |
