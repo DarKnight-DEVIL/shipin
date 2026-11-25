@@ -276,7 +276,7 @@ describe("classifyAppCheckFailure", () => {
     [Object.assign(new Error("boom"), { code: "app-check/invalid-credential" }), "no-project-id"],
     [new Error("fetch failed"), "jwks-unreachable"],
     [new Error("Invalid token signature."), "invalid-signature"],
-    [new Error("something nobody predicted"), "unrecognized:no-code:something nobody predicted"],
+    [new Error("something nobody predicted"), "unrecognized|no-code|something nobody predicted"],
   ])("labels %s as %s", (error, expected) => {
     expect(appCheck.classifyAppCheckFailure(error)).toBe(expected);
   });

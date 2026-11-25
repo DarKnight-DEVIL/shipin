@@ -200,6 +200,30 @@ describe("recordAppCheckRejection / readAppCheckRejections", () => {
   });
 });
 
+describe("failure reason storage", () => {
+  it("keeps a label that contains the field separator", async () => {
+    // The label is free-form ("unrecognized|<code>|<message>") and was stored
+    // as `bucket:label`. Splitting on every colon truncated it to its first
+    // word, so a diagnostic meant to end the guessing printed nothing useful.
+    const bucket = String(Math.floor(Date.now() / 5 / 60 / 1000));
+    const label = "unrecognized|no-code|The provided App Check token is invalid.";
+
+    state.redis = {
+      hincrby: vi.fn().mockResolvedValue(1),
+      expire: vi.fn().mockResolvedValue(1),
+      hgetall: vi.fn(async (key: string) =>
+        key === "shipin:appcheck:invalid-details"
+          ? { [`${bucket}:${label}`]: 2 }
+          : {}
+      ),
+    };
+
+    const status = await readAppCheckRejections(Date.now());
+
+    expect(status.invalidReasons[label]).toBe(2);
+  });
+});
+
 describe("reportAppCheckSpike", () => {
   it("alerts once per bucket and not again for the same window", () => {
     const status = { recentRejections: 50, spike: true, missing: 0, invalid: 0, invalidReasons: {} };

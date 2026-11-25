@@ -183,7 +183,11 @@ export function classifyAppCheckFailure(error: unknown): string {
     return "jwks-unreachable";
   }
 
-  return `unrecognized:${code || "no-code"}:${sanitizeAppCheckMessage(message).slice(0, 80)}`;
+  // ":" separates the bucket from the label in the shared store, so a
+  // label containing one would be truncated on the way in.
+  return sanitizeAppCheckMessage(
+    `unrecognized|${code || "no-code"}|${message.slice(0, 120)}`
+  );
 }
 
 /**

@@ -149,7 +149,11 @@ export async function readAppCheckRejections(
 
   const invalidReasons: Record<string, number> = {};
   const countDetail = (field: string, raw: unknown) => {
-    const [bucket, detail] = field.split(":");
+    // First colon only: the label itself is free-form, and splitting on
+    // every colon silently truncated it to its first word.
+    const splitAt = field.indexOf(":");
+    const bucket = field.slice(0, splitAt);
+    const detail = field.slice(splitAt + 1);
     if (Number(bucket) < oldest) return;
     invalidReasons[detail] =
       (invalidReasons[detail] ?? 0) + (Number(raw) || 0);
