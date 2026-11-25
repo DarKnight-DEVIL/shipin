@@ -15,7 +15,22 @@ import { expect, test } from "@playwright/test";
 const require = createRequire(import.meta.url);
 const axeSource = readFileSync(require.resolve("axe-core"), "utf8");
 
-const PUBLIC_PAGES = ["/", "/login", "/track"];
+/*
+ * The legal pages are here because they are the ones customers actually read
+ * when money is at stake, and because they share the prose-link and muted-text
+ * styling that had already failed AA on the landing page. Widening this list is
+ * the cheapest way to keep that honest.
+ */
+const PUBLIC_PAGES = [
+  "/",
+  "/login",
+  "/track",
+  "/privacy-policy",
+  "/terms",
+  "/refund-policy",
+  "/cookie-policy",
+  "/licences",
+];
 
 interface AxeViolation {
   id: string;

@@ -57,8 +57,6 @@
     "@vercel/analytics": "2.0.1",
     "@vercel/speed-insights": "2.1.0",
     "axe-core": "4.14.1",
-    "clsx": "2.1.1",
-    "date-fns": "4.4.0",
     "firebase": "13.4.0",
     "firebase-admin": "14.5.1",
     "framer-motion": "14.14.0",

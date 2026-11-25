@@ -186,6 +186,15 @@ function read(actor: Actor, path: string): Promise<Response> {
   return fetch(`${DOCS}/${path}`, { headers: headersFor(actor) });
 }
 
+/** Delete a document; fails with 403 when the rules forbid it. */
+function remove(actor: Actor, path: string): Promise<Response> {
+  return commit(actor, [
+    {
+      delete: `projects/${PROJECT}/databases/(default)/documents/${path}`,
+    },
+  ]);
+}
+
 /** Write a fixture the way trusted server code would, bypassing the rules. */
 async function seed(
   path: string,
@@ -322,6 +331,58 @@ describe("users", () => {
       create({ uid: NEW_CUSTOMER }, `users/${NEW_CUSTOMER}`, {
         displayName: "New",
         role: "customer",
+      })
+    );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* users/{uid}/addresses                                                       */
+/* -------------------------------------------------------------------------- */
+
+describe("user addresses", () => {
+  it("lets the owner read their saved address", async () => {
+    await seed(`users/${CUSTOMER}/addresses/addr-1`, {
+      fullName: "Ada",
+      pincode: "400069",
+    });
+
+    await expectAllowed(read(customer(), `users/${CUSTOMER}/addresses/addr-1`));
+  });
+
+  it("blocks reading somebody else's address", async () => {
+    await seed(`users/${OTHER_CUSTOMER}/addresses/addr-2`, {
+      fullName: "Grace",
+      pincode: "560001",
+    });
+
+    await expectDenied(
+      read(customer(), `users/${OTHER_CUSTOMER}/addresses/addr-2`)
+    );
+  });
+
+  it("blocks writing an address from the client", async () => {
+    // Writes go through /api/addresses with the Admin SDK so that the zod
+    // schema and the isDefault bookkeeping run. The rules previously allowed
+    // the owner to write here directly, which skipped both.
+    await expectDenied(
+      create(customer(), `users/${CUSTOMER}/addresses/addr-injected`, {
+        fullName: "Ada",
+        pincode: "400069",
+        isDefault: true,
+      })
+    );
+  });
+
+  it("blocks overwriting an existing address from the client", async () => {
+    await seed(`users/${CUSTOMER}/addresses/addr-1`, {
+      fullName: "Ada",
+      pincode: "400069",
+    });
+
+    await expectDenied(
+      update(customer(), `users/${CUSTOMER}/addresses/addr-1`, {
+        pincode: "999999",
       })
     );
   });
@@ -1007,5 +1068,121 @@ describe("support", () => {
     await seed("supportMessages/message-4", message());
 
     await expectDenied(read(anonymous, "supportMessages/message-4"));
+  });
+
+  /*
+   * The create rule carries the most logic of any rule in this file (parent
+   * ticket ownership, sender, message length, exact key set, server
+   * timestamp) and none of it was exercised: the suite only ever seeded
+   * messages with the Admin path. These are the paths a customer can actually
+   * take.
+   */
+  it("lets a customer post to their own ticket", async () => {
+    await seed("supportTickets/ticket-12", ticket());
+
+    await expectAllowed(
+      create(customer(), "supportMessages/message-5", {
+        ticketId: "ticket-12",
+        sender: "customer",
+        message: "Where is my parcel?",
+        createdAt: SERVER_TIMESTAMP,
+      })
+    );
+  });
+
+  it("blocks posting to somebody else's ticket", async () => {
+    await seed(
+      "supportTickets/ticket-13",
+      ticket({ customerId: OTHER_CUSTOMER })
+    );
+
+    await expectDenied(
+      create(customer(), "supportMessages/message-6", {
+        ticketId: "ticket-13",
+        sender: "customer",
+        message: "I am not the owner of this ticket",
+        createdAt: SERVER_TIMESTAMP,
+      })
+    );
+  });
+
+  it("blocks a customer posting as an admin", async () => {
+    await seed("supportTickets/ticket-14", ticket());
+
+    await expectDenied(
+      create(customer(), "supportMessages/message-7", {
+        ticketId: "ticket-14",
+        sender: "admin",
+        message: "Approved, refunding in full.",
+        createdAt: SERVER_TIMESTAMP,
+      })
+    );
+  });
+
+  it("blocks an empty or oversized message", async () => {
+    await seed("supportTickets/ticket-15", ticket());
+
+    const body = (text: string) => ({
+      ticketId: "ticket-15",
+      sender: "customer",
+      message: text,
+      createdAt: SERVER_TIMESTAMP,
+    });
+
+    await expectDenied(
+      create(customer(), "supportMessages/message-8", body(""))
+    );
+    await expectDenied(
+      create(customer(), "supportMessages/message-9", body("x".repeat(5001)))
+    );
+    await expectAllowed(
+      create(customer(), "supportMessages/message-10", body("x".repeat(5000)))
+    );
+  });
+
+  it("blocks a backdated or forged message timestamp", async () => {
+    await seed("supportTickets/ticket-16", ticket());
+
+    await expectDenied(
+      create(customer(), "supportMessages/message-11", {
+        ticketId: "ticket-16",
+        sender: "customer",
+        message: "Backdated so it sorts above the admin reply",
+        createdAt: "2020-01-01T00:00:00.000Z",
+      })
+    );
+  });
+
+  it("blocks extra fields riding along with a message", async () => {
+    await seed("supportTickets/ticket-17", ticket());
+
+    await expectDenied(
+      create(customer(), "supportMessages/message-12", {
+        ticketId: "ticket-17",
+        sender: "customer",
+        message: "Hello",
+        createdAt: SERVER_TIMESTAMP,
+        internalNote: true,
+      })
+    );
+  });
+
+  it("blocks editing or deleting a message once sent", async () => {
+    await seed("supportTickets/ticket-18", ticket());
+    await seed("supportMessages/message-13", message({ ticketId: "ticket-18" }));
+
+    await expectDenied(
+      update(customer(), "supportMessages/message-13", {
+        message: "rewritten after the fact",
+      })
+    );
+    await expectDenied(remove(customer(), "supportMessages/message-13"));
+  });
+
+  it("blocks a customer deleting their own ticket", async () => {
+    // Deleting the ticket would orphan the thread the admin is still reading.
+    await seed("supportTickets/ticket-19", ticket());
+
+    await expectDenied(remove(customer(), "supportTickets/ticket-19"));
   });
 });

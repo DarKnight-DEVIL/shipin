@@ -65,13 +65,10 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     // Tree-shake barrel imports from these packages instead of bundling
-    // their whole entry graph into every page that touches them.
-    optimizePackageImports: [
-      "lucide-react",
-      "date-fns",
-      "recharts",
-      "framer-motion",
-    ],
+    // their whole entry graph into every page that touches them. `date-fns`
+    // was listed here while nothing imported it; it is gone from the
+    // dependency list too, so it cannot creep back in as a bundle cost.
+    optimizePackageImports: ["lucide-react", "recharts", "framer-motion"],
   },
   async rewrites() {
     // Transparent proxy (a 302 would defeat the purpose): the browser sees

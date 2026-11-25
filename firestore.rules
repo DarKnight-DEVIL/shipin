@@ -141,13 +141,21 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Addresses subcollection under user document
+    // Addresses subcollection under user document.
+    //
+    // The app reads this collection from the client (getAddresses) and writes
+    // it only through /api/addresses with the Admin SDK, which bypasses these
+    // rules. The old `allow read, write: if isSelf(userId)` therefore granted a
+    // capability nothing used: a signed-in customer could write any fields they
+    // liked straight into their own subcollection, skipping the route's zod
+    // validation and its `isDefault` bookkeeping. Read stays, write is denied.
     match /users/{userId}/addresses {
       allow read: if isSelf(userId);
     }
 
     match /users/{userId}/addresses/{addressId} {
-      allow read, write: if isSelf(userId);
+      allow read: if isSelf(userId);
+      allow write: if false;
     }
 
     match /paypalPaymentOrders/{orderId} {
