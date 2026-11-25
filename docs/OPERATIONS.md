@@ -136,8 +136,12 @@ reads as empty.
 Readers keep accepting both shapes in either mode. That is a deliberate
 departure from ADR-0008, which called for dropping the fallback: the fallback is
 what makes a document the backfill missed read as money instead of as zero, and
-it costs a `typeof` check. It is retired last, after 004, because removing it
-while any decimal-only document exists turns that document into zero.
+it costs a `typeof` check.
+
+It is not retired after 004, which was the plan while writing this: `walletHolds.amount`
+stays decimal (a hold lives 30 minutes and is deleted when consumed), and that is read
+through the same helper. The fallback therefore keeps a real job, and the honest
+statement is that it stays until holds are converted too.
 
 ### 004-strip-money-decimals — then the decimals are gone
 
