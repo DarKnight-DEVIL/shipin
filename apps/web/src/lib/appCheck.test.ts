@@ -236,6 +236,33 @@ describe("verifyAppCheckRequest", () => {
   });
 });
 
+describe("describeAppCheckTokenClaims", () => {
+  it("reads the public claims and never the signature", () => {
+    const payload = Buffer.from(
+      JSON.stringify({
+        aud: ["projects/123", "projects/shipin-9576a"],
+        iss: "https://firebaseappcheck.googleapis.com/123",
+        exp: Math.floor(Date.now() / 1000) + 600,
+      })
+    ).toString("base64url");
+
+    const text = appCheck.describeAppCheckTokenClaims("header." + payload + ".sig");
+
+    // The signature and the subject are what an attacker would need; the
+    // audience is what tells a wrong-project key from a broken verifier.
+    expect(text).toContain("projects/shipin-9576a");
+    expect(text).toContain("firebaseappcheck.googleapis.com");
+    expect(text).not.toContain("sig");
+  });
+
+  it("says so when the token is not a JWT at all", () => {
+    // A debug token is a bare UUID.
+    expect(appCheck.describeAppCheckTokenClaims("4f1c0a1e-0000-4000-8000-000000000000")).toBe(
+      "claims=not-a-jwt"
+    );
+  });
+});
+
 describe("classifyAppCheckFailure", () => {
   // The verifier's message embeds the token's audience, so the message itself
   // cannot be reported. The label can, and it is what separates a key
@@ -263,7 +290,9 @@ describe("classifyAppCheckFailure", () => {
     });
 
     await expect(appCheck.verifyAppCheckRequest(request)).resolves.toBe("invalid");
-    expect(metrics.recordAppCheckFailureReason).toHaveBeenCalledWith("audience-mismatch");
+    expect(metrics.recordAppCheckFailureReason).toHaveBeenCalledWith(
+      expect.stringContaining("audience-mismatch")
+    );
   });
 });
 

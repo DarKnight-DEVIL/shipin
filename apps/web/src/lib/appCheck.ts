@@ -124,6 +124,40 @@ export function sanitizeAppCheckMessage(message: string): string {
 }
 
 /**
+ * The token's public claims, for diagnosis only.
+ *
+ * `aud` and `iss` are identifiers that already ship in the client bundle; the
+ * signature, the subject and any secret stay out. Without this, a refusal cannot
+ * be told apart from a token minted for another Firebase project - and that
+ * distinction is a Google Cloud fix versus a server fix.
+ */
+export function describeAppCheckTokenClaims(token: string): string {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return "claims=not-a-jwt";
+
+    const decoded = JSON.parse(
+      Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")
+    ) as { aud?: unknown; iss?: unknown; exp?: unknown };
+
+    const aud = Array.isArray(decoded.aud)
+      ? decoded.aud.join(",")
+      : typeof decoded.aud === "string"
+        ? decoded.aud
+        : "(none)";
+    const iss = typeof decoded.iss === "string" ? decoded.iss : "(none)";
+    const exp = typeof decoded.exp === "number" ? decoded.exp : 0;
+
+    return sanitizeAppCheckMessage(
+      `aud=${aud} iss=${iss} age=${Math.round(Date.now() / 1000) - exp}s-to-expiry`
+    ).slice(0, 200);
+  } catch {
+    // A debug token is a bare UUID, not a JWT: no claims to read.
+    return "claims=not-a-jwt";
+  }
+}
+
+/**
  * Which claim a rejected token failed.
  *
  * The fall-through is explicit rather than a guess: an unrecognised error is
@@ -182,8 +216,11 @@ export async function verifyAppCheckRequest(
     console.error("[AppCheck] Token verification failed:", {
       errorCode: error instanceof Error ? error.name : "UNKNOWN",
       reason,
+      claims: describeAppCheckTokenClaims(token),
     });
-    recordAppCheckFailureReason(reason);
+    recordAppCheckFailureReason(
+      `${reason} ${describeAppCheckTokenClaims(token)}`
+    );
     return "invalid";
   }
 }
