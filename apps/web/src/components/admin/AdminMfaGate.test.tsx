@@ -68,6 +68,24 @@ describe("AdminMfaGate", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("points an unenrolled account at enrolment instead of a dead Verify button", async () => {
+    // Regression: with no factor configured the banner offered a Verify button,
+    // but the form only renders for needs-code, so clicking it did nothing and
+    // said nothing. An admin who had never enrolled had no way forward.
+    vi.mocked(getMfaSessionStatus).mockResolvedValue({
+      ...BASE_STATUS,
+      methods: [],
+    });
+
+    renderGate();
+
+    expect(await screen.findByText(/no second factor yet/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /set up a second factor/i })
+    ).toHaveAttribute("href", "/admin/security");
+    expect(screen.queryByRole("button", { name: "Verify" })).not.toBeInTheDocument();
+  });
+
   it("elevates with a security key assertion", async () => {
     vi.mocked(getMfaSessionStatus).mockResolvedValue({
       ...BASE_STATUS,

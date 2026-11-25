@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -214,7 +215,10 @@ export default function AdminMfaGate({
     }
   }
 
-  const canElevate = status === "needs-code" || status === "not-configured";
+  // "not-configured" is deliberately excluded: there is nothing to verify, so
+  // the old Verify button opened a form that never rendered and did nothing at
+  // all. It links to enrolment instead (see the not-configured block below).
+  const canElevate = status === "needs-code";
 
   return (
     <>
@@ -339,6 +343,22 @@ export default function AdminMfaGate({
           )}
 
           {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+        </div>
+      ) : null}
+
+      {status === "not-configured" ? (
+        <div className="p-4 rounded-md mb-6 border border-amber-300 bg-amber-50">
+          <p className="text-sm">
+            This account has no second factor yet, so admin actions stay locked.
+            Enrol one - an authenticator app, a security key or SMS - and the
+            banner will ask for a code instead.
+          </p>
+          <Link
+            href="/admin/security"
+            className="mt-2 inline-block text-sm text-blue-700 underline"
+          >
+            Set up a second factor
+          </Link>
         </div>
       ) : null}
 
