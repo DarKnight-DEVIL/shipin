@@ -4,7 +4,18 @@
  * Every call is same-origin, authenticated with the caller's Firebase ID
  * token, and never cached. Errors are normalized into `MfaApiError` so the UI
  * can branch on `code` instead of parsing messages.
+ *
+ * The App Check token is attached here too. These routes are behind the same
+ * customer gate as every other `/api` call, so without it the request is
+ * refused before any MFA logic runs - with enforcement on, the admin gate's own
+ * status request, TOTP setup, security-key ceremonies and SMS enrolment all
+ * failed as "App verification failed", and nothing in the UI could say why.
+ *
+ * `lib/apiClient.ts` is the only other client that talks to these routes and it
+ * already sends the header; this module was written separately and missed it.
  */
+
+import { getAppCheckToken } from "@/lib/firebase";
 
 export type MfaApiErrorCode =
   | "AUTHENTICATION_REQUIRED"
@@ -61,17 +72,21 @@ export async function mfaApi<T>(
 ): Promise<T> {
   let response: Response;
 
-  try {
-    response = await fetch(path, {
+  const send = (appCheckToken: string | null) =>
+    fetch(path, {
       method,
       headers: {
         Authorization: `Bearer ${idToken}`,
+        ...(appCheckToken ? { "X-Firebase-AppCheck": appCheckToken } : {}),
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: "same-origin",
       cache: "no-store",
     });
+
+  try {
+    response = await send(await getAppCheckToken());
   } catch {
     throw new MfaApiError("Could not reach the server.", "NETWORK_ERROR");
   }
@@ -82,6 +97,27 @@ export async function mfaApi<T>(
     payload = (await response.json()) as Record<string, unknown>;
   } catch {
     payload = {};
+  }
+
+  // One replay with a freshly minted token: a cached one can be stale in a
+  // long-lived tab, and the rejection means the handler never ran, so replaying
+  // is free of side effects. Deliberately not a loop.
+  if (!response.ok && payload.code === "APP_CHECK_FAILED") {
+    const refreshed = await getAppCheckToken(true);
+
+    if (refreshed) {
+      try {
+        response = await send(refreshed);
+      } catch {
+        throw new MfaApiError("Could not reach the server.", "NETWORK_ERROR");
+      }
+
+      try {
+        payload = (await response.json()) as Record<string, unknown>;
+      } catch {
+        payload = {};
+      }
+    }
   }
 
   if (!response.ok) {
