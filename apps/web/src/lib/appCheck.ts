@@ -177,6 +177,8 @@ export function classifyAppCheckFailure(error: unknown): string {
       : "";
   const message = error instanceof Error ? error.message : String(error);
 
+  // Not a token problem at all: the verifier was asked to work without an app.
+  if (code === "app/no-app") return "no-admin-app";
   if (code === "app-check/invalid-credential") return "no-project-id";
   if (message.includes('incorrect "aud"')) return "audience-mismatch";
   if (message.includes("incorrect algorithm")) return "algorithm-mismatch";
@@ -208,16 +210,15 @@ export async function verifyAppCheckRequest(
   if (!token) return "missing";
 
   try {
-    // Use the App Check client initialized once at boot in instrumentation.ts.
-    // Falls back to dynamic import if boot-time initialization failed.
-    let getAppCheckFn: (app?: import("firebase-admin/app").App) => import("firebase-admin/app-check").AppCheck;
-    if (appCheckClient) {
-      getAppCheckFn = appCheckClient;
-    } else {
-      const { getAppCheck } = await import("firebase-admin/app-check");
-      getAppCheckFn = getAppCheck;
-    }
-    await getAppCheckFn().verifyToken(token);
+    // The app must be passed explicitly. `firebaseAdmin` initializes lazily, so
+    // there is no default app at this point in the request: `getAppCheck()` with
+    // no argument threw "app/no-app" for every enforced request, which looks
+    // exactly like an invalid token from the outside.
+    const getAppCheckFn =
+      appCheckClient ?? (await import("firebase-admin/app-check")).getAppCheck;
+    const { ensureAdminApp } = await import("@/lib/firebaseAdmin");
+
+    await getAppCheckFn(ensureAdminApp()).verifyToken(token);
     return "ok";
   } catch (error) {
     const reason = classifyAppCheckFailure(error);

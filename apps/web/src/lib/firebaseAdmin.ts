@@ -8,7 +8,16 @@ import { serverEnv } from "@/config/env";
 import { normalizePrivateKey } from "@/lib/privateKey";
 import { ShipINError } from "@/utils/errors";
 
-function getAdminApp(): App {
+/**
+ * The initialized admin app, created on first use.
+ *
+ * Exported because anything that needs a service from the Admin SDK must
+ * name this app explicitly. `getAppCheck()` with no argument looks up the
+ * *default* app, and this module never creates one - it initializes lazily,
+ * on the first `adminDb`/`adminAuth` access - so a service resolved by
+ * default fails with "app/no-app" instead of verifying anything.
+ */
+export function ensureAdminApp(): App {
   if (getApps().length > 0) {
     return getApps()[0]!;
   }
@@ -49,11 +58,11 @@ function getAdminApp(): App {
 }
 
 function createAdminDb() {
-  return getFirestore(getAdminApp());
+  return getFirestore(ensureAdminApp());
 }
 
 function createAdminAuth() {
-  return getAuth(getAdminApp());
+  return getAuth(ensureAdminApp());
 }
 
 // Lazy getters — only initialize when an API route actually runs

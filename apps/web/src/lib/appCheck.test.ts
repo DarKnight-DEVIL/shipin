@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const admin = vi.hoisted(() => ({ verifyToken: vi.fn() }));
+const admin = vi.hoisted(() => ({ verifyToken: vi.fn(), apps: [] as unknown[] }));
 // `vitest.setup.ts` mocks '@/config/env' for the whole suite with a static
 // object, so this file supplies its own mutable version instead of relying on
 // `process.env` (which that global mock never reads).
@@ -25,12 +25,21 @@ const env = vi.hoisted(() => ({
 
 const metrics = vi.hoisted(() => ({ recordAppCheckFailureReason: vi.fn() }));
 
+const adminApp = vi.hoisted(() => ({ name: "[DEFAULT]" }));
+
+vi.mock("@/lib/firebaseAdmin", () => ({
+  ensureAdminApp: () => adminApp,
+}));
+
 vi.mock("@/lib/appCheckMetrics", () => ({
   recordAppCheckFailureReason: metrics.recordAppCheckFailureReason,
 }));
 
 vi.mock("firebase-admin/app-check", () => ({
-  getAppCheck: () => ({ verifyToken: admin.verifyToken }),
+  getAppCheck: (app?: unknown) => {
+    admin.apps.push(app);
+    return { verifyToken: admin.verifyToken };
+  },
 }));
 
 vi.mock("@/config/env", () => ({
@@ -66,6 +75,7 @@ beforeEach(async () => {
   env.siteKey = "";
   env.production = false;
   admin.verifyToken.mockReset();
+  admin.apps = [];
 });
 
 afterEach(() => {
@@ -260,6 +270,31 @@ describe("describeAppCheckTokenClaims", () => {
     expect(appCheck.describeAppCheckTokenClaims("4f1c0a1e-0000-4000-8000-000000000000")).toBe(
       "claims=not-a-jwt len=36 parts=1"
     );
+  });
+});
+
+describe("app resolution", () => {
+  it("verifies against the admin app instead of the default app", async () => {
+    // Firebase Admin initializes lazily here, so at the moment App Check runs
+    // there is no default app. getAppCheck() with no argument threw
+    // "app/no-app" for every enforced request in production, which reads
+    // exactly like an invalid token and cost an outage to find.
+    env.enforcement = "true";
+    admin.verifyToken.mockResolvedValue({});
+
+    const request = requestWithHeaders({ "X-Firebase-AppCheck": "token" });
+
+    await expect(appCheck.verifyAppCheckRequest(request)).resolves.toBe("ok");
+    expect(admin.apps[0]).toBe(adminApp);
+  });
+
+  it("names a missing app rather than blaming the token", () => {
+    const error = Object.assign(
+      new Error("The default Firebase app does not exist."),
+      { code: "app/no-app" }
+    );
+
+    expect(appCheck.classifyAppCheckFailure(error)).toBe("no-admin-app");
   });
 });
 
