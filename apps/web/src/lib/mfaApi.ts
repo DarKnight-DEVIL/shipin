@@ -32,6 +32,8 @@ export type MfaApiErrorCode =
   | "WEBAUTHN_TOO_MANY_CREDENTIALS"
   | "WEBAUTHN_LAST_FACTOR"
   | "RATE_LIMIT_ERROR"
+  /** The request was refused before MFA was read: no valid App Check token. */
+  | "APP_CHECK_FAILED"
   | "NETWORK_ERROR"
   | "UNKNOWN_ERROR";
 

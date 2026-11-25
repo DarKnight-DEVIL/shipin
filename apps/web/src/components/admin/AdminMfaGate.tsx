@@ -40,6 +40,12 @@ type GateStatus =
   | "needs-code"
   | "not-configured"
   | "unsupported"
+  /**
+   * The request was refused before MFA was evaluated - an App Check token could
+   * not be minted, or the network failed. Rendering the code form here is what
+   * made a browser problem look like a forgotten authenticator.
+   */
+  | "blocked"
   | "signed-out";
 
 const METHOD_LABELS: Record<MfaMethod, string> = {
@@ -123,6 +129,19 @@ export default function AdminMfaGate({
       ) {
         // Not an admin: AdminGuard owns that decision.
         setStatus("signed-out");
+        return;
+      }
+
+      // A rejected App Check token is a browser or deployment problem. Showing
+      // the code form for it is what turned "reCAPTCHA could not run here" into
+      // "you forgot your authenticator": the user typed codes at an endpoint
+      // that never evaluated them.
+      if (
+        requestError instanceof MfaApiError &&
+        requestError.code === "APP_CHECK_FAILED"
+      ) {
+        setStatus("blocked");
+        setError(null);
         return;
       }
 
@@ -359,6 +378,27 @@ export default function AdminMfaGate({
           >
             Set up a second factor
           </Link>
+        </div>
+      ) : null}
+
+      {status === "blocked" ? (
+        <div className="p-4 rounded-md mb-6 border border-red-300 bg-red-50">
+          <p className="text-sm text-red-800">
+            This browser could not prove it is running the real ShipIN app, so
+            the request was refused before your second factor was even checked.
+            No code will work here.
+          </p>
+          <p className="mt-2 text-sm text-red-800">
+            Usually a privacy extension, shield or tracking blocker is stopping
+            reCAPTCHA. Try a normal window, or allow this site, then reload.
+          </p>
+          <button
+            type="button"
+            onClick={() => void loadStatus(user)}
+            className="mt-3 text-sm text-red-900 underline"
+          >
+            Reload verification status
+          </button>
         </div>
       ) : null}
 

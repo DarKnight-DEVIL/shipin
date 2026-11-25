@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import AdminMfaGate from "./AdminMfaGate";
+import { MfaApiError } from "@/lib/mfaApi";
 
 const fakeUser = { getIdToken: vi.fn(async () => "id-token") };
 
@@ -66,6 +67,24 @@ describe("AdminMfaGate", () => {
     expect(
       screen.queryByRole("button", { name: "Verify" })
     ).not.toBeInTheDocument();
+  });
+
+  it("explains an App Check rejection instead of asking for a code", async () => {
+    // The user-visible symptom of this bug was an admin who had never enrolled
+    // being asked for an authenticator code. The request never reached the MFA
+    // logic: App Check refused it. Offering the code form for that is worse than
+    // an error message, because it implies the code is the problem.
+    vi.mocked(getMfaSessionStatus).mockRejectedValue(
+      new MfaApiError("App verification failed.", "APP_CHECK_FAILED", 401)
+    );
+
+    renderGate();
+
+    expect(
+      await screen.findByText(/could not prove it is running the real ShipIN app/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("6-digit code")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Verify" })).not.toBeInTheDocument();
   });
 
   it("points an unenrolled account at enrolment instead of a dead Verify button", async () => {
