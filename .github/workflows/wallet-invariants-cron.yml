@@ -68,6 +68,28 @@ jobs:
             exit "$status"
           fi
 
+      - name: Refuse to call an empty sweep clean
+        run: |
+          response_file="${SWEEP_RESPONSE_FILE:-}"
+
+          if [ ! -f "$response_file" ]; then
+            echo "::error::The sweep returned no response body, so nothing can be concluded from this run."
+            exit 1
+          fi
+
+          # A sweep that scanned no wallets reports the same `drift: []` as a healthy
+          # one. That is what a wrong project id, a stale credential or a renamed
+          # collection looks like from here, and going green on it is worse than
+          # having no sweep. The count is the only evidence the check happened.
+          wallets=$(jq -r '.checked.wallets // 0' "$response_file")
+          if [ "$wallets" -eq 0 ] 2>/dev/null; then
+            echo "::error::The sweep checked 0 wallets. Either the deployment has none or it is reading the wrong project; both are failures, not a clean bill of health."
+            exit 1
+          fi
+
+          ledger=$(jq -r '.checked.ledgerEntries // 0' "$response_file")
+          echo "Checked $wallets wallet(s) and $ledger ledger entr(ies): no drift."
+
       - name: Page on drift or failure
         if: failure()
         env:
