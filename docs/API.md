@@ -52,7 +52,7 @@ clients branch on it rather than on the status alone.
 
 ## Routes
 
-76 route handlers:
+79 route handlers:
 
 | Route | Auth |
 | --- | --- |
@@ -85,6 +85,7 @@ clients branch on it rather than on the status alone.
 | `/api/admin/users/[uid]/mfa/reset` | admin |
 | `/api/admin/wallet/balance` | admin |
 | `/api/admin/wallet/credit` | admin |
+| `/api/admin/wallet/invariants` | public |
 | `/api/auth/login-intent` | public |
 | `/api/auth/mfa/backup-codes/regenerate` | customer |
 | `/api/auth/mfa/session` | customer |
@@ -116,8 +117,8 @@ clients branch on it rather than on the status alone.
 | `/api/r2/upload` | customer |
 | `/api/r2/view` | customer |
 | `/api/requests` | customer |
-| `/api/requests/[requestId]/approve-quote` | customer |
 | `/api/requests/[requestId]/additional-items` | customer |
+| `/api/requests/[requestId]/approve-quote` | customer |
 | `/api/requests/[requestId]/quote` | customer |
 | `/api/requests/[requestId]/request-new-quote` | customer |
 | `/api/requests/[requestId]/shipment-status` | customer |

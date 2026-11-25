@@ -64,6 +64,11 @@ export const ROUTE_AUTH_CLASSIFICATION: Record<string, RouteAuth> = {
   // signature, so the job replayed nothing and reported nothing. The handler
   // still refuses an unsigned caller and the proxy keeps rate-limiting it.
   "/api/admin/payments/reconcile": "public",
+  // Nightly wallet ledger invariant sweep. Same HMAC contract as the payment
+  // reconciler: GitHub Actions has no Firebase session, so under the admin
+  // prefix the proxy would answer 401 before the signature is checked. The
+  // handler still refuses an unsigned caller.
+  "/api/admin/wallet/invariants": "public",
 
   // --- Customer ---
   "/api/profile": "customer",
@@ -107,6 +112,7 @@ export type RouteClassification = RouteAuth | "unclassified";
  */
 const EXACT_ONLY: ReadonlySet<string> = new Set([
   "/api/admin/requests/quotes/expire",
+  "/api/admin/wallet/invariants",
 ]);
 
 export function classifyRoute(pathname: string): RouteClassification {

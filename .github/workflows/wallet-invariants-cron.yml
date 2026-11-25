@@ -1,0 +1,130 @@
+name: Wallet Invariant Daily Cron
+
+# Read-only sweep of `wallets` against `walletTransactions` and `walletHolds`.
+# The payment reconciler compares PayPal with the request documents; it
+# deliberately skips wallet-only payments, which have no PayPal order. This is
+# the only job that independently proves a wallet balance is backed by its
+# ledger, that `reserved` matches the active holds, and that no balance went
+# negative.
+#
+# It repairs nothing. Drift answers 409 so this run goes red and the existing
+# ALERT_WEBHOOK_URL paging path fires; a human decides whether to replay a
+# missing entry, zero an unbacked balance, or correct a manual edit.
+on:
+  schedule:
+    # 03:50 UTC daily — after the PayPal reconciliation (03:10) and before
+    # business hours in Mumbai, so drift is waiting for someone at 09:20 IST.
+    - cron: "50 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sweep-wallet-invariants:
+    name: Sweep Wallet Ledger Invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify required secrets
+        env:
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          missing=""
+
+          if [ -z "$PRODUCTION_URL" ]; then missing="$missing PRODUCTION_URL"; fi
+          if [ -z "$CRON_SECRET" ]; then missing="$missing CRON_SECRET"; fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. The wallet invariant sweep cannot run, so an unbacked balance or a stale reservation stays invisible."
+            exit 1
+          fi
+
+          case "$PRODUCTION_URL" in
+            https://*) ;;
+            *)
+              echo "::error::PRODUCTION_URL must be an https:// URL (got a value without that scheme)."
+              exit 1
+              ;;
+          esac
+
+      - name: Call wallet invariant endpoint
+        run: |
+          RESPONSE_FILE="$RUNNER_TEMP/wallet-invariants-response.json"
+          echo "SWEEP_RESPONSE_FILE=$RESPONSE_FILE" >> "$GITHUB_ENV"
+          TIMESTAMP=$(date +%s%3N)
+          PAYLOAD=""
+          SIGNATURE=$(echo -n "${TIMESTAMP}|${PAYLOAD}" | openssl dgst -sha256 -hmac "${{ secrets.CRON_SECRET }}" | sed "s/^.* //")
+          status=0
+          curl --fail-with-body -sS -X POST \
+            -H "x-cron-timestamp: $TIMESTAMP" \
+            -H "x-cron-signature: $SIGNATURE" \
+            -o "$RESPONSE_FILE" \
+            "${{ secrets.PRODUCTION_URL }}/api/admin/wallet/invariants" || status=$?
+
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Wallet invariant sweep returned an error (curl exit $status; 22 means an HTTP 4xx/5xx, and a 409 body is a drift report)."
+            exit "$status"
+          fi
+
+      - name: Page on drift or failure
+        if: failure()
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          drift_count="unknown"
+          response_file="${SWEEP_RESPONSE_FILE:-}"
+
+          if [ -n "$response_file" ] && [ -f "$response_file" ]; then
+            drift_count=$(jq -r 'if (.drift | type) == "array" then (.drift | length) else "unknown" end' "$response_file" 2>/dev/null || echo unknown)
+            {
+              echo "### Wallet ledger invariants need a human"
+              echo ""
+              echo "Drift entries: $drift_count"
+              echo ""
+              echo '```json'
+              head -c 6000 "$response_file"
+              echo ""
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### Wallet invariant sweep could not run"
+              echo ""
+              echo "No response body was captured, so this is a transport or configuration failure rather than a drift report."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          {
+            echo ""
+            echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo ""
+            echo "The endpoint compares every page of \`wallets\` with the sum of \`walletTransactions.amount\`, the sum of active \`walletHolds.amount\`, and zero. It is read-only: confirm the ledger and the balance before changing either. A truncated scan reports \`WALLET_SWEEP_TRUNCATED\` instead of drift, so raise the page caps rather than editing wallets. Scheduled runs can be delayed or skipped by GitHub — check the run history before assuming the endpoint is broken."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -z "$ALERT_WEBHOOK_URL" ]; then
+            echo "::error::ALERT_WEBHOOK_URL is not set, so this failure reached nobody. Configure the repository secret (see DEPLOYMENT.md -> Cron alerting)."
+            exit 1
+          fi
+
+          text="ShipIN wallet ledger invariants need a human (drift entries: $drift_count). ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          payload=$(jq -n --arg text "$text" '{text: $text}')
+
+          delivered=0
+          for attempt in 1 2 3; do
+            if curl --fail-with-body -sS --max-time 10 -X POST \
+              -H 'Content-Type: application/json' \
+              -d "$payload" \
+              "$ALERT_WEBHOOK_URL"; then
+              delivered=1
+              break
+            fi
+            echo "::warning::Alert webhook attempt $attempt failed; retrying."
+            sleep $((attempt * 5))
+          done
+
+          if [ "$delivered" -ne 1 ]; then
+            echo "::error::Alert webhook delivery failed after 3 attempts; the drift report reached nobody."
+            exit 1
+          fi

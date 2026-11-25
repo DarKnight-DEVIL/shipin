@@ -37,6 +37,7 @@ export const API_ROUTE_PATHS: readonly string[] = [
   "/api/admin/users/[uid]/mfa/reset",
   "/api/admin/wallet/balance",
   "/api/admin/wallet/credit",
+  "/api/admin/wallet/invariants",
   "/api/auth/login-intent",
   "/api/auth/mfa/backup-codes/regenerate",
   "/api/auth/mfa/session",
