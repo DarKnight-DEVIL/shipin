@@ -184,6 +184,23 @@ export function isSharedHostingDomain(hostname: string): boolean {
 }
 
 /**
+ * True when the host IS a shared-hosting suffix, not merely under one.
+ *
+ * The distinction is the whole point. A WebAuthn RP ID may not claim a public
+ * suffix - Chromium rejects an RP ID that does not extend past the caller's own
+ * public suffix - but a single deployment's hostname is a legitimate RP ID, and
+ * browsers accept it: a page on `foo.up.railway.app` cannot claim `railway.app`,
+ * while `foo.up.railway.app` itself is fine. Refusing every host under a shared
+ * suffix therefore blocks a setup the browser allows, and that is the situation
+ * a deployment on `<project>.vercel.app` is in.
+ */
+export function isBareSharedHostingDomain(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+
+  return SHARED_HOSTING_SUFFIXES.some((suffix) => host === suffix);
+}
+
+/**
  * The origin and RP ID this deployment answers the ceremony for.
  *
  * In production both come from APP_URL, never the request, so a forged Host
@@ -199,12 +216,13 @@ export function getWebAuthnConfig(requestOrigin?: string): {
   const origin = resolveAppOrigin(serverEnv.APP_URL);
   const rpID = new URL(origin).hostname;
   const sharedHosting = isSharedHostingDomain(rpID);
+  const bareSharedHost = isBareSharedHostingDomain(rpID);
 
   // Development follows the origin the ceremony is actually served from. The
   // committed env files point APP_URL at the Vercel deployment, and `next dev`
   // may not even be on port 3000, so the configured host is unusable as an RP
-  // ID here. Production keeps refusing a shared host: an RP ID under
-  // `vercel.app` would cover every other tenant on the provider.
+  // ID here. Production only refuses the shared suffix itself: an RP ID under
+  // it is scoped to this one deployment, which is exactly what a passkey wants.
   if (!isProduction && (sharedHosting || isLoopbackHttpOrigin(origin))) {
     const devOrigin = devOriginFor(requestOrigin, origin);
 
@@ -215,9 +233,9 @@ export function getWebAuthnConfig(requestOrigin?: string): {
     };
   }
 
-  if (sharedHosting) {
+  if (bareSharedHost) {
     throw new Error(
-      `APP_URL points at the shared hosting domain "${rpID}". WebAuthn would register passkeys for the whole hosting provider, so point APP_URL at a domain ShipIN owns.`
+      `APP_URL points at the shared hosting domain "${rpID}". WebAuthn would register passkeys for every project on that host, so point APP_URL at this deployment's own hostname or a domain ShipIN owns.`
     );
   }
 

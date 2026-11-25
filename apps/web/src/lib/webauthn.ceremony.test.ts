@@ -192,9 +192,25 @@ describe("verifyRegistration", () => {
     });
   });
 
-  it("refuses to use a shared hosting domain as the relying party", async () => {
+  it("accepts this deployment hostname under a shared suffix", async () => {
+    // A browser rejects an RP ID that does not extend past the caller's public
+    // suffix; it accepts one that does. Refusing every host under vercel.app
+    // blocked passkeys on a deployment where the browser would have allowed
+    // them, and that is the only reason the admin security screen could not
+    // enrol one.
     mocks.state.production = true;
     mocks.state.appUrl = "https://shipin-psi.vercel.app";
+
+    expect(getWebAuthnConfig()).toEqual({
+      origin: "https://shipin-psi.vercel.app",
+      rpID: "shipin-psi.vercel.app",
+      rpName: expect.any(String),
+    });
+  });
+
+  it("refuses a shared hosting suffix itself as the relying party", async () => {
+    mocks.state.production = true;
+    mocks.state.appUrl = "https://vercel.app";
 
     // A passkey scoped to vercel.app belongs to every project on that host.
     expect(() => getWebAuthnConfig()).toThrow(/shared hosting domain/);
@@ -318,9 +334,9 @@ describe("development on a shared hosting domain", () => {
     });
   });
 
-  it("still refuses a shared hosting relying party in production", () => {
+  it("still refuses a bare shared hosting relying party in production", () => {
     mocks.state.production = true;
-    mocks.state.appUrl = "https://shipin-psi.vercel.app";
+    mocks.state.appUrl = "https://netlify.app";
 
     expect(() => getWebAuthnConfig()).toThrow(/shared hosting domain/);
   });
