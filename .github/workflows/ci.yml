@@ -77,8 +77,27 @@ jobs:
       - name: Verify Firestore indexes cover the queries
         run: npm run check:firestore-indexes
 
-  build:
-    name: Build
+  # ─── Production build + initial JS budgets ─────────────────────────────────
+  # One production build answers both questions: the bundle compiles through the
+  # real Next 16 Turbopack path (standalone output included), and every route's
+  # initial JavaScript stays under its budget in scripts/bundle-budgets.json.
+  #
+  # It builds with production env, not the test env it used to be duplicated in:
+  # NODE_ENV and NEXT_PUBLIC_* are inlined at build time, so the sizes have to
+  # come from the configuration that ships, and a second build of the same
+  # routes with dummy test values only proved that the compiler runs.
+  #
+  # Optional: when the Sentry secrets exist, @sentry/nextjs uploads source maps
+  # during this build, so stack traces stay readable.
+  #
+  # The budgets are tight on purpose. Two regressions this gate exists to catch
+  # already happened here: the Firestore SDK shipping to every public page
+  # because the root layout imported a profile service, and the whole
+  # country/flag dataset loading on /requests/new for a form hidden behind a
+  # modal. Both were invisible without measuring, and neither was caught by any
+  # build-time check.
+  build-and-budget:
+    name: Build & Bundle Budget
     runs-on: ubuntu-latest
     needs: lint-and-typecheck
     steps:
@@ -97,27 +116,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Next.js
+      - name: Build for production
         run: npm run build
         env:
-          # Optional: when these repository secrets exist, @sentry/nextjs
-          # uploads source maps during the build so stack traces stay readable.
+          # NODE_ENV and NEXT_PUBLIC_* are inlined into the client bundle at
+          # build time, so the measured sizes have to come from the same
+          # configuration that ships.
+          NODE_ENV: "production"
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
-          # Dummy env vars, kept so the CI build matches a real deployment.
-          #
-          # They are not what keeps the build alive: client env is validated
-          # where it is used, not at import time, so a clean build with every
-          # NEXT_PUBLIC_* unset compiles and prerenders all static pages (the
-          # lazy Firebase handles in src/lib/firebase.ts and firebaseDb.ts are
-          # what made that true). They stay because NEXT_PUBLIC_* values are
-          # inlined into the client bundle at build time, and a bundle compiled
-          # without them ships an empty Firebase config that cannot sign anyone
-          # in. The bundle-budget job builds with these values; the e2e job gets
-          # its own from scripts/e2e-local.mjs, which points Firebase at the
-          # emulators instead.
+          # Dummy values: the build must compile without real config, and a
+          # bundle with an empty Firebase config cannot sign anyone in. They are
+          # also what the budgets measure, since NEXT_PUBLIC_* is inlined.
           PAYPAL_CLIENT_ID: "test"
           PAYPAL_CLIENT_SECRET: "test"
           NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
@@ -145,74 +157,7 @@ jobs:
           WHATSAPP_PHONE_NUMBER_ID: "test"
           UPSTASH_REDIS_REST_URL: "https://test.upstash.io"
           UPSTASH_REDIS_REST_TOKEN: "test"
-          NODE_ENV: "test"
-
-  # ─── Initial JS budgets ─────────────────────────────────────────────────────
-  # Every route's initial JavaScript (the chunks referenced by its prerendered
-  # HTML, gzipped) must stay under its budget in scripts/bundle-budgets.json.
-  #
-  # The budgets are tight on purpose. Two regressions this gate exists to
-  # catch already happened here: the Firestore SDK shipping to every public
-  # page because the root layout imported a profile service, and the whole
-  # country/flag dataset loading on /requests/new for a form hidden behind a
-  # modal. Both were invisible without measuring, and neither was caught by
-  # any build-time check.
-  #
-  # Builds with production env rather than reusing the `build` job: NODE_ENV
-  # and the env vars are inlined into the client bundle at build time, so the
-  # measured sizes have to come from the same configuration that ships.
-  bundle-budget:
-    name: Bundle Budget
-    runs-on: ubuntu-latest
-    needs: lint-and-typecheck
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-
-      - name: Enable corepack (respects packageManager field)
-        run: corepack enable
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build for production
-        run: npm run build
-        env:
-          # Dummy env vars, so the measured bundle inlines the same NEXT_PUBLIC_*
-          # values that ship; the build itself no longer needs them.
-          NODE_ENV: "production"
-          PAYPAL_CLIENT_ID: "test"
-          PAYPAL_CLIENT_SECRET: "test"
-          NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
-          PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
-          PAYPAL_ENV: "sandbox"
           PAYPAL_WEBHOOK_ID: "test"
-          SMTP_EMAIL: "test@test.com"
-          SMTP_PASSWORD: "test"
-          RESEND_API_KEY: "test"
-          FIREBASE_ADMIN_PROJECT_ID: "test"
-          FIREBASE_ADMIN_CLIENT_EMAIL: "test@test.com"
-          FIREBASE_ADMIN_PRIVATE_KEY: "test"
-          R2_ACCOUNT_ID: "test"
-          R2_ACCESS_KEY_ID: "test"
-          R2_SECRET_ACCESS_KEY: "test"
-          R2_BUCKET_NAME: "test"
-          APP_URL: "http://localhost:3000"
-          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
-          NEXT_PUBLIC_FIREBASE_API_KEY: "test"
-          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "test.firebaseapp.com"
-          NEXT_PUBLIC_FIREBASE_PROJECT_ID: "test"
-          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "test-bucket"
-          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "123456"
-          NEXT_PUBLIC_FIREBASE_APP_ID: "1:123456:web:abcdef"
-          UPSTASH_REDIS_REST_URL: "https://test.upstash.io"
-          UPSTASH_REDIS_REST_TOKEN: "test"
 
       - name: Check initial JS budgets
         # Fails when a route grows past its budget, when a prerendered route
