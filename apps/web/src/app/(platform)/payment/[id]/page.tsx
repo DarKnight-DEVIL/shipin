@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { storedMinor, toDecimal } from "@/lib/money";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
@@ -42,7 +43,7 @@ export default function PaymentPage() {
 
         const wallet = await getWallet(data.userId);
 
-        setWalletBalance(wallet.balance);
+        setWalletBalance(toDecimal(storedMinor(wallet, "balance")));
         setRequest(data);
       } catch (error) {
         console.error("Payment loading failed:", error);

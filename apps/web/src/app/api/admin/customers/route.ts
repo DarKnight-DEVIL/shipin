@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/firebaseAdmin";
+import { storedMinor, toDecimal } from "@/lib/money";
 import { getAdminAuthError, requireAdmin } from "@/lib/adminAuth";
 import {
   InvalidAdminPageParamError,
@@ -173,7 +174,8 @@ async function loadWalletBalances(
 
   for (const snapshot of snapshots) {
     for (const doc of snapshot.docs) {
-      const bal = Number(doc.data().balance ?? 0);
+      // ADR-0008: read either representation; the admin list only displays it.
+      const bal = toDecimal(storedMinor(doc.data(), "balance"));
       if (Number.isFinite(bal)) {
         walletMap.set(doc.id, bal);
       }

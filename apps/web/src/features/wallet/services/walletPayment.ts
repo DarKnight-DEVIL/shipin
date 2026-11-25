@@ -5,6 +5,7 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { calculatePayment } from "@/features/finance/services/calculatePayment";
 import type { QuoteBreakdown } from "@/types/request";
 import { toShipINError } from "@/utils/errors";
+import { minorFromStored, storedMinor, toDecimal } from "@/lib/money";
 
 // ---------------------------------------------------------------------------
 // Result type
@@ -141,20 +142,27 @@ export async function processWalletPayment(
       }
 
       const wallet = walletSnapshot.data();
-      const currentBalance = wallet?.balance ?? 0;
+      /*
+       * Minor units (ADR-0008, phase 2): the wallet may hold either the decimal
+       * field or the integer one, and the availability check is a subtraction
+       * that must not run in floats.
+       */
+      const currentBalanceMinor = storedMinor(wallet, "balance");
       /*
        * Funds promised to a pending PayPal checkout are not spendable: without
        * this a wallet payment made while a PayPal capture was in flight could
        * drain the balance the capture is about to settle from.
        */
-      const reserved = Math.max(0, Number(wallet?.reserved ?? 0));
-      const available = currentBalance - reserved;
+      const reservedMinor = Math.max(0, storedMinor(wallet, "reserved"));
+      const availableMinor = currentBalanceMinor - reservedMinor;
+      const amountMinor = minorFromStored(amount);
 
-      if (available < amount) {
+      if (availableMinor < amountMinor) {
         throw new WalletPaymentFailure("INSUFFICIENT_BALANCE");
       }
 
-      const newBalance = currentBalance - amount;
+      const newBalanceMinor = currentBalanceMinor - amountMinor;
+      const newBalance = toDecimal(newBalanceMinor);
 
       // Deduct from wallet.
       transaction.update(walletRef, {

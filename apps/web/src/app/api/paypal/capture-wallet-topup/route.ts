@@ -10,6 +10,7 @@ import { getPayPalAccessToken } from "@/lib/paypal";
 import { fetchWithTimeout } from "@/lib/http";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { withErrorHandler } from "@/utils/errors";
+import { minorFromStored, storedMinor, toDecimal } from "@/lib/money";
 import { serverEnv } from "@/config/env";
 import { captureTopupBodySchema, readAndValidateBody } from "@/lib/validation";
 
@@ -333,15 +334,19 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         return {
           alreadyProcessed: true,
 
-          balance: Number(existing?.balanceAfter ?? 0),
+          balance: toDecimal(storedMinor(existing, "balanceAfter")),
         };
       }
 
-      const currentBalance = walletSnapshot.exists
-        ? Number(walletSnapshot.data()?.balance ?? 0)
-        : 0;
-
-      const newBalance = currentBalance + capturedAmount;
+      /*
+       * The balance this response reports is read through the compat helper
+       * (ADR-0008, phase 2); the write below stays a decimal increment because
+       * the wallet writers are converted together in phase 3.
+       */
+      const newBalance = toDecimal(
+        storedMinor(walletSnapshot.data(), "balance") +
+          minorFromStored(capturedAmount)
+      );
 
       /*
        * Update/create wallet.

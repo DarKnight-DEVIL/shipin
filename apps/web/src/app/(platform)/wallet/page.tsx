@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { storedMinor, toDecimal } from "@/lib/money";
 import Link from "next/link";
 import { ArrowDownToLine, ArrowUpRight, Plus, ReceiptText } from "lucide-react";
 
@@ -84,7 +85,8 @@ export default function WalletPage() {
         if (!mounted) return;
 
         setWallet({
-          balance: Number(data.balance) || 0,
+          // ADR-0008: a migrated wallet holds `balanceMinor`.
+          balance: toDecimal(storedMinor(data, "balance")),
           currency: "USD",
         });
         setTransactions(history as WalletTransaction[]);

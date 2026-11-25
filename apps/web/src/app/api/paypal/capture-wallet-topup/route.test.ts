@@ -394,6 +394,22 @@ describe("POST /api/paypal/capture-wallet-topup", () => {
     });
   });
 
+  it("reads a wallet written in integer minor units", async () => {
+    // ADR-0008, phase 2. The credit itself stays a decimal `increment` until
+    // phase 3; what this pins is that the balance in the response is computed
+    // from a migrated wallet rather than from zero.
+    mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
+      ref.__kind === "wallet" ? snap({ balanceMinor: 1000 }) : snap(undefined)
+    );
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ success: true, balance: 35 })
+    );
+  });
+
   it("increments an existing wallet and records the transaction", async () => {
     const response = await POST(request(body));
 

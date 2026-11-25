@@ -268,6 +268,28 @@ describe("POST /api/admin/wallet/credit", () => {
     });
   });
 
+  it("credits a wallet written in integer minor units", async () => {
+    // ADR-0008, phase 2: after the wallet migration the document holds
+    // `balanceMinor`. The credit has to read either representation, or a
+    // migrated customer gets a balance computed from zero.
+    snapshots({ wallet: { balanceMinor: 1000, currency: "EUR" } });
+
+    const response = await POST(
+      request({ customerId: "customer-1", amount: 15.55 })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        success: true,
+        customerId: "customer-1",
+        previousBalance: 10,
+        creditAdded: 15.55,
+        newBalance: 25.55,
+      })
+    );
+  });
+
   it("refuses a corrupted wallet balance", async () => {
     snapshots({ wallet: { balance: -5 } });
 

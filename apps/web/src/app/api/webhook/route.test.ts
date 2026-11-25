@@ -396,6 +396,30 @@ describe("POST /api/webhook", () => {
     );
   });
 
+  it("debits a wallet written in integer minor units", async () => {
+    // ADR-0008: after the wallet migration the document holds `balanceMinor`.
+    // Phase 2 is the read side, so the same debit has to work off either form.
+    seedOrder({ walletApplied: 20, walletHoldId: "hold-1" });
+    seedRequest();
+    mocks.docs["wallets/user-1"] = { balanceMinor: 5000, reserved: 20 };
+    mocks.docs["walletHolds/hold-1"] = {
+      userId: "user-1",
+      amount: 20,
+      status: "reserved",
+    };
+
+    await POST(request(captureEvent()));
+
+    expect(mocks.txSet).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "wallets/user-1" }),
+      expect.objectContaining({ balance: 30 })
+    );
+    expect(mocks.txSet).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "walletTransactions/paypal_CAPTURE-1" }),
+      expect.objectContaining({ amount: -20, balanceAfter: 30 })
+    );
+  });
+
   it("does not debit the wallet twice when the ledger entry already exists", async () => {
     seedOrder({ walletApplied: 20, walletHoldId: "hold-1" });
     seedRequest();

@@ -12,6 +12,7 @@ import {
 } from "@/lib/validation";
 
 import { withErrorHandler, createShipINError } from "@/utils/errors";
+import { minorFromStored, storedMinor, toDecimal } from "@/lib/money";
 
 function roundMoney(value: number) {
   return Number(value.toFixed(2));
@@ -187,12 +188,17 @@ export const POST = withErrorHandler(
 
         const walletSnapshot = await transaction.get(walletRef);
 
-        const currentBalance = walletSnapshot.exists
-          ? roundMoney(Number(walletSnapshot.data()?.balance ?? 0))
+        /*
+         * Minor units (ADR-0008, phase 2): read whichever representation the
+         * wallet holds and add in cents, so a refund cannot land a float tail in
+         * a balance that later arithmetic reads back.
+         */
+        const currentBalanceMinor = walletSnapshot.exists
+          ? storedMinor(walletSnapshot.data(), "balance")
           : 0;
 
-        const newWalletBalance = roundMoney(
-          currentBalance + currentWalletRefund
+        const newWalletBalance = toDecimal(
+          currentBalanceMinor + minorFromStored(currentWalletRefund)
         );
 
         transaction.set(

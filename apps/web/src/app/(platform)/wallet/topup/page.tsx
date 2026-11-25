@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { storedMinor, toDecimal } from "@/lib/money";
 import { useRouter } from "next/navigation";
 import { PayPalButtons } from "@paypal/react-paypal-js";
 import { toast } from "sonner";
@@ -30,7 +31,8 @@ export default function WalletTopupPage() {
       try {
         const data = await getWallet(user.uid);
         if (mounted) {
-          setCurrentBalance(Number(data.balance) || 0);
+          // ADR-0008: a migrated wallet holds `balanceMinor`.
+          setCurrentBalance(toDecimal(storedMinor(data, "balance")));
         }
       } catch (error) {
         console.error("Failed to load wallet balance:", error);

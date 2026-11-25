@@ -15,6 +15,12 @@ import { sendNotification } from "@/features/notifications/services/notification
 import { buildPaymentReceivedNotification } from "@/lib/paypal/paymentReceivedNotification";
 import { roundMoney, toNumber } from "@/lib/paypal/amounts";
 import {
+  minorFromStored,
+  storedMinor,
+  subtractMinor,
+  toDecimal,
+} from "@/lib/money";
+import {
   deleteConsumedWalletHold,
   reservedAfterRelease,
   WALLET_HOLDS_COLLECTION,
@@ -338,7 +344,14 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
       return;
     }
 
-    let newBalance = roundMoney(toNumber(walletSnapshot.data()?.balance));
+    /*
+     * The balance is read through `storedMinor` (ADR-0008, phase 2) so this
+     * path understands both the decimal field a legacy wallet holds and the
+     * integer one a migrated wallet will hold. The debit itself happens in
+     * minor units; only the write below converts back.
+     */
+    let newBalanceMinor = storedMinor(walletSnapshot.data(), "balance");
+    const walletAppliedMinor = minorFromStored(walletApplied);
 
     if (walletApplied > 0 && !ledgerSnapshot.exists) {
       if (!walletSnapshot.exists) {
@@ -349,18 +362,20 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
         );
       }
 
-      if (newBalance + 0.01 < walletApplied) {
+      if (newBalanceMinor + 1 < walletAppliedMinor) {
         // The hold should make this impossible; if it happens the balance must
         // not go negative and the capture needs a human, not a retry loop.
         throw new Error(
-          `Wallet balance ${newBalance} cannot cover walletApplied=${walletApplied} for ${orderId}`
+          `Wallet balance ${toDecimal(newBalanceMinor)} cannot cover walletApplied=${walletApplied} for ${orderId}`
         );
       }
     }
 
     // ---- Writes ----
     if (walletApplied > 0 && !ledgerSnapshot.exists) {
-      newBalance = roundMoney(newBalance - walletApplied);
+      newBalanceMinor = subtractMinor(newBalanceMinor, walletAppliedMinor);
+
+      const newBalance = toDecimal(newBalanceMinor);
 
       transaction.set(
         walletRef,

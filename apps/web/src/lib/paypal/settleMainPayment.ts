@@ -20,6 +20,7 @@ import {
 import { adminDb } from "@/lib/firebaseAdmin";
 
 import { roundMoney, toNumber } from "./amounts";
+import { minorFromStored, storedMinor, toDecimal } from "@/lib/money";
 import type { PaymentFailure } from "./types";
 import {
   deleteConsumedWalletHold,
@@ -145,15 +146,22 @@ export async function settleMainPayment({
       throw new Error("Request for this payment could not be found.");
     }
 
-    const currentBalance = walletSnapshot.exists
-      ? Math.max(0, toNumber(walletSnapshot.data()?.balance))
+    /*
+     * Read the balance through the compat helper (ADR-0008, phase 2): a wallet
+     * may hold the decimal field or the integer one, and the debit is
+     * arithmetic that must not run in floats.
+     */
+    const currentBalanceMinor = walletSnapshot.exists
+      ? Math.max(0, storedMinor(walletSnapshot.data(), "balance"))
       : 0;
+    const walletAppliedMinor = minorFromStored(walletApplied);
 
-    if (walletApplied > currentBalance + 0.01) {
+    if (walletAppliedMinor > currentBalanceMinor + 1) {
       throw new Error("Insufficient wallet balance to complete this payment.");
     }
 
-    const newBalance = roundMoney(currentBalance - walletApplied);
+    const newBalanceMinor = currentBalanceMinor - walletAppliedMinor;
+    const newBalance = toDecimal(newBalanceMinor);
 
     if (walletApplied > 0) {
       // Consume the reservation in the same write that debits the balance.

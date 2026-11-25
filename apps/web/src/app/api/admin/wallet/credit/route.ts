@@ -8,6 +8,7 @@ import { requireAdmin, getAdminAuthError } from "@/lib/adminAuth";
 import { withErrorHandler } from "@/utils/errors";
 import { recordAdminAudit } from "@/lib/adminAudit";
 import { adminCreditBodySchema, readAndValidateBody } from "@/lib/validation";
+import { isMinor, minorFromStored, storedMinor, toDecimal } from "@/lib/money";
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
   try {
@@ -193,11 +194,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
        * ====================================
        */
 
-      const currentBalance = walletSnapshot.exists
-        ? Number(walletSnapshot.data()?.balance ?? 0)
+      /*
+       * Read through the compat helper (ADR-0008, phase 2) so a wallet holding
+       * either the decimal field or the integer one credits correctly.
+       */
+      const currentBalanceMinor = walletSnapshot.exists
+        ? storedMinor(walletSnapshot.data(), "balance")
         : 0;
 
-      if (!Number.isFinite(currentBalance) || currentBalance < 0) {
+      if (!isMinor(currentBalanceMinor) || currentBalanceMinor < 0) {
         throw new Error("INVALID_WALLET_BALANCE");
       }
 
@@ -207,7 +212,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
        * ====================================
        */
 
-      const newBalance = Number((currentBalance + creditAmount).toFixed(2));
+      const newBalance = toDecimal(
+        currentBalanceMinor + minorFromStored(creditAmount)
+      );
 
       /*
        * ====================================
@@ -317,7 +324,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       }
 
       return {
-        previousBalance: currentBalance,
+        previousBalance: toDecimal(currentBalanceMinor),
 
         creditAdded: creditAmount,
 

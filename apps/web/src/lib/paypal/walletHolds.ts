@@ -25,7 +25,7 @@ import {
 
 import { adminDb } from "@/lib/firebaseAdmin";
 
-import { roundMoney, toNumber } from "./amounts";
+import { storedMinor, toDecimal } from "@/lib/money";
 
 export const WALLET_HOLDS_COLLECTION = "walletHolds";
 
@@ -41,17 +41,27 @@ export function walletHoldDocId(idempotencyKey: string): string {
   return Buffer.from(idempotencyKey, "utf8").toString("base64url");
 }
 
-/** The part of the balance promised to pending checkouts. */
+/**
+ * The part of the balance promised to pending checkouts.
+ *
+ * Computed in minor units (ADR-0008, phase 2) so a wallet written in either
+ * representation reads correctly. The return value stays decimal because every
+ * writer is still decimal until phase 3.
+ */
 export function reservedBalance(wallet: DocumentData | undefined): number {
-  return roundMoney(Math.max(0, toNumber(wallet?.reserved)));
+  return toDecimal(Math.max(0, storedMinor(wallet, "reserved")));
 }
 
 /** What the customer can still spend or reserve right now. */
 export function availableWalletBalance(
   wallet: DocumentData | undefined
 ): number {
-  return roundMoney(
-    Math.max(0, toNumber(wallet?.balance) - reservedBalance(wallet))
+  return toDecimal(
+    Math.max(
+      0,
+      storedMinor(wallet, "balance") -
+        Math.max(0, storedMinor(wallet, "reserved"))
+    )
   );
 }
 
@@ -65,14 +75,14 @@ export function reservedAfterRelease(
   wallet: DocumentSnapshot,
   hold: DocumentSnapshot | null
 ): number {
-  const current = reservedBalance(wallet.data());
-  if (!hold || !hold.exists) return current;
+  const current = storedMinor(wallet.data(), "reserved");
+  if (!hold || !hold.exists) return toDecimal(current);
 
   const data = hold.data() ?? {};
-  if (data.status !== "reserved") return current;
+  if (data.status !== "reserved") return toDecimal(current);
 
-  return roundMoney(
-    Math.max(0, current - Math.max(0, toNumber(data.amount)))
+  return toDecimal(
+    Math.max(0, current - Math.max(0, storedMinor(data, "amount")))
   );
 }
 

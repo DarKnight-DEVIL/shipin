@@ -324,6 +324,35 @@ export function minorFromStored(
   return 0;
 }
 
+/**
+ * Read one amount out of a document, whichever representation it holds.
+ *
+ * The phase-2 half of ADR-0008: documents written before the migration hold a
+ * decimal in `field`, documents written after hold integer minor units in
+ * `fieldMinor`. Reading both is what lets the two live side by side while the
+ * writers are converted one at a time.
+ *
+ * The minor field wins when it holds a valid amount. A present-but-corrupt
+ * minor field (a float, an out-of-range number) falls back to the decimal
+ * rather than throwing: this runs on the read path of a wallet, and turning a
+ * damaged field into a failed page load helps nobody. `isMinor` decides, so the
+ * fallback is the same rule the writers are held to.
+ */
+export function storedMinor(
+  record: object | null | undefined,
+  field: string,
+  currency: Currency = DEFAULT_CURRENCY
+): Minor {
+  if (!record) return 0;
+
+  const bag = record as Record<string, unknown>;
+  const minorValue = bag[`${field}Minor`];
+
+  if (isMinor(minorValue)) return minorValue;
+
+  return minorFromStored(bag[field], currency);
+}
+
 /** Narrowing guard used by the arithmetic helpers. */
 function assertMinor(value: unknown): asserts value is Minor {
   if (!isMinor(value)) {

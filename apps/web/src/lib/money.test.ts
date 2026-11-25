@@ -17,6 +17,7 @@ import {
   negateMinor,
   parseMinor,
   scaleByRate,
+  storedMinor,
   subtractMinor,
   sumMinor,
   toDecimal,
@@ -251,6 +252,50 @@ describe("minorFromStored", () => {
   it("reads a numeric string as a decimal amount", () => {
     expect(minorFromStored("84.70")).toBe(8470);
     expect(minorFromStored("12")).toBe(1200);
+  });
+});
+
+describe("storedMinor", () => {
+  it("reads the decimal field a legacy document holds", () => {
+    expect(storedMinor({ balance: 84.7 }, "balance")).toBe(8470);
+    expect(storedMinor({ balance: 0 }, "balance")).toBe(0);
+  });
+
+  it("prefers the minor field once a document has one", () => {
+    // Both present is what a half-migrated document looks like; the integer is
+    // the authoritative one.
+    expect(storedMinor({ balance: 84.7, balanceMinor: 9999 }, "balance")).toBe(
+      9999
+    );
+    expect(storedMinor({ balanceMinor: 8470 }, "balance")).toBe(8470);
+  });
+
+  it("falls back to the decimal when the minor field is corrupt", () => {
+    // A float or an out-of-range number is not a `Minor`; the page still has to
+    // render, so the decimal is read instead of throwing on a wallet read.
+    expect(storedMinor({ balance: 84.7, balanceMinor: 84.7 }, "balance")).toBe(
+      8470
+    );
+    expect(
+      storedMinor({ balance: 1.5, balanceMinor: MAX_MINOR + 1 }, "balance")
+    ).toBe(150);
+  });
+
+  it("reads a missing document or field as no money", () => {
+    expect(storedMinor(null, "balance")).toBe(0);
+    expect(storedMinor(undefined, "balance")).toBe(0);
+    expect(storedMinor({}, "balance")).toBe(0);
+  });
+
+  it("keeps the field name it is given, so one reader serves every amount", () => {
+    const transaction = {
+      amount: 19.99,
+      amountMinor: 1999,
+      balanceAfter: 5,
+    };
+
+    expect(storedMinor(transaction, "amount")).toBe(1999);
+    expect(storedMinor(transaction, "balanceAfter")).toBe(500);
   });
 });
 
