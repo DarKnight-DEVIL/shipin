@@ -191,10 +191,15 @@ async function main() {
       process.exit(1);
     }
 
-    // Check if already applied
-    if (await isApplied(db, migrationName)) {
+    /*
+     * A dry run is read-only, so it stays available after the migration has been
+     * applied. That is what makes the backfill's dry run useful as a post-deploy
+     * check: rerunning it reports every document whose stored value has drifted
+     * since, which is exactly what a dual-write rollout can introduce.
+     */
+    if (!dryRun && (await isApplied(db, migrationName))) {
       console.log(
-        `⚠️  Migration ${migrationName} already applied. Use --dry-run to test.`
+        `⚠️  Migration ${migrationName} already applied. Re-run with --dry-run to inspect the data without writing.`
       );
       process.exit(0);
     }
