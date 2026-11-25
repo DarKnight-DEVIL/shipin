@@ -63,7 +63,7 @@ export default function LegalDocument({
                 href={link.href}
                 // orange-700, not orange-600: 4.5:1 or better against white
                 // for normal-size text, which orange-600 misses.
-                className="text-orange-700 dark:text-orange-300 hover:underline"
+                className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
               >
                 {link.label}
               </Link>
@@ -73,7 +73,7 @@ export default function LegalDocument({
             Questions?{" "}
             <Link
               href="/support"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Contact Support
             </Link>

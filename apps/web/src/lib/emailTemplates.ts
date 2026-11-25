@@ -17,7 +17,7 @@ interface EmailData {
 /**
  * Escape HTML special characters to prevent XSS.
  */
-function escapeHtml(input: string): string {
+export function escapeHtml(input: string): string {
   const a = String.fromCharCode(38);
   return input
     .replace(/&/g, a + "amp;")

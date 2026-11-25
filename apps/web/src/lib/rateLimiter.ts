@@ -18,7 +18,10 @@ import {
 
 import { createSharedRateLimiter } from "./redisRateLimiter";
 import type { RateLimitResult } from "./redisRateLimiter";
-import { getClientIp } from "./clientIp";
+import {
+  TOKEN_IP_CEILING_MULTIPLIER,
+  rateLimitSubject,
+} from "./rateLimitSubject";
 
 export interface RateLimitPolicy {
   maxRequests: number;
@@ -46,13 +49,6 @@ export class InMemoryRateLimiter {
     return Object.keys(this.store).length;
   }
 
-  private resolveClientIp(request: Request): string {
-    // See clientIp.ts: only headers the deployment platform sanitises are
-    // trusted, so a client cannot mint a fresh bucket per request. Without one
-    // every caller shares the loopback bucket rather than escaping the limit.
-    return getClientIp(request) ?? "127.0.0.1";
-  }
-
   private prune(now: number): void {
     for (const ip of Object.keys(this.store)) {
       const active = this.store[ip].filter(
@@ -63,18 +59,17 @@ export class InMemoryRateLimiter {
     }
   }
 
-  async record(
-    request: Request
-  ): Promise<import("./redisRateLimiter").RateLimitResult> {
-    const now = Date.now();
-    this.prune(now);
-    const ip = this.resolveClientIp(request);
-    const history = (this.store[ip] ??= []).filter(
+  /** Count one request against one bucket. */
+  private count(
+    key: string,
+    limit: number,
+    now: number
+  ): import("./redisRateLimiter").RateLimitResult {
+    const history = (this.store[key] ??= []).filter(
       (entry) => now - entry.timestamp < this.policy.windowMs
     );
-    this.store[ip] = history;
+    this.store[key] = history;
 
-    const limit = this.policy.maxRequests;
     const oldest = history[0]?.timestamp;
     const reset =
       oldest === undefined
@@ -87,6 +82,27 @@ export class InMemoryRateLimiter {
 
     history.push({ timestamp: now });
     return { ok: true, limit, remaining: limit - history.length, reset };
+  }
+
+  async record(
+    request: Request
+  ): Promise<import("./redisRateLimiter").RateLimitResult> {
+    const now = Date.now();
+    this.prune(now);
+
+    // Mirrors `createSharedRateLimiter`: a token buys a per-account bucket,
+    // and the address keeps a ceiling so an unverified `sub` cannot mint
+    // budgets by rotating tokens.
+    const subject = rateLimitSubject(request);
+    const limit = this.policy.maxRequests;
+
+    if (subject.kind === "ip") return this.count(subject.key, limit, now);
+
+    const account = this.count(subject.key, limit, now);
+    if (!account.ok) return account;
+
+    const ceiling = limit * TOKEN_IP_CEILING_MULTIPLIER;
+    return this.count(`ip:${subject.ip}`, ceiling, now);
   }
 }
 

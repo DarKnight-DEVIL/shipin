@@ -131,7 +131,7 @@ export default function LicencesPage() {
           <p>
             If you believe something on this site uses your work without
             permission, email{" "}
-            <a href="mailto:support@shipin.co" className="text-orange-700 dark:text-orange-300 hover:underline">
+            <a href="mailto:support@shipin.co" className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300">
               support@shipin.co
             </a>{" "}
             with the URL and the work in question. We remove or license the

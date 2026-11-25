@@ -183,6 +183,29 @@ describe("readQueries", () => {
 
     expect(readQueries(source).unverified).toEqual(["where(<dynamic field>)"]);
   });
+
+  it("does not mistake an interface method signature for a query", () => {
+    // api/admin/compliance/retention/purge declares the query shape it uses so
+    // its `as` casts stay honest. Those two signature lines used to be reported
+    // as unreadable filters forever, which is what "2 calls could not be read"
+    // meant in the gate output.
+    const source = `
+      interface FirebaseQuery {
+        where(field: string, op: string, value: unknown): FirebaseQuery;
+        orderBy(field: string, direction: "asc" | "desc"): FirebaseQuery;
+      }
+      const q = adminDb
+        .collection("requests")
+        .where("deliveredAt", "<=", cutoff)
+        .orderBy("deliveredAt", "asc");
+    `;
+
+    const analysis = readQueries(source);
+
+    // The point of the case: the two signature lines contribute nothing.
+    expect(analysis.unverified).toEqual([]);
+    expect(analysis.sites.map((site) => site.collection)).toEqual(["requests"]);
+  });
 });
 
 describe("blankComments", () => {

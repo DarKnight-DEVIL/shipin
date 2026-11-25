@@ -267,6 +267,11 @@ const SPECS = [
   "tests/smoke.spec.ts",
   "tests/hydration.spec.ts",
   "tests/sitemap-check.spec.ts",
+  // axe on the public pages. This file existed and passed while nothing ran it:
+  // it was missing from this list, so the suite the README called "an axe
+  // accessibility job" had not executed once. `e2e-specs.test.ts` now fails when
+  // a spec file in this directory is not named here.
+  "tests/accessibility.spec.ts",
   // Money-path contracts. The authenticated cases skip unless the Auth
   // emulator is running, so the default suite still covers the 401/403
   // boundary on every run.

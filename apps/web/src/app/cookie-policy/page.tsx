@@ -201,11 +201,11 @@ export default function CookiePolicyPage() {
           <h2>7. Contact</h2>
           <p>
             Questions about this policy:{" "}
-            <a href="mailto:support@shipin.co" className="text-orange-700 dark:text-orange-300 hover:underline">
+            <a href="mailto:support@shipin.co" className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300">
               support@shipin.co
             </a>
             . See also our{" "}
-            <a href="/privacy-policy" className="text-orange-700 dark:text-orange-300 hover:underline">
+            <a href="/privacy-policy" className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300">
               Privacy Policy
             </a>
             .

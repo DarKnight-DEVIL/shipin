@@ -11,6 +11,7 @@ import { getAppCheckAlertTarget } from "@/lib/appCheckMetrics";
 
 import { isProduction, validateProductionRequiredEnv } from "@/config/env";
 import { reportAppCheckStatus } from "@/lib/appCheck";
+import { reportClientIpTrust } from "@/lib/clientIp";
 import { reportRateLimitStoreStatus } from "@/lib/redisRateLimiter";
 
 /**
@@ -66,6 +67,14 @@ export async function register() {
   // would deny service over a variable a human can fix live, and it made a
   // production build impossible to run without a real Upstash database.
   reportRateLimitStoreStatus();
+
+  // Same pattern for the trust boundary that decides whose budget a request
+  // spends. Without it every caller shares one bucket, which on a self-hosted
+  // deployment is a site-wide 30 requests a minute — the warning is the only
+  // place a human can see that before the 429s start.
+  if (process.env.NEXT_RUNTIME !== "edge") {
+    await reportClientIpTrust();
+  }
 
   // Same pattern for the carrier feed: without the India Post credentials the
   // tracking page serves the disclosed placeholder feed in production. That is

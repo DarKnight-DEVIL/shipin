@@ -195,7 +195,7 @@ export default function RefundPolicyPage() {
             request ID and inspection photos — or email{" "}
             <a
               href="mailto:support@shipin.co"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               support@shipin.co
             </a>

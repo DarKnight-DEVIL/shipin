@@ -532,7 +532,7 @@ export default function PrivacyPolicyPage() {
               dashboard or email us at{" "}
               <a
                 href="mailto:support@shipin.co"
-                className="text-orange-700 dark:text-orange-300 hover:underline"
+                className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
               >
                 support@shipin.co
               </a>
@@ -548,7 +548,7 @@ export default function PrivacyPolicyPage() {
               Phone:{" "}
               <a
                 href="tel:+912268234567"
-                className="text-orange-700 dark:text-orange-300 hover:underline"
+                className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
               >
                 +91 22 6823 4567
               </a>
@@ -611,7 +611,7 @@ export default function PrivacyPolicyPage() {
             </h2>
             <p className="mb-4">
               The current sub-processor list is published in the
-              <a href="/cookie-policy" className="text-orange-700 dark:text-orange-300 hover:underline">
+              <a href="/cookie-policy" className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300">
                 Cookie Policy
               </a>
               : Google Firebase, PayPal, Cloudflare, Resend, Vercel and Spline.
@@ -622,7 +622,7 @@ export default function PrivacyPolicyPage() {
               Each provider is used under the data processing terms it publishes
               for its service. If you need the current list, the processing terms
               on file, or a signed agreement for your own compliance file, email
-              <a href="mailto:support@shipin.co" className="text-orange-700 dark:text-orange-300 hover:underline">
+              <a href="mailto:support@shipin.co" className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300">
                 support@shipin.co
               </a>
               and we will send it.
@@ -643,7 +643,7 @@ export default function PrivacyPolicyPage() {
             </p>
             <p>
               To report a suspected vulnerability or incident, email
-              <a href="mailto:support@shipin.co" className="text-orange-700 dark:text-orange-300 hover:underline">
+              <a href="mailto:support@shipin.co" className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300">
                 support@shipin.co
               </a>
               .
@@ -660,37 +660,37 @@ export default function PrivacyPolicyPage() {
           >
             <Link
               href="/"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Home
             </Link>
             <Link
               href="/track"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Track a shipment
             </Link>
             <Link
               href="/terms"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Terms of Service
             </Link>
             <Link
               href="/refund-policy"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Refund Policy
             </Link>
             <Link
               href="/cookie-policy"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Cookie Policy
             </Link>
             <Link
               href="/licences"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Licences
             </Link>
@@ -699,7 +699,7 @@ export default function PrivacyPolicyPage() {
             Questions?{" "}
             <Link
               href="/support"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Contact Support
             </Link>

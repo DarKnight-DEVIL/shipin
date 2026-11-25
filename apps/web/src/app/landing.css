@@ -2007,7 +2007,13 @@ h3 {
   --primary-soft: rgba(255, 107, 26, 0.12);
   --fg: #f6f0e6;
   --fg-soft: #b3a999;
-  --muted: #7d7466;
+  /*
+   * 4.29:1 on --bg, which failed WCAG AA for normal text (4.5:1) on every
+   * footer and pricing line. The axe suite that would have said so existed but
+   * nothing ran it; `scripts/e2e-local.mjs` now includes it. This value measures
+   * 4.93:1 and keeps the warm grey. Check contrast before darkening it again.
+   */
+  --muted: #877e6f;
   --border: #2a251f;
   --border-strong: #3d362d;
   --glow: 255, 107, 26;

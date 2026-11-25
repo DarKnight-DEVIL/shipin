@@ -147,6 +147,23 @@ export function readQueries(source) {
   const sites = new Map();
   const unverified = [];
 
+  /**
+   * A method signature inside a local `interface` — `where(field: string,
+   * op: string, value: unknown): FirebaseQuery;` — is textually identical to a
+   * call. It is not one: its arguments are parameter declarations with type
+   * annotations and it quotes nothing, which no query ever does. Counting those
+   * as unreadable made the gate report two permanent phantom gaps in the
+   * retention route and hid whatever real ones ever appeared next to them.
+   */
+  function isParameterDeclaration(call) {
+    const openParen = text.indexOf("(", call.pos);
+    if (openParen === -1) return false;
+    const { start, end } = callSpan(text, openParen);
+    return /^[A-Za-z_$][\w$]*\s*:\s*[A-Za-z_$[{]/.test(
+      text.slice(start, end).trim()
+    );
+  }
+
   function site(anchor) {
     const key = `${anchor.pos}`;
     if (!sites.has(key)) {
@@ -207,11 +224,13 @@ export function readQueries(source) {
   }
 
   for (const call of calls(text, "where")) {
+    if (isParameterDeclaration(call)) continue;
     const anchor = anchorFor(call.pos);
     if (anchor) applyWhere(call, site(anchor));
   }
 
   for (const call of calls(text, "orderBy")) {
+    if (isParameterDeclaration(call)) continue;
     const anchor = anchorFor(call.pos);
     if (anchor) applyOrderBy(call, site(anchor));
   }

@@ -8,7 +8,7 @@
  * All configuration is centralized in @/config/env (serverEnv).
  */
 
-import { serverEnv } from "@/config/env";
+import { serverEnv, isProduction } from "@/config/env";
 import { createShipINError } from "@/utils/errors";
 import { fetchWithTimeout } from "@/lib/http";
 import { childLogger } from "./logger";
@@ -173,9 +173,22 @@ export async function verifyPayPalWebhook(
     // FAIL CLOSED always: an unverifiable webhook must never be accepted.
     // The only exception is explicit opt-in via ALLOW_UNVERIFIED_WEBHOOKS=1
     // for local development without a PayPal webhook registration.
-    const allowUnverified = process.env.ALLOW_UNVERIFIED_WEBHOOKS === "1";
+    //
+    // That opt-in is ignored in production, deliberately. The flag exists to
+    // make `next dev` usable, and the environment it protects against is the
+    // one where a forged `PAYMENT.CAPTURE.COMPLETED` marks a request paid. One
+    // copied variable — from a local `.env` into a Vercel project, a Docker
+    // `--env-file`, or a CI secrets paste — is all it would take, and nothing
+    // in the request path would look wrong afterwards.
+    const allowUnverified =
+      process.env.ALLOW_UNVERIFIED_WEBHOOKS === "1" && !isProduction;
     if (!allowUnverified) {
-      paypalLog.error("FATAL: PAYPAL_WEBHOOK_ID is not configured");
+      paypalLog.error(
+        "FATAL: PAYPAL_WEBHOOK_ID is not configured" +
+          (process.env.ALLOW_UNVERIFIED_WEBHOOKS === "1"
+            ? "; ALLOW_UNVERIFIED_WEBHOOKS is ignored in production"
+            : "")
+      );
       throw createShipINError(
         "PayPal webhook verification is unavailable.",
         "PAYPAL_WEBHOOK_CONFIG_ERROR",

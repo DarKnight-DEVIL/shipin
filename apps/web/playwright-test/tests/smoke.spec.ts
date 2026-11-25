@@ -82,4 +82,20 @@ test.describe("Auth flows", () => {
         .first()
     ).toBeVisible({ timeout: 20_000 });
   });
+
+  test("the support page asks a signed-out visitor to sign in", async ({
+    page,
+  }) => {
+    // Moved here from the deleted auth-flow.spec.ts, which nothing ever ran.
+    // Same rule as the dashboard: no redirect and no ticket data, because the
+    // support APIs are token-protected. The page shows a skeleton until
+    // `onAuthStateChanged` fires, which competes with on-demand route compiles
+    // when the whole suite runs in parallel.
+    await page.goto("/support");
+
+    await expect(page.getByText("Sign in to open support")).toBeVisible({
+      timeout: 45_000,
+    });
+    expect(new URL(page.url()).pathname).toBe("/support");
+  });
 });

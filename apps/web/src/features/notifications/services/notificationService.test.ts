@@ -169,6 +169,26 @@ describe("sendNotification — email", () => {
     expect(mail.html).toContain("#req-12");
   });
 
+  it("escapes caller-supplied text instead of injecting it as markup", async () => {
+    // Carrier names, request titles and support subjects reach this function
+    // from route handlers. Before escaping, a `<` in any of them was markup in
+    // a customer's inbox.
+    await sendNotification({
+      ...base,
+      title: 'Delivery <img src=x onerror="alert(1)">',
+      message: 'Carrier "Ship & Co <b>Fast</b>"',
+      channels: { email: true },
+    });
+
+    const mail = mocks.sendMail.mock.calls[0][0];
+    expect(mail.html).not.toContain("<img");
+    expect(mail.html).not.toContain("<b>Fast</b>");
+    expect(mail.html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
+    expect(mail.html).toContain("&amp; Co");
+    // The subject is a header, not HTML: it must stay readable.
+    expect(mail.subject).toBe('Delivery <img src=x onerror="alert(1)"> - ShipIN');
+  });
+
   it("skips email for an event that does not support it", async () => {
     await sendNotification(base);
 

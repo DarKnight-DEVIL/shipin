@@ -48,8 +48,16 @@ export const WEB_RATE_LIMIT = 100;
 export const API_RATE_LIMIT = 30;
 /** Strict rate limit: requests per minute per IP (login, sensitive ops). */
 export const STRICT_RATE_LIMIT = 10;
-/** Login attempt limit: attempts per minute per IP. */
-export const LOGIN_RATE_LIMIT = 5;
+/**
+ * Login attempt limit: attempts per minute per IP.
+ *
+ * Raised from 5 after the audit. Sign-in is the one flow that cannot be keyed
+ * per account (there is no account yet), so a household, office or campus
+ * behind one CGNAT address shares this budget: at 5 a minute, three people
+ * signing in together could lock out a fourth. 15 still stops a script, which
+ * manages hundreds.
+ */
+export const LOGIN_RATE_LIMIT = 15;
 /** Rate limit window in milliseconds. */
 export const RATE_LIMIT_WINDOW_MS = 60_000;
 

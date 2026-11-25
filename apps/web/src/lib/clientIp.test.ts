@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getClientIp } from "./clientIp";
+import {
+  getClientIp,
+  getClientIpTrust,
+  reportClientIpTrust,
+} from "./clientIp";
 
 function requestWith(headers: Record<string, string>): Request {
   return new Request("http://localhost:3000/api/test", { headers });
@@ -117,5 +121,52 @@ describe("getClientIp", () => {
 
   it("returns null when no address header is present", () => {
     expect(getClientIp(requestWith({}))).toBeNull();
+  });
+});
+
+describe("client IP trust", () => {
+  it("names Vercel as the trust boundary when the platform sets VERCEL", () => {
+    vi.stubEnv("VERCEL", "1");
+
+    expect(getClientIpTrust()).toBe("vercel");
+  });
+
+  it("names an opt-in reverse proxy", () => {
+    vi.stubEnv("TRUST_PROXY", "1");
+
+    expect(getClientIpTrust()).toBe("proxy");
+  });
+
+  it("reports no trust boundary when neither is set", () => {
+    expect(getClientIpTrust()).toBe("none");
+  });
+
+  it("warns in production when every caller would share one bucket", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const warn = vi.fn();
+    vi.doMock("./logger", () => ({
+      childLogger: () => ({ warn }),
+    }));
+
+    const trust = await reportClientIpTrust();
+
+    expect(trust).toBe("none");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain("TRUST_PROXY=1");
+
+    vi.doUnmock("./logger");
+  });
+
+  it("stays silent outside production, where one shared bucket is harmless", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const warn = vi.fn();
+    vi.doMock("./logger", () => ({
+      childLogger: () => ({ warn }),
+    }));
+
+    expect(await reportClientIpTrust()).toBe("none");
+    expect(warn).not.toHaveBeenCalled();
+
+    vi.doUnmock("./logger");
   });
 });

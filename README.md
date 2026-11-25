@@ -150,7 +150,10 @@ Quality bar for changes: `npx tsc --noEmit`, `npm run lint` (0 errors), `npm tes
   prerendering.
 - **CI** runs lint, typecheck, build, tests with coverage and per-file thresholds, the shuffled
   order check, `npm audit`, TruffleHog secret scanning, bundle budgets, the Firestore rules suite,
-  Playwright E2E (local money-path contracts plus staging flows) and an axe accessibility job.
+  and Playwright E2E (local money-path contracts plus staging flows) — which includes the axe
+  accessibility scan of the public pages. `scripts/e2e-specs.test.ts` fails the build if a spec
+  file exists that the runner never names, because a suite nobody runs reads as coverage and
+  silently rots.
 
 ## Deployment
 

@@ -7,6 +7,7 @@ import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { isKnownWhatsAppTemplate } from "@/features/notifications/templates";
 import { allowNotification } from "@/lib/notificationRateLimit";
 import { sendMail } from "@/lib/mailer";
+import { escapeHtml } from "@/lib/emailTemplates";
 import {
   buildUnsubscribeHeaders,
   createUnsubscribeUrl,
@@ -261,9 +262,22 @@ export async function sendNotification({
       // just without a footer link it could not authenticate.
       const unsubscribeUrl = createUnsubscribeUrl(userId);
 
+      /*
+       * Everything interpolated below comes from a caller, and callers pass
+       * request titles, carrier names and support subjects. `emailTemplates.ts`
+       * escapes its own interpolations; this block built its HTML by hand and
+       * did not, so one user-controlled string later would inject markup into
+       * a customer's inbox. Same helper, one implementation.
+       */
+      const safeTitle = escapeHtml(title);
+      const safeMessage = escapeHtml(message);
+      const safeRequestId = escapeHtml(requestId.slice(0, 6));
+
       await sendMail({
         to: userEmail,
 
+        // The subject is a plain-text header, not HTML: escaping it would print
+        // `&amp;` to the customer.
         subject: `${title} - ShipIN`,
 
         html: `
@@ -276,17 +290,17 @@ export async function sendNotification({
             "
           >
             <h2>
-              ${title}
+              ${safeTitle}
             </h2>
 
             <p>
-              ${message}
+              ${safeMessage}
             </p>
 
             <p>
               Request:
               <strong>
-                #${requestId.slice(0, 6)}
+                #${safeRequestId}
               </strong>
             </p>
 

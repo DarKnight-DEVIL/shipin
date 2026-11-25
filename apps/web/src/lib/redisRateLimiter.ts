@@ -57,7 +57,10 @@ import {
   isRateLimitStoreOptional,
   RATE_LIMIT_STORE_OPTIONAL_ENV,
 } from "@/config/env";
-import { getClientIp } from "@/lib/clientIp";
+import {
+  TOKEN_IP_CEILING_MULTIPLIER,
+  rateLimitSubject,
+} from "@/lib/rateLimitSubject";
 
 export interface RateLimitResult {
   ok: boolean;
@@ -301,9 +304,9 @@ export function createSharedRateLimiter(
         };
       }
 
-      // One derivation, shared with the in-memory limiter and the consent
-      // audit log; see `clientIp.ts` for which headers are trusted and why.
-      const ip = getClientIp(request) ?? "127.0.0.1";
+      // One derivation, shared with the in-memory limiter and the ceiling
+      // below; see `rateLimitSubject.ts` for why a token buys its own bucket.
+      const subject = rateLimitSubject(request);
 
       const limiter = getRatelimitInstance(name, maxRequests, windowMs);
       if (!limiter) {
@@ -334,21 +337,65 @@ export function createSharedRateLimiter(
       }
 
       try {
-        const result = await limiter.limit(ip);
-        const reset = result.reset;
+        if (subject.kind === "ip") {
+          const result = await limiter.limit(subject.key);
+
+          return {
+            ok: result.success,
+            limit: maxRequests,
+            remaining: result.remaining,
+            reset: result.reset,
+          };
+        }
+
+        /*
+         * Authenticated request: the account has its own budget, and the
+         * address keeps a ceiling so that minting a token per request (the
+         * `sub` here is decoded, not verified) cannot turn a per-account limit
+         * into no limit at all.
+         */
+        const ceilingLimit = maxRequests * TOKEN_IP_CEILING_MULTIPLIER;
+        const ceilingLimiter = getRatelimitInstance(
+          `${name}:ip-ceiling`,
+          ceilingLimit,
+          windowMs
+        );
+
+        const [account, address] = await Promise.all([
+          limiter.limit(subject.key),
+          ceilingLimiter ? ceilingLimiter.limit(`ip:${subject.ip}`) : null,
+        ]);
+
+        if (!account.success) {
+          return {
+            ok: false,
+            limit: maxRequests,
+            remaining: account.remaining,
+            reset: account.reset,
+          };
+        }
+
+        if (address && !address.success) {
+          return {
+            ok: false,
+            limit: ceilingLimit,
+            remaining: 0,
+            reset: address.reset,
+          };
+        }
 
         return {
-          ok: result.success,
+          ok: true,
           limit: maxRequests,
-          remaining: result.remaining,
-          reset,
+          remaining: account.remaining,
+          reset: account.reset,
         };
       } catch (error) {
         // Fail OPEN, but flagged: an outage must not lock every user out (see
         // the `unavailable` branch in proxy.ts), so the request is served. The
         // gap is not silent — this is counted, logged and reported as
         // `degraded` by /api/health, which is the alert an operator acts on.
-        bumpCounter(ip);
+        bumpCounter(subject.key);
         console.error(
           `[RateLimiter:${name}] Redis call failed, serving request without a limit (degraded):`,
           error instanceof Error ? error.message : error
@@ -365,7 +412,8 @@ export function createSharedRateLimiter(
 
     /**
      * Expose per-limiter Redis error counts so callers can surface them
-     * in health checks or observability dashboards. Keys are IP addresses.
+     * in health checks or observability dashboards. Keys are rate-limit
+     * subjects (`u:<uid>` or `ip:<address>`).
      * Callers should pass {{Date.now() - 5 * 60 * 1000}} as |since| to
      * get only recent errors (last 5 minutes).
      */

@@ -71,14 +71,14 @@ export default function CookieBanner() {
               aggregate. Your answer is stored on this device.{" "}
               <Link
                 href="/cookie-policy"
-                className="text-orange-700 dark:text-orange-300 hover:underline"
+                className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
               >
                 Cookie Policy
               </Link>{" "}
               ·{" "}
               <Link
                 href="/privacy-policy"
-                className="text-orange-700 dark:text-orange-300 hover:underline"
+                className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
               >
                 Privacy Policy
               </Link>

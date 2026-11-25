@@ -251,6 +251,32 @@ real end-to-end SMS sign-in has to be verified on a deployed origin.
 
    `RATE_LIMIT_STORE_OPTIONAL=1` bypasses that startup check. It exists only for the local/CI E2E suite, which builds production and runs against a throwaway database. Never set it on Production or Preview.
 
+### Rate-limit keys: the trust boundary (`TRUST_PROXY`)
+
+Limits are charged to a signed-in account (`u:<uid>`) and, because the token is
+only decoded at the proxy, to a per-address ceiling of 10× the account limit so
+that minting a token per request cannot buy unlimited budget. Anonymous traffic
+is charged to the client address — but only an address this deployment can
+trust: `x-forwarded-for` is read only when `VERCEL=1` (the platform overwrites
+it) or `TRUST_PROXY=1` (your reverse proxy is the only path in and sanitises the
+chain). See `apps/web/src/lib/clientIp.ts`.
+
+**That has one failure mode worth knowing before it bites.** A self-hosted
+deployment with neither variable set cannot identify callers, so every visitor
+shares one bucket — 30 API requests a minute for the whole site. The app boots
+with a `[clientIp] neither VERCEL=1 nor TRUST_PROXY=1 is set` warning in the log
+for exactly this reason. Fix and redeploy:
+
+| Deployment | Set |
+| --- | --- |
+| Vercel | nothing (`VERCEL=1` is set by the platform) |
+| Docker/VM behind nginx, Caddy, ALB, or Cloudflare Tunnel | `TRUST_PROXY=1` |
+| Docker published directly, no proxy | leave both unset; keep the warning in mind and put a proxy in front before real traffic |
+
+Never set `TRUST_PROXY=1` when the app is directly reachable: the header then
+becomes client-supplied and a caller can mint a fresh rate-limit bucket per
+request.
+
 ### App Check: quota, billing, and the emergency escape hatch
 
 API routes verify a Firebase App Check token when enforcement is on. The client

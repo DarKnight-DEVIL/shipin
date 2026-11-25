@@ -58,6 +58,11 @@ const eslintConfig = defineConfig([
     "coverage/**",
     // Migration scripts and tooling are not application source.
     "scripts/**",
+    // Playwright artefacts. Both are gitignored, so CI never lints them — but a
+    // developer who runs `npm run test:e2e:local` and then `npm run lint` used
+    // to get hundreds of errors from the trace viewer's bundled JS.
+    "playwright-report/**",
+    "test-results/**",
     // Agent tooling and imported scratch artifacts are not project source.
     ".claude/**",
     ".cloud-attachments/**",

@@ -77,3 +77,43 @@ export function getClientIp(request: Request): string | null {
 
   return null;
 }
+
+/**
+ * How this deployment is allowed to identify a caller.
+ *
+ * `none` is the safe per-request answer (one shared bucket, so a client cannot
+ * mint its own), but on a self-hosted deployment behind nginx it also means the
+ * entire site shares a single API budget: 30 requests a minute, total, for
+ * everyone. The symptom is mass 429s that look like an application bug, and no
+ * request-path code can tell a human why.
+ */
+export type ClientIpTrust = "vercel" | "proxy" | "none";
+
+export function getClientIpTrust(): ClientIpTrust {
+  if (process.env.VERCEL === "1") return "vercel";
+  if (process.env.TRUST_PROXY === "1") return "proxy";
+  return "none";
+}
+
+/**
+ * Warn once at boot when no trust boundary is declared, and report the state.
+ *
+ * Warning rather than throwing: a single-instance deployment is still usable,
+ * just shared, and denying service over a variable a human can set live would
+ * contradict the rest of the boot checks.
+ */
+export async function reportClientIpTrust(): Promise<ClientIpTrust> {
+  const trust = getClientIpTrust();
+
+  if (trust === "none" && process.env.NODE_ENV === "production") {
+    // Imported dynamically: the proxy imports this module on every request and
+    // the logger is only needed on this one startup path.
+    const { childLogger } = await import("./logger");
+    childLogger({ service: "client-ip" }).warn(
+      "[clientIp] neither VERCEL=1 nor TRUST_PROXY=1 is set, so every caller shares one rate-limit bucket. " +
+        "Set TRUST_PROXY=1 when a reverse proxy you control is the only path to this app (see DEPLOYMENT.md)."
+    );
+  }
+
+  return trust;
+}

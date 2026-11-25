@@ -145,6 +145,24 @@ describe("verifyPayPalWebhook", () => {
     );
     expect(verificationCalls).toHaveLength(0);
   });
+
+  it("ignores ALLOW_UNVERIFIED_WEBHOOKS in production", async () => {
+    // The flag exists to make local development usable without a PayPal webhook
+    // registration. In production it would let anyone POST a forged
+    // PAYMENT.CAPTURE.COMPLETED, so the opt-in must not survive there — one
+    // copied env var is the whole attack.
+    envState.production = true;
+    envState.webhookId = undefined;
+    process.env.ALLOW_UNVERIFIED_WEBHOOKS = "1";
+
+    try {
+      await expect(verifyPayPalWebhook(mockHeaders, "{}")).rejects.toThrow(
+        /PayPal webhook verification is unavailable/
+      );
+    } finally {
+      delete process.env.ALLOW_UNVERIFIED_WEBHOOKS;
+    }
+  });
 });
 
 import { getPayPalBaseUrl, getPayPalAccessToken } from "@/lib/paypal";

@@ -211,7 +211,11 @@ out(
 );
 
 if (unverified.length > 0) {
+  // Name the call sites. A bare count is unactionable: the reader cannot tell
+  // which query the gate skipped, and "2 calls" stayed in this output for
+  // weeks precisely because nobody could find them.
   out(
     `${unverified.length} call(s) could not be read: pass string literals to where()/orderBy().`
   );
+  for (const entry of unverified) out(`  - ${entry}`);
 }

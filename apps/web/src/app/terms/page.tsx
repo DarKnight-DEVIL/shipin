@@ -185,7 +185,7 @@ export default function TermsPage() {
               Our{" "}
               <Link
                 href="/refund-policy"
-                className="text-orange-700 dark:text-orange-300 hover:underline"
+                className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
               >
                 Refund Policy
               </Link>{" "}
@@ -355,7 +355,7 @@ export default function TermsPage() {
               your account dashboard or email us at{" "}
               <a
                 href="mailto:support@shipin.co"
-                className="text-orange-700 dark:text-orange-300 hover:underline"
+                className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
               >
                 support@shipin.co
               </a>
@@ -371,7 +371,7 @@ export default function TermsPage() {
               Phone:{" "}
               <a
                 href="tel:+912268234567"
-                className="text-orange-700 dark:text-orange-300 hover:underline"
+                className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
               >
                 +91 22 6823 4567
               </a>
@@ -390,37 +390,37 @@ export default function TermsPage() {
           >
             <Link
               href="/"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Home
             </Link>
             <Link
               href="/track"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Track a shipment
             </Link>
             <Link
               href="/privacy-policy"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Privacy Policy
             </Link>
             <Link
               href="/refund-policy"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Refund Policy
             </Link>
             <Link
               href="/cookie-policy"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Cookie Policy
             </Link>
             <Link
               href="/licences"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Licences
             </Link>
@@ -429,7 +429,7 @@ export default function TermsPage() {
             Questions?{" "}
             <Link
               href="/support"
-              className="text-orange-700 dark:text-orange-300 hover:underline"
+              className="text-orange-700 underline underline-offset-2 decoration-orange-700/50 hover:decoration-orange-700 dark:text-orange-300 dark:decoration-orange-300/50 dark:hover:decoration-orange-300"
             >
               Contact Support
             </Link>
