@@ -325,7 +325,12 @@ describe("POST /api/admin/wallet/credit", () => {
     });
     expect(mocks.txSet).toHaveBeenCalledWith(
       expect.objectContaining({ __kind: "wallet" }),
-      { balance: 25.55, currency: "EUR", updatedAt: "__SERVER_TS__" },
+      {
+        balance: 25.55,
+        balanceMinor: 2555,
+        currency: "EUR",
+        updatedAt: "__SERVER_TS__",
+      },
       { merge: true }
     );
     expect(mocks.txSet).toHaveBeenCalledWith(
@@ -334,6 +339,9 @@ describe("POST /api/admin/wallet/credit", () => {
         userId: "customer-1",
         type: "admin_credit",
         amount: 15.55,
+        balanceAfter: 25.55,
+        amountMinor: 1555,
+        balanceAfterMinor: 2555,
         description: "Goodwill",
         requestId: null,
         createdBy: "admin-1",

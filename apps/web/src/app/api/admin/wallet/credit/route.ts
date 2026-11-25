@@ -212,9 +212,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
        * ====================================
        */
 
-      const newBalance = toDecimal(
-        currentBalanceMinor + minorFromStored(creditAmount)
-      );
+      const newBalanceMinor = currentBalanceMinor + minorFromStored(creditAmount);
+      const newBalance = toDecimal(newBalanceMinor);
 
       /*
        * ====================================
@@ -226,6 +225,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         walletRef,
         {
           balance: newBalance,
+
+          // ADR-0008 phase 3: both representations, one atomic write.
+          balanceMinor: newBalanceMinor,
 
           currency: walletSnapshot.exists
             ? walletSnapshot.data()?.currency || "USD"
@@ -252,6 +254,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         amount: creditAmount,
 
         balanceAfter: newBalance,
+
+        amountMinor: minorFromStored(creditAmount),
+
+        balanceAfterMinor: newBalanceMinor,
 
         description,
 

@@ -197,14 +197,16 @@ export const POST = withErrorHandler(
           ? storedMinor(walletSnapshot.data(), "balance")
           : 0;
 
-        const newWalletBalance = toDecimal(
-          currentBalanceMinor + minorFromStored(currentWalletRefund)
-        );
+        const newWalletBalanceMinor =
+          currentBalanceMinor + minorFromStored(currentWalletRefund);
+        const newWalletBalance = toDecimal(newWalletBalanceMinor);
 
         transaction.set(
           walletRef,
           {
             balance: newWalletBalance,
+            // ADR-0008 phase 3: both representations, one atomic write.
+            balanceMinor: newWalletBalanceMinor,
             currency: walletSnapshot.exists
               ? walletSnapshot.data()?.currency || "USD"
               : "USD",
@@ -218,6 +220,8 @@ export const POST = withErrorHandler(
           type: "refund",
           amount: currentWalletRefund,
           balanceAfter: newWalletBalance,
+          amountMinor: minorFromStored(currentWalletRefund),
+          balanceAfterMinor: newWalletBalanceMinor,
           description: currentOffer.reason || "Partial refund",
           requestId,
           createdAt: FieldValue.serverTimestamp(),

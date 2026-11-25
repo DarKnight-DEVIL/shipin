@@ -339,14 +339,17 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       }
 
       /*
-       * The balance this response reports is read through the compat helper
-       * (ADR-0008, phase 2); the write below stays a decimal increment because
-       * the wallet writers are converted together in phase 3.
+       * ADR-0008 phase 3. The minor balance is written as an absolute value
+       * rather than an increment: `FieldValue.increment` on a field that a
+       * legacy wallet does not have starts from zero, which would credit a
+       * migrated amount against a balance of nothing. The read above is inside
+       * this transaction, so an absolute write is just as atomic as the
+       * increment it sits next to.
        */
-      const newBalance = toDecimal(
+      const newBalanceMinor =
         storedMinor(walletSnapshot.data(), "balance") +
-          minorFromStored(capturedAmount)
-      );
+        minorFromStored(capturedAmount);
+      const newBalance = toDecimal(newBalanceMinor);
 
       /*
        * Update/create wallet.
@@ -355,6 +358,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         transaction.update(walletRef, {
           balance: FieldValue.increment(capturedAmount),
 
+          balanceMinor: newBalanceMinor,
+
           currency: "USD",
 
           updatedAt: FieldValue.serverTimestamp(),
@@ -362,6 +367,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       } else {
         transaction.set(walletRef, {
           balance: capturedAmount,
+
+          balanceMinor: newBalanceMinor,
 
           currency: "USD",
 
@@ -382,6 +389,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         amount: capturedAmount,
 
         balanceAfter: newBalance,
+
+        amountMinor: minorFromStored(capturedAmount),
+
+        balanceAfterMinor: newBalanceMinor,
 
         description: "PayPal Wallet Top Up",
 

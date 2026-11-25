@@ -71,6 +71,39 @@ expire and the hourly cron keeps reporting `expired: 0`. Run migration 002 once
 against the production project (dry run first); after that every writer
 produces the shape the sweep needs.
 
+```bash
+npm run migrate -- 003-money-minor-units --dry-run   # report only
+npm run migrate -- 003-money-minor-units             # apply
+```
+
+**Required before ADR-0008 phase 4.** Adds `balanceMinor` to every wallet and
+`amountMinor` / `balanceAfterMinor` to every ledger row, converting from the
+decimal fields. It is safe to run while the writers still write decimals: the
+readers take whichever field is present. Three things the report counts, and
+what to do about each:
+
+| Counter | Meaning | Action |
+| --- | --- | --- |
+| `wrote N` | Converted | None |
+| `already migrated` | Already carried a valid integer | None; reruns are inert |
+| `mismatch(es)` | The stored integer disagrees with the stored decimal | Investigate before phase 4 — the integer is what readers will use, so a disagreement means either a partial earlier write or a manual edit |
+| `unreadable` | The decimal is NaN or a malformed string | Left alone deliberately (writing 0 would erase money). Reconcile against the ledger by hand |
+
+The run is idempotent; a partial failure is recovered by running it again. It
+was verified against the emulator with seeded legacy, already-converted,
+mismatched and unreadable documents, including a page size of 2 to exercise the
+`__name__` cursor.
+
+**After phase 3 the dry run doubles as the divergence check.** Once the writers
+dual-write, `--dry-run` reports as a mismatch every document whose `…Minor` field
+disagrees with its decimal — which is exactly the corruption that dual-writing
+can introduce. Run it after each deploy that touches a money writer; a nonzero
+mismatch count means stop and reconcile before phase 4 retires the decimals.
+
+`reserved` on a wallet is still decimal-only. It is an operational hold with a
+30-minute TTL rather than a ledger amount, so it converts with phase 4 (or gets
+dropped in favour of `walletHolds`) rather than in this backfill.
+
 ### Migration procedure (four steps, two deploys minimum)
 
 ```
@@ -281,6 +314,7 @@ must inspect the body — alert when `status !== "healthy"`.
 | Job | Schedule | Failure signal |
 |---|---|---|
 | Quote expiry (`expire-quotes-cron.yml` → `POST /api/admin/requests/quotes/expire`) | hourly, GitHub Actions | the run goes red; it posts to the optional `ALERT_WEBHOOK_URL` secret and writes a job summary |
+| Wallet ledger invariants (`wallet-invariants-cron.yml` → `POST /api/admin/wallet/invariants`) | daily, GitHub Actions | 409 on any balance/ledger/hold mismatch or a truncated scan; posts to `ALERT_WEBHOOK_URL` and writes the drift report to the job summary |
 
 GitHub schedules are best-effort: a run can be delayed or skipped under load, so
 `expired: 0` from one run is not proof the sweep is broken — check the run
