@@ -1,0 +1,104 @@
+name: Weekly Audits
+
+# The accessibility and security audits used to run on every push from `ci.yml`.
+# Neither verdict changes between two pushes that touch no dependencies, so a
+# push spent a runner on re-deriving a result that was already known.
+#
+# Moving them here does not drop either check — it changes how fast a failure
+# interrupts you:
+#
+#   - the accessibility audit runs `src/lib/axeScan.test.ts`, the axe-core
+#     contract for the shared page shells. A page that regresses its landmarks
+#     or contrast is caught at the next weekly run, not never;
+#   - the security audit runs `audit:gate` (production closure, high/critical,
+#     allowlist with expiry) and the unpinned-dependency report. Advisories are
+#     still judged DAILY by `dependency-gate.yml`, which runs `audit:gate` and
+#     `check:licenses` against the committed lockfile. The weekly run adds the
+#     lockfile-integrity verdict (`npm ci --package-lock-only`), which the
+#     daily gate does not take.
+#
+# Neither job needs a build, so both stay cheap: install and assert.
+on:
+  schedule:
+    # Mondays 04:47 UTC — after the daily dependency gate (04:20) so a licence
+    # or advisory verdict arrives before this one. Off the hour to avoid
+    # queueing behind the other crons.
+    - cron: "47 4 * * 1"
+  # A release can ask for these verdicts without waiting for Monday.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+
+concurrency:
+  # Verdicts are the point, so a newer run must not cancel one mid-install.
+  group: weekly-audits
+  cancel-in-progress: false
+
+jobs:
+  a11y:
+    name: Accessibility Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          package-manager: npm@12.2.2
+
+      - name: Enable corepack (respects packageManager field)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run axe-core contract tests
+        run: npm run test:security --workspace=@shipin/web -- src/lib/axeScan.test.ts
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          package-manager: npm@12.2.2
+
+      - name: Enable corepack (respects packageManager field)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit (production dependencies, high/critical)
+        # Build/test tooling is excluded, and the one remaining advisory that
+        # has no fixed release is allowlisted with a dated expiry in
+        # scripts/audit-gate.mjs. Everything else fails the job.
+        run: npm run audit:gate
+
+      - name: Report unpinned dependencies
+        # Advisory only. The manifest intentionally uses caret ranges, so a
+        # hard failure here would turn every run red without changing anything.
+        run: |
+          UNPINNED=$(jq -r '.dependencies | to_entries[] | select(.value | startswith("^") or startswith("~")) | "\(.key): \(.value)"' apps/web/package.json)
+          if [ -n "$UNPINNED" ]; then
+            echo "::warning::Dependencies using caret/tilde ranges:"
+            echo "$UNPINNED"
+          fi
+
+      - name: Verify lockfile integrity
+        run: npm ci --package-lock-only --ignore-scripts

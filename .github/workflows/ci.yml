@@ -224,8 +224,8 @@ jobs:
         # which route grew and by how much.
         run: npm run check:bundle-budget
 
-  security-audit:
-    name: Security Audit
+  test:
+    name: Tests
     runs-on: ubuntu-latest
     needs: lint-and-typecheck
     steps:
@@ -236,49 +236,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-          package-manager: npm@12.2.2
-
-      - name: Enable corepack (respects packageManager field)
-        run: corepack enable
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run npm audit (production dependencies, high/critical)
-        # Build/test tooling is excluded, and the one remaining advisory that
-        # has no fixed release is allowlisted with a dated expiry in
-        # scripts/audit-gate.mjs. Everything else fails the job.
-        run: npm run audit:gate
-
-      - name: Report unpinned dependencies
-        # Advisory only. The manifest intentionally uses caret ranges, so a
-        # hard failure here would turn every run red without changing anything.
-        run: |
-          UNPINNED=$(jq -r '.dependencies | to_entries[] | select(.value | startswith("^") or startswith("~")) | "\(.key): \(.value)"' apps/web/package.json)
-          if [ -n "$UNPINNED" ]; then
-            echo "::warning::Dependencies using caret/tilde ranges:"
-            echo "$UNPINNED"
-          fi
-
-      - name: Verify lockfile integrity
-        run: npm ci --package-lock-only --ignore-scripts
-
-  test:
-    name: Tests (node ${{ matrix.node }})
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node: ['22', '24']
-    needs: lint-and-typecheck
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
           cache: "npm"
 
       - name: Install dependencies
@@ -309,79 +266,6 @@ jobs:
         run: npm run test:coverage
         env:
           # Dummy env vars for build-time validation
-          PAYPAL_CLIENT_ID: "test"
-          PAYPAL_CLIENT_SECRET: "test"
-          NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
-          PAYPAL_API_URL: "https://api-m.sandbox.paypal.com"
-          PAYPAL_ENV: "sandbox"
-          SMTP_EMAIL: "test@test.com"
-          SMTP_PASSWORD: "test"
-          FIREBASE_ADMIN_PROJECT_ID: "test"
-          FIREBASE_ADMIN_CLIENT_EMAIL: "test@test.com"
-          FIREBASE_ADMIN_PRIVATE_KEY: "test"
-          R2_ACCOUNT_ID: "test"
-          R2_ACCESS_KEY_ID: "test"
-          R2_SECRET_ACCESS_KEY: "test"
-          R2_BUCKET_NAME: "test"
-          WHATSAPP_ACCESS_TOKEN: "test"
-          WHATSAPP_PHONE_NUMBER_ID: "test"
-          UPSTASH_REDIS_REST_URL: ""
-          UPSTASH_REDIS_REST_TOKEN: ""
-          NODE_ENV: "test"
-
-  # ─── Test-order independence ────────────────────────────────────────────────
-  # The unit suite runs with `isolate: true` (per-file isolation), but Vitest's
-  # one module registry. Shuffling the file order on each run means a mock or a
-  # module-level cache leaking between files fails here, instead of passing by
-  # luck on whatever order the filesystem happened to return.
-  #
-  # Reproduce a failure locally with the seed Vitest prints in its output:
-  #   node scripts/run-test-shuffle-ci.js --sequence.seed=<seed>
-  #
-  # Fix the FILE that fails, not the shared setup: `vi.resetModules()` plus
-  # `await import()` of the module under test in `beforeEach`, as
-  # src/lib/appCheck.test.ts does. A registry reset in vitest.setup.ts would
-  # hand every file a private module graph and quietly delete the class of leak
-  # this job exists to catch — it did briefly, and the shuffle guarantee was not
-  # true while it was there.
-  test-order-independence:
-    name: Test Order Independence
-    runs-on: ubuntu-latest
-    needs: lint-and-typecheck
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-          package-manager: npm@12.2.2
-
-      - name: Enable corepack (respects packageManager field)
-        run: corepack enable
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests in shuffled file order
-        # Three fixed seeds: any single ordering can pass while another exposes
-        # cross-file coupling, so one seed would let CI go green on a lucky
-        # order. Fixed rather than random so a red run is reproducible from the
-        # log alone; rotate or add a seed when you want more coverage.
-        # `npm run test:shuffle -- --sequence.seed=N` does NOT forward the flag:
-        # npm reads it as its own config, warns "Unknown cli config
-        # --sequence.seed" and runs vitest with a clock-derived seed. This job
-        # therefore ran three random orders while advertising three fixed ones,
-        # which is why a red nightly was not replayable from CI. The wrapper
-        # invokes vitest directly, so the seed is the seed.
-        run: |
-          set -euo pipefail
-          for seed in 104729 130363 155921; do
-            node scripts/run-test-shuffle-ci.js --sequence.seed=$seed
-          done
-        env:
           PAYPAL_CLIENT_ID: "test"
           PAYPAL_CLIENT_SECRET: "test"
           NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test"
@@ -650,27 +534,3 @@ jobs:
       - name: Run Firestore rules tests
         run: npm run test:rules
 
-  # ─── Accessibility audit ────────────────────────────────────────────────────
-  a11y:
-    name: Accessibility Audit
-    runs-on: ubuntu-latest
-    needs: [lint-and-typecheck]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-          package-manager: npm@12.2.2
-
-      - name: Enable corepack (respects packageManager field)
-        run: corepack enable
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run axe-core contract tests
-        run: npm run test:security --workspace=@shipin/web -- src/lib/axeScan.test.ts

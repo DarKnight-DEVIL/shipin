@@ -1,8 +1,9 @@
 name: Dependency Gate Daily
 
-# `ci.yml` runs both gates on every push. That is exactly the gap this covers:
-# an advisory published today cannot fail a build that already ran, and an
-# allowlist entry reaches its expiry date without anyone committing anything.
+# `weekly-audits.yml` re-runs `audit:gate` on Mondays, and `check:licenses`
+# runs nowhere else. That is the gap this covers: an advisory published today
+# cannot fail a build that already ran, and an allowlist entry reaches its
+# expiry date without anyone committing anything.
 # Once a day, against the committed lockfile:
 #
 #   - `audit:gate` asks the registry for advisories *now*, so a newly published

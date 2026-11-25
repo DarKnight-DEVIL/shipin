@@ -333,7 +333,7 @@ docker run -p 3000:3000 \
 ### Accessibility Audit
 
 - Run locally: `npm test -- src/lib/axeScan.test.ts`
-- CI runs automatically via `a11y` job
+- CI runs it weekly in `.github/workflows/weekly-audits.yml` (`Accessibility Audit` job); dispatch that workflow for an on-demand run
 - Add `runAxeScan()` to any new page/component for runtime scans
 
 ### Updating Dependencies

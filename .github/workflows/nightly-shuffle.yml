@@ -1,9 +1,12 @@
 name: Nightly Shuffled Tests
 
-# The PR workflow runs three fixed seeds so a red run is reproducible. That
-# leaves every other ordering untested, which is exactly where an unnoticed
-# cross-file leak would hide. This nightly run picks a fresh seed each time and
-# records it in the job summary, so the ordering that failed can be replayed.
+# The per-push suite runs in filesystem order, so an ordering-dependent leak
+# (a mock or a module-level cache surviving between files) can pass every
+# push. This nightly run shuffles with a fresh clock-derived seed and records
+# it in the job summary, so a red run is replayable and each night explores an
+# ordering the previous ones did not. It is deliberately the only shuffle job:
+# a second, per-push shuffle re-ran the whole suite for the same class of bug
+# at per-commit cost, and a fresh seed nightly covers more orderings for less.
 on:
   schedule:
     # 03:17 UTC — off the hour so it does not queue behind the release jobs.

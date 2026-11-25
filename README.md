@@ -43,7 +43,7 @@ packages/
 
 ## Prerequisites
 
-- Node.js 24 (`.nvmrc`); CI matrix: Node 22, 24; engines: >=22.12
+- Node.js 24 (`.nvmrc`, CI); engines: >=22.12
 - A Firebase project with Auth and Firestore enabled
 - PayPal REST credentials (sandbox or live)
 - Upstash Redis database — **required in production** (see Security)

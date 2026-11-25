@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Tech Stack
 
 - **Framework**: Next.js 16.4.6 (App Router) with React 19.3.1
-- **Runtime**: Node 24 (`.nvmrc`, Docker image, CI `NODE_VERSION`); `engines` allows >=22.12 and CI also tests Node 22
+- **Runtime**: Node 24 (`.nvmrc`, Docker image, CI `NODE_VERSION`); `engines` allows >=22.12 as the floor, and CI runs 24 only
 - **Language**: TypeScript with strict mode
 - **Styling**: Tailwind CSS v4
 - **Database**: Firebase (Firestore for data, Auth for authentication, Storage for files)
