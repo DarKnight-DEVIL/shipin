@@ -7,6 +7,7 @@ import { verifyTotp, verifyBackupCode } from "@/lib/mfa";
 import { getMfaSession } from "@/lib/mfaSession";
 import { getAccountBlock } from "@/lib/accountStatus";
 import { verifyAppCheckRequest } from "@/lib/appCheck";
+import { recordAppCheckRejection } from "@/lib/appCheckMetrics";
 
 /** A syntactically valid base32 secret that no administrator has enrolled. */
 const TIMING_DECOY_TOTP_SECRET = "JBSWY3DPEHPK3PXP";
@@ -58,6 +59,8 @@ export async function requireAdmin(request: Request): Promise<AdminUser> {
   const appCheck = await verifyAppCheckRequest(request);
 
   if (appCheck === "missing" || appCheck === "invalid") {
+    // Counted for /api/health, same as the customer gate in lib/auth.ts.
+    recordAppCheckRejection();
     throw new Error("APP_CHECK_FAILED");
   }
 

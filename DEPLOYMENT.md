@@ -251,6 +251,50 @@ real end-to-end SMS sign-in has to be verified on a deployed origin.
 
    `RATE_LIMIT_STORE_OPTIONAL=1` bypasses that startup check. It exists only for the local/CI E2E suite, which builds production and runs against a throwaway database. Never set it on Production or Preview.
 
+### App Check: quota, billing, and the emergency escape hatch
+
+API routes verify a Firebase App Check token when enforcement is on. The client
+mints that token with reCAPTCHA Enterprise, and reCAPTCHA Enterprise calls
+`assessment.create()` roughly every half token-TTL (default TTL is one day, so
+about two assessments per active user per day — **not** one per API request;
+backend verification is free).
+
+**Quota behaviour.** Projects without billing get 10,000 assessments per month
+per *organization*. Past that, `CreateAssessment` fails closed and every client
+stops being able to mint a token: sign-in still works (it talks to Firebase Auth
+directly and never touches these routes), but each API call is rejected with
+`APP_CHECK_FAILED`.
+
+**Billing is the fix, not a cost risk.** Attaching a billing account to the
+Google Cloud project moves the tier to Premium: assessments 10,001–100,000 in a
+month are a flat $8, then $1 per 1,000. At ShipIN's volume the realistic bill is
+$0–8/month, and the failure mode changes from "hard outage until the 1st" to
+"keeps working". Do this before launch rather than after an outage.
+
+**How the outage is detected.** `/api/health` reports `degraded` with
+`appCheck.rejectionsLast10Min` and a warning once rejections cross the spike
+threshold, and a single Sentry alert fires per five-minute window
+(`lib/appCheckMetrics.ts`). Sign-in keeps working during the outage, so user
+reports alone would be misleading — trust the probe.
+
+**Emergency escape hatch.** To restore service immediately while the quota
+keeps failing:
+
+1. Vercel Dashboard → Project → Settings → Environment Variables
+2. Set `APP_CHECK_ENFORCEMENT=false` for Production
+3. Redeploy (env changes need a new deployment to take effect)
+
+This turns the server-side gate off: API routes stop requiring a token, so the
+app works again at the cost of bot protection until the quota resets or billing
+is attached. It is a deliberate, documented trade — never leave it off as a
+permanent state. Set it back to `true` (or remove the variable, since a
+production build with a site key configured enforces by default) once reCAPTCHA
+is healthy again.
+
+Do not enable App Check Replay Protection on high-traffic routes: it forces a
+fresh assessment on every request and would multiply quota use by orders of
+magnitude.
+
 ### Verifying Rate Limiting
 
 ```bash

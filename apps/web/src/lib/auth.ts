@@ -11,6 +11,7 @@ import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { getAdminAuthError, type AdminUser } from "./adminAuth";
 import { getAccountBlock } from "./accountStatus";
 import { verifyAppCheckRequest } from "./appCheck";
+import { recordAppCheckRejection } from "./appCheckMetrics";
 import { toShipINError, serializeError } from "@/utils/errors";
 
 export interface VerifyIdTokenOptions {
@@ -85,6 +86,10 @@ async function verifyRequest(
   // rejected without spending a token verification on it.
   const appCheck = await verifyAppCheckRequest(request);
   if (appCheck === "missing" || appCheck === "invalid") {
+    // Counted for /api/health: a spike means clients cannot mint App Check
+    // tokens at all (quota exhaustion or broken attestation), which is a
+    // deployment-wide outage of the API surface, not one user's problem.
+    recordAppCheckRejection();
     return NextResponse.json(
       {
         success: false,

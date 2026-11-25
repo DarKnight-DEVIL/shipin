@@ -51,6 +51,10 @@ import {
   RATE_LIMIT_ERROR_WINDOW_MS,
 } from "@/lib/redisRateLimiter";
 import { getIndiaPostStatus } from "@/features/shipments/carriers";
+import {
+  readAppCheckRejections,
+  reportAppCheckSpike,
+} from "@/lib/appCheckMetrics";
 
 export async function GET() {
   // One derivation, shared with the limiter that enforces the limits. The
@@ -78,6 +82,15 @@ export async function GET() {
   // Enforced without a site key is not a warning: the API rejects every browser
   // request, so this deployment cannot serve users at all.
   const appCheckBroken = appCheckStatus === "misconfigured";
+
+  // A spike of APP_CHECK_FAILED rejections means clients cannot mint App Check
+  // tokens at all — reCAPTCHA quota exhausted or attestation broken. Sign-in
+  // still works (it never touches these routes) but every API call is
+  // rejected, so the deployment is degraded and the on-call gets one Sentry
+  // alert per outage window.
+  const appCheckRejections = await readAppCheckRejections();
+  const appCheckSpike = appCheckRejections.spike;
+  const alerted = reportAppCheckSpike(appCheckRejections);
 
   // Relative to this request, not to module load: a long-lived instance must
   // not keep reporting errors from hours ago as "recent".
@@ -122,7 +135,11 @@ export async function GET() {
 
   const hasRecentErrors = redisErrors.some((e) => e.recentErrors > 0);
   const degraded =
-    missingSharedStore || hasRecentErrors || appCheckBroken || trackingPlaceholder;
+    missingSharedStore ||
+    hasRecentErrors ||
+    appCheckBroken ||
+    trackingPlaceholder ||
+    appCheckSpike;
   const status = degraded ? "degraded" : "healthy";
 
   return NextResponse.json(
@@ -141,6 +158,13 @@ export async function GET() {
         configured: appCheckConfigured,
         enforced: appCheckEnforced,
         status: appCheckStatus,
+        rejectionsLast10Min: appCheckRejections.recentRejections,
+        ...(appCheckSpike
+          ? {
+              warning:
+                "Clients cannot mint App Check tokens — reCAPTCHA quota exhausted or attestation broken. Sign-in still works; every API call is rejected. Emergency fix: set APP_CHECK_ENFORCEMENT=false and redeploy.",
+            }
+          : {}),
         ...(appCheckBroken
           ? {
               warning:
@@ -148,6 +172,7 @@ export async function GET() {
             }
           : {}),
       },
+      ...(alerted ? { appCheckSpikeAlerted: true } : {}),
       rateLimits: {
         windowMs: "5m",
         errors: redisErrors,

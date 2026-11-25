@@ -18,6 +18,9 @@ const state = vi.hoisted(() => ({
   indiaPostUrl: "",
   indiaPostClientId: "",
   indiaPostClientSecret: "",
+  appCheckRejections: 0,
+  appCheckSpike: false,
+  alertSent: false,
   errors: { web: 0, api: 0, strict: 0, login: 0 } as Record<string, number>,
 }));
 
@@ -80,6 +83,23 @@ vi.mock("@/lib/appCheck", () => ({
   },
 }));
 
+/**
+ * Stub the rejection tracker: the real module would open a Redis client from
+ * the env stub above and put a network call behind a unit test. The tracker's
+ * own thresholds and dedupe are covered in appCheckMetrics.test.ts; this file
+ * only checks how the route reports them.
+ */
+vi.mock("@/lib/appCheckMetrics", () => ({
+  readAppCheckRejections: async () => ({
+    recentRejections: state.appCheckRejections,
+    spike: state.appCheckSpike,
+  }),
+  reportAppCheckSpike: () => {
+    state.alertSent = state.appCheckSpike;
+    return state.appCheckSpike;
+  },
+}));
+
 vi.mock("@/lib/rateLimiter", () => {
   const makeLimiter = (name: string) => ({
     record: vi.fn(),
@@ -122,6 +142,12 @@ beforeEach(() => {
   state.token = "";
   state.appCheckSiteKey = "";
   state.appCheckEnforcement = "";
+  state.indiaPostUrl = "";
+  state.indiaPostClientId = "";
+  state.indiaPostClientSecret = "";
+  state.appCheckRejections = 0;
+  state.appCheckSpike = false;
+  state.alertSent = false;
   state.errors = { web: 0, api: 0, strict: 0, login: 0 };
 });
 
@@ -169,8 +195,51 @@ describe("GET /api/health", () => {
     expect(body.tracking).toEqual({ configured: true, status: "india-post" });
   });
 
-  it("reports degraded when production tracking serves the placeholder feed", async () => {
+  it("reports degraded and alerts once when App Check rejections spike", async () => {
+    // The reCAPTCHA quota is exhausted: clients cannot mint App Check tokens,
+    // so every API call is rejected even though sign-in still works. The probe
+    // has to say degraded or the outage is invisible to monitoring.
     state.isProduction = true;
+    state.url = "https://t.upstash.io";
+    state.token = "tok";
+    state.indiaPostUrl = "https://tracking.example";
+    state.indiaPostClientId = "client";
+    state.indiaPostClientSecret = "secret";
+    state.appCheckSiteKey = "site-key";
+    state.appCheckEnforcement = "true";
+    state.appCheckRejections = 40;
+    state.appCheckSpike = true;
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("degraded");
+    expect(body.appCheck.rejectionsLast10Min).toBe(40);
+    expect(body.appCheck.warning).toMatch(/APP_CHECK_ENFORCEMENT=false/);
+    expect(body.appCheckSpikeAlerted).toBe(true);
+  });
+
+  it("stays healthy when App Check rejections are ordinary background noise", async () => {
+    state.isProduction = true;
+    state.url = "https://t.upstash.io";
+    state.token = "tok";
+    state.indiaPostUrl = "https://tracking.example";
+    state.indiaPostClientId = "client";
+    state.indiaPostClientSecret = "secret";
+    state.appCheckRejections = 2;
+    state.appCheckSpike = false;
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.status).toBe("healthy");
+    expect(body.appCheck.rejectionsLast10Min).toBe(2);
+    expect(body.appCheck.warning).toBeUndefined();
+    expect(body.appCheckSpikeAlerted).toBeUndefined();
+  });
+
+  it("reports degraded when production tracking serves the placeholder feed", async () => {    state.isProduction = true;
     state.url = "https://t.upstash.io";
     state.token = "tok";
     state.indiaPostUrl = "https://tracking.example";
@@ -216,6 +285,7 @@ describe("GET /api/health", () => {
       configured: false,
       enforced: false,
       status: "disabled",
+      rejectionsLast10Min: 0,
     });
   });
 
@@ -229,6 +299,7 @@ describe("GET /api/health", () => {
       configured: true,
       enforced: false,
       status: "configured",
+      rejectionsLast10Min: 0,
     });
   });
 
@@ -243,6 +314,7 @@ describe("GET /api/health", () => {
       configured: true,
       enforced: true,
       status: "enforced",
+      rejectionsLast10Min: 0,
     });
     expect(body.appCheck.warning).toBeUndefined();
   });
@@ -258,6 +330,7 @@ describe("GET /api/health", () => {
       configured: false,
       enforced: true,
       status: "misconfigured",
+      rejectionsLast10Min: 0,
       warning: expect.stringContaining("APP_CHECK_FAILED"),
     });
     // Healthy here would hide a deployment that rejects every browser request.
