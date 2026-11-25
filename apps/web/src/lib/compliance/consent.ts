@@ -49,7 +49,8 @@ export interface ConsentLogEntry {
   method: "explicit" | "implied" | "withdrawn";
   ip?: string;
   userAgent?: string;
-  timestamp: Date;
+  /** ISO-8601, or null for a legacy entry with no timestamp. */
+  timestamp: string | null;
 }
 
 export interface ConsentState {
@@ -163,6 +164,35 @@ export async function updateUserConsent(params: {
 }
 
 /**
+ * An ISO timestamp from whatever Firestore stored.
+ *
+ * Firestore returns a `Timestamp` object, not a Date. Passing that through
+ * `NextResponse.json` serialized it as `{ _seconds, _nanoseconds }`, which the
+ * settings history cannot parse, so every entry rendered without a date. A
+ * Date, a Timestamp, a millisecond number or a legacy ISO string all normalize
+ * here, at the boundary that returns the log.
+ */
+function isoConsentTimestamp(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
+  const candidate =
+    value instanceof Date
+      ? value
+      : typeof (value as { toDate?: unknown }).toDate === "function"
+        ? (value as { toDate: () => Date }).toDate()
+        : null;
+
+  return candidate instanceof Date && !Number.isNaN(candidate.getTime())
+    ? candidate.toISOString()
+    : null;
+}
+
+/**
  * Get consent log for a user (for audit/export)
  */
 export async function getConsentLog(
@@ -187,7 +217,7 @@ export async function getConsentLog(
       granted: Boolean(data.granted),
       version: data.version as string,
       method: (data.method as ConsentLogEntry["method"]) || "explicit",
-      timestamp: (data.timestamp as Date) || null,
+      timestamp: isoConsentTimestamp(data.timestamp),
       ip: (data.ip as string) || undefined,
       userAgent: (data.userAgent as string) || undefined,
     } as ConsentLogEntry;

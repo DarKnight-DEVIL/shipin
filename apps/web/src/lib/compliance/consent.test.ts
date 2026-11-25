@@ -237,7 +237,7 @@ describe("compliance consent ops", () => {
     const logs = await getConsentLog("u-1", 10);
     expect(logs).toHaveLength(2);
     expect(logs[0].category).toBe("marketing");
-    expect(logs[0].timestamp).toEqual(new Date("2026-02-01"));
+    expect(logs[0].timestamp).toBe("2026-02-01T00:00:00.000Z");
   });
 
   it("getGrantedCategories returns only granted categories", async () => {
@@ -336,6 +336,29 @@ describe("compliance consent audit fallbacks", () => {
       ip: undefined,
       userAgent: undefined,
     });
+  });
+
+  it("getConsentLog normalizes a Firestore Timestamp for the API", async () => {
+    // Firestore stores a Timestamp object, not a Date. Serializing it directly
+    // produced `{ _seconds, _nanoseconds }`, which the settings history could
+    // not parse, so the returned log must carry an ISO string.
+    stubCollections(() =>
+      fakeCollection([
+        fakeDoc({
+          id: "log-timestamp",
+          userId: "user-1",
+          category: "support",
+          granted: true,
+          version: "1",
+          method: "explicit",
+          timestamp: { toDate: () => new Date("2026-03-04T05:06:07Z") },
+        }),
+      ])
+    );
+
+    const log = await getConsentLog("user-1");
+
+    expect(log[0].timestamp).toBe("2026-03-04T05:06:07.000Z");
   });
 
   it("getConsentLog keeps populated audit fields", async () => {
