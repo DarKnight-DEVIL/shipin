@@ -258,7 +258,7 @@ describe("describeAppCheckTokenClaims", () => {
   it("says so when the token is not a JWT at all", () => {
     // A debug token is a bare UUID.
     expect(appCheck.describeAppCheckTokenClaims("4f1c0a1e-0000-4000-8000-000000000000")).toBe(
-      "claims=not-a-jwt"
+      "claims=not-a-jwt len=36 parts=1"
     );
   });
 });

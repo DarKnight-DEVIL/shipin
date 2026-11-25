@@ -134,7 +134,9 @@ export function sanitizeAppCheckMessage(message: string): string {
 export function describeAppCheckTokenClaims(token: string): string {
   try {
     const payload = token.split(".")[1];
-    if (!payload) return "claims=not-a-jwt";
+    if (!payload) {
+      return `claims=not-a-jwt len=${token.length} parts=${token.split(".").length}`;
+    }
 
     const decoded = JSON.parse(
       Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")
@@ -148,9 +150,12 @@ export function describeAppCheckTokenClaims(token: string): string {
     const iss = typeof decoded.iss === "string" ? decoded.iss : "(none)";
     const exp = typeof decoded.exp === "number" ? decoded.exp : 0;
 
+    const segments = token.split(".").length;
+    // Length and segment count make a mangled or concatenated value obvious
+    // without recording any part of it.
     return sanitizeAppCheckMessage(
-      `aud=${aud} iss=${iss} age=${Math.round(Date.now() / 1000) - exp}s-to-expiry`
-    ).slice(0, 200);
+      `len=${token.length} parts=${segments} aud=${aud} iss=${iss} expires-in=${exp - Math.round(Date.now() / 1000)}s`
+    ).slice(0, 240);
   } catch {
     // A debug token is a bare UUID, not a JWT: no claims to read.
     return "claims=not-a-jwt";
@@ -179,6 +184,7 @@ export function classifyAppCheckFailure(error: unknown): string {
   if (message.includes('"sub"')) return "subject-missing";
   if (/expired|is not yet valid/i.test(message)) return "time-invalid";
   if (message.includes("Invalid token signature")) return "invalid-signature";
+  if (message.includes("Decoding App Check token failed")) return "token-not-decodable";
   if (/fetch|network|socket|timeout|ECONN|ENOTFOUND|getaddrinfo/i.test(message)) {
     return "jwks-unreachable";
   }
