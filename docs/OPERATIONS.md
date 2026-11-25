@@ -450,7 +450,52 @@ Escalation path: payment failures → PayPal status page → Upstash status page
 with the timeline, the rollback decision, and the follow-up test that prevents
 recurrence.
 
-## 4. Personal data breach response
+## 7. Admin lockout - break-glass MFA reset
+
+Every admin route requires MFA. A raw `X-MFA-WebAuthn` header is deliberately
+**not** accepted by `requireAdmin` (see `lib/adminAuth.ts`): a bare
+assertion proves nothing without a per-request challenge and a signature check
+against the stored public key. The supported path for a security key is to complete
+`POST /api/auth/mfa/session` and present the short-lived signed cookie it
+issues.
+
+That leaves one gap. `POST /api/admin/users/{uid}/mfa/reset` also requires an
+admin who already passed MFA, so **the last admin who loses their security key
+cannot use it** - and with no backup admin there is no way back into `/admin`.
+
+Prevent it. It takes a minute:
+
+1. Enrol a **second** factor on every admin - TOTP or a backup code, not only the
+   key. The gate accepts `X-MFA-TOTP` and `X-MFA-Backup` for exactly
+   this case.
+2. Keep a second admin account with its own factors, so the audited reset API
+   stays available.
+
+Recover it, when prevention came too late. This runs with the service-account key
+rather than a session, so it is the same trust level as deploying: anyone who can
+run it can already read and rewrite every wallet in the project.
+
+```bash
+cd apps/web
+node --env-file=.env.production scripts/break-glass/mfa-reset.ts \
+  --email admin@example.com --reason "security key lost"              # dry run
+
+node --env-file=.env.production scripts/break-glass/mfa-reset.ts \
+  --email admin@example.com --reason "security key lost" \
+  --confirm admin@example.com                                        # apply
+```
+
+It refuses a non-admin account (customers have the audited support path), refuses a
+`--confirm` that does not match the address, and requires a `--reason`. It
+clears the Auth factors and the `mfa.*` fields, revokes refresh tokens, and
+writes an `adminAuditLog` entry with action `mfa.break_glass_reset`.
+
+Afterwards the admin signs in, enrols a new factor at the next prompt, and the
+address keeps its role. Existing ID tokens stay valid for up to an hour; refresh
+tokens are revoked, which stops silent renewal. If nobody expects the reset, treat
+it as a breach and follow section 8: rotate the service-account key.
+
+## 8. Personal data breach response
 
 The regulator clock starts when a ShipIN person becomes aware of an incident, not
 when the post-mortem starts. GDPR allows 72 hours to notify the competent
@@ -483,7 +528,7 @@ and to affected Data Principals.
 Never state in public copy that a breach did not happen, or that data "may have"
 been accessed, before step 3 is complete.
 
-## 7. Retention purge (Privacy Policy §8)
+## 9. Retention purge (Privacy Policy §8)
 
 `POST /api/admin/compliance/retention/purge` enforces the retention table on the
 privacy page. Before this existed the periods were published but nothing applied
