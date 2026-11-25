@@ -366,9 +366,26 @@ export async function apiFetch<T>(
       // before the device's attestation changed), and the rejection means the
       // handler never ran, so replaying is free of side effects — unlike the
       // status-code retries, this one needs no idempotency key.
+      //
+      // Checked before the bare 401 below on purpose: an App Check rejection is
+      // a 401 too, and refreshing the ID token would not help it.
       const refreshedToken = await getAppCheckToken(true);
       if (refreshedToken) {
         appCheckHeaders = { "X-Firebase-AppCheck": refreshedToken };
+        recovered = true;
+      }
+    } else if (response.status === 401) {
+      // The admin gate verifies tokens with `checkRevoked`, so a token stays
+      // rejected for up to an hour after the account's sessions are revoked
+      // (an MFA change, a password reset, the break-glass script) even though
+      // the Firebase SDK considers the cached copy current. Without this the tab
+      // shows 401s on every request and never recovers on its own.
+      //
+      // The rejection happens before any handler runs, so a replay is free of
+      // side effects and needs no idempotency key.
+      const refreshed = await refreshIdToken(user);
+      if (refreshed) {
+        idToken = refreshed;
         recovered = true;
       }
     }

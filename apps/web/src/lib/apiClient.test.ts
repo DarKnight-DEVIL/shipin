@@ -654,6 +654,61 @@ describe("stale verification token recovery", () => {
   });
 });
 
+describe("revoked-session recovery", () => {
+  // The admin gate verifies with `checkRevoked`, so a token issued before the
+  // account's sessions were revoked stays rejected for up to an hour while the
+  // SDK still hands out the cached copy. Without a refresh the tab 401s on
+  // every request and never recovers.
+  const invalidAuth = () =>
+    jsonResponse(
+      { success: false, error: "Invalid authentication.", code: "INVALID_AUTHENTICATION" },
+      401
+    );
+
+  it("refreshes the ID token once and replays after a 401", async () => {
+    signIn();
+    const getIdToken = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce("revoked-token")
+      .mockResolvedValueOnce("fresh-token");
+    state.currentUser = { ...state.currentUser!, getIdToken };
+
+    fetchMock
+      .mockResolvedValueOnce(invalidAuth())
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: "ok" }));
+
+    await expect(apiFetch("/api/admin/analytics")).resolves.toEqual({
+      success: true,
+      data: "ok",
+    });
+
+    expect(getIdToken).toHaveBeenLastCalledWith(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe(
+      "Bearer fresh-token"
+    );
+  });
+
+  it("gives up after one refresh so a genuinely invalid account still fails", async () => {
+    signIn();
+    const getIdToken = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValue("still-bad-token");
+    state.currentUser = { ...state.currentUser!, getIdToken };
+    // A fresh Response per call: a mockResolvedValue would hand the second
+    // attempt the same object, whose body is already consumed.
+    fetchMock.mockImplementation(() => Promise.resolve(invalidAuth()));
+
+    await expect(apiFetch("/api/admin/analytics")).rejects.toMatchObject({
+      code: "INVALID_AUTHENTICATION",
+      status: 401,
+    });
+
+    // Two attempts, not a loop.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("transient GET retry", () => {
   it("replays a GET once after a 503 and returns the second response", async () => {
     signIn();
