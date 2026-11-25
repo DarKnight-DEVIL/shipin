@@ -108,9 +108,35 @@ export function reportAppCheckStatus(): AppCheckConfiguration {
  * while a signature failure means the public keys could not be used at all.
  * Never returns any part of the token or the project identifiers.
  */
+/**
+ * Remove anything credential-shaped from a verifier message before it is
+ * recorded: a JWT, a bare UUID (the debug-token form) or a long opaque run.
+ * The messages this SDK produces quote the failed claim, never the signature,
+ * but stripping is cheaper than trusting that.
+ */
+export function sanitizeAppCheckMessage(message: string): string {
+  return message
+    .replace(/ey[A-Za-z0-9_-]{6,}(\.[A-Za-z0-9_-]+){0,2}/g, "[jwt]")
+    .replace(/\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/g, "[uuid]")
+    .replace(/\b[A-Za-z0-9_-]{40,}\b/g, "[opaque]")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Which claim a rejected token failed.
+ *
+ * The fall-through is explicit rather than a guess: an unrecognised error is
+ * reported with its own code and message excerpt, because labelling it
+ * "signature" (the original behaviour) would claim a cause it had not
+ * established. That label cost a round of debugging on its own.
+ */
 export function classifyAppCheckFailure(error: unknown): string {
-  const code = (error as { code?: unknown }).code;
-  const message = error instanceof Error ? error.message : "";
+  const code =
+    typeof (error as { code?: unknown }).code === "string"
+      ? ((error as { code: string }).code)
+      : "";
+  const message = error instanceof Error ? error.message : String(error);
 
   if (code === "app-check/invalid-credential") return "no-project-id";
   if (message.includes('incorrect "aud"')) return "audience-mismatch";
@@ -118,7 +144,12 @@ export function classifyAppCheckFailure(error: unknown): string {
   if (message.includes('"iss"')) return "issuer-mismatch";
   if (message.includes('"sub"')) return "subject-missing";
   if (/expired|is not yet valid/i.test(message)) return "time-invalid";
-  return "signature-or-jwks";
+  if (message.includes("Invalid token signature")) return "invalid-signature";
+  if (/fetch|network|socket|timeout|ECONN|ENOTFOUND|getaddrinfo/i.test(message)) {
+    return "jwks-unreachable";
+  }
+
+  return `unrecognized:${code || "no-code"}:${sanitizeAppCheckMessage(message).slice(0, 80)}`;
 }
 
 /**
