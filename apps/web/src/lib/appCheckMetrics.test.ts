@@ -3,11 +3,12 @@
  *
  * The tracker exists so a reCAPTCHA quota outage — where every client's
  * attestation starts failing at once — is visible to an operator through
- * /api/health and one deduplicated Sentry alert, instead of only per-user
- * banners. These tests cover the counting window, the spike threshold, the
- * Redis-to-memory fallback, and the alert dedupe.
+ * /api/health and one deduplicated Discord webhook alert, instead of only
+ * per-user banners. These tests cover the counting window, the spike
+ * threshold, the Redis-to-memory fallback, the alert dedupe, and the webhook
+ * payload and its failure handling.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const state = vi.hoisted(() => ({
   redis: null as {
@@ -36,11 +37,15 @@ import {
   reportAppCheckSpike,
   resetAppCheckMetricsForTests,
   setAppCheckAlertSenderForTests,
+  buildAppCheckAlertPayload,
+  dispatchAppCheckAlert,
+  resolveAppCheckAlertWebhookUrl,
   APP_CHECK_SPIKE_THRESHOLD,
+  type AppCheckAlertPayload,
 } from "./appCheckMetrics";
 
-/** Records the alert messages the module would send to Sentry. */
-const captureMessage = vi.fn<(message: string) => void>();
+/** Records the payloads the module would POST to Discord. */
+const captureAlert = vi.fn<(payload: AppCheckAlertPayload) => void>();
 
 /** Five-minute bucket arithmetic, mirroring the module's constants. */
 const BUCKET_MS = 5 * 60 * 1000;
@@ -54,11 +59,27 @@ function bucketIndex(timestamp: number): string {
   return String(Math.floor(timestamp / BUCKET_MS));
 }
 
+const originalEnv = { ...process.env };
+
 beforeEach(() => {
   resetAppCheckMetricsForTests();
-  captureMessage.mockReset();
-  setAppCheckAlertSenderForTests(captureMessage);
+  captureAlert.mockReset();
+  setAppCheckAlertSenderForTests(captureAlert);
   state.redis = null;
+  delete process.env.APP_CHECK_ALERT_WEBHOOK_URL;
+  delete process.env.BREACH_ALERT_WEBHOOK_URL;
+});
+
+afterEach(() => {
+  for (const key of [
+    "APP_CHECK_ALERT_WEBHOOK_URL",
+    "BREACH_ALERT_WEBHOOK_URL",
+    "VERCEL_ENV",
+  ]) {
+    if (originalEnv[key] === undefined) delete process.env[key];
+    else process.env[key] = originalEnv[key];
+  }
+  vi.unstubAllGlobals();
 });
 
 describe("recordAppCheckRejection / readAppCheckRejections", () => {
@@ -153,12 +174,11 @@ describe("reportAppCheckSpike", () => {
     const status = { recentRejections: 50, spike: true };
 
     expect(reportAppCheckSpike(status, bucketAt(0))).toBe(true);
-    expect(captureMessage).toHaveBeenCalledTimes(1);
-    expect(captureMessage.mock.calls[0][0]).toContain("APP_CHECK_FAILED");
+    expect(captureAlert).toHaveBeenCalledTimes(1);
 
     // Health probes poll every few seconds: the same window must not re-alert.
     expect(reportAppCheckSpike(status, bucketAt(0) + 5000)).toBe(false);
-    expect(captureMessage).toHaveBeenCalledTimes(1);
+    expect(captureAlert).toHaveBeenCalledTimes(1);
   });
 
   it("alerts again only when a new bucket spikes", () => {
@@ -166,20 +186,154 @@ describe("reportAppCheckSpike", () => {
     reportAppCheckSpike(status, bucketAt(0));
 
     expect(reportAppCheckSpike(status, bucketAt(1))).toBe(true);
-    expect(captureMessage).toHaveBeenCalledTimes(2);
+    expect(captureAlert).toHaveBeenCalledTimes(2);
   });
 
   it("stays silent below the threshold", () => {
     expect(
       reportAppCheckSpike({ recentRejections: 3, spike: false }, bucketAt(0))
     ).toBe(false);
-    expect(captureMessage).not.toHaveBeenCalled();
+    expect(captureAlert).not.toHaveBeenCalled();
+  });
+});
+
+describe("buildAppCheckAlertPayload", () => {
+  it("carries the title, the count, the threshold and a timestamp", () => {
+    const now = bucketAt(0);
+    const payload = buildAppCheckAlertPayload(
+      { recentRejections: 42, spike: true },
+      now
+    );
+
+    expect(payload.content).toContain("App Check Rejection Spike Detected");
+    expect(payload.content).toContain("42");
+
+    const [embed] = payload.embeds;
+    expect(embed.title).toBe("App Check Rejection Spike Detected");
+    expect(embed.timestamp).toBe(new Date(now).toISOString());
+    expect(embed.fields).toContainEqual({
+      name: "Rejections (10 min)",
+      value: "42",
+      inline: true,
+    });
+    expect(embed.fields).toContainEqual({
+      name: "Spike threshold",
+      value: String(APP_CHECK_SPIKE_THRESHOLD),
+      inline: true,
+    });
   });
 
-  it("mentions the escape hatch in the alert body", () => {
-    reportAppCheckSpike({ recentRejections: 99, spike: true }, bucketAt(0));
-    expect(captureMessage.mock.calls[0][0]).toContain(
-      "APP_CHECK_ENFORCEMENT=false"
+  it("names the deployment environment from VERCEL_ENV when present", () => {
+    process.env.VERCEL_ENV = "production";
+    const payload = buildAppCheckAlertPayload(
+      { recentRejections: 30, spike: true },
+      bucketAt(0)
     );
+
+    expect(payload.embeds[0].fields).toContainEqual({
+      name: "Environment",
+      value: "production",
+      inline: true,
+    });
+    expect(payload.content).toContain("production");
+  });
+
+  it("reminds the on-call of the escape hatch", () => {
+    const payload = buildAppCheckAlertPayload(
+      { recentRejections: 99, spike: true },
+      bucketAt(0)
+    );
+    const remediation = payload.embeds[0].fields.find(
+      (field) => field.name === "Remediation"
+    );
+
+    expect(remediation?.value).toContain("APP_CHECK_ENFORCEMENT=false");
+    expect(remediation?.value).toContain("redeploy");
+  });
+});
+
+describe("resolveAppCheckAlertWebhookUrl", () => {
+  it("prefers the dedicated App Check webhook", () => {
+    process.env.APP_CHECK_ALERT_WEBHOOK_URL = "https://discord.test/appcheck";
+    process.env.BREACH_ALERT_WEBHOOK_URL = "https://discord.test/breach";
+
+    expect(resolveAppCheckAlertWebhookUrl()).toBe(
+      "https://discord.test/appcheck"
+    );
+  });
+
+  it("falls back to the breach webhook when the dedicated one is unset", () => {
+    process.env.BREACH_ALERT_WEBHOOK_URL = "https://discord.test/breach";
+
+    expect(resolveAppCheckAlertWebhookUrl()).toBe("https://discord.test/breach");
+  });
+
+  it("returns null when neither variable is configured", () => {
+    // Alerting is optional: an unconfigured deployment must no-op, not throw.
+    expect(resolveAppCheckAlertWebhookUrl()).toBeNull();
+  });
+});
+
+describe("dispatchAppCheckAlert", () => {
+  const payload = buildAppCheckAlertPayload(
+    { recentRejections: 25, spike: true },
+    1_700_000_000_000
+  );
+
+  it("POSTs the payload as JSON with a bounded timeout", async () => {
+    process.env.APP_CHECK_ALERT_WEBHOOK_URL = "https://discord.test/hook";
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await dispatchAppCheckAlert(payload);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://discord.test/hook");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ "content-type": "application/json" });
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(JSON.parse(init.body)).toEqual(payload);
+  });
+
+  it("does nothing when no webhook is configured", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await dispatchAppCheckAlert(payload);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("swallows a failing webhook so the health probe still answers", async () => {
+    process.env.APP_CHECK_ALERT_WEBHOOK_URL = "https://discord.test/hook";
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("timeout")));
+
+    // Resolving is the assertion: this must never throw into /api/health.
+    await expect(dispatchAppCheckAlert(payload)).resolves.toBeUndefined();
+  });
+
+  it("swallows a non-2xx response", async () => {
+    process.env.APP_CHECK_ALERT_WEBHOOK_URL = "https://discord.test/hook";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, status: 429 })
+    );
+
+    await expect(dispatchAppCheckAlert(payload)).resolves.toBeUndefined();
+  });
+
+  it("is wired as the default sender that reportAppCheckSpike dispatches", async () => {
+    // Reset the injected recorder so the real default sender path runs.
+    resetAppCheckMetricsForTests();
+    process.env.APP_CHECK_ALERT_WEBHOOK_URL = "https://discord.test/hook";
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(reportAppCheckSpike({ recentRejections: 40, spike: true }, bucketAt(0)))
+      .toBe(true);
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0][0]).toBe("https://discord.test/hook");
   });
 });

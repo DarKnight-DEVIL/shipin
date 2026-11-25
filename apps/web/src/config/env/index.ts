@@ -68,6 +68,11 @@ interface ServerEnv {
   /** Slack/incident webhook for critical data breaches (optional). */
   BREACH_ALERT_WEBHOOK_URL?: string;
   /**
+   * Discord webhook that receives one alert per App Check rejection spike
+   * (reCAPTCHA quota exhaustion). Falls back to BREACH_ALERT_WEBHOOK_URL.
+   */
+  APP_CHECK_ALERT_WEBHOOK_URL?: string;
+  /**
    * `'true'` makes API routes reject requests without a valid App Check token.
    * Off by default so local development and CI need no Firebase project.
    */
@@ -209,6 +214,8 @@ const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
   "INDIA_POST_CLIENT_ID",
   "INDIA_POST_CLIENT_SECRET",
   "CRON_SECRET",
+  "BREACH_ALERT_WEBHOOK_URL",
+  "APP_CHECK_ALERT_WEBHOOK_URL",
 ]);
 
 // NOTE: the rate-limit store assertion lives in @/lib/redisRateLimiter so

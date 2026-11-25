@@ -5,7 +5,8 @@
  * other reason), every API request starts failing with APP_CHECK_FAILED at
  * once. Each user sees a banner, but an operator has no signal — so the
  * rejection count is aggregated here and surfaced by /api/health as
- * `degraded`, with a Sentry alert when the rate crosses the spike threshold.
+ * `degraded`, with one Discord webhook alert when the rate crosses the spike
+ * threshold.
  *
  * Counts live in the shared Redis store (the same client the rate limiters
  * use), bucketed at five minutes: a spike is judged over a ten-minute window,
@@ -110,40 +111,151 @@ export async function readAppCheckRejections(
   return { recentRejections: total, spike: total >= APP_CHECK_SPIKE_THRESHOLD };
 }
 
-// --- Sentry alerting -------------------------------------------------------
+// --- Discord webhook alerting ---------------------------------------------
 
 let lastAlertedBucket = -1;
 
 /**
- * Sends one alert. Production routes it through Sentry (already part of the
- * server bundle via instrumentation); tests inject a recorder, because the
- * shared module registry makes mocking "@sentry/nextjs" unreliable.
+ * Discord message payload: a short content line (so the notification preview
+ * says what broke) plus one embed carrying the numbers and the fix.
  */
-const defaultAlertSender: (message: string) => void = (message) => {
-  void import("@sentry/nextjs")
-    .then((Sentry) => {
-      Sentry.withScope((scope) => {
-        scope.setTag("service", "appcheck");
-        scope.setLevel("warning");
-        Sentry.captureMessage(message, "warning");
-      });
-    })
-    .catch(() => {
-      // A Sentry transport failure must not break the health probe.
+export interface AppCheckAlertPayload {
+  content: string;
+  embeds: Array<{
+    title: string;
+    description: string;
+    color: number;
+    fields: Array<{ name: string; value: string; inline?: boolean }>;
+    timestamp: string;
+  }>;
+}
+
+/** Discord embed side-stripe: the brand orange, matching the login surfaces. */
+const EMBED_COLOR = 0xff6b1a;
+const ALERT_TIMEOUT_MS = 5000;
+
+/**
+ * Where the alert goes.
+ *
+ * Read straight from `process.env` rather than `serverEnv`: the webhook is
+ * optional, and `process.env` keeps working when the env module is stubbed
+ * (the shared test setup replaces it with a static object that would make
+ * this silently unusable).
+ *
+ * `APP_CHECK_ALERT_WEBHOOK_URL` is the dedicated channel; deployments that
+ * only run the breach-alert channel fall back to it. Neither set means the
+ * alert is a no-op — the health probe still reports `degraded`, which is the
+ * signal that does not depend on any webhook being configured.
+ */
+export function resolveAppCheckAlertWebhookUrl(): string | null {
+  const dedicated = process.env.APP_CHECK_ALERT_WEBHOOK_URL?.trim();
+  if (dedicated) return dedicated;
+
+  const fallback = process.env.BREACH_ALERT_WEBHOOK_URL?.trim();
+  return fallback || null;
+}
+
+/** The deployment name Discord should show; Vercel sets VERCEL_ENV. */
+function deploymentEnvironment(): string {
+  return (
+    process.env.VERCEL_ENV?.trim() ||
+    process.env.NODE_ENV?.trim() ||
+    "unknown"
+  );
+}
+
+export function buildAppCheckAlertPayload(
+  status: AppCheckRejectionStatus,
+  now = Date.now()
+): AppCheckAlertPayload {
+  const rejections = status.recentRejections;
+  const environment = deploymentEnvironment();
+
+  return {
+    content: `🚨 **App Check Rejection Spike Detected** — ${rejections} rejections in the last 10 minutes (${environment})`,
+    embeds: [
+      {
+        title: "App Check Rejection Spike Detected",
+        description:
+          "Clients cannot mint App Check tokens — reCAPTCHA quota exhausted or attestation broken. " +
+          "Sign-in still works (it goes straight to Firebase Auth), but every API route is rejecting " +
+          "requests with `APP_CHECK_FAILED`, so the app is unusable after login.",
+        color: EMBED_COLOR,
+        fields: [
+          {
+            name: "Rejections (10 min)",
+            value: String(rejections),
+            inline: true,
+          },
+          {
+            name: "Spike threshold",
+            value: String(APP_CHECK_SPIKE_THRESHOLD),
+            inline: true,
+          },
+          { name: "Environment", value: environment, inline: true },
+          {
+            name: "Remediation",
+            value:
+              "Set `APP_CHECK_ENFORCEMENT=false` in Vercel and redeploy to restore service now. " +
+              "Then attach billing to the Google Cloud project (reCAPTCHA Enterprise) and set it back to `true`.",
+          },
+        ],
+        timestamp: new Date(now).toISOString(),
+      },
+    ],
+  };
+}
+
+/**
+ * POST the payload to the configured webhook.
+ *
+ * Never throws: /api/health calls this, and a slow or broken webhook must not
+ * turn a degraded probe into a failed one. The 5s timeout bounds a hanging
+ * Discord request; callers do not await it for the same reason.
+ */
+export async function dispatchAppCheckAlert(
+  payload: AppCheckAlertPayload
+): Promise<void> {
+  const url = resolveAppCheckAlertWebhookUrl();
+  if (!url) return;
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(ALERT_TIMEOUT_MS),
     });
+    if (!response.ok) {
+      logger.warn("App Check alert webhook rejected the payload", {
+        // Status only: the URL is a credential, so it never reaches the logs.
+        status: response.status,
+      });
+    }
+  } catch (error) {
+    logger.warn("App Check alert webhook could not be reached", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+const defaultAlertSender: (payload: AppCheckAlertPayload) => void = (
+  payload
+) => {
+  void dispatchAppCheckAlert(payload);
 };
 
-let sendAlert: (message: string) => void = defaultAlertSender;
+let sendAlert: (payload: AppCheckAlertPayload) => void = defaultAlertSender;
 
 /** Test hook: replace the alert sender (reset by resetAppCheckMetricsForTests). */
 export function setAppCheckAlertSenderForTests(
-  sender: (message: string) => void
+  sender: (payload: AppCheckAlertPayload) => void
 ): void {
   sendAlert = sender;
 }
 
 /**
- * Fire a Sentry alert when a spike is newly detected. Deduplicated per
+ * Fire the webhook alert when a spike is newly detected. Deduplicated per
  * five-minute bucket, because uptime monitors poll /api/health every few
  * seconds and one alert per outage is what an on-call wants — not hundreds.
  *
@@ -160,12 +272,7 @@ export function reportAppCheckSpike(
   if (bucket <= lastAlertedBucket) return false;
   lastAlertedBucket = bucket;
 
-  sendAlert(
-    `[AppCheck] ${status.recentRejections} APP_CHECK_FAILED rejections in the last 10 minutes — ` +
-      "clients cannot mint App Check tokens (reCAPTCHA quota exhausted or attestation broken). " +
-      "Users can still sign in but every API call is rejected. " +
-      "Escape hatch: set APP_CHECK_ENFORCEMENT=false and redeploy."
-  );
+  sendAlert(buildAppCheckAlertPayload(status, now));
   return true;
 }
 

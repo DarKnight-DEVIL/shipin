@@ -273,9 +273,18 @@ $0–8/month, and the failure mode changes from "hard outage until the 1st" to
 
 **How the outage is detected.** `/api/health` reports `degraded` with
 `appCheck.rejectionsLast10Min` and a warning once rejections cross the spike
-threshold, and a single Sentry alert fires per five-minute window
+threshold, and one Discord message is POSTed per five-minute window
 (`lib/appCheckMetrics.ts`). Sign-in keeps working during the outage, so user
 reports alone would be misleading — trust the probe.
+
+**Alert channel.** Set `APP_CHECK_ALERT_WEBHOOK_URL` in Vercel to a Discord
+webhook URL (Server Settings → Integrations → Webhooks → Copy Webhook URL).
+Where the dedicated variable is unset, `BREACH_ALERT_WEBHOOK_URL` is used
+instead; with neither set the alert is a no-op and only the health probe
+reports the outage. The POST is bounded by a five-second timeout and its
+failures are logged, never propagated — a broken webhook cannot make
+`/api/health` fail. `.env.example` does not ship this variable; add it to
+Vercel directly.
 
 **Emergency escape hatch.** To restore service immediately while the quota
 keeps failing:
