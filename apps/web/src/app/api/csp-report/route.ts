@@ -13,8 +13,8 @@ const cspLogger = childLogger({ service: "csp-report" });
  * it only surfaces policy violations so you can detect when a trusted
  * third-party script or inline code breaks the policy.
  *
- * The reports are logged for visibility and optionally forwarded to Sentry
- * in production so violations surface in your existing alerting pipeline.
+ * The reports are logged for visibility; the deployment ships no error-reporting
+ * SDK, so logging is where they surface.
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
   // Bounded read: a real CSP report is a few hundred bytes, and this endpoint
@@ -59,25 +59,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     violatedDirective,
     blockedUri,
   });
-
-  // Forward to Sentry in production so violations surface in alerts.
-  if (
-    process.env.NODE_ENV === "production" &&
-    process.env.NEXT_PUBLIC_SENTRY_DSN
-  ) {
-    try {
-      // A dynamic import keeps Sentry out of the module graph unless this
-      // branch runs. It also survives formatting: a `require()` had to sit on
-      // the same line as its `eslint-disable-next-line`, which Prettier moved.
-      const Sentry = await import("@sentry/nextjs");
-      Sentry.captureMessage("CSP violation reported", {
-        level: "warning",
-        extra: { violatedDirective, blockedUri, report },
-      });
-    } catch {
-      // Sentry transport failure must not break the report endpoint.
-    }
-  }
 
   return NextResponse.json({ received: true });
 });

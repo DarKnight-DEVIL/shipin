@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import * as Sentry from "@sentry/nextjs";
 
 export default function GlobalError({
   error,
@@ -11,10 +10,9 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // global-error replaces the whole document, so the SDK's automatic
-    // window.onerror capture may not have the React context for this render —
-    // report it explicitly. A missing DSN makes this a no-op.
-    Sentry.captureException(error);
+    // global-error replaces the whole document, so nothing else in the tree
+    // reports this render. Log it here; there is no error-reporting SDK wired
+    // into the deployment.
     if (process.env.NODE_ENV === "production") {
       console.error("Global error:", error.message, error.digest);
     }

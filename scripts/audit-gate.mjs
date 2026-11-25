@@ -22,8 +22,7 @@ import { spawnSync } from "node:child_process";
  *
  * GHSA-fc5q-39xc-vjpf (picomatch <= 4.0.7) is reachable only through build and
  * test tooling. Checked 2026-11-18: 4.0.7 is the newest published picomatch,
- * and vite, vitest and @sentry/nextjs -> @rollup/plugin-commonjs all depend on
- * it, so there is no version to upgrade to yet.
+ * and vite and vitest all depend on it, so there is no version to upgrade to yet.
  */
 const ALLOWLIST = [
   {
@@ -31,7 +30,7 @@ const ALLOWLIST = [
     package: "picomatch",
     expires: "2027-01-31",
     reason:
-      "Build/test tooling only (vite, vitest, @sentry/nextjs -> @rollup/plugin-commonjs); 4.0.7 is the latest published release, so no fixed version exists.",
+      "Build/test tooling only (vite, vitest); 4.0.7 is the latest published release, so no fixed version exists.",
   },
 ];
 

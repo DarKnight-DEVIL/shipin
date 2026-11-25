@@ -11,7 +11,7 @@
  *     entry points the framework loads by convention, not by import.
  *   - `*.test.*`, `src/test/**`: tests are entry points for Vitest.
  *   - `*.d.ts`, `src/types/**`: type-only declarations.
- *   - root instrumentation / proxy / Sentry configs: framework entry points.
+ *   - root instrumentation / proxy configs: framework entry points.
  *
  * Importers are found by the module's basename in a static import, dynamic
  * import, `require`, or `vi.mock` specifier anywhere under `src/`, plus root
@@ -95,17 +95,15 @@ function main() {
   const files = walk(SRC).filter((file) => CANDIDATE_EXTENSIONS.has(path.extname(file)));
   const sources = new Map(files.map((file) => [file, readFileSync(file, "utf8")]));
 
-  const extraImporters = [
-    path.join(ROOT, "sentry.server.config.ts"),
-    path.join(ROOT, "sentry.edge.config.ts"),
-    path.join(ROOT, "sentry.client.config.ts"),
-  ].filter((file) => {
-    try {
-      return readFileSync(file, "utf8");
-    } catch {
-      return false;
+  const extraImporters = [path.join(ROOT, "instrumentation.ts")].filter(
+    (file) => {
+      try {
+        return readFileSync(file, "utf8");
+      } catch {
+        return false;
+      }
     }
-  });
+  );
 
   const allowed = new Set();
   try {

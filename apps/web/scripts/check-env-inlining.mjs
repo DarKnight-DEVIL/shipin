@@ -23,9 +23,9 @@ const NEXT_DIR = path.join(ROOT, ".next");
 
 /**
  * Only the browser output is checked. Next inlines `NEXT_PUBLIC_*` into client
- * chunks; server chunks keep the runtime reads on purpose (the Sentry server
- * config and the emulator hosts are read there), so scanning `.next/server`
- * reported six perfectly correct reads as build failures.
+ * chunks; server chunks keep the runtime reads on purpose (the emulator hosts
+ * are read there), so scanning `.next/server` reported six perfectly correct
+ * reads as build failures.
  */
 const CLIENT_DIR = path.join(NEXT_DIR, "static");
 

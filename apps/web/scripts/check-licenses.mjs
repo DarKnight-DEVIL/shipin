@@ -70,13 +70,6 @@ const ALLOWLIST = [
     reason:
       "No licence field in the published manifest and none in the lockfile. Upstream describes itself as MIT (a pngjs derivative); treat as unverified and replace it when the graphics/PDF path is next touched.",
   },
-  {
-    package: "sentry",
-    license: "FSL-1.1-Apache-2.0",
-    expires: "2027-03-31",
-    reason:
-      "Functional Source License binary used only as the Sentry CLI that uploads source maps at build time. FSL permits internal use and forbids offering the software as a competing service; no FSL code ships to customers.",
-  },
 ];
 
 if (!existsSync(LOCKFILE)) {

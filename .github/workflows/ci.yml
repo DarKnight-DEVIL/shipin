@@ -87,9 +87,6 @@ jobs:
   # come from the configuration that ships, and a second build of the same
   # routes with dummy test values only proved that the compiler runs.
   #
-  # Optional: when the Sentry secrets exist, @sentry/nextjs uploads source maps
-  # during this build, so stack traces stay readable.
-  #
   # The budgets are tight on purpose. Two regressions this gate exists to catch
   # already happened here: the Firestore SDK shipping to every public page
   # because the root layout imported a profile service, and the whole
@@ -123,10 +120,6 @@ jobs:
           # build time, so the measured sizes have to come from the same
           # configuration that ships.
           NODE_ENV: "production"
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
           # Dummy values: the build must compile without real config, and a
           # bundle with an empty Firebase config cannot sign anyone in. They are
           # also what the budgets measure, since NEXT_PUBLIC_* is inlined.

@@ -86,7 +86,7 @@ export async function GET() {
   // A spike of APP_CHECK_FAILED rejections means clients cannot mint App Check
   // tokens at all — reCAPTCHA quota exhausted or attestation broken. Sign-in
   // still works (it never touches these routes) but every API call is
-  // rejected, so the deployment is degraded and the on-call gets one Sentry
+  // rejected, so the deployment is degraded and the on-call gets one Discord
   // alert per outage window.
   const appCheckRejections = await readAppCheckRejections();
   const appCheckSpike = appCheckRejections.spike;

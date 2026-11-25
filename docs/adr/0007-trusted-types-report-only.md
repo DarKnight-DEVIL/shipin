@@ -61,7 +61,7 @@ Running `npm run test:e2e:signed-in --workspace=@shipin/web` with the report-onl
 - **PayPal SDK** (`@paypal/react-paypal-js`): Produces `script-src-elem` violations with `inline` blockedUri. The PayPal script loader uses `script.src` DOM assignment which triggers the Trusted Types sink check.
 - **reCAPTCHA**: Produces `script-src-elem` violations. The reCAPTCHA badge and verification widget load scripts inline.
 - **Firebase Auth**: Produces violations through the auth redirect handler and session management scripts.
-- **Vercel Analytics / Sentry**: May also produce violations but were not the focus of this test run.
+- **Vercel Analytics**: May also produce violations but was not the focus of this test run.
 
 The report count is lower than the original 13 reports from a single landing-page load because:
 - The test navigates through multiple authenticated routes
@@ -74,7 +74,7 @@ The report count is lower than the original 13 reports from a single landing-pag
 
 2. **Our own sink (`JsonLd.tsx`)**: `dangerouslySetInnerHTML` with hand-built string needs a named policy (`trusted-types shipin-jsonld`) and `createHTML()`.
 
-3. **Third-party SDKs**: PayPal, reCAPTCHA, Firebase Auth, Vercel Analytics and Sentry are outside our control. Each would need its own policy name allowlisted with `'allow-duplicates'`, or an accepted exception.
+3. **Third-party SDKs**: PayPal, reCAPTCHA, Firebase Auth and Vercel Analytics are outside our control. Each would need its own policy name allowlisted with `'allow-duplicates'`, or an accepted exception.
 
 4. **A `trusted-types` allowlist**: Naming exactly those policies, plus the decision about `'allow-duplicates'`.
 
@@ -87,8 +87,8 @@ The report count is lower than the original 13 reports from a single landing-pag
 ## Consequences (updated)
 
 - The rollout is blind until reports flow. The `report-to` finding above was itself invisible until a real browser was driven against the endpoint: the policy looked correct in the header and in every unit test.
-- Report-only adds a second policy for every navigation. It costs nothing at runtime � no blocking, no extra request unless something violates.
-- A violation now produces a log line (and a Sentry message in production) per sink assignment, so a page that violates often is noisy by design.
+- Report-only adds a second policy for every navigation. It costs nothing at runtime � no blocking, no extra request unless something violates.
+- A violation now produces a log line per sink assignment, so a page that violates often is noisy by design.
 - Enforcing it later is a header change plus the work above; nothing in this decision has to be undone, only narrowed.
  the sinks: `TrustedScriptURL` (the chunk loader's
 `script.src = …`) and `TrustedHTML`. The legacy `report-uri` payload does not
@@ -106,7 +106,7 @@ logs `source-file`/`line-number`.
    `dangerouslySetInnerHTML` with a hand-built string. It needs a named policy
    (`trusted-types shipin-jsonld`) and `createHTML()`.
 3. **The third-party SDKs.** PayPal, reCAPTCHA, Firebase Auth, Vercel Analytics
-   and Sentry are outside our control; each would need its own policy name
+   are outside our control; each would need its own policy name
    allowlisted with `'allow-duplicates'`, or an accepted exception.
 4. **A `trusted-types` allowlist** naming exactly those policies, plus the
    decision about `'allow-duplicates'`.
@@ -127,7 +127,7 @@ logs `source-file`/`line-number`.
   policy looked correct in the header and in every unit test.
 - Report-only adds a second policy for every navigation. It costs nothing at
   runtime — no blocking, no extra request unless something violates.
-- A violation now produces a log line (and a Sentry message in production) per
+- A violation now produces a log line per
   sink assignment, so a page that violates often is noisy by design.
 - Enforcing it later is a header change plus the work above; nothing in this
   decision has to be undone, only narrowed.

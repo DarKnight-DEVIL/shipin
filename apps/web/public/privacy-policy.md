@@ -201,7 +201,7 @@ there is no newsletter.
 
 The current sub-processor list is published in the
 [Cookie Policy](/cookie-policy): Google Firebase, PayPal, Cloudflare, Resend,
-Vercel, Sentry and Spline. Each is engaged for a specific purpose and receives
+Vercel and Spline. Each is engaged for a specific purpose and receives
 only the data that purpose needs.
 
 Each provider is used under the data processing terms it publishes for its

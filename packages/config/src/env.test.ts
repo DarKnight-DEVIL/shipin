@@ -17,7 +17,10 @@ const MANAGED_KEYS = [
   "R2_ACCESS_KEY_ID",
   "R2_SECRET_ACCESS_KEY",
   "R2_BUCKET_NAME",
-  "NEXT_PUBLIC_SENTRY_DSN",
+  // Cleared like the rest: a real shell, CI or the E2E harness may export
+  // these, and the group tests need them unset to prove the fallback.
+  "UPSTASH_REDIS_REST_URL",
+  "UPSTASH_REDIS_REST_TOKEN",
 ] as const;
 
 let saved: Record<string, string | undefined>;
@@ -40,8 +43,8 @@ afterEach(() => {
 describe("ENV", () => {
   it("resolves a group without validating unrelated required variables", () => {
     // Nothing is configured: Firebase, PayPal and R2 are all missing.
-    expect(() => ENV.SENTRY).not.toThrow();
-    expect(ENV.SENTRY.DSN).toBeUndefined();
+    expect(() => ENV.UPSTASH).not.toThrow();
+    expect(ENV.UPSTASH.REDIS_REST_URL).toBeUndefined();
   });
 
   it("still refuses a group that is missing its own required variables", () => {
@@ -81,10 +84,10 @@ describe("ENV", () => {
 
 describe("getEnv / getRequiredEnv", () => {
   it("falls back to the default only when the variable is unset", () => {
-    expect(getEnv("NEXT_PUBLIC_SENTRY_DSN", "fallback")).toBe("fallback");
+    expect(getEnv("UPSTASH_REDIS_REST_URL", "fallback")).toBe("fallback");
 
-    process.env.NEXT_PUBLIC_SENTRY_DSN = "configured";
-    expect(getEnv("NEXT_PUBLIC_SENTRY_DSN", "fallback")).toBe("configured");
+    process.env.UPSTASH_REDIS_REST_URL = "configured";
+    expect(getEnv("UPSTASH_REDIS_REST_URL", "fallback")).toBe("configured");
   });
 
   it("throws with the variable name when a required value is empty", () => {
@@ -92,4 +95,4 @@ describe("getEnv / getRequiredEnv", () => {
       "Missing required environment variable: R2_BUCKET_NAME"
     );
   });
-});
+});

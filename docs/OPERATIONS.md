@@ -6,8 +6,8 @@ the platform is unhealthy. Pair this with `DEPLOYMENT.md` (setup) and
 
 **Current stack:** Next.js 16 on Vercel, Firebase Auth + Firestore
 (`firebase-admin`), Upstash Redis (rate limiting), Cloudflare R2 (files),
-PayPal (payments), Resend/Nodemailer + WhatsApp (notifications), Sentry
-(errors + traces), Vercel Analytics/Speed Insights.
+PayPal (payments), Resend/Nodemailer + WhatsApp (notifications), Discord
+webhooks (alerting), Vercel Analytics/Speed Insights.
 
 ---
 
@@ -116,7 +116,7 @@ async function run() {
 ```
 
 Operational rules: take a backup immediately before any backfill
-(see §2), run in off-peak hours, watch `/api/health` and Sentry during it, and
+(see §2), run in off-peak hours, watch `/api/health` and the Discord alerts during it, and
 record the run in the incident log with the exact script version and commit.
 
 ---
@@ -168,7 +168,7 @@ gcloud firestore export gs://shipin-backups/$(date +%F) \
    or disable the offending API route. A restore that runs while writes
    continue is wasted work.
 2. **Bound the damage.** Identify affected collections and the timestamp
-   window from Sentry/logs.
+   window from the logs.
 3. **Restore into a new database**, not over the live one:
    `gcloud firestore import gs://shipin-backups/<date> --database="restore-tmp"`,
    inspect it, then copy the affected documents back.
@@ -242,7 +242,7 @@ A code rollback does **not** undo a backfill. Therefore:
 |---|---|
 | Errors after deploy, data intact | `vercel rollback`, then fix forward |
 | New code wrote bad data | Rollback + PITR restore to the pre-deploy timestamp |
-| Health `degraded` | Read the response body: recent limiter errors, a store-less production boot (`RATE_LIMIT_STORE_OPTIONAL=1`), or App Check enforced without a site key. Requests are still served — the limiter fails **open** — so check the Upstash status page and Sentry, and fix the configuration |
+| Health `degraded` | Read the response body: recent limiter errors, a store-less production boot (`RATE_LIMIT_STORE_OPTIONAL=1`), or App Check enforced without a site key. Requests are still served — the limiter fails **open** — so check the Upstash status page and the Discord alerts, and fix the configuration |
 | `/api/health` does not answer 200 | The deployment itself is unavailable (boot crash or platform outage): `vercel logs shipin --since 30m`, then `vercel rollback`. There is no `unhealthy` body state to look for — see §4 |
 | Rules reject legitimate writes | Roll back `firestore.rules` alone |
 
@@ -254,7 +254,7 @@ A code rollback does **not** undo a backfill. Therefore:
 
 | Signal | Where | Coverage |
 |---|---|---|
-| Exceptions + 10% traces | Sentry (`sentry.{client,server,edge}.config.ts`) | crashes, slow spans |
+| App Check rejection spikes | `src/lib/appCheckMetrics.ts` → Discord webhook | reCAPTCHA quota outages |
 | Page views / traffic | `@vercel/analytics` in `src/app/layout.tsx` | audience |
 | Core Web Vitals (real users) | `@vercel/speed-insights` in `src/app/layout.tsx` | front-end latency |
 | Rate-limiter health | `GET /api/health` | Redis reachability + error counts |
@@ -301,9 +301,9 @@ origins), not the Firebase aliases.
 
 ### Alerts still missing (backlog)
 
-These are the gaps that Sentry alone will not catch. Add in this order:
+These are the gaps that the Discord alert alone will not catch. Add in this order:
 
-1. **Payment degradation** — Sentry alert rule on `POST /api/paypal/capture-order`,
+1. **Payment degradation** — alert on `POST /api/paypal/capture-order`,
    `/api/paypal/capture-wallet-topup` and `/api/webhook`: alert when the 5xx
    rate exceeds 2% over 5 minutes, or when `paypal` webhook verification
    failures exceed 1.
@@ -312,8 +312,8 @@ These are the gaps that Sentry alone will not catch. Add in this order:
    provider in production.
 3. **Redis fail-closed** — alert on `status == "degraded"` from
    `/api/health` (Upstash dashboard alerts cover the provider side).
-4. **Latency budget** — alert when p95 on `/api/paypal/*` exceeds 3 s in Sentry
-   traces.
+4. **Latency budget** — alert when p95 on `/api/paypal/*` exceeds 3 s in the
+   platform request metrics.
 5. **Synthetic checkout** — a scheduled sandbox end-to-end (create order →
    capture) is the only thing that proves payments work end to end; not yet
    implemented.

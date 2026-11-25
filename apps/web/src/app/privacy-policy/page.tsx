@@ -614,8 +614,8 @@ export default function PrivacyPolicyPage() {
               <a href="/cookie-policy" className="text-orange-700 dark:text-orange-300 hover:underline">
                 Cookie Policy
               </a>
-              : Google Firebase, PayPal, Cloudflare, Resend, Vercel, Sentry and
-              Spline. Each is engaged for a specific purpose and receives only
+              : Google Firebase, PayPal, Cloudflare, Resend, Vercel and Spline.
+              Each is engaged for a specific purpose and receives only
               the data that purpose needs.
             </p>
             <p className="mb-4">

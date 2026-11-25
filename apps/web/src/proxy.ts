@@ -57,7 +57,7 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 export default async function proxy(request: NextRequest) {
   // Generate a correlation ID for this request and propagate it everywhere.
   // This enables distributed tracing across API routes, PayPal webhooks,
-  // Firestore writes, Sentry events, and any downstream service.
+  // Firestore writes, error alerts, and any downstream service.
   // Use crypto.randomUUID() available in Node.js 14+ (project targets Node 24).
   const requestId =
     crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;

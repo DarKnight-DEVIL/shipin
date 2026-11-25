@@ -2,8 +2,7 @@
  * Next.js instrumentation hook.
  *
  * Runs once when a new Next.js server instance is initiated, before the
- * server is ready to handle requests. Used for startup validation and
- * observability setup.
+ * server is ready to handle requests. Used for startup validation.
  */
 
 import { childLogger } from "@/lib/logger";
@@ -52,15 +51,6 @@ let appCheckClient: ((app?: import("firebase-admin/app").App) => import("firebas
 export { appCheckClient };
 
 export async function register() {
-  // Error reporting first, so a crash later in this hook is captured. Each
-  // runtime imports only its own config; the SDK is disabled without a DSN, so
-  // this is a no-op in development and in CI.
-  if (process.env.NEXT_RUNTIME === "nodejs") {
-    await import("../sentry.server.config");
-  } else if (process.env.NEXT_RUNTIME === "edge") {
-    await import("../sentry.edge.config");
-  }
-
   // Validate production-required env vars (PAYPAL_WEBHOOK_ID and the shared
   // rate-limit store).
   try {
@@ -135,24 +125,4 @@ export async function register() {
   // the deployment down for a configuration a human can fix live. Logged here,
   // surfaced as `degraded` by /api/health.
   reportAppCheckStatus();
-}
-
-
-/**
- * Report errors that escape a route handler or server component.
- *
- * Next calls this for every server-side request error; without it the SDK only
- * sees errors a route caught itself, which is exactly the set that never
- * reaches a user-visible 500. Loaded dynamically so the unit tests and the edge
- * bundle do not pay for the SDK import.
- */
-export async function onRequestError(
-  ...args: Parameters<typeof import("@sentry/nextjs").captureRequestError>
-) {
-  try {
-    const { captureRequestError } = await import("@sentry/nextjs");
-    captureRequestError(...args);
-  } catch {
-    // Error reporting must never break the error path.
-  }
 }

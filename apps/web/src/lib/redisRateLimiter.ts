@@ -39,8 +39,8 @@ import { childLogger } from "./logger";
  *   - If Redis is configured but a call fails (network error, timeout), the
  *     limiter returns `unavailable`: the request is NOT rejected, because a
  *     store outage must never lock every user out (see the fail-open branch in
- *     `proxy.ts`). The failure is counted, reported to Sentry via
- *     {@link reportRedisError}, and surfaced by /api/health.
+ *     `proxy.ts`). The failure is counted, logged via {@link reportRedisError},
+ *     and surfaced by /api/health.
  *   - Genuine over-limit rejections (a reachable store saying "no") are 429s.
  *   - Counters are keyed by IP with a route prefix so the web, api,
  *     strict, and login limits don't share a bucket.
@@ -103,36 +103,24 @@ const ERROR_HASH_PREFIX = "shipin:ratelimit:errors:";
 const ERROR_HASH_TTL_SECONDS = 10 * 60;
 
 /**
- * Report a Redis rate-limiting failure to Sentry in production.
+ * Report a Redis rate-limiting failure.
  *
- * This function is idempotent-safe: it guards against re-entrancy so that
- * a Sentry transport failure inside this function cannot cause a second
- * call here (which would loop indefinitely).
+ * A store outage means every per-IP limit is unenforced until it recovers, so
+ * this is logged at error level and the counter behind it is what /api/health
+ * reads. The client address is deliberately not logged: it is personal data
+ * and the limiter name is enough to find the failing call path.
  */
 function reportRedisError(limiterName: string, clientIp: string): void {
   if (!isProduction) return;
-  try {
-    // Lazy require avoids bundling Sentry into non-production bundles.
+  void clientIp;
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Sentry = require("@sentry/nextjs") as typeof import("@sentry/nextjs");
-    Sentry.withScope((scope) => {
-      scope.setContext("rateLimiter", {
-        name: limiterName,
-        ip: clientIp,
-        mode: "fail-closed",
-      });
-      scope.setTag("service", "rate-limiter");
-      scope.setTag("component", "redis-ratelimit");
-      Sentry.captureException(
-        new Error(
-          `[RateLimiter:${limiterName}] Redis call failed for IP ${clientIp}. ` +
-            "Request rejected (fail-closed)."
-        )
-      );
-    });
+  try {
+    childLogger({ service: "rate-limiter" }).error(
+      "[RateLimiter] Redis call failed; limits are not enforced for this request",
+      { limiter: limiterName }
+    );
   } catch {
-    // Do not let a Sentry transport failure mask the original console.error.
+    // Logging must never mask the original failure path.
   }
 }
 
@@ -358,7 +346,7 @@ export function createSharedRateLimiter(
       } catch (error) {
         // Fail OPEN, but flagged: an outage must not lock every user out (see
         // the `unavailable` branch in proxy.ts), so the request is served. The
-        // gap is not silent — this is counted, sent to Sentry and reported as
+        // gap is not silent — this is counted, logged and reported as
         // `degraded` by /api/health, which is the alert an operator acts on.
         bumpCounter(ip);
         console.error(

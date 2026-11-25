@@ -16,7 +16,7 @@ export function getRequiredEnv(key: string): string {
 
 /** One reader per group, so a caller pays for — and is only refused by — the
  * variables it actually reads.
- * A single `readEnvConfig()` behind the proxy meant `ENV.SENTRY.DSN` built
+ * A single `readEnvConfig()` behind the proxy meant reading any group built
  * the whole object: it threw about a missing R2 secret or PayPal key the
  * caller never asked for, and re-read every variable on each property access.
  * Now each group is read independently, and accessing a missing group returns
@@ -55,11 +55,6 @@ export const readers = {
     REDIS_REST_URL: getEnv("UPSTASH_REDIS_REST_URL"),
     REDIS_REST_TOKEN: getEnv("UPSTASH_REDIS_REST_TOKEN"),
   }),
-  SENTRY: () => ({
-    DSN: getEnv("NEXT_PUBLIC_SENTRY_DSN"),
-    SERVER_DSN: getEnv("SENTRY_DSN"),
-    AUTH_TOKEN: getEnv("SENTRY_AUTH_TOKEN"),
-  }),
 } as const;
 
 /** The validated environment, resolved per group on access. */
@@ -68,7 +63,7 @@ export type EnvConfig = {
 };
 
 /** Safe proxy that never throws on property access.
- * Each group validates only its own variables — accessing ENV.SENTRY.DSN
+ * Each group validates only its own variables — accessing ENV.UPSTASH
  * will never throw about a missing R2 secret or PayPal key.
  * Accessing an unknown key returns undefined.
  */
@@ -96,4 +91,4 @@ export const ENV = new Proxy({} as EnvConfig, {
   ownKeys() {
     return Object.keys(readers);
   },
-});
+});

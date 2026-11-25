@@ -116,9 +116,7 @@ export default function CookiePolicyPage() {
             We use <strong>Vercel Analytics</strong> and{" "}
             <strong>Vercel Speed Insights</strong> to count page views and measure
             load performance. Both are cookieless: they do not set a cookie, do
-            not build a cross-site profile, and report aggregate numbers.{" "}
-            <strong>Sentry</strong> receives JavaScript error reports from the
-            server and the browser, with no advertising identifiers attached.
+            not build a cross-site profile, and report aggregate numbers.
           </p>
           <p>
             Because none of these use cookies or track you across other sites,
@@ -169,11 +167,6 @@ export default function CookiePolicyPage() {
                   <td className="px-4 py-3">Vercel</td>
                   <td className="px-4 py-3">Hosting and analytics</td>
                   <td className="px-4 py-3">Aggregate, cookieless usage data</td>
-                </tr>
-                <tr>
-                  <td className="px-4 py-3">Sentry</td>
-                  <td className="px-4 py-3">Error monitoring</td>
-                  <td className="px-4 py-3">Error traces, no ad identifiers</td>
                 </tr>
                 <tr>
                   <td className="px-4 py-3">Spline</td>

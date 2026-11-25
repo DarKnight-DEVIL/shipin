@@ -355,16 +355,18 @@ and the CI `e2e` job runs the same files, so a documented suite cannot rot unexe
 | `support/[ticketId]/message/route.test.ts` | Auth checks, role enforcement, validation |
 | `paypal/create-order/route.test.ts` | Auth, validation, 404 handling |
 
-### Sentry Monitoring
+### Monitoring and Alerting
 
-Required Vercel Environment Variables:
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `NEXT_PUBLIC_SENTRY_DSN` | Yes for error capture | Sentry DSN; the browser SDK is initialised from `instrumentation-client.ts` and the server/edge SDKs from `sentry.server.config.ts` / `sentry.edge.config.ts` via `instrumentation.ts`. Without it the SDK stays disabled and errors are only logged. |
-| `SENTRY_DSN` | Optional | Server-side override; falls back to `NEXT_PUBLIC_SENTRY_DSN`. |
-| `SENTRY_AUTH_TOKEN` | Optional (build) | Only for source-map upload. Build-time only: `sentry.config.ts` skips `withSentryConfig` when it is absent, so a build without it still succeeds. Also set `SENTRY_ORG` and `SENTRY_PROJECT` for the upload to resolve. |
+There is no third-party error-reporting SDK in this deployment. What exists:
 
-Runtime capture does not depend on the auth token — a deployment with only the DSN reports errors, just without readable stack traces.
+| Signal | Where it comes from |
+|--------|--------------------|
+| Readiness / degraded state | `/api/health` — rate-limit store, tracking feed, App Check configuration and rejection count |
+| App Check quota outage | One Discord message per five-minute window (`APP_CHECK_ALERT_WEBHOOK_URL`, falling back to `BREACH_ALERT_WEBHOOK_URL`) |
+| CSP violations | Logged by `/api/csp-report` (no forwarding configured) |
+| Rate-limiter store failures | `error`-level log line with the limiter name, plus the per-IP counters `/api/health` reads |
+
+Point an uptime monitor at `/api/health` and alert on a non-`healthy` status; that probe is the only signal that does not depend on a webhook being configured.
 
 ### Docker Deployment
 
@@ -375,9 +377,6 @@ docker build -t shipin .
 
 # Run container
 docker run -p 3000:3000 \
-  -e NEXT_PUBLIC_SENTRY_DSN=... \
-  -e SENTRY_DSN=... \
-  -e SENTRY_AUTH_TOKEN=... \
   -e UPSTASH_REDIS_REST_URL=... \
   -e UPSTASH_REDIS_REST_TOKEN=... \
   shipin

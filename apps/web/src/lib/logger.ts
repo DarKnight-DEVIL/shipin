@@ -3,7 +3,7 @@
  *
  * Replaces ad-hoc console.* calls with a single, consistent interface.
  * All logs are emitted as JSON so they can be ingested by log aggregators
- * (CloudWatch, Datadog, Sentry, etc.).
+ * (CloudWatch, Datadog, etc.).
  *
  * Usage:
  *   logger.info("Payment captured", { requestId, amount });

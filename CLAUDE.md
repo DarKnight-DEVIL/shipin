@@ -163,12 +163,12 @@ src/
 
 `register()` runs before the server accepts traffic:
 
-1. Sentry init for the current runtime (`sentry.server.config.ts` / `sentry.edge.config.ts`).
-2. `validateProductionRequiredEnv()` — exits 1 when the rate-limit store (or `PAYPAL_WEBHOOK_ID`) is missing in production. `RATE_LIMIT_STORE_OPTIONAL=1` is the single documented opt-out, used only by `scripts/e2e-local.mjs` and the `e2e` CI job.
-3. Route classification (above).
-4. Warning-only reporters: missing rate-limit store, App Check enforced without a site key. These show up as `degraded` on `/api/health` instead of crashing.
+1. `validateProductionRequiredEnv()` — exits 1 when the rate-limit store (or `PAYPAL_WEBHOOK_ID`) is missing in production. `RATE_LIMIT_STORE_OPTIONAL=1` is the single documented opt-out, used only by `scripts/e2e-local.mjs` and the `e2e` CI job.
+2. Route classification (above).
+3. Boot-time App Check client initialisation (with a per-request fallback).
+4. Warning-only reporters: missing rate-limit store, App Check enforced without a site key, India Post credentials missing in production. These show up as `degraded` on `/api/health` instead of crashing.
 
-`onRequestError` forwards uncaught route errors to Sentry; the browser SDK loads via `instrumentation-client.ts`.
+The deployment ships no error-reporting SDK. Uncaught route errors are logged by Next; an App Check rejection spike is the one condition that pages a human, via the Discord webhook in `src/lib/appCheckMetrics.ts`.
 
 ### Money Paths
 

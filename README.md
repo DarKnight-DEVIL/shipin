@@ -20,7 +20,7 @@ Firebase-authenticated customer portal and an MFA-protected admin console.
 | Storage | Amazon S3 / Cloudflare R2 (presigned uploads) |
 | Email | Resend with SMTP fallback |
 | Messaging | WhatsApp Cloud API |
-| Observability | Sentry, Vercel Analytics / Speed Insights |
+| Observability | `/api/health` probe, Discord webhook alerts, Vercel Analytics / Speed Insights |
 | Tests | Vitest 5 + Testing Library, Playwright (E2E) |
 
 ## Project layout
@@ -155,6 +155,6 @@ Quality bar for changes: `npx tsc --noEmit`, `npm run lint` (0 errors), `npm tes
 ## Deployment
 
 Deployed on Vercel. Set every server variable above in the project environment (plus
-`UPSTASH_REDIS_REST_URL`/`TOKEN` and `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT` if Sentry
-source maps should be uploaded during the build). Build with `npm run build`, then start with
+`UPSTASH_REDIS_REST_URL`/`TOKEN`, and `APP_CHECK_ALERT_WEBHOOK_URL` if the App Check
+spike alert should reach a Discord channel). Build with `npm run build`, then start with
 `npm start` — it runs the traced standalone server the Docker image also runs, and takes its port from `PORT`.

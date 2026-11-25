@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 import withBundleAnalyzer from "@next/bundle-analyzer";
 
-import { initSentryConfig } from "./sentry.config";
 import { STANDALONE_OUTPUT_EXCLUDES } from "./standalone-output-excludes.mjs";
 
 const ANALYZE = process.env.ANALYZE === "true";
@@ -118,8 +117,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-// Sentry first: withSentryConfig wraps the finished config so the analyzer's
-// output is uploaded too. It is a no-op unless a DSN and an auth token exist.
-export default initSentryConfig(
-  withBundleAnalyzer({ enabled: ANALYZE })(nextConfig)
-);
+export default withBundleAnalyzer({ enabled: ANALYZE })(nextConfig);

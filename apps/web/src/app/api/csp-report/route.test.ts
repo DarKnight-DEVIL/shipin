@@ -7,10 +7,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.setConfig({ testTimeout: 15_000 });
 import { NextRequest } from "next/server";
 
-const mocks = vi.hoisted(() => ({ captureMessage: vi.fn() }));
-
-vi.mock("@sentry/nextjs", () => ({ captureMessage: mocks.captureMessage }));
-
 import { POST } from "./route";
 
 function reportRequest(body: unknown) {
@@ -22,7 +18,6 @@ function reportRequest(body: unknown) {
 }
 
 beforeEach(() => {
-  mocks.captureMessage.mockReset();
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
@@ -72,37 +67,19 @@ describe("POST /api/csp-report", () => {
     );
   });
 
-  it("still acknowledges the report when forwarding is configured", async () => {
+  it("acknowledges a report in production without any error-reporting SDK", async () => {
+    // The deployment ships no error-reporting service, so logging is the whole
+    // sink: the endpoint must still answer 200 and stay silent on the wire.
     vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "https://dsn.example/1");
 
-    /* Forwarding is best-effort: the endpoint must answer either way. */
     const response = await POST(
       reportRequest({ "csp-report": { "violated-directive": "img-src" } })
     );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ received: true });
-  });
-
-  it("does not forward outside production", async () => {
-    vi.stubEnv("NODE_ENV", "test");
-    vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "https://dsn.example/1");
-
-    await POST(reportRequest({ "csp-report": {} }));
-
-    expect(mocks.captureMessage).not.toHaveBeenCalled();
-  });
-
-  it("survives a Sentry transport failure", async () => {
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "https://dsn.example/1");
-    mocks.captureMessage.mockImplementation(() => {
-      throw new Error("transport down");
-    });
-
-    const response = await POST(reportRequest({ "csp-report": {} }));
-
-    expect(response.status).toBe(200);
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("CSP violation reported")
+    );
   });
 });

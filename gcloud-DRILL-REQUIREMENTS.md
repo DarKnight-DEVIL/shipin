@@ -171,7 +171,7 @@ Before I (or you) run any production gcloud commands, confirm:
 - [ ] **Service account keys** are prepared for both production and scratch projects
 - [ ] **Rollback plan** is documented — know how to reverse each operation
 - [ ] **Time window** is identified — run during off-peak hours (per Runbook: "run in off-peak hours")
-- [ ] **Sentry/health monitoring** is aware — monitor `/api/health` during the drill
+- [ ] **Health monitoring** is aware — monitor `/api/health` during the drill
 
 ---
 
