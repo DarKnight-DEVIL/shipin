@@ -94,3 +94,5 @@ Thumbs.db
 **/*.orig
 *.rej
 **/*.rej
+# break-glass MFA reset writes a TOTP secret and backup codes here; never commit them
+break-glass-*.txt

@@ -38,7 +38,7 @@ import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { generateSecret, verifySync } from "otplib";
 
-import { hashBackupCode } from "../../src/lib/mfaBackupCodes";
+import { hashBackupCode } from "../../src/lib/mfaBackupCodes.ts";
 import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
