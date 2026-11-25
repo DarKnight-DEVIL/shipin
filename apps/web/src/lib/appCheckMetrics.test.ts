@@ -202,7 +202,7 @@ describe("recordAppCheckRejection / readAppCheckRejections", () => {
 
 describe("reportAppCheckSpike", () => {
   it("alerts once per bucket and not again for the same window", () => {
-    const status = { recentRejections: 50, spike: true, missing: 0, invalid: 0 };
+    const status = { recentRejections: 50, spike: true, missing: 0, invalid: 0, invalidReasons: {} };
 
     expect(reportAppCheckSpike(status, bucketAt(0))).toBe(true);
     expect(captureAlert).toHaveBeenCalledTimes(1);
@@ -213,7 +213,7 @@ describe("reportAppCheckSpike", () => {
   });
 
   it("alerts again only when a new bucket spikes", () => {
-    const status = { recentRejections: 50, spike: true, missing: 0, invalid: 0 };
+    const status = { recentRejections: 50, spike: true, missing: 0, invalid: 0, invalidReasons: {} };
     reportAppCheckSpike(status, bucketAt(0));
 
     expect(reportAppCheckSpike(status, bucketAt(1))).toBe(true);
@@ -222,7 +222,7 @@ describe("reportAppCheckSpike", () => {
 
   it("stays silent below the threshold", () => {
     expect(
-      reportAppCheckSpike({ recentRejections: 3, spike: false, missing: 0, invalid: 0 }, bucketAt(0))
+      reportAppCheckSpike({ recentRejections: 3, spike: false, missing: 0, invalid: 0, invalidReasons: {} }, bucketAt(0))
     ).toBe(false);
     expect(captureAlert).not.toHaveBeenCalled();
   });
@@ -232,7 +232,7 @@ describe("buildAppCheckAlertPayload", () => {
   it("carries the title, the count, the threshold and a timestamp", () => {
     const now = bucketAt(0);
     const payload = buildAppCheckAlertPayload(
-      { recentRejections: 42, spike: true, missing: 0, invalid: 0 },
+      { recentRejections: 42, spike: true, missing: 0, invalid: 0, invalidReasons: {} },
       now
     );
 
@@ -257,7 +257,7 @@ describe("buildAppCheckAlertPayload", () => {
   it("names the deployment environment from VERCEL_ENV when present", () => {
     process.env.VERCEL_ENV = "production";
     const payload = buildAppCheckAlertPayload(
-      { recentRejections: 30, spike: true, missing: 0, invalid: 0 },
+      { recentRejections: 30, spike: true, missing: 0, invalid: 0, invalidReasons: {} },
       bucketAt(0)
     );
 
@@ -271,7 +271,7 @@ describe("buildAppCheckAlertPayload", () => {
 
   it("reminds the on-call of the escape hatch", () => {
     const payload = buildAppCheckAlertPayload(
-      { recentRejections: 99, spike: true, missing: 0, invalid: 0 },
+      { recentRejections: 99, spike: true, missing: 0, invalid: 0, invalidReasons: {} },
       bucketAt(0)
     );
     const remediation = payload.embeds[0].fields.find(
@@ -339,7 +339,7 @@ describe("getAppCheckAlertTarget", () => {
 
 describe("dispatchAppCheckAlert", () => {
   const payload = buildAppCheckAlertPayload(
-    { recentRejections: 25, spike: true, missing: 0, invalid: 0 },
+    { recentRejections: 25, spike: true, missing: 0, invalid: 0, invalidReasons: {} },
     1_700_000_000_000
   );
 
@@ -393,7 +393,7 @@ describe("dispatchAppCheckAlert", () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
     vi.stubGlobal("fetch", fetchMock);
 
-    expect(reportAppCheckSpike({ recentRejections: 40, spike: true, missing: 0, invalid: 0 }, bucketAt(0)))
+    expect(reportAppCheckSpike({ recentRejections: 40, spike: true, missing: 0, invalid: 0, invalidReasons: {} }, bucketAt(0)))
       .toBe(true);
 
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));

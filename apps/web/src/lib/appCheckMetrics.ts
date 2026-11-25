@@ -31,6 +31,14 @@ const REJECTION_HASH = "shipin:appcheck:rejections";
  * total cannot tell them apart.
  */
 const REASON_HASH = "shipin:appcheck:rejection-reasons";
+/**
+ * Which claim a refused token failed, by fixed label.
+ *
+ * Kept apart from the counts above because it answers a different question:
+ * the count says clients are being refused, this says whether the fix is a
+ * key registered in the wrong project or keys that could not be fetched.
+ */
+const DETAIL_HASH = "shipin:appcheck:invalid-details";
 const BUCKET_MS = 5 * 60 * 1000;
 /** Current bucket plus the one before it: a ten-minute view. */
 const WINDOW_BUCKETS = 2;
@@ -51,6 +59,7 @@ function currentBucket(now = Date.now()): number {
 /** In-memory fallback, used only when no shared store is configured. */
 const localBuckets = new Map<number, number>();
 const localReasons = new Map<string, number>();
+const localDetails = new Map<string, number>();
 
 export type AppCheckRejectionReason = "missing" | "invalid";
 
@@ -92,6 +101,31 @@ export function recordAppCheckRejection(
   pruneLocalBuckets(now);
 }
 
+/**
+ * Record why an invalid token failed verification: a fixed label, never the
+ * token. Fire-and-forget, like the counter above.
+ */
+export function recordAppCheckFailureReason(
+  detail: string,
+  now = Date.now()
+): void {
+  const field = `${currentBucket(now)}:${detail}`;
+
+  const client = getSharedRedisClient();
+  if (client) {
+    void client
+      .hincrby(DETAIL_HASH, field, 1)
+      .then(() => client.expire(DETAIL_HASH, HASH_TTL_SECONDS))
+      .catch((error: unknown) => {
+        logger.warn("Could not record an App Check failure reason", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+  }
+
+  localDetails.set(field, (localDetails.get(field) ?? 0) + 1);
+}
+
 export interface AppCheckRejectionStatus {
   /** Rejections across the ten-minute window. */
   recentRejections: number;
@@ -101,6 +135,8 @@ export interface AppCheckRejectionStatus {
   missing: number;
   /** Of the above, requests that carried a token the server refused. */
   invalid: number;
+  /** Why those tokens were refused, by label (e.g. audience-mismatch). */
+  invalidReasons: Record<string, number>;
 }
 
 export async function readAppCheckRejections(
@@ -110,6 +146,14 @@ export async function readAppCheckRejections(
   let total = 0;
   let missing = 0;
   let invalid = 0;
+
+  const invalidReasons: Record<string, number> = {};
+  const countDetail = (field: string, raw: unknown) => {
+    const [bucket, detail] = field.split(":");
+    if (Number(bucket) < oldest) return;
+    invalidReasons[detail] =
+      (invalidReasons[detail] ?? 0) + (Number(raw) || 0);
+  };
 
   const countReason = (field: string, raw: unknown) => {
     const [bucket, reason] = field.split(":");
@@ -130,6 +174,10 @@ export async function readAppCheckRejections(
         total += Number(raw) || 0;
       }
       const reasons = await client.hgetall<Record<string, unknown>>(REASON_HASH);
+      const details = await client.hgetall<Record<string, unknown>>(DETAIL_HASH);
+      for (const [field, raw] of Object.entries(details ?? {})) {
+        countDetail(field, raw);
+      }
       for (const [field, raw] of Object.entries(reasons ?? {})) {
         countReason(field, raw);
       }
@@ -138,6 +186,7 @@ export async function readAppCheckRejections(
         spike: total >= APP_CHECK_SPIKE_THRESHOLD,
         missing,
         invalid,
+        invalidReasons,
       };
     } catch (error) {
       logger.warn(
@@ -155,11 +204,15 @@ export async function readAppCheckRejections(
   for (const [field, count] of localReasons) {
     if (Number(field.split(":")[0]) >= oldest) countReason(field, count);
   }
+  for (const [field, count] of localDetails) {
+    countDetail(field, count);
+  }
   return {
     recentRejections: total,
     spike: total >= APP_CHECK_SPIKE_THRESHOLD,
     missing,
     invalid,
+    invalidReasons,
   };
 }
 
@@ -352,6 +405,7 @@ export function reportAppCheckSpike(
 export function resetAppCheckMetricsForTests(): void {
   localBuckets.clear();
   localReasons.clear();
+  localDetails.clear();
   lastAlertedBucket = -1;
   sendAlert = defaultAlertSender;
 }

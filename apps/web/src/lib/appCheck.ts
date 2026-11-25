@@ -13,6 +13,7 @@ import "server-only";
 import { clientEnv, isProduction, serverEnv } from "@/config/env";
 import { childLogger } from "@/lib/logger";
 import { appCheckClient } from "@/instrumentation";
+import { recordAppCheckFailureReason } from "@/lib/appCheckMetrics";
 
 /** Firebase's conventional header for a client-supplied App Check token. */
 export const APP_CHECK_HEADER = "x-firebase-appcheck";
@@ -99,6 +100,28 @@ export function reportAppCheckStatus(): AppCheckConfiguration {
 }
 
 /**
+ * Which claim a rejected token failed, as a fixed label.
+ *
+ * The verifier's own message embeds the token's `aud`, but the *shape* of the
+ * failure is safe to report and is the difference between two unrelated fixes:
+ * an audience mismatch means the site key belongs to another Firebase project,
+ * while a signature failure means the public keys could not be used at all.
+ * Never returns any part of the token or the project identifiers.
+ */
+export function classifyAppCheckFailure(error: unknown): string {
+  const code = (error as { code?: unknown }).code;
+  const message = error instanceof Error ? error.message : "";
+
+  if (code === "app-check/invalid-credential") return "no-project-id";
+  if (message.includes('incorrect "aud"')) return "audience-mismatch";
+  if (message.includes("incorrect algorithm")) return "algorithm-mismatch";
+  if (message.includes('"iss"')) return "issuer-mismatch";
+  if (message.includes('"sub"')) return "subject-missing";
+  if (/expired|is not yet valid/i.test(message)) return "time-invalid";
+  return "signature-or-jwks";
+}
+
+/**
  * Verify the App Check token on a request.
  */
 export async function verifyAppCheckRequest(
@@ -122,10 +145,14 @@ export async function verifyAppCheckRequest(
     await getAppCheckFn().verifyToken(token);
     return "ok";
   } catch (error) {
-    // Log a code only: verification errors can embed the token or app id.
+    const reason = classifyAppCheckFailure(error);
+    // The claim that failed, never the token or the project identifiers: a
+    // rejection nobody can attribute is what turned this into a guessing game.
     console.error("[AppCheck] Token verification failed:", {
       errorCode: error instanceof Error ? error.name : "UNKNOWN",
+      reason,
     });
+    recordAppCheckFailureReason(reason);
     return "invalid";
   }
 }

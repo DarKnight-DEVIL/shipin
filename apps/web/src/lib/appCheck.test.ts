@@ -23,6 +23,12 @@ const env = vi.hoisted(() => ({
   production: false as boolean,
 }));
 
+const metrics = vi.hoisted(() => ({ recordAppCheckFailureReason: vi.fn() }));
+
+vi.mock("@/lib/appCheckMetrics", () => ({
+  recordAppCheckFailureReason: metrics.recordAppCheckFailureReason,
+}));
+
 vi.mock("firebase-admin/app-check", () => ({
   getAppCheck: () => ({ verifyToken: admin.verifyToken }),
 }));
@@ -227,6 +233,35 @@ describe("verifyAppCheckRequest", () => {
         requestWithHeaders({ [appCheck.APP_CHECK_HEADER]: "bad" })
       )
     ).resolves.toBe("invalid");
+  });
+});
+
+describe("classifyAppCheckFailure", () => {
+  // The verifier's message embeds the token's audience, so the message itself
+  // cannot be reported. The label can, and it is what separates a key
+  // registered in another project from public keys that could not be used.
+  it.each([
+    [Object.assign(new Error('has incorrect "aud" (audience) claim'), {}), "audience-mismatch"],
+    [Object.assign(new Error("has incorrect algorithm"), {}), "algorithm-mismatch"],
+    [Object.assign(new Error('has incorrect "iss" (issuer) claim'), {}), "issuer-mismatch"],
+    [Object.assign(new Error('has no "sub" (subject) claim'), {}), "subject-missing"],
+    [Object.assign(new Error("token expired"), {}), "time-invalid"],
+    [Object.assign(new Error("boom"), { code: "app-check/invalid-credential" }), "no-project-id"],
+    [new Error("fetch failed"), "signature-or-jwks"],
+  ])("labels %s as %s", (error, expected) => {
+    expect(appCheck.classifyAppCheckFailure(error)).toBe(expected);
+  });
+
+  it("records the label and never the token when verification fails", async () => {
+    env.enforcement = "true";
+    admin.verifyToken.mockRejectedValue(Object.assign(new Error('has incorrect "aud" claim'), {}));
+
+    const request = new Request("https://shipin.test/api/admin/x", {
+      headers: { "X-Firebase-AppCheck": "secret-token-value" },
+    });
+
+    await expect(appCheck.verifyAppCheckRequest(request)).resolves.toBe("invalid");
+    expect(metrics.recordAppCheckFailureReason).toHaveBeenCalledWith("audience-mismatch");
   });
 });
 
