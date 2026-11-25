@@ -26,7 +26,7 @@ import { PAYPAL_FIXED_FEE, PAYPAL_PERCENTAGE } from "@/config/constants";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { minorFromStored, storedMinor } from "@/lib/money";
 import { roundMoney, sameCents, toNumber } from "@/lib/paypal/amounts";
-import { reservedFields } from "@/lib/moneyMode";
+import { holdAmountFields, reservedFields } from "@/lib/moneyMode";
 import { createPayPalOrder } from "@/lib/paypal/createPayPalOrder";
 import {
   availableWalletBalance,
@@ -361,7 +361,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
           transaction.set(holdRef, {
             userId,
-            amount: walletApplied,
+            ...holdAmountFields(minorFromStored(walletApplied)),
             status: "reserved",
             idempotencyKey,
             orderId: null,

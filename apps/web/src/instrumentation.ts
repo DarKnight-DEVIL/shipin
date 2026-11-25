@@ -124,7 +124,7 @@ export async function register() {
     appCheckClient = getAppCheck;
 
     appCheckLogger.info("[AppCheck] Client initialized at boot");
-  } catch (error) {
+  } catch {
     // If boot-time initialization fails (e.g., ERR_REQUIRE_ESM on edge),
     // fall back to per-request dynamic imports in verifyAppCheckRequest.
     appCheckLogger.warn("[AppCheck] Boot-time client initialization failed, using per-request imports");

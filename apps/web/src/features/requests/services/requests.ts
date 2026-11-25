@@ -17,7 +17,6 @@ import type {
   AdditionalItemRequest,
   AdditionalItemRequestStatus,
 } from "@/types/request";
-import type { Address } from "@/types/address";
 import type { RequestStatus } from "@/features/requests/services/requestStatus";
 import { toShipINError } from "@/utils/errors";
 import { quoteExpiresAt } from "./quoteTtl";

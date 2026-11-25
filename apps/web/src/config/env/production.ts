@@ -234,7 +234,7 @@ function assertHttpsCredentialEndpoints(): void {
     let parsed: URL | null = null;
     try {
       parsed = new URL(raw);
-    } catch (e) {
+    } catch {
       parsed = null;
     }
 

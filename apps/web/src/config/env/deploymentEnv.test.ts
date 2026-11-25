@@ -113,7 +113,6 @@ describe("DEPLOYMENT.md env table", () => {
       // The contiguous comment block immediately above the line in the table.
       // Walk backwards from the found line to collect comment lines starting with #.
       const allLines = deploymentSource.split("\n");
-      const foundLine = allLines[index];
       const block: string[] = [];
       // Look backwards from this line
       for (let i = index - 1; i >= 0 && allLines[i].startsWith("#"); i -= 1) {

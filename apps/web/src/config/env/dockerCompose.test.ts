@@ -130,5 +130,11 @@ describe("docker-compose env wiring", () => {
     const anchorSpread = /<<:\s*\*\s*client-config/.test(composeSource);
 
     expect(anchorSpread).toBe(true);
+
+    // Each variable has to be named somewhere in the file. Asserting only the
+    // anchor made this test pass with every one of them absent.
+    for (const name of requiredNextPublic) {
+      expect(composeSource, name).toContain(name);
+    }
   });
 });

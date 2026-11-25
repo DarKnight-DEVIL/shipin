@@ -50,12 +50,6 @@ const docSnapshot = (data?: Record<string, unknown>, id = "req-1") => ({
   data: () => data,
 });
 
-const createData = {
-  customerName: "Ada",
-  email: "ada@example.com",
-  items: [],
-  shippingAddress: { country: "GB" },
-};
 
 beforeEach(() => {
   mocks.addDoc.mockReset().mockResolvedValue({ id: "req-new" });

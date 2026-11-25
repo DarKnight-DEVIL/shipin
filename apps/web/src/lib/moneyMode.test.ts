@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   balanceFields,
+  holdAmountFields,
   isMinorOnlyMode,
   ledgerFields,
   reservedFields,
@@ -85,5 +86,28 @@ describe("reservedFields", () => {
 
     vi.stubEnv("MONEY_MINOR_ONLY", "1");
     expect(reservedFields(2000)).toEqual({ reservedMinor: 2000 });
+  });
+});
+
+/**
+ * A hold is the one money document that was never backfilled or stripped, because
+ * it is deleted when consumed. It still has to be written in both shapes: a
+ * release subtracts it from `reserved`, and a reader in the other shape seeing
+ * zero would leave money reserved forever.
+ */
+describe("holdAmountFields", () => {
+  it("writes both shapes while the flag is off", () => {
+    vi.stubEnv("MONEY_MINOR_ONLY", "");
+    expect(holdAmountFields(5000)).toEqual({ amount: 50, amountMinor: 5000 });
+  });
+
+  it("writes only the integer once the flag is on", () => {
+    vi.stubEnv("MONEY_MINOR_ONLY", "1");
+    expect(holdAmountFields(5000)).toEqual({ amountMinor: 5000 });
+  });
+
+  it("rounds nothing: the integer is the value that gets stored", () => {
+    vi.stubEnv("MONEY_MINOR_ONLY", "1");
+    expect(holdAmountFields(1)).toEqual({ amountMinor: 1 });
   });
 });

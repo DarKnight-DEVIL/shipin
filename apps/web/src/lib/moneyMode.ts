@@ -71,3 +71,23 @@ export function reservedFields(minor: Minor): ReservedFields {
 
   return { reserved: toDecimal(minor), reservedMinor: minor };
 }
+
+/**
+ * A `walletHolds` document's amount.
+ *
+ * The last money field that was still decimal. A hold is transient — it is
+ * deleted when consumed and never outlives its TTL — so it was left out of the
+ * backfill and the strip, but it is still an amount of money that a release
+ * calculation subtracts from `reserved`. Written in both shapes for the same
+ * reason as every other write: a reader in the other shape must not see zero.
+ */
+export interface HoldAmountFields {
+  amount?: number;
+  amountMinor: Minor;
+}
+
+export function holdAmountFields(minor: Minor): HoldAmountFields {
+  if (isMinorOnlyMode()) return { amountMinor: minor };
+
+  return { amount: toDecimal(minor), amountMinor: minor };
+}

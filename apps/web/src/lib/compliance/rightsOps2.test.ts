@@ -9,7 +9,6 @@
  * block clears whatever a previous file left behind before these imports run.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { logger, childLogger } from "../../lib/logger";
 
 import {
   logRightsRequest,

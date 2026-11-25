@@ -15,8 +15,6 @@ const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 type AssignableRole = "admin" | "customer";
 
-const ROLES: AssignableRole[] = ["admin", "customer"];
-
 export interface AdminUserRow {
   uid: string;
   email: string;
