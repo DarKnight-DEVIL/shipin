@@ -109,6 +109,17 @@ async function expectHydrated(page: Page, route: string) {
     // Vercel Analytics/Speed Insights 404 outside Vercel; ignore those.
     if (/_vercel\/(insights|speed-insights)/.test(text)) return;
     if (text.includes("Failed to load resource")) return;
+    // Two console errors only the local environment can produce:
+    //
+    //   requestStorageAccess  headless Chromium's storage partitioning refuses
+    //                         the call; no real user reaches this code path.
+    //   AppCheck 403          the reCAPTCHA Enterprise key does not allow
+    //                         localhost, so no token can be minted here. This is
+    //                         named rather than ignored because the same line in
+    //                         a deployment means App Check is rejecting every
+    //                         browser request - see OPERATIONS.md.
+    if (text.includes("requestStorageAccess: Permission denied")) return;
+    if (/\[app-check\].*AppCheck: 403/.test(text)) return;
     consoleErrors.push(text.split("\n")[0]);
   });
 
