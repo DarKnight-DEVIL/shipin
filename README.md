@@ -115,7 +115,10 @@ Quality bar for changes: `npx tsc --noEmit`, `npm run lint` (0 errors), `npm tes
 - `POST /api/paypal/capture-order` verifies the stored order, captures at PayPal, checks the
   captured amount/currency, deducts the wallet share atomically in a Firestore transaction, and
   marks the request paid. Replays are idempotent.
-- `POST /api/paypal/capture-wallet-topup` credits the wallet once per capture id.
+- Customers cannot top up a wallet: there is no create/capture top-up route and `/wallet` is a
+  statement. Credit is issued by an admin (`POST /api/admin/wallet/credit`, capped by
+  `WALLET_CREDIT_MAX`) or by a refund settled as credit. Orders created before that change are
+  still settled by `POST /api/admin/payments/sweep`.
 - `POST /api/webhook` verifies the PayPal signature and fails closed on verification errors.
 - Refunds run through the admin routes (`refund`, `partial-refund`, `refund-offer`) and record
   wallet vs. PayPal portions separately; the wallet portion is credited transactionally and the

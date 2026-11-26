@@ -63,7 +63,10 @@ service fees, inspection fees, and any applicable taxes. We will provide a
 detailed breakdown before you approve any quote.
 
 ### 6.2 Payment Methods
-We accept PayPal and wallet credits. We do not store your payment credentials.
+We accept PayPal and wallet credits. Wallet credits are issued by ShipIN - typically
+when a refund is settled as credit, or as a goodwill amount - and cannot be purchased;
+there is no way to add funds to a wallet yourself. We do not store your payment
+credentials.
 
 ### 6.3 Refunds
 Refunds are processed according to our refund policy, available in your account

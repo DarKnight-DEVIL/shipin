@@ -32,8 +32,6 @@
  * | `/api/profile/preferences` | PATCH | Dashboard metric prefs |
  * | `/api/paypal/create-order` | POST | Begin PayPal order |
  * | `/api/paypal/capture-order` | POST | Capture PayPal order |
- * | `/api/paypal/create-wallet-topup` | POST | Begin wallet top-up |
- * | `/api/paypal/capture-wallet-topup` | POST | Capture wallet top-up |
  * | `/api/payment/complete-wallet` | POST | Complete wallet payment |
  * | `/api/r2/upload` | POST | Get signed upload URL |
  * | `/api/r2/view` | POST | Get signed view URL |
