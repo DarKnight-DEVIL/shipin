@@ -60,6 +60,14 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/lib/firebaseAdmin", () => ({ adminDb: mocks.db }));
 
+vi.mock("@/features/notifications/services/notificationService", () => ({
+  sendNotification: vi.fn(async () => {}),
+}));
+
+vi.mock("@/lib/paypal/paymentReceivedNotification", () => ({
+  buildPaymentReceivedNotification: () => ({ kind: "payment-received" }),
+}));
+
 vi.mock("@/lib/paypal", () => ({
   verifyPayPalOrder: async (id: string) => mocks.state.paypal[id] ?? { status: "CREATED" },
 }));
@@ -164,6 +172,23 @@ describe("POST /api/admin/payments/sweep — verdict", () => {
     expect(mocks.state.settleMain).toHaveBeenCalledWith(
       expect.objectContaining({ captureId: "CAP-1", capturedAmount: 42, requestId: "req-1" })
     );
+  });
+
+  it("emails the receipt a settled payment never got", async () => {
+    // The browser path sends this when it settles. A swept payment is the same
+    // event from the customer's side: charged, and until now silent.
+    const { sendNotification } = await import(
+      "@/features/notifications/services/notificationService"
+    );
+    mocks.state.orders = [
+      { id: "ORDER-4", data: { orderId: "ORDER-4", requestId: "req-4", paymentType: "main" } },
+    ];
+    mocks.state.paypal["ORDER-4"] = completedOrder();
+
+    const response = await POST(signedRequest());
+
+    expect(response.status).toBe(200);
+    expect(sendNotification).toHaveBeenCalledTimes(1);
   });
 
   it("goes red when a captured payment could not be settled", async () => {

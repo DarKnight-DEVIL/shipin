@@ -30,6 +30,8 @@ import { settleAdditionalItemPayment } from "@/lib/paypal/settleAdditionalItemPa
 import type { StuckPaymentOrder } from "@/lib/paypal/sweepPendingPayments";
 import { sweepPendingPayments } from "@/lib/paypal/sweepPendingPayments";
 import { withErrorHandler } from "@/utils/errors";
+import { sendNotification } from "@/features/notifications/services/notificationService";
+import { buildPaymentReceivedNotification } from "@/lib/paypal/paymentReceivedNotification";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -123,9 +125,32 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         expectedPayPalAmount: Number(paymentOrder.data.paypalAmount ?? 0),
       });
 
-      return settlement.ok
-        ? { ok: true }
-        : { ok: false, error: settlement.error ?? "Settlement failed." };
+      if (!settlement.ok) {
+        return { ok: false, error: settlement.error ?? "Settlement failed." };
+      }
+
+      // The browser path emails a receipt when it settles. A payment this sweep
+      // repaired is the same event from the customer's side - they were charged
+      // and heard nothing - so the receipt goes out here too. A failed
+      // notification must not undo a settled payment.
+      try {
+        const requestData = (await adminDb.collection("requests").doc(requestId).get()).data();
+
+        await sendNotification(
+          buildPaymentReceivedNotification({
+            userId: String(requestData?.userId ?? ""),
+            requestId,
+            customerName:
+              requestData?.customerName ||
+              requestData?.shippingAddress?.firstName ||
+              "Customer",
+          })
+        );
+      } catch (error) {
+        console.warn("[paypal-sweep] Payment receipt notification failed", { requestId, error });
+      }
+
+      return { ok: true };
     },
 
     settleAdditionalItem: async ({ paymentOrder, capture }) => {
