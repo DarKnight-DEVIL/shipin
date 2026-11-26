@@ -27,10 +27,9 @@
 
 import "server-only";
 
-import crypto from "crypto";
-
 import { childLogger } from "./logger";
 import { getSharedRedisClient } from "./redisRateLimiter";
+import { stableHash } from "./stableHash";
 
 export type ErrorCategory =
   | "payment-drift"
@@ -112,13 +111,13 @@ export function fingerprintFor(
   code: string,
   message: string
 ): string {
-  const hash = crypto
-    .createHash("sha256")
-    .update(`${category}|${code}|${normaliseMessage(message)}`)
-    .digest("hex")
-    .slice(0, 16);
-
-  return `${category}:${hash}`;
+  // Not a security primitive: a bucketing key that has to be identical in every
+  // instance. `node:crypto` cannot appear anywhere in this module's graph - the
+  // proxy and instrumentation are compiled for the edge runtime too, and the import
+  // stops the production build.
+  return `${category}:${stableHash(
+    `${category}|${code}|${normaliseMessage(message)}`
+  )}`;
 }
 
 function sanitiseContext(

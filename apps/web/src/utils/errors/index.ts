@@ -7,7 +7,7 @@
 
 import { NextResponse } from "next/server";
 
-import { captureServerError } from "@/lib/errorTracking";
+import { reportHandledError } from "@/lib/errorReporterHook";
 
 /**
  * Factory function to create a ShipINError with explicit code and status.
@@ -198,7 +198,7 @@ export function withErrorHandler<Args extends unknown[]>(
 
       // One structured event per unhandled failure, deduplicated by fingerprint:
       // the same broken route alerts once per window instead of once per request.
-      void captureServerError(error, {
+      reportHandledError(error, {
         category: "unhandled",
         severity: err.status >= 500 ? "error" : "warning",
         code: err.code,

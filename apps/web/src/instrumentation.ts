@@ -8,6 +8,7 @@
 import { childLogger } from "@/lib/logger";
 import { appCheckLogger } from "@/lib/appCheck";
 import { getAppCheckAlertTarget } from "@/lib/appCheckMetrics";
+import { setErrorReporter } from "@/lib/errorReporterHook";
 
 import { isProduction, validateProductionRequiredEnv } from "@/config/env";
 import { reportAppCheckStatus } from "@/lib/appCheck";
@@ -114,6 +115,23 @@ export async function register() {
       // 500s for the affected endpoints, so the deployment must fail instead.
       failBoot(error);
     }
+  }
+
+  /*
+   * Install structured error tracking.  is shared with client
+   * components and cannot import the server-only tracker itself, so the server
+   * registers it here: routes then report through the hook.
+   */
+  try {
+    const { captureServerError } = await import("@/lib/errorTracking");
+    setErrorReporter((error, options) => {
+      void captureServerError(error, options);
+    });
+  } catch (error) {
+    childLogger({ service: "instrumentation" }).warn(
+      "[instrumentation] error tracking could not be installed: unhandled route errors will only be logged",
+      { error: error instanceof Error ? error.message : String(error) }
+    );
   }
 
   // Initialize App Check client once at boot to avoid per-request dynamic import overhead.

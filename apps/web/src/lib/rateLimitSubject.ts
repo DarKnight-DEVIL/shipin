@@ -20,9 +20,8 @@
  * a signature check on every page load for no additional security.
  */
 
-import crypto from "crypto";
-
 import { getClientIp } from "./clientIp";
+import { stableHash } from "./stableHash";
 
 /** Bucket used when the deployment cannot identify the caller at all. */
 export const UNIDENTIFIED_SUBJECT = "127.0.0.1";
@@ -73,7 +72,9 @@ const verifiedIdentities = new Map<string, CachedIdentity>();
 
 /** A stable cache key: the token itself is never held as a map key in memory. */
 function tokenFingerprint(token: string): string {
-  return crypto.createHash("sha256").update(token).digest("hex");
+  // A cache key, not a digest: no `node:crypto` in this module's graph, because
+  // the proxy is compiled for the edge runtime as well.
+  return stableHash(token);
 }
 
 const bearerTokenOf = (request: Request): string | null => {
