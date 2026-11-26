@@ -83,6 +83,7 @@ clients branch on it rather than on the status alone.
 | `/api/admin/requests/quotes/expire` | public |
 | `/api/admin/shipments/[shipmentId]` | admin |
 | `/api/admin/users` | admin |
+| `/api/admin/users/[uid]/delete` | admin |
 | `/api/admin/users/[uid]/mfa/reset` | admin |
 | `/api/admin/users/[uid]/verify-email` | admin |
 | `/api/admin/wallet/balance` | admin |

@@ -605,6 +605,26 @@ export const adminEmailVerifyBodySchema = z.object({
     .max(200, "Keep the reason under 200 characters."),
 });
 
+/**
+ * POST /api/admin/users/[uid]/delete - removing a throwaway account.
+ *
+ * `confirmEmail` is part of the payload rather than a UI concern: the server compares
+ * it with the address on the account, so a request that skips the form's guard fails
+ * here too. See the route for why the deletion is deliberately narrow.
+ */
+export const adminDeleteUserBodySchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(3, "Give a reason of at least 3 characters.")
+    .max(200, "Keep the reason under 200 characters."),
+  confirmEmail: z
+    .string()
+    .trim()
+    .min(3, "Type the account's email address to confirm.")
+    .max(320, "That is longer than any email address."),
+});
+
 /** POST /api/user/age-verification — parental-consent actions. */
 export const ageVerificationBodySchema = z.discriminatedUnion("action", [
   z.object({

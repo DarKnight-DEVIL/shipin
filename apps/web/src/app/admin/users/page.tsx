@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { ShieldCheck, UserCog } from "lucide-react";
+import { ShieldCheck, Trash2, UserCog } from "lucide-react";
 
 import { auth } from "@/lib/firebase";
 import { customerApi, CustomerApiError } from "@/lib/customerApiClient";
@@ -44,6 +44,15 @@ export default function AdminUsersPage() {
   // Which row has the reason prompt open, and what has been typed into it.
   const [verifyingUid, setVerifyingUid] = useState<string | null>(null);
   const [verifyReason, setVerifyReason] = useState("");
+  /*
+   * The row whose deletion panel is open, plus what has been typed into it. Kept as
+   * the whole row rather than a uid so the panel can name the account it will delete
+   * even after the list beneath it refreshes.
+   */
+  const [pendingDelete, setPendingDelete] = useState<AdminUserRow | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleteEmail, setDeleteEmail] = useState("");
+  const [signedInUid, setSignedInUid] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,7 +95,15 @@ export default function AdminUsersPage() {
 
   // Load from the auth subscription callback so the list follows the signed-in
   // administrator instead of running on every mount.
-  useEffect(() => onAuthStateChanged(auth, () => void load()), [load]);
+  useEffect(
+    () =>
+      onAuthStateChanged(auth, (signedIn) => {
+        // The server refuses deleting yourself; hiding the button says so earlier.
+        setSignedInUid(signedIn?.uid ?? null);
+        void load();
+      }),
+    [load]
+  );
 
   async function changeRole(user: AdminUserRow) {
     const nextRole: AssignableRole =
@@ -174,6 +191,44 @@ export default function AdminUsersPage() {
         caught instanceof CustomerApiError
           ? caught.message
           : "Could not verify that address."
+      );
+    } finally {
+      setBusyUid(null);
+    }
+  }
+
+  /**
+   * Delete a throwaway account.
+   *
+   * This is the only irreversible action on the page, so the panel asks for the
+   * address to be typed out and the server checks that same address itself: a
+   * mistouched row cannot destroy an account. Accounts with orders or wallet history
+   * are refused by the route (they go through the anonymising erasure flow instead),
+   * which is why the failure message is shown verbatim rather than as a generic one.
+   */
+  async function deleteAccount(user: AdminUserRow, reason: string) {
+    setBusyUid(user.uid);
+    setError(null);
+    setMessage(null);
+
+    try {
+      await customerApi(`/api/admin/users/${user.uid}/delete`, {
+        method: "POST",
+        body: { reason: reason.trim(), confirmEmail: deleteEmail.trim() },
+      });
+
+      setUsers((rows) => rows.filter((row) => row.uid !== user.uid));
+      setMessage(
+        `${user.email || user.uid} was deleted. The sign-in account and its records are gone.`
+      );
+      setPendingDelete(null);
+      setDeleteReason("");
+      setDeleteEmail("");
+    } catch (caught) {
+      setError(
+        caught instanceof CustomerApiError
+          ? caught.message
+          : "Could not delete that account."
       );
     } finally {
       setBusyUid(null);
@@ -313,6 +368,31 @@ export default function AdminUsersPage() {
                           Verify email
                         </button>
                       )}
+
+                      {/*
+                        * Admins are refused by the server (it protects the console from
+                        * deleting its own owner) and so is your own account, so neither
+                        * offers a button that would only fail.
+                        */}
+                      {user.role === "admin" || user.uid === signedInUid ? null : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPendingDelete(user);
+                            setDeleteReason("");
+                            setDeleteEmail("");
+                            setError(null);
+                            setMessage(null);
+                          }}
+                          disabled={busyUid !== null}
+                          className="rounded-lg bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/20 disabled:opacity-50"
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            <Trash2 size={12} />
+                            Delete
+                          </span>
+                        </button>
+                      )}
                     </div>
 
                     {verifyingUid === user.uid ? (
@@ -377,6 +457,168 @@ export default function AdminUsersPage() {
           </table>
         </div>
       )}
+
+      {pendingDelete ? (
+        <DeleteAccountPanel
+          user={pendingDelete}
+          reason={deleteReason}
+          email={deleteEmail}
+          busy={busyUid === pendingDelete.uid}
+          onReason={setDeleteReason}
+          onEmail={setDeleteEmail}
+          onCancel={() => {
+            setPendingDelete(null);
+            setDeleteReason("");
+            setDeleteEmail("");
+          }}
+          onConfirm={() => void deleteAccount(pendingDelete, deleteReason)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The confirmation panel for deleting an account.
+ *
+ * Kept a blocking dialog rather than an inline prompt because this is the one
+ * irreversible action on the page: the rest of the table has to be unreachable while
+ * it is open. The typed address is the anti-mistouch guard - it is compared with the
+ * account's address by the server too, so disabling the button here is a courtesy and
+ * not the enforcement.
+ */
+function DeleteAccountPanel({
+  user,
+  reason,
+  email,
+  busy,
+  onReason,
+  onEmail,
+  onCancel,
+  onConfirm,
+}: {
+  user: AdminUserRow;
+  reason: string;
+  email: string;
+  busy: boolean;
+  onReason: (value: string) => void;
+  onEmail: (value: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const accountEmail = user.email || user.uid;
+  const emailMatches =
+    user.email.trim() !== "" &&
+    email.trim().toLowerCase() === user.email.trim().toLowerCase();
+  const canDelete = emailMatches && reason.trim().length >= 3 && !busy;
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape" && !busy) onCancel();
+    }
+
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [busy, onCancel]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
+      {/*
+       * No click-outside dismissal: a stray click on the backdrop should not close the
+       * one dialog that guards an irreversible action. Escape and Cancel are deliberate.
+       */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-account-title"
+        aria-describedby="delete-account-warning"
+        className="w-full max-w-lg space-y-4 rounded-2xl border border-rose-500/40 bg-slate-900 p-5 shadow-2xl"
+      >
+        <div>
+          <h2
+            id="delete-account-title"
+            className="flex items-center gap-2 text-lg font-semibold text-white"
+          >
+            <Trash2 size={18} className="text-rose-400" />
+            Delete this account?
+          </h2>
+          <p className="mt-1 text-sm text-slate-400">
+            {user.displayName || "Unnamed account"} ·{" "}
+            <span className="text-slate-300">{accountEmail}</span>
+          </p>
+        </div>
+
+        <p
+          id="delete-account-warning"
+          className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200"
+        >
+          The sign-in account and its profile are removed permanently. This cannot be
+          undone. Accounts with orders or wallet history are refused here - those go
+          through the customer&apos;s erasure flow, which anonymises and keeps the
+          financial records.
+        </p>
+
+        <div className="space-y-2">
+          <label
+            htmlFor="delete-account-reason"
+            className="block text-xs font-medium text-slate-300"
+          >
+            Why is this being deleted?
+          </label>
+          <input
+            id="delete-account-reason"
+            value={reason}
+            onChange={(event) => onReason(event.target.value)}
+            autoFocus
+            minLength={3}
+            maxLength={200}
+            placeholder="e.g. throwaway account from a checkout test"
+            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-rose-400"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label
+            htmlFor="delete-account-email"
+            className="block text-xs font-medium text-slate-300"
+          >
+            Type <span className="font-mono text-slate-200">{accountEmail}</span> to
+            confirm
+          </label>
+          <input
+            id="delete-account-email"
+            value={email}
+            onChange={(event) => onEmail(event.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm text-white outline-none focus:border-rose-400"
+          />
+          {email.trim() !== "" && !emailMatches ? (
+            <p className="text-xs text-rose-300">
+              That is not the address on this account.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!canDelete}
+            className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-rose-500 disabled:opacity-50"
+          >
+            {busy ? "Deleting…" : "Delete account"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

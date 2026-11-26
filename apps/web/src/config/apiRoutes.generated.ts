@@ -35,6 +35,7 @@ export const API_ROUTE_PATHS: readonly string[] = [
   "/api/admin/requests/quotes/expire",
   "/api/admin/shipments/[shipmentId]",
   "/api/admin/users",
+  "/api/admin/users/[uid]/delete",
   "/api/admin/users/[uid]/mfa/reset",
   "/api/admin/users/[uid]/verify-email",
   "/api/admin/wallet/balance",

@@ -50,6 +50,54 @@ const missing = [
   !unverifiedEmail && "E2E_UNVERIFIED_EMAIL",
 ].filter(Boolean) as string[];
 
+/**
+ * A throwaway account, created the way a test signup creates one.
+ *
+ * Created here rather than seeded so the spec can delete it without disturbing a
+ * fixture another spec (or a retry of this one) still needs.
+ */
+async function createThrowaway(
+  email: string
+): Promise<{ uid: string; password: string }> {
+  const password = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const response = await fetch(
+    `http://${env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    }
+  );
+
+  const body = (await response.json()) as { localId?: string };
+  if (!body.localId) {
+    throw new Error(`could not create a throwaway account: ${JSON.stringify(body)}`);
+  }
+
+  return { uid: body.localId, password };
+}
+
+/**
+ * Whether the account can still sign in - the only honest test of "is this login gone?".
+ *
+ * Chosen over a Firestore listing because the admin list is built from profile
+ * documents, and a throwaway created through Auth alone has none: it would look
+ * deleted before anything happened. `EMAIL_NOT_FOUND` is the answer that means gone.
+ */
+async function canSignIn(email: string, password: string): Promise<boolean> {
+  const response = await fetch(
+    `http://${env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    }
+  );
+
+  return response.ok;
+}
+
 /** Codes are single-use in time, so each request mints its own. */
 function mfaHeaders(): Record<string, string> {
   return { "X-MFA-TOTP": generateSync({ secret: totpSecret }) };
@@ -219,5 +267,86 @@ test.describe("Email verification override", () => {
     );
     expect(repeat.status()).toBe(409);
     expect(await repeat.json()).toMatchObject({ code: "ALREADY_VERIFIED" });
+  });
+
+  test("an admin deletes a throwaway account, and the wrong address protects it", async ({
+    request,
+  }) => {
+    const token = await adminIdToken();
+    const email = `e2e-throwaway-${Date.now()}@shipin.test`;
+    const { uid, password } = await createThrowaway(email);
+
+    // Proof the account is real before the delete, and that the assertions below can
+    // tell "deleted" from "never existed".
+    expect(await canSignIn(email, password)).toBe(true);
+
+    const headers = {
+      authorization: `Bearer ${token}`,
+      ...mfaHeaders(),
+    };
+
+    // The typed address is the anti-mistouch guard, and the server checks it itself -
+    // so a request that skips the form must fail rather than delete anyway.
+    const wrongAddress = await request.post(
+      `${baseUrl}/api/admin/users/${uid}/delete`,
+      { headers, data: { reason: "e2e throwaway", confirmEmail: "someone@else.test" } }
+    );
+    expect(wrongAddress.status()).toBe(400);
+    expect(await wrongAddress.json()).toMatchObject({
+      code: "EMAIL_CONFIRMATION_MISMATCH",
+    });
+
+    // Still signed in: a refused delete must not have half-run.
+    expect(await canSignIn(email, password)).toBe(true);
+
+    const deleted = await request.post(
+      `${baseUrl}/api/admin/users/${uid}/delete`,
+      { headers, data: { reason: "e2e throwaway", confirmEmail: email } }
+    );
+    expect(deleted.status()).toBe(200);
+    expect(await deleted.json()).toMatchObject({ success: true, uid, email });
+
+    // Gone: the login itself, not only the profile document.
+    expect(await canSignIn(email, password)).toBe(false);
+
+    const audit = await request.post(
+      `http://${firestoreEmulator}/v1/projects/${projectId}/databases/(default)/documents:runQuery`,
+      {
+        headers: { authorization: "Bearer owner" },
+        data: {
+          structuredQuery: {
+            from: [{ collectionId: "adminAuditLog" }],
+            where: {
+              fieldFilter: {
+                field: { fieldPath: "action" },
+                op: "EQUAL",
+                value: { stringValue: "user.account.delete" },
+              },
+            },
+          },
+        },
+      }
+    );
+
+    const rows = (await audit.json()) as Array<{
+      document?: {
+        fields?: {
+          targetId?: { stringValue?: string };
+          detail?: {
+            mapValue?: { fields?: { reason?: { stringValue?: string } } };
+          };
+        };
+      };
+    }>;
+
+    expect(
+      rows
+        .map((row) => row.document?.fields)
+        .filter(Boolean)
+        .map((fields) => ({
+          targetId: fields?.targetId?.stringValue,
+          reason: fields?.detail?.mapValue?.fields?.reason?.stringValue,
+        }))
+    ).toContainEqual({ targetId: uid, reason: "e2e throwaway" });
   });
 });

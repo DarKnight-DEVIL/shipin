@@ -544,6 +544,35 @@ Check `adminAuditLog` for the override. If the same `uid` appears twice, the mai
 really is gone and the address on the account should be changed deliberately rather
 than bypassed again.
 
+### Deleting a throwaway account
+
+An account created to exercise a flow (a test signup, a scratch customer) can be
+removed from `/admin/users` - the row's **Delete** action opens a confirmation panel
+asking for a reason and for the account's address to be typed out.
+
+```bash
+curl -X POST "$PRODUCTION_URL/api/admin/users/<uid>/delete" \
+  -H "Authorization: Bearer <admin-id-token>" \
+  -H "X-MFA-TOTP: <code>" \
+  -H "content-type: application/json" \
+  -d '{"reason":"throwaway checkout test","confirmEmail":"test-buyer@example.com"}'
+```
+
+It is refused on purpose in four cases:
+
+- `CANNOT_DELETE_SELF` - the account making the call;
+- `TARGET_IS_ADMIN` - an administrator, so the console cannot delete its own owner;
+- `EMAIL_CONFIRMATION_MISMATCH` - the typed address is not the account's address (the
+  server compares it, so a request that skips the form still fails);
+- `ACCOUNT_HAS_HISTORY` - any order, wallet entry, wallet hold or wallet document
+  exists. Those accounts go through the customer's erasure flow, which anonymises and
+  keeps the financial records required for accounting and tax.
+
+The Auth user is deleted **last**, after Firestore is clean: a half-deleted account is
+recoverable, a login with no profile and no trace is not. The action is recorded in
+`adminAuditLog` as `user.account.delete` with the reason, the address, and the count of
+documents removed.
+
 ## 9. Personal data breach response
 
 The regulator clock starts when a ShipIN person becomes aware of an incident, not

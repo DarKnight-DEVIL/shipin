@@ -22,7 +22,9 @@ export type AdminAuditAction =
   | "wallet.balance_read"
   | "mfa.reset"
   // Bypasses a security control, so the reason is mandatory and stored in detail.
-  | "user.email.verify_override";
+  | "user.email.verify_override"
+  // Irreversible: the reason and the address typed to confirm go into detail.
+  | "user.account.delete";
 
 export interface AdminAuditEvent {
   actorUid: string;
