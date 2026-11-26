@@ -90,6 +90,11 @@ interface ServerEnv {
   MFA_DENYLIST_DEGRADED_MODE?: string;
   /** How long an opened breaker stays open. Clamped to 30..3600 seconds. */
   MFA_DENYLIST_DEGRADED_SECONDS?: string;
+  /**
+   * Largest single credit an admin may add to a wallet, in credits. Absent or unusable
+   * keeps the 10,000 default; see `src/config/walletCreditLimit.ts`.
+   */
+  WALLET_CREDIT_MAX?: string;
 }
 
 interface ClientEnv {

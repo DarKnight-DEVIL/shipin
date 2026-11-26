@@ -132,16 +132,47 @@ describe("POST /api/admin/wallet/credit", () => {
     expect([zero.status, bad.status]).toEqual([400, 400]);
   });
 
-  it("caps a single credit at 10,000", async () => {
+  it("caps a single credit at 10,000 by default", async () => {
     const response = await POST(
       request({ customerId: "customer-1", amount: 10001 })
     );
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       success: false,
+      code: "CREDIT_LIMIT_EXCEEDED",
+      limit: 10000,
       error: "A maximum of 10,000 credits can be added at once.",
     });
+  });
+
+  it("allows exactly the limit", async () => {
+    const response = await POST(
+      request({ customerId: "customer-1", amount: 10000 })
+    );
+
+    // A rail that also rejects the limit itself is off by one for whoever reads it.
+    expect(response.status).not.toBe(400);
+  });
+
+  it("uses the configured limit, and says which one applied", async () => {
+    vi.stubEnv("WALLET_CREDIT_MAX", "25000");
+
+    try {
+      const over = await POST(
+        request({ customerId: "customer-1", amount: 25001 })
+      );
+      const body = await over.json();
+
+      expect(over.status).toBe(400);
+      expect(body).toMatchObject({ code: "CREDIT_LIMIT_EXCEEDED", limit: 25000 });
+      // The message names the limit that applied, not a stale hardcoded 10,000.
+      expect(body.error).toBe(
+        "A maximum of 25,000 credits can be added at once."
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("requires a request id for refunds", async () => {

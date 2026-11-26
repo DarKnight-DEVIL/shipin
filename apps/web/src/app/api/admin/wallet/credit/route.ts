@@ -10,6 +10,7 @@ import { recordAdminAudit } from "@/lib/adminAudit";
 import { adminCreditBodySchema, readAndValidateBody } from "@/lib/validation";
 import { isMinor, minorFromStored, storedMinor, toDecimal } from "@/lib/money";
 import { balanceFields, ledgerFields } from "@/lib/moneyMode";
+import { walletCreditMax } from "@/config/walletCreditLimit";
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
   try {
@@ -53,11 +54,20 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
     const creditAmount = Number(amount.toFixed(2));
 
-    if (creditAmount > 10000) {
+    /*
+     * The rail is configurable (`WALLET_CREDIT_MAX`) but never absent: see
+     * `src/config/walletCreditLimit.ts`. The message names the limit that actually
+     * applied, so an operator who raised it does not read a stale 10,000.
+     */
+    const creditMax = walletCreditMax();
+
+    if (creditAmount > creditMax) {
       return NextResponse.json(
         {
           success: false,
-          error: "A maximum of 10,000 credits can be added at once.",
+          error: `A maximum of ${creditMax.toLocaleString("en-US")} credits can be added at once.`,
+          code: "CREDIT_LIMIT_EXCEEDED",
+          limit: creditMax,
         },
         {
           status: 400,
