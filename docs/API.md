@@ -114,9 +114,7 @@ clients branch on it rather than on the status alone.
 | `/api/notifications/unsubscribe` | public |
 | `/api/payment/complete-wallet` | customer |
 | `/api/paypal/capture-order` | customer |
-| `/api/paypal/capture-wallet-topup` | customer |
 | `/api/paypal/create-order` | customer |
-| `/api/paypal/create-wallet-topup` | customer |
 | `/api/profile` | customer |
 | `/api/profile/preferences` | customer |
 | `/api/r2/upload` | customer |

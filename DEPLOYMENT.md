@@ -257,16 +257,15 @@ the traced standalone tree (what `npm start` and the Docker image serve). Measur
 instrumenting only the first left the Docker path on the permissive policy.
 
 **Pages that load the PayPal SDK are the exception, and it is a real weakening.**
-`/wallet/topup`, `/payment/[id]`, `/requests/[id]` and `/requests/[id]/invoice`
+`/payment/[id]`, `/requests/[id]` and `/requests/[id]/invoice`
 keep `'unsafe-inline'` for scripts. The SDK injects its own inline bootstrap at
 runtime, after CSP is evaluated; its content depends on the SDK version, so it cannot
 be hashed the way the theme bootstrap is, and a static page cannot carry a per-request
-nonce. Measured: with the strict policy in place the browser refuses it on
-`/wallet/topup` ("Executing inline script violates the following Content Security
-Policy directive").
+nonce. Measured: with the strict policy in place the browser refuses it with
+"Executing inline script violates the following Content Security Policy directive".
 
 What bounds it: `script-src-attr 'none'` still blocks event-handler attributes, and
-those pages render no user-controlled HTML. What it means: on those four routes an
+those pages render no user-controlled HTML. What it means: on those three routes an
 injected inline script would run. `src/config/paypalScriptRoutes.ts` is the single
 list, and `injectStaticCsp.test.ts` fails if a page that imports the PayPal provider
 is missing from it.
@@ -478,7 +477,6 @@ and the CI `e2e` job runs the same files, so a documented suite cannot rot unexe
 | `hydration.spec.ts` | The production build actually hydrates | local + CI |
 | `sitemap-check.spec.ts` | `robots.txt` and `sitemap.xml` | local + CI |
 | `checkout-flow.spec.ts` | PayPal order routes: anonymous 401, validation 400 | local + CI |
-| `wallet-topup.spec.ts` | Wallet top-up routes: anonymous 401, bad amount 400, unknown id 404 | local + CI |
 | `admin-refund-local.spec.ts` | Refund authorization on the emulators: 401 / 403 / 404, no money moved | local + CI |
 | `signed-in-smoke.spec.ts` | Signed-in admin area and dashboard reads | `test:e2e:signed-in` + CI staging |
 | `admin-refund.spec.ts` | Full refund chain, real PayPal sandbox | CI staging only |

@@ -382,45 +382,11 @@ test.describe("Production hydration", () => {
     ).toContain("'unsafe-inline'");
   });
 
-  // Guards the third-party allowlists in the policy. The PayPal SDK frames from
-  // www.paypal.com live and www.sandbox.paypal.com in sandbox mode; when the
-  // sandbox host was missing, the buttons silently never rendered.
-  test("/wallet/topup loads the PayPal SDK without CSP refusals", async ({
-    page,
-  }) => {
-    const violations = watchForCspViolations(page);
-
-    await page.goto("/wallet/topup", { waitUntil: "domcontentloaded" });
-
-    // The SDK's script URL is built from NEXT_PUBLIC_PAYPAL_CLIENT_ID at render
-    // time. Detect it from the PAGE, not from this process's environment: the
-    // app may have been built with .env.local or with a CI secret, and the test
-    // process sees neither. No script means no id is configured, so there is
-    // nothing to assert about the policy — skip instead of failing.
-    const sdkScript = page.locator('script[src*="paypal.com/sdk/js"]');
-    const requested = await sdkScript
-      .first()
-      // Generous on purpose: the provider injects the tag after hydration, and
-      // under a full-suite run that step is slower than `-g PayPal` alone.
-      .waitFor({ state: "attached", timeout: 30_000 })
-      .then(() => true)
-      .catch(() => false);
-
-    test.skip(
-      !requested,
-      "NEXT_PUBLIC_PAYPAL_CLIENT_ID is not configured, so the page never requests the PayPal SDK."
-    );
-
-    // A script tag the policy blocked would still exist in the DOM, so also
-    // require the SDK to have executed.
-    await page.waitForFunction(
-      () => typeof (window as { paypal?: unknown }).paypal !== "undefined",
-      undefined,
-      { timeout: 20_000 }
-    );
-
-    expect(violations).toEqual([]);
-  });
+  // The PayPal allowlists in the policy are asserted in
+  // `src/lib/securityHeaders.test.ts` and by the CSP drift gate in
+  // `src/lib/injectStaticCsp.test.ts`. The end-to-end check that used to live here
+  // navigated to /wallet/topup; that page is gone now that customers no longer load
+  // their own wallet, and the remaining PayPal pages need a real order id.
 
   // The authenticated routes are prerendered too, and they are where the
   // Firestore-backed data hooks live. With no session they still hydrate: the

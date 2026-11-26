@@ -69,7 +69,6 @@ const MARKER = 'http-equiv="Content-Security-Policy"';
  * `src/config/paypalScriptRoutes.ts`.
  */
 const PAYPAL_ROUTES = [
-  "/wallet/topup",
   "/payment/[id]",
   "/requests/[id]",
   "/requests/[id]/invoice",

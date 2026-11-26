@@ -400,8 +400,8 @@ origins), not the Firebase aliases.
 
 These are the gaps that the Discord alert alone will not catch. Add in this order:
 
-1. **Payment degradation** — alert on `POST /api/paypal/capture-order`,
-   `/api/paypal/capture-wallet-topup` and `/api/webhook`: alert when the 5xx
+1. **Payment degradation** — alert on `POST /api/paypal/capture-order`
+   and `/api/webhook`: alert when the 5xx
    rate exceeds 2% over 5 minutes, or when `paypal` webhook verification
    failures exceed 1.
 

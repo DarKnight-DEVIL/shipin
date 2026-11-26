@@ -350,25 +350,6 @@ export const captureOrderBodySchema = z.object({
   ).optional(),
 });
 
-/** POST /api/paypal/create-wallet-topup */
-export const createTopupBodySchema = z.object({
-  amount: moneySchema,
-  description: z.string().trim().max(200).optional(),
-});
-
-/**
- * POST /api/paypal/capture-wallet-topup.
- *
- * `orderID` becomes `walletTopupOrders/{orderID}`, so it needs the same
- * path-safety rule as every other id that reaches `.doc()`; `amount` is the
- * same money rule the creation route uses, instead of a hand-written positivity
- * check that accepted 10.123.
- */
-export const captureTopupBodySchema = z.object({
-  orderID: namedIdSchema("PayPal Order ID"),
-  amount: moneySchema,
-});
-
 /**
  * POST /api/payment/complete-wallet.
  *

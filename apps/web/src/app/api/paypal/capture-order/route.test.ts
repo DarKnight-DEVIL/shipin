@@ -650,6 +650,37 @@ describe("POST /api/paypal/capture-order", () => {
     expect(mocks.orderUpdate).not.toHaveBeenCalled();
   });
 
+  it("keeps its own answer when handing the claim back fails", async () => {
+    /*
+     * The release runs in a `finally`, so its failure lands after the response has been
+     * decided. Replacing that answer with a release error would report "PayPal refused"
+     * as "we could not tidy up", and the customer would retry against a claim that is
+     * still leased either way.
+     */
+    mocks.fetch.mockResolvedValue({ ok: false, status: 422, json: async () => ({}) });
+
+    // Claim succeeds, then the release transaction throws.
+    mocks.runTransaction
+      .mockImplementationOnce(async (cb: (tx: unknown) => unknown) =>
+        cb({ get: mocks.txGet, set: mocks.txSet, update: mocks.txUpdate })
+      )
+      .mockImplementationOnce(async () => {
+        throw new Error("firestore unavailable");
+      });
+
+    const response = await POST(request(body));
+
+    expect(response.status).not.toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      error: "Unable to process payment. Please try again.",
+    });
+    expect(console.error).toHaveBeenCalledWith(
+      "Could not release the PayPal capture claim:",
+      expect.any(Error)
+    );
+  });
+
   it("hands the claim back when the captured amount does not match", async () => {
     mocks.fetch.mockResolvedValue({
       ok: true,

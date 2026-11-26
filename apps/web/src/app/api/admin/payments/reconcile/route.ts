@@ -231,10 +231,11 @@ async function scanPendingTopups(): Promise<Scan> {
 /**
  * Whether the credit a top-up writes exists.
  *
- * `capture-wallet-topup` uses the raw capture id as the ledger document id,
- * while request settlements write `paypal_<captureId>`. A top-up is only ever
- * credited by its own route, so the raw id is the correct lookup here —
- * checking the other convention would report every healthy top-up as missing.
+ * The (now removed) top-up route used the raw capture id as the ledger document
+ * id, while request settlements write `paypal_<captureId>`. Orders created back
+ * then are still reconciled here, so the raw id remains the correct lookup for
+ * them - checking the other convention would report every healthy top-up as
+ * missing.
  */
 async function topupCreditExists(captureId: string): Promise<boolean> {
   if (!captureId) return false;

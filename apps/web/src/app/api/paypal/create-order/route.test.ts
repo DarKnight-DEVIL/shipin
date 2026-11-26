@@ -644,6 +644,33 @@ describe("POST /api/paypal/create-order", () => {
     });
   });
 
+  it("turns a settlement-check signal into a 400, not a 500", async () => {
+    /*
+     * The transaction signals its refusals by throwing a known message, and the route
+     * maps them to 400s. Those mappings are what a customer sees instead of "Internal
+     * server error" when an amount cannot be verified, so they are exercised directly -
+     * the earlier amount checks make the INVALID_PAYMENT_AMOUNT path unreachable through
+     * the public route, which is exactly the kind of branch that rots unnoticed.
+     */
+    for (const [signal, message] of [
+      ["INVALID_PAYMENT_AMOUNT", "Invalid payment amount."],
+      [
+        "PAYMENT_AMOUNT_MISMATCH",
+        "Payment amount could not be verified.",
+      ],
+    ] as const) {
+      mocks.runTransaction.mockRejectedValueOnce(new Error(signal));
+
+      const response = await POST(request(body));
+
+      expect(response.status, signal).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        success: false,
+        error: message,
+      });
+    }
+  });
+
   it("reports an unexpected failure as a server error", async () => {
     mocks.fetch.mockRejectedValue(new Error("connection reset"));
 

@@ -172,7 +172,7 @@ The deployment ships no error-reporting SDK. Uncaught route errors are logged by
 
 ### Money Paths
 
-- Wallet top-ups persist `capturePending: true` before calling PayPal, and a duplicate capture response is reconciled from the order instead of reported as a failure (`/api/paypal/capture-wallet-topup`). Never remove that flag write: it is the only trace of a charge whose credit failed.
+- Customers cannot top up their own wallet: `/api/paypal/create-wallet-topup` and `capture-wallet-topup` were removed, and `/wallet` is a statement rather than a checkout. Credit is issued by an admin (`/api/admin/wallet/credit`, capped by `WALLET_CREDIT_MAX`). Orders created before that still hold `capturePending: true` until `sweepPendingTopups` settles or abandons them, so the sweep and its flag write stay: it is the only trace of a charge whose credit failed.
 - Erasure (`/api/user/erase`) anonymises `requests` and the profile, deletes the Auth user last, and keeps its own rights-request document as the audit trail.
 - R2 inspection photos are authorised through `src/lib/r2Access.ts` (request owner or admin). Keys are `inspection/<requestId>/<uuid>.<ext>`; those `<Image>` call sites are `unoptimized` because presigned URLs are short-lived by design. The lifetime is per purpose in `src/lib/r2UrlPolicy.ts` — inspection 60 minutes, shipping label 15 — tunable with `R2_INSPECTION_URL_TTL_SECONDS` / `R2_LABEL_URL_TTL_SECONDS`, with the purpose derived from the key prefix rather than chosen by the caller.
 

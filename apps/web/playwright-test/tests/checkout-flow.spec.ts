@@ -64,10 +64,10 @@ test.describe("checkout — authenticated input validation", () => {
 });
 
 test.describe("checkout — the wallet page is behind auth", () => {
-  test("the top-up page sends a signed-out visitor to sign in", async ({
+  test("the wallet page sends a signed-out visitor to sign in", async ({
     page,
   }) => {
-    const response = await page.goto("/wallet/topup");
+    const response = await page.goto("/wallet");
 
     // Either the route renders the signed-out shell or the guard redirects;
     // what must not happen is a 500 or a stack trace.

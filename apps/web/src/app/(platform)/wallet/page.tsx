@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { storedMinor, toDecimal } from "@/lib/money";
-import Link from "next/link";
-import { ArrowDownToLine, ArrowUpRight, Plus, ReceiptText } from "lucide-react";
+import { ArrowDownToLine, ArrowUpRight, ReceiptText } from "lucide-react";
 
 import { auth } from "@/lib/firebase";
 import {
@@ -49,7 +48,9 @@ function formatDate(date?: Date) {
 
 function txLabel(tx: WalletTransaction) {
   if (tx.description?.trim()) return tx.description;
-  if (tx.type === "topup" || tx.type === "credit") return "Top up";
+  // Historical: entries written by the removed customer top-up path still exist.
+  if (tx.type === "topup") return "Top up";
+  if (tx.type === "credit") return "Credit";
   if (tx.type === "payment" || tx.type === "debit") return "Payment";
   if (tx.type === "refund") return "Refund";
   return "Transaction";
@@ -117,15 +118,14 @@ export default function WalletPage() {
 
   return (
     <div className="app-page">
+      {/*
+        * No "top up" action. Customers no longer load their own wallet: credit is
+        * issued by an administrator for a specific case (a goodwill amount, a refund
+        * settled as credit), so the page is a statement rather than a checkout.
+        */}
       <PageHeader
         title="Wallet"
         subtitle="Balance and activity for ShipIN payments"
-        actions={
-          <Link href="/wallet/topup" className="app-btn app-btn-primary">
-            <Plus size={15} strokeWidth={2.5} />
-            Top up
-          </Link>
-        }
       />
 
       <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
@@ -149,7 +149,8 @@ export default function WalletPage() {
             <div className="mt-4 border-t border-[var(--border)] pt-3.5">
               {wallet.balance <= 0 ? (
                 <p className="text-[11px] leading-5 text-[var(--muted-soft)]">
-                  Add funds with PayPal to pay for requests from your wallet.
+                  Credit is issued by ShipIN rather than added by you, so this
+                  balance only changes when we apply one.
                 </p>
               ) : (
                 <div className="flex items-center justify-between text-[11px]">
@@ -178,7 +179,7 @@ export default function WalletPage() {
             <EmptyState
               icon={<ReceiptText size={18} />}
               title="No activity yet"
-              description="Top-ups, payments and refunds will show up here. Add funds to pay for a request in one tap at checkout."
+              description="Credits, payments and refunds will show up here."
             />
           ) : (
             <div className="app-panel app-panel-flush">

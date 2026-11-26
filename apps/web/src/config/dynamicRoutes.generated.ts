@@ -58,8 +58,7 @@ export const PRERENDERED_APP_ROUTES: readonly string[] = [
   "/thank-you",
   "/track",
   "/verify-email",
-  "/wallet",
-  "/wallet/topup"
+  "/wallet"
 ];
 
 /**

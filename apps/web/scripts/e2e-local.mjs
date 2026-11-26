@@ -295,7 +295,6 @@ const SPECS = [
   // emulator is running, so the default suite still covers the 401/403
   // boundary on every run.
   "tests/checkout-flow.spec.ts",
-  "tests/wallet-topup.spec.ts",
   "tests/admin-refund-local.spec.ts",
 ];
 

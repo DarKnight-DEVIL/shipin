@@ -201,7 +201,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   });
 
   /*
-   * Wallet top-ups fail the same way and are recovered the same way: the capture
+   * Wallet top-ups fail the same way and are recovered the same way. Customers can no
+   * longer create them, so this half now only drains orders made before that change: the capture
    * route writes `capturePending: true` before calling PayPal, and a crash
    * between the capture and the ledger write leaves a charged customer with no
    * credit. That flag is the only trace, so it is what this sweep looks for.

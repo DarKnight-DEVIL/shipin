@@ -96,5 +96,3 @@ export const MAX_ORDER_ID_LENGTH = 64;
 export const MAX_REFUND_TX_ID_LENGTH = 128;
 /** Maximum amount allowed for a single transaction (USD). */
 export const MAX_MONEY_AMOUNT = 999_999_999;
-/** Maximum description length for wallet top-up (characters). */
-export const MAX_TOPUP_DESCRIPTION_LENGTH = 200;
