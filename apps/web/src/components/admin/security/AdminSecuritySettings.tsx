@@ -31,7 +31,7 @@ type Loaded = {
 };
 
 function formatExpiry(expiresAt: number | null): string {
-  if (!expiresAt) return "in 30 minutes";
+  if (!expiresAt) return "in 12 hours";
 
   return new Date(expiresAt * 1000).toLocaleTimeString([], {
     hour: "2-digit",

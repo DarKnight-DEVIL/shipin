@@ -11,7 +11,7 @@
  * shown, so an elevated session becomes an upgrade rather than a hard gate.
  */
 
-import { useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
@@ -78,8 +78,24 @@ export default function AdminMfaGate({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Every page under the gate fetches its data on mount, and those fetches were
+   * made while the session was not elevated - so they failed, and the page only
+   * populated after a refresh. Bumping this key remounts the subtree, which
+   * re-runs that mount fetch with the session cookie now in place. Cheaper and
+   * less disruptive than reloading the document.
+   */
+  const [dataGeneration, setDataGeneration] = useState(0);
+
+  const markElevated = useCallback(() => {
+    setStatus("elevated");
+    setFormOpen(false);
+    setCode("");
+    setDataGeneration((generation) => generation + 1);
+  }, []);
+
   /** Load MFA session status from the server. */
-  const loadStatus = async (current: MfaUser | null) => {
+  const loadStatus = useCallback(async (current: MfaUser | null) => {
     if (!current) {
       setStatus("signed-out");
       return;
@@ -92,9 +108,7 @@ export default function AdminMfaGate({
       setMethods(result.methods);
 
       if (result.elevated) {
-        setStatus("elevated");
-        setFormOpen(false);
-        setCode("");
+        markElevated();
         return;
       }
 
@@ -148,7 +162,7 @@ export default function AdminMfaGate({
       setStatus("needs-code");
       setError("Could not check verification status. Try again.");
     }
-  };
+  }, [markElevated]);
 
   /** Bootstrap status on auth state change. */
   useEffect(() => {
@@ -158,7 +172,7 @@ export default function AdminMfaGate({
     });
 
     return unsubscribe;
-  }, []);
+  }, [loadStatus]);
 
   /** Reset the form when it is closed or reopened. */
   function openForm() {
@@ -184,9 +198,7 @@ export default function AdminMfaGate({
       const assertion = await assertSecurityKey(idToken);
       await startWebAuthnSession(idToken, assertion);
 
-      setStatus("elevated");
-      setFormOpen(false);
-      setCode("");
+      markElevated();
     } catch (ceremonyError) {
       setError(
         ceremonyError instanceof WebAuthnCeremonyError
@@ -220,9 +232,7 @@ export default function AdminMfaGate({
       const idToken = await user.getIdToken();
       await startMfaSession(idToken, method, trimmed);
 
-      setStatus("elevated");
-      setFormOpen(false);
-      setCode("");
+      markElevated();
     } catch (requestError) {
       setError(
         requestError instanceof MfaApiError
@@ -238,6 +248,7 @@ export default function AdminMfaGate({
   // the old Verify button opened a form that never rendered and did nothing at
   // all. It links to enrolment instead (see the not-configured block below).
   const canElevate = status === "needs-code";
+
   // Read once per render: the reason is whatever the last token attempt recorded,
   // and it is the only way to tell a blocked reCAPTCHA from a key that rejects
   // this domain once the console has been closed.
@@ -420,7 +431,7 @@ export default function AdminMfaGate({
         </div>
       ) : null}
 
-      {children}
+      <Fragment key={dataGeneration}>{children}</Fragment>
     </>
   );
 }

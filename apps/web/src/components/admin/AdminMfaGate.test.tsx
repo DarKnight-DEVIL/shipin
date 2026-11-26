@@ -219,6 +219,40 @@ describe("AdminMfaGate", () => {
     expect(assertSecurityKey).not.toHaveBeenCalled();
   });
 
+  it("re-runs the page data once the session is elevated", async () => {
+    // Every admin page fetches on mount, and those fetches failed while the
+    // session was not elevated. The gate used to flip its own banner to
+    // "elevated" and stop there, so the screen stayed empty until the operator
+    // refreshed the page by hand.
+    let mounts = 0;
+
+    function Page() {
+      mounts += 1;
+      return <p>page</p>;
+    }
+
+    vi.mocked(getMfaSessionStatus).mockResolvedValue({
+      ...BASE_STATUS,
+      methods: ["totp"],
+    });
+    vi.mocked(startMfaSession).mockResolvedValue({
+      expiresAt: 456,
+      method: "totp",
+    });
+
+    render(<AdminMfaGate><Page /></AdminMfaGate>);
+
+    expect(mounts).toBe(1);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Verify" }));
+    fireEvent.change(screen.getByPlaceholderText("6-digit code"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+
+    await waitFor(() => expect(mounts).toBe(2));
+  });
+
   it("explains when a security-key account is opened in a browser without WebAuthn", async () => {
     vi.mocked(isWebAuthnSupported).mockReturnValue(false);
     vi.mocked(getMfaSessionStatus).mockResolvedValue({

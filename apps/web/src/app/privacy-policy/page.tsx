@@ -356,7 +356,7 @@ export default function PrivacyPolicyPage() {
               <code>shipin_admin_mfa</code>), issued only after an administrator
               completes a security-check challenge. It is set with{" "}
               <code>HttpOnly</code>, <code>Secure</code>, and{" "}
-              <code>SameSite=Strict</code> flags and expires after 30 minutes.
+              <code>SameSite=Strict</code> flags and expires after 12 hours.
               All other requests are authenticated with a bearer token in the
               request header, never with an ambient cookie.
             </p>

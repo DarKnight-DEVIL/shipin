@@ -75,7 +75,7 @@ export default function CookiePolicyPage() {
                   <td className="px-4 py-3">Strictly necessary cookie</td>
                   <td className="px-4 py-3">
                     Remembers that an administrator passed the second-factor
-                    check. HttpOnly, Secure, SameSite=Strict, 30 minutes.
+                    check. HttpOnly, Secure, SameSite=Strict, 12 hours.
                   </td>
                 </tr>
                 <tr>

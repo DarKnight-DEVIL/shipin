@@ -18,7 +18,7 @@
  *  - The session only proves *MFA was completed*. `requireAdmin` still verifies
  *    the Firebase ID token and re-reads `users/{uid}.role === "admin"` on every
  *    request, so revoking the admin role immediately revokes access.
- *  - Default lifetime is 30 minutes, matching a single admin work session.
+ *  - Default lifetime is twelve hours: one working day for a single-operator console.
  */
 
 import "server-only";
@@ -30,7 +30,20 @@ import { denyMfaSession, isMfaSessionDenied } from "./mfaDenylist";
 import { createSecureCookieHeader } from "./securityHeaders";
 
 export const MFA_SESSION_COOKIE = "shipin_admin_mfa";
-export const MFA_SESSION_TTL_MS = 30 * 60 * 1000;
+/**
+ * How long an elevated admin session lasts.
+ *
+ * Twelve hours rather than thirty minutes: this console has one operator, so
+ * the short window was re-prompting for a code several times a day without
+ * removing a threat that the code itself already covers - the factor is
+ * required once per browser session, not once per click.
+ *
+ * Deliberately absolute, not sliding: refreshing does not extend it, so a
+ * forgotten browser cannot stay elevated for ever. Revocation still works
+ * per-session through the denylist, and every admin request re-checks the
+ * role, so removing admin access takes effect immediately regardless.
+ */
+export const MFA_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 // Bumped when `jti` was added. Version 1 tokens cannot be revoked server-side,
 // so they are rejected rather than honoured: the cost is that every admin
