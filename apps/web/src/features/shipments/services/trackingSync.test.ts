@@ -181,6 +181,59 @@ describe("resolveTracking", () => {
     expect(result?.notice).toMatch(/handed over/i);
   });
 
+  it("still returns the scans it already has while it waits for a carrier number", async () => {
+    /*
+     * Pausing the poll must not blank the page: a parcel re-booked under a new
+     * consignment keeps the history it was already given. The notice explains the pause;
+     * the events stay so the customer is not shown an empty timeline that looks like
+     * lost data.
+     */
+    found({
+      status: "shipped",
+      tracking: {
+        internalTrackingId: "SHP-2026-000001",
+        // No trackingNumber anywhere.
+        events: [event("SHIPPED", 20, "Mumbai"), event("IN_TRANSIT", 4, "Pune")],
+      },
+    });
+
+    const result = await resolveTracking("SHP-2026-000001", {
+      provider: provider(),
+      now,
+    });
+
+    expect(result?.events).toHaveLength(2);
+    expect(result?.events.map((e) => e.code)).toEqual(["IN_TRANSIT", "SHIPPED"]);
+    expect(result?.syncPauseReason).toBe("no_carrier_number");
+    expect(result?.notice).toBe(
+      "Carrier tracking will appear once the parcel is handed over."
+    );
+  });
+
+  it("reads the carrier number from the parent document when tracking has none", async () => {
+    // Parcels created before the tracking sub-object existed carry the number at the
+    // top level; that must still count, or every one of them pauses forever.
+    found({
+      status: "shipped",
+      trackingNumber: "EE123456789IN",
+      tracking: { internalTrackingId: "SHP-2026-000001" },
+    });
+    const feed = provider({
+      fetchTracking: vi.fn().mockResolvedValue({
+        carrierStatus: "in_transit",
+        events: [event("IN_TRANSIT", 1)],
+      }),
+    });
+
+    const result = await resolveTracking("SHP-2026-000001", {
+      provider: feed,
+      now,
+    });
+
+    expect(feed.fetchTracking).toHaveBeenCalledWith("EE123456789IN");
+    expect(result?.syncPauseReason).toBeNull();
+  });
+
   it("does not write a synthetic snapshot, and does not advance the request", async () => {
     // The scans are invented: storing them puts fiction in the customer's
     // timeline for good, and once CEPT credentials arrive the merge would keep

@@ -152,7 +152,20 @@ function normalizeEvents(raw: unknown): PublicTrackingEvent[] {
 
   return raw
     .map(normalizeEvent)
-    .filter((event): event is PublicTrackingEvent => event !== null);
+    .filter((event): event is PublicTrackingEvent => event !== null)
+    /*
+     * Sorted here, not only in `mergeEvents`: every projection that reads stored events
+     * claims "newest first" in the UI, and depending on the order some earlier write
+     * happened to leave in the document is how a timeline starts rendering upside down.
+     * An unparseable timestamp sorts last rather than throwing.
+     */
+    .sort((a, b) => timeOf(b.occurredAt) - timeOf(a.occurredAt));
+}
+
+/** Epoch millis, or 0 for a value that cannot be dated. */
+function timeOf(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 /**
