@@ -404,6 +404,13 @@ These are the gaps that the Discord alert alone will not catch. Add in this orde
    `/api/paypal/capture-wallet-topup` and `/api/webhook`: alert when the 5xx
    rate exceeds 2% over 5 minutes, or when `paypal` webhook verification
    failures exceed 1.
+
+   The webhook also refuses — with `400 MISSING_EVENT_ID` and a `critical` alert
+   (`PAYPAL_WEBHOOK_MISSING_EVENT_ID`) — any signed payload that arrives without an
+   event id. Such a body cannot be deduplicated, so the retry PayPal sends would be
+   processed as a new event. PayPal always sends `id`, so this firing means something
+   between PayPal and the route rewrote the payload: treat it as an incident, not as
+   noise.
 2. **Email/WhatsApp delivery** — count `EXTERNAL_SERVICE_ERROR` from
    `src/lib/mailer.ts` and `src/lib/whatsapp.ts`; alert on any 5xx from the
    provider in production.

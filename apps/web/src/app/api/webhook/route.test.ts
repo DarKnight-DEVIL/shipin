@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   verifyPayPalWebhook: vi.fn(),
   recordRateLimit: vi.fn(),
   sendNotification: vi.fn(),
+  captureServerError: vi.fn(),
   docs: {} as Record<string, Record<string, unknown> | undefined>,
   txOverrides: {} as Record<string, { exists: boolean; data?: () => unknown }>,
   txGet: vi.fn(),
@@ -16,6 +17,14 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/config/env", () => ({ serverEnv: mocks.env }));
+
+vi.mock("@/lib/errorTracking", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/errorTracking")>();
+  return {
+    ...actual,
+    captureServerError: (...args: unknown[]) => mocks.captureServerError(...args),
+  };
+});
 vi.mock("@/lib/paypal", () => ({
   verifyPayPalWebhook: mocks.verifyPayPalWebhook,
 }));
@@ -84,6 +93,8 @@ vi.mock("@/lib/firebaseAdmin", () => ({
 import { POST } from "./route";
 
 const captureEvent = (overrides: Record<string, unknown> = {}) => ({
+  // PayPal always sends an id, and the endpoint now refuses an event without one.
+  id: "EV-DEFAULT",
   event_type: "PAYMENT.CAPTURE.COMPLETED",
   resource: {
     id: "CAPTURE-1",
@@ -146,6 +157,7 @@ beforeEach(() => {
     reset: Date.now() + 60_000,
   });
   mocks.sendNotification.mockReset().mockResolvedValue(undefined);
+  mocks.captureServerError.mockReset();
   mocks.txGet.mockReset();
   mocks.txUpdate.mockReset();
   mocks.txSet.mockReset();
@@ -194,9 +206,66 @@ describe("POST /api/webhook", () => {
     });
   });
 
+  it("refuses a signed event that carries no id", async () => {
+    const { id: _dropped, ...withoutId } = captureEvent();
+
+    const response = await POST(request(withoutId));
+
+    /*
+     * Without an id there is nothing to deduplicate on, so the retry PayPal sends would
+     * be processed as a brand new event. The capture handler happens to be idempotent,
+     * but that is a property of one event type, not of the endpoint.
+     */
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "MISSING_EVENT_ID",
+    });
+    expect(mocks.sendNotification).not.toHaveBeenCalled();
+    expect(Object.keys(mocks.docs)).toHaveLength(0);
+  });
+
+  it("refuses an event whose id is not a string", async () => {
+    const response = await POST(request({ ...captureEvent(), id: 12345 }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "MISSING_EVENT_ID",
+    });
+  });
+
+  it("refuses an id that Firestore cannot use as a document id", async () => {
+    // A slash would throw inside the Firestore client, which reads as a 500 and makes
+    // PayPal retry a body it will never accept.
+    const response = await POST(request({ ...captureEvent(), id: "EV/1" }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "INVALID_EVENT_ID",
+    });
+    expect(mocks.sendNotification).not.toHaveBeenCalled();
+  });
+
+  it("alerts on a signed event without an id instead of only logging it", async () => {
+    await POST(request({ event_type: "PAYMENT.CAPTURE.COMPLETED" }));
+
+    expect(
+      mocks.captureServerError.mock.calls.map(
+        ([, options]) => (options as { code?: string } | undefined)?.code
+      )
+    ).toContain("PAYPAL_WEBHOOK_MISSING_EVENT_ID");
+  });
+
+  it("trims an id so a padded retry is still recognised", async () => {
+    const first = await POST(request({ ...captureEvent(), id: "EV-TRIM" }));
+    const retry = await POST(request({ ...captureEvent(), id: "  EV-TRIM  " }));
+
+    expect(first.status).toBe(200);
+    await expect(retry.json()).resolves.toMatchObject({ duplicate: true });
+  });
+
   it("acknowledges events it does not process", async () => {
     const response = await POST(
-      request({ event_type: "PAYMENT.CAPTURE.REFUNDED" })
+      request({ id: "EV-REFUNDED", event_type: "PAYMENT.CAPTURE.REFUNDED" })
     );
 
     expect(response.status).toBe(200);

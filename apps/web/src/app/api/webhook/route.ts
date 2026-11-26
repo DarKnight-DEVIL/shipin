@@ -11,6 +11,7 @@ import {
   isRateLimited,
 } from "@/lib/rateLimiter";
 import { verifyPayPalWebhook } from "@/lib/paypal";
+import { captureServerError } from "@/lib/errorTracking";
 import { sendNotification } from "@/features/notifications/services/notificationService";
 import { buildPaymentReceivedNotification } from "@/lib/paypal/paymentReceivedNotification";
 import { roundMoney, toNumber } from "@/lib/paypal/amounts";
@@ -145,23 +146,72 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
+  /*
+   * An event id is what makes duplicate deliveries safe, so an event without a usable
+   * one is refused rather than processed. PayPal always sends `id`; a signed payload
+   * that lacks it means something between PayPal and here altered the body, and
+   * processing it would write money state with no way to recognise the retry.
+   *
+   * The capture handler is idempotent in its own right (it no-ops on a completed order
+   * inside a transaction), so this is defence in depth - but "the handler happens to be
+   * safe twice" is a property of one event type, not of the endpoint.
+   */
+  const rawEventId = event.id;
+
+  if (typeof rawEventId !== "string" || rawEventId.trim() === "") {
+    webhookLogger.error("PayPal webhook arrived without an event id", {
+      eventType: event.event_type,
+    });
+    void captureServerError(
+      new Error("Signed PayPal webhook without an event id."),
+      {
+        category: "payment-settlement",
+        severity: "critical",
+        code: "PAYPAL_WEBHOOK_MISSING_EVENT_ID",
+        context: { eventType: String(event.event_type ?? "unknown") },
+      }
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Webhook event id is required.",
+        code: "MISSING_EVENT_ID",
+      },
+      { status: 400 }
+    );
+  }
+
+  const eventId = rawEventId.trim();
+
+  // Firestore document ids cannot contain a slash, and an id that long is not PayPal's.
+  if (eventId.includes("/") || eventId.length > 400) {
+    webhookLogger.error("PayPal webhook event id is not a usable document id", {
+      eventType: event.event_type,
+    });
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Webhook event id is not valid.",
+        code: "INVALID_EVENT_ID",
+      },
+      { status: 400 }
+    );
+  }
+
   // PayPal retries a delivery it could not confirm, so the same event id can
   // arrive twice. The marker is written only after the handler succeeds: a
   // failed attempt still returns 500 and is retried.
-  const eventId = typeof event.id === "string" ? event.id : "";
-  const eventRef = eventId
-    ? adminDb.collection("paypalWebhookEvents").doc(eventId)
-    : null;
+  const eventRef = adminDb.collection("paypalWebhookEvents").doc(eventId);
 
-  if (eventRef) {
-    const seen = await eventRef.get();
-    if (seen.exists) {
-      return NextResponse.json({
-        received: true,
-        success: true,
-        duplicate: true,
-      });
-    }
+  const seen = await eventRef.get();
+  if (seen.exists) {
+    return NextResponse.json({
+      received: true,
+      success: true,
+      duplicate: true,
+    });
   }
 
   // Process the event
@@ -200,12 +250,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  if (eventRef) {
-    await eventRef.set({
-      eventType: event.event_type ?? "unknown",
-      processedAt: FieldValue.serverTimestamp(),
-    });
-  }
+  await eventRef.set({
+    eventType: event.event_type ?? "unknown",
+    processedAt: FieldValue.serverTimestamp(),
+  });
 
   // PayPal requires a 2xx to stop delivery; `received` is the provider contract.
   return NextResponse.json({ received: true, success: true });
