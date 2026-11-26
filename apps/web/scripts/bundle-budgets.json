@@ -3,6 +3,7 @@
   "/_global-error": 171,
   "/_not-found": 171,
   "/addresses": 443,
+  "/admin": 445,
   "/admin/audit": 452,
   "/admin/dashboard": 445,
   "/admin/purchasing": 447,
@@ -34,6 +35,5 @@
   "/track": 235,
   "/track/[trackingId]": 171,
   "/verify-email": 282,
-  "/wallet": 441,
-  "/wallet/topup": 445
+  "/wallet": 441
 }

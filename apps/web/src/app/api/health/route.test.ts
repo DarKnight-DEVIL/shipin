@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   token: "",
   appCheckSiteKey: "",
   appCheckEnforcement: "",
+  appUrl: "https://shipin.app",
   indiaPostUrl: "",
   indiaPostClientId: "",
   indiaPostClientSecret: "",
@@ -35,6 +36,9 @@ vi.mock("@/config/env", () => ({
     },
   },
   serverEnv: {
+    get APP_URL() {
+      return state.appUrl;
+    },
     get UPSTASH_REDIS_REST_URL() {
       return state.url;
     },
@@ -151,6 +155,8 @@ beforeEach(() => {
   state.token = "";
   state.appCheckSiteKey = "";
   state.appCheckEnforcement = "";
+  // A production deployment that boots has APP_URL: it is in PRODUCTION_REQUIRED_ENV.
+  state.appUrl = "https://shipin.app";
   state.indiaPostUrl = "";
   state.indiaPostClientId = "";
   state.indiaPostClientSecret = "";
@@ -162,6 +168,55 @@ beforeEach(() => {
 });
 
 describe("GET /api/health", () => {
+  it("says when passkeys cannot work on the host that answered", async () => {
+    /*
+     * The question this answers: APP_URL is valid, the site is up, and a passkey still
+     * cannot be used because the request arrived on a hostname the credentials were not
+     * registered for. Nothing else in the body shows that.
+     */
+    state.isProduction = true;
+    state.url = "https://redis.test";
+    state.token = "token";
+    // Otherwise the carrier feed marks the deployment degraded and the passkey
+    // mismatch this test is about would not be the thing that moved the status.
+    state.indiaPostUrl = "https://indiapost.test";
+    state.indiaPostClientId = "id";
+    state.indiaPostClientSecret = "secret";
+
+    const mismatched = await (
+      await GET(
+        new Request("https://shipin-preview.vercel.app/api/health", {
+          headers: { host: "shipin-preview.vercel.app" },
+        })
+      )
+    ).json();
+
+    expect(mismatched.webauthn).toMatchObject({
+      origin: "https://shipin.app",
+      rpID: "shipin.app",
+      servedHost: "shipin-preview.vercel.app",
+      matches: false,
+      degraded: true,
+    });
+    expect(mismatched.status).toBe("degraded");
+    expect(mismatched.webauthnWarning).toMatch(/passkey/i);
+
+    const matched = await (
+      await GET(
+        new Request("https://shipin.app/api/health", {
+          headers: { host: "shipin.app" },
+        })
+      )
+    ).json();
+
+    expect(matched.webauthn).toMatchObject({
+      matches: true,
+      degraded: false,
+    });
+    expect(matched.status).toBe("healthy");
+    expect(matched.webauthnWarning).toBeUndefined();
+  });
+
   it("reports the MFA revocation list, so a bypass is never silent", async () => {
     const response = await GET();
     const body = await response.json();

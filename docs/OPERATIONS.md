@@ -372,6 +372,37 @@ see §5), so a missing store cannot reach this endpoint in a healthy deployment.
 `degraded` returns 200 because the site still serves traffic, but a monitor
 must inspect the body — alert when `status !== "healthy"`.
 
+### WebAuthn origin drift (`webauthn` in the body)
+
+Passkeys are bound to the origin they were registered on, and in production that
+origin comes from `APP_URL` — never from the request, so a forged `Host` cannot widen
+it. The reverse is silent: point a custom domain at the deployment without updating
+`APP_URL` and every security-key ceremony fails while the rest of the site works.
+
+`GET /api/health` therefore compares the host that answered with `APP_URL`:
+
+```json
+"webauthn": {
+  "origin": "https://shipin-psi.vercel.app",
+  "rpID": "shipin-psi.vercel.app",
+  "servedHost": "shipin-psi.vercel.app",
+  "matches": true,
+  "error": null,
+  "degraded": false
+}
+```
+
+- `matches: false` in production sets `status: "degraded"` and adds a
+  `webauthnWarning`. Fix it by pointing `APP_URL` at the hostname customers use, then
+  redeploy — existing passkeys stay bound to the old origin, so users re-enrol.
+- `matches: null` means one side is unknown (`Host` stripped by a proxy, or no
+  `APP_URL`); it is reported, not judged.
+- Under `next dev` a mismatch is **not** degraded: `APP_URL` names the deployment and
+  the request arrives on `localhost`, which is the normal case.
+
+Vercel preview deployments are a different origin by design — passkeys do not work on
+them, and the preview's health body says so.
+
 ### Scheduled jobs
 
 | Job | Schedule | Failure signal |

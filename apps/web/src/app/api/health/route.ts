@@ -58,8 +58,14 @@ import {
   readAppCheckRejections,
   reportAppCheckSpike,
 } from "@/lib/appCheckMetrics";
+import { webauthnHealth } from "@/lib/webauthnHealth";
 
-export async function GET() {
+export async function GET(request?: Request) {
+  // Passkeys are bound to one origin for the life of a credential, so a deployment
+  // served on a hostname other than APP_URL's has working pages and unusable security
+  // keys. Asked here with the host that actually answered, so the mismatch is a probe
+  // result rather than a support ticket.
+  const webauthn = webauthnHealth(request?.headers.get("host"));
   // One derivation, shared with the limiter that enforces the limits. The
   // variables being set is not the same as the store working: a URL that is not
   // https never produces a Ratelimit instance, so every `record()` call returns
@@ -166,7 +172,8 @@ export async function GET() {
     appCheckBroken ||
     trackingPlaceholder ||
     appCheckSpike ||
-    mfaDenylist.degraded;
+    mfaDenylist.degraded ||
+    webauthn.degraded;
   const status = degraded ? "degraded" : "healthy";
 
   return NextResponse.json(
@@ -232,6 +239,7 @@ export async function GET() {
           : {}),
       },
       mfaDenylist,
+      webauthn,
       tracking: {
         configured: indiaPostConfigured,
         status: indiaPostConfigured
@@ -244,6 +252,12 @@ export async function GET() {
         ? {
             warning:
               "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are not set in production; rate limits are per-instance.",
+          }
+        : {}),
+      ...(webauthn.degraded
+        ? {
+            webauthnWarning:
+              "WebAuthn verifies against APP_URL's origin, and this request was served on a different hostname: passkey enrolment and sign-in cannot succeed here.",
           }
         : {}),
       ...(trackingPlaceholder
