@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 
-import { adminDb } from "@/lib/firebaseAdmin";
+import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { getAdminAuthError, requireAdmin } from "@/lib/adminAuth";
 import {
   InvalidAdminPageParamError,
@@ -21,6 +21,12 @@ export interface AdminUserRow {
   displayName: string;
   role: AssignableRole;
   mfaEnabled: boolean;
+  /**
+   * Read from Auth, not from the profile document: the Firestore copy is only
+   * written by the admin override, so a customer who clicked the email link would
+   * still look unverified here and the operator would "fix" an account that is fine.
+   */
+  emailVerified: boolean;
   createdAt: number | null;
 }
 
@@ -78,6 +84,28 @@ async function handleGet(request: NextRequest): Promise<NextResponse> {
 
   const snapshot = await query.get();
 
+  /*
+   * Auth is the source of truth for `emailVerified`; Firestore is not updated when
+   * a customer clicks the verification link. One bulk lookup for the page's uids
+   * rather than one call per row, and a failure falls back to the profile field
+   * instead of failing the page - a wrong label is better than no list.
+   */
+  const verifiedFromAuth = new Map<string, boolean>();
+
+  try {
+    const uids = snapshot.docs.map((doc) => ({ uid: doc.id }));
+
+    for (let index = 0; index < uids.length; index += 100) {
+      const batch = await adminAuth.getUsers(uids.slice(index, index + 100));
+
+      for (const user of batch.users) {
+        verifiedFromAuth.set(user.uid, user.emailVerified);
+      }
+    }
+  } catch (error) {
+    console.error("[AdminUsers] Could not read verification state:", error);
+  }
+
   const page = toAdminPage(snapshot.docs, params.limit, (doc) => {
     const data = doc.data() as Record<string, unknown>;
     const createdAt = data.createdAt as { toMillis?: () => number } | undefined;
@@ -88,6 +116,8 @@ async function handleGet(request: NextRequest): Promise<NextResponse> {
       displayName: typeof data.displayName === "string" ? data.displayName : "",
       role: readRole(data.role),
       mfaEnabled: mfaSummary(data.mfa),
+      emailVerified:
+        verifiedFromAuth.get(doc.id) ?? data.emailVerified === true,
       createdAt:
         typeof createdAt?.toMillis === "function" ? createdAt.toMillis() : null,
     };

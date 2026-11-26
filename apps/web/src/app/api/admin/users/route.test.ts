@@ -43,6 +43,8 @@ const mocks = vi.hoisted(() => {
 
   return {
     requireAdmin: vi.fn(),
+    // Auth is the source of truth for the verified flag, not the profile document.
+    getUsers: vi.fn(),
     listGet: vi.fn(),
     docGet: vi.fn(),
     docUpdate: vi.fn(),
@@ -54,6 +56,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: { collection: () => mocks.collection() },
+  adminAuth: { getUsers: mocks.getUsers },
 }));
 
 vi.mock("@/lib/adminAuth", () => ({
@@ -104,6 +107,7 @@ beforeEach(() => {
     mfaVerified: true,
   });
   mocks.listGet.mockReset().mockResolvedValue({ docs: [] });
+  mocks.getUsers.mockReset().mockResolvedValue({ users: [], notFound: [] });
   mocks.docGet.mockReset().mockResolvedValue(snapshot({ role: "customer" }));
   mocks.docUpdate.mockReset().mockResolvedValue(undefined);
   mocks.adminQueryGet.mockReset().mockResolvedValue({ size: 2 });
@@ -115,6 +119,50 @@ beforeEach(() => {
 });
 
 describe("GET /api/admin/users", () => {
+  it("reports the verification state from Auth, not the profile copy", async () => {
+    // A customer who clicked the email link is verified in Auth; the profile document
+    // is only written by the admin override, so reading it would show "unverified"
+    // forever and invite an operator to "fix" an account that is already fine.
+    mocks.listGet.mockResolvedValue({
+      docs: [
+        doc("u-verified", { email: "verified@example.com" }),
+        doc("u-unverified", { email: "new@example.com" }),
+      ],
+    });
+    mocks.getUsers.mockResolvedValue({
+      users: [
+        { uid: "u-verified", emailVerified: true },
+        { uid: "u-unverified", emailVerified: false },
+      ],
+      notFound: [],
+    });
+
+    const response = await GET(listRequest());
+    const body = await response.json();
+
+    expect(body.users[0]).toMatchObject({
+      uid: "u-verified",
+      emailVerified: true,
+    });
+    expect(body.users[1]).toMatchObject({
+      uid: "u-unverified",
+      emailVerified: false,
+    });
+  });
+
+  it("still lists users when Auth cannot answer", async () => {
+    // A wrong label is better than no list: the page falls back to the profile field.
+    mocks.listGet.mockResolvedValue({ docs: [doc("u-1", { email: "a@b.c" })] });
+    mocks.getUsers.mockRejectedValue(new Error("auth unavailable"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await GET(listRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.users[0]).toMatchObject({ uid: "u-1", emailVerified: false });
+  });
+
   it("lists users in the order the query returns, with role and MFA state", async () => {
     // Newest first is the query's job now, so the fixtures are already in
     // snapshot order and the test asserts the route no longer re-sorts.
@@ -157,6 +205,7 @@ describe("GET /api/admin/users", () => {
       displayName: "",
       role: "admin",
       mfaEnabled: true,
+      emailVerified: false,
       createdAt: 2_000,
     });
     expect(body.users[1]).toMatchObject({ uid: "u-old", mfaEnabled: false });

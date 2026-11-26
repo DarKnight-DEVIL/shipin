@@ -23,6 +23,8 @@ interface AdminUserRow {
   displayName: string;
   role: AssignableRole;
   mfaEnabled: boolean;
+  /** From Auth: the profile copy is only written by the override below. */
+  emailVerified: boolean;
   createdAt: number | null;
 }
 
@@ -39,6 +41,9 @@ export default function AdminUsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  // Which row has the reason prompt open, and what has been typed into it.
+  const [verifyingUid, setVerifyingUid] = useState<string | null>(null);
+  const [verifyReason, setVerifyReason] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,6 +115,65 @@ export default function AdminUsersPage() {
         caught instanceof CustomerApiError
           ? caught.message
           : "Could not change that role."
+      );
+    } finally {
+      setBusyUid(null);
+    }
+  }
+
+  /**
+   * Verify an address on the customer's behalf.
+   *
+   * This bypasses a security control, so the reason is not optional: the server
+   * rejects a call without one and records it in `adminAuditLog`. The prompt is
+   * inline rather than `window.prompt` so the flow can be driven by a keyboard,
+   * announced by a screen reader, and tested.
+   */
+  async function verifyEmail(user: AdminUserRow, reason: string) {
+    setBusyUid(user.uid);
+    setError(null);
+    setMessage(null);
+
+    try {
+      await customerApi(`/api/admin/users/${user.uid}/verify-email`, {
+        method: "POST",
+        body: { reason: reason.trim() },
+      });
+
+      setUsers((rows) =>
+        rows.map((row) =>
+          row.uid === user.uid ? { ...row, emailVerified: true } : row
+        )
+      );
+      setMessage(
+        `${user.email || user.uid} is verified. They must sign out and back in before the dashboard accepts their token.`
+      );
+      setVerifyingUid(null);
+      setVerifyReason("");
+    } catch (caught) {
+      const alreadyVerified =
+        caught instanceof CustomerApiError &&
+        // The address was verified elsewhere between loading the list and now.
+        /already verified/i.test(caught.message);
+
+      if (alreadyVerified) {
+        setUsers((rows) =>
+          rows.map((row) =>
+            row.uid === user.uid ? { ...row, emailVerified: true } : row
+          )
+        );
+        setMessage(
+          `${user.email || user.uid} was already verified. The list has been refreshed.`
+        );
+        setVerifyingUid(null);
+        setVerifyReason("");
+        return;
+      }
+
+      setError(
+        caught instanceof CustomerApiError
+          ? caught.message
+          : "Could not verify that address."
       );
     } finally {
       setBusyUid(null);
@@ -192,6 +256,13 @@ export default function AdminUsersPage() {
                     <p className="text-xs text-slate-500">
                       {user.email || user.uid}
                     </p>
+                    {user.emailVerified ? null : (
+                      // Named here because it explains the action next to it: an
+                      // unverified account cannot use any API route.
+                      <span className="mt-1 inline-flex rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                        Email unverified
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -208,23 +279,86 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3 text-xs text-slate-400">
                     {user.mfaEnabled ? "Enabled" : "Not set up"}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => void changeRole(user)}
-                      disabled={busyUid !== null}
-                      className={
-                        user.role === "admin"
-                          ? "rounded-lg bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/25 disabled:opacity-50"
-                          : "rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
-                      }
-                    >
-                      {busyUid === user.uid
-                        ? "Saving…"
-                        : user.role === "admin"
-                          ? "Revoke admin"
-                          : "Make admin"}
-                    </button>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void changeRole(user)}
+                        disabled={busyUid !== null}
+                        className={
+                          user.role === "admin"
+                            ? "rounded-lg bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/25 disabled:opacity-50"
+                            : "rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
+                        }
+                      >
+                        {busyUid === user.uid
+                          ? "Saving…"
+                          : user.role === "admin"
+                            ? "Revoke admin"
+                            : "Make admin"}
+                      </button>
+
+                      {user.emailVerified ? null : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVerifyingUid(user.uid);
+                            setVerifyReason("");
+                            setError(null);
+                            setMessage(null);
+                          }}
+                          disabled={busyUid !== null || verifyingUid !== null}
+                          className="rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/25 disabled:opacity-50"
+                        >
+                          Verify email
+                        </button>
+                      )}
+                    </div>
+
+                    {verifyingUid === user.uid ? (
+                      <form
+                        className="mt-2 flex flex-wrap items-center justify-end gap-2"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void verifyEmail(user, verifyReason);
+                        }}
+                      >
+                        <label
+                          htmlFor={`verify-reason-${user.uid}`}
+                          className="sr-only"
+                        >
+                          Reason for verifying {user.email || user.uid} by hand
+                        </label>
+                        <input
+                          id={`verify-reason-${user.uid}`}
+                          value={verifyReason}
+                          onChange={(event) => setVerifyReason(event.target.value)}
+                          autoFocus
+                          required
+                          minLength={3}
+                          maxLength={200}
+                          placeholder="Why, e.g. customer lost mailbox access"
+                          className="w-full max-w-xs rounded-lg border border-amber-500/40 bg-slate-950 px-3 py-1.5 text-xs text-white outline-none focus:border-amber-400"
+                        />
+                        <button
+                          type="submit"
+                          disabled={busyUid !== null || verifyReason.trim().length < 3}
+                          className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-amber-400 disabled:opacity-50"
+                        >
+                          {busyUid === user.uid ? "Verifying…" : "Confirm"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVerifyingUid(null);
+                            setVerifyReason("");
+                          }}
+                          className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
+                        >
+                          Cancel
+                        </button>
+                      </form>
+                    ) : null}
                   </td>
                 </tr>
               ))}
