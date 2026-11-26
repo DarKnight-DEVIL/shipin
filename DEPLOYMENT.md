@@ -287,52 +287,30 @@ Verified in a browser against a production build: prerendered pages hydrate with
 strict meta in place (500+ React fibers on the landing page), the theme bootstrap
 runs, and no script is refused.
 
-### Log aggregation (Loki, Grafana Cloud or ELK)
+### Log aggregation
 
 The app writes one JSON line per entry to stdout, and `warn`/`error` to stderr
-(`apps/web/src/lib/logger.ts`). Nothing is required for the app to run: this is the
-pipeline that makes those lines queryable.
+(`apps/web/src/lib/logger.ts`), with caller context nested under `context` so a field
+can never overwrite `level`, `message` or `timestamp`. Nothing needs configuring for
+the app to run; this is only about being able to query those lines afterwards.
 
-```bash
-docker compose --profile observability up    # app + emulators + Loki + Vector
-```
+**On Vercel (the deployment that exists).** Vercel captures stdout, and its own log
+view is the first place to look. That view is short-lived, so for retention or search
+use a **Vercel Log Drain** (Pro feature) pointed at whichever sink you prefer - Axiom,
+Better Stack, Grafana Cloud Loki. All of them read newline-delimited JSON without a
+parser, which is why the logger emits that rather than free text.
 
-Two containers, opt-in by profile, because the default stack is what the test suite
-runs:
+There is no self-hosted shipper in this repository: a Vector-plus-Loki stack was tried
+and removed, because nothing here runs in containers and it could never see Vercel's
+function logs anyway. Alerting does not depend on it either - `/api/health` plus the
+mandatory alert webhook (`docs/OPERATIONS.md` §4) is the path that reaches a human.
 
-| Service | Job |
-| --- | --- |
-| `loki` | stores the logs (port 3100) |
-| `vector` | reads container logs, parses the app's JSON, pushes to Loki |
+**If you ever containerise.** Add a shipper back at that point, not before: point it at
+the container log files, parse each line as JSON, and promote `context.service` to a
+label. Unbounded values (message text, request ids) as Loki labels are what make that
+install fall over.
 
-Vector mounts `/var/run/docker.sock` **read-only** - it reads log files, it never
-controls Docker - and keeps a disk buffer at `/var/lib/vector`, so logs written
-while Loki is down are delivered after it returns instead of being lost in the
-incident.
-
-**Grafana Cloud.** The push API is the same one Loki speaks, so only the destination
-changes:
-
-```
-LOKI_URL=https://logs-prod-<region>.grafana.net/loki/api/v1/push
-LOKI_USERNAME=<grafana instance id>
-LOKI_PASSWORD=<access-policy token with logs:write>
-```
-
-Then query in Grafana with the labels the pipeline sets: `service`, `level`,
-`container`. Message text and ids deliberately stay in the record rather than in a
-label - an unbounded label is what makes a Loki install fall over.
-
-**ELK instead.** Replace the `[sinks.loki]` block in
-`docker/vector/vector.toml` with Vector's `elasticsearch` sink pointed at your
-cluster, and add Elasticsearch + Kibana to the same profile. The source, the filter
-and the parse transform are unchanged; the cost is roughly 1-2 GB of RAM for
-Elasticsearch alone.
-
-**What this does not cover: Vercel.** These containers only see logs from processes
-running in Docker. Production on Vercel needs a Vercel **log drain** pointed at the
-same destination; the shipper here cannot reach function logs.
-
+### India Post tracking (carrier feed)
 ### India Post tracking (carrier feed)
 
 Customer tracking has two states and both are honest about which one is running.

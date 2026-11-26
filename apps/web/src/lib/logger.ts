@@ -11,8 +11,9 @@
  * every message containing a bracket would have broken it.
  *
  * The context stays nested rather than flattened into the top level, so a caller's
- * field can never overwrite `level`, `message` or `timestamp`. The shipper promotes
- * `context.service` to a label (see docker/vector/vector.toml).
+ * field can never overwrite `level`, `message` or `timestamp`. A log drain indexes
+ * `context.service` as its service label, which is why it is a field and not part of
+ * the message text.
  *
  * Usage:
  *   logger.info("Payment captured", { requestId, amount });

@@ -3,11 +3,10 @@
 /**
  * The logger's contract with whatever consumes its output.
  *
- * The point of changing this at all: a shipper (Vector, in docker/vector) needs
- * fields, not a sentence. So every assertion here parses the emitted line as JSON.
- * If someone reintroduces a text prefix, `JSON.parse` throws and these fail - which
- * is the intended tripwire, because the old format looked fine in a terminal and was
- * unusable downstream.
+ * The point of changing this at all: a log drain needs fields, not a sentence. So
+ * every assertion here parses the emitted line as JSON. If someone reintroduces a text
+ * prefix, `JSON.parse` throws and these fail - which is the intended tripwire, because
+ * the old format looked fine in a terminal and was unusable downstream.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
