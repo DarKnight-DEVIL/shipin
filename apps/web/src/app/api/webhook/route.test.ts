@@ -62,8 +62,14 @@ vi.mock("@/lib/firebaseAdmin", () => ({
         };
       },
     }),
-    runTransaction: async (handler: (tx: unknown) => Promise<unknown>) =>
-      handler({
+    /*
+     * Firestore serialises transactions on a document and retries the loser. The double
+     * queues them, so a test that fires two deliveries at once sees what production
+     * sees - the second one re-reads the marker instead of racing the first.
+     */
+    runTransaction: (handler: (tx: unknown) => Promise<unknown>) => {
+      const run = transactionQueue.then(() =>
+        handler({
         get: async (ref: { path: string }) => {
           mocks.ops.push(`read:${ref.path}`);
           mocks.txGet(ref);
@@ -74,23 +80,47 @@ vi.mock("@/lib/firebaseAdmin", () => ({
           const data = mocks.docs[ref.path];
           return { exists: data !== undefined, data: () => data };
         },
+        /*
+         * Transaction writes land in `mocks.docs` as a real transaction would. Without
+         * this the claim written by one delivery is invisible to the next, and the
+         * duplicate-detection tests would be asserting on a state that cannot exist.
+         */
         update: (ref: { path: string }, data: Record<string, unknown>) => {
           mocks.ops.push(`write:${ref.path}`);
           mocks.txUpdate(ref, data);
+          mocks.docs[ref.path] = { ...(mocks.docs[ref.path] ?? {}), ...data };
         },
         set: (ref: { path: string }, data: Record<string, unknown>) => {
           mocks.ops.push(`write:${ref.path}`);
           mocks.txSet(ref, data);
+          mocks.docs[ref.path] = { ...(mocks.docs[ref.path] ?? {}), ...data };
         },
         delete: (ref: { path: string }) => {
           mocks.ops.push(`write:${ref.path}`);
           mocks.txDelete(ref);
+          delete mocks.docs[ref.path];
         },
-      }),
+      })
+      );
+
+      transactionQueue = run.then(
+        () => undefined,
+        () => undefined
+      );
+
+      return run;
+    },
   },
 }));
 
 import { POST } from "./route";
+
+/**
+ * Transactions are queued, not run in parallel: Firestore serialises on a document and
+ * retries the loser, and a double that lets two transactions interleave would report a
+ * race that the real database prevents.
+ */
+let transactionQueue: Promise<void> = Promise.resolve();
 
 const captureEvent = (overrides: Record<string, unknown> = {}) => ({
   // PayPal always sends an id, and the endpoint now refuses an event without one.
@@ -103,6 +133,17 @@ const captureEvent = (overrides: Record<string, unknown> = {}) => ({
     ...overrides,
   },
 });
+
+/**
+ * Writes the settlement made, ignoring the event marker.
+ *
+ * Claiming the event is a write of its own, so a bare `not.toHaveBeenCalled()` on the
+ * transaction spies now says nothing about whether money moved.
+ */
+const settlementWrites = (spy: { mock: { calls: unknown[][] } }) =>
+  spy.mock.calls.filter(
+    ([ref]) => !String((ref as { path?: string }).path).startsWith("paypalWebhookEvents/")
+  );
 
 const PAYPAL_HEADERS = {
   "paypal-transmission-id": "tx-1",
@@ -317,6 +358,109 @@ describe("POST /api/webhook", () => {
     expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 
+  it("processes exactly one of two simultaneous deliveries", async () => {
+    seedOrder();
+    seedRequest();
+
+    // The first delivery claimed the event and is still inside its handler. A second
+    // thread checks the marker at this exact moment - the window the old
+    // check-then-write opened, in which both would have processed.
+    const [first, second] = await Promise.all([
+      POST(request(captureEvent())),
+      POST(request(captureEvent())),
+    ]);
+
+    const bodies = await Promise.all([first.json(), second.json()]);
+    const duplicates = bodies.filter((body) => body.duplicate === true);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(duplicates).toHaveLength(1);
+
+    // One settlement, not two: the order was marked completed exactly once.
+    const orderMarks = mocks.txUpdate.mock.calls.filter(
+      ([ref]) =>
+        String((ref as { path?: string }).path) === "paypalPaymentOrders/ORDER-1"
+    );
+    expect(orderMarks).toHaveLength(1);
+  });
+
+  it("takes over a claim whose attempt died, instead of losing the event", async () => {
+    seedOrder();
+    seedRequest();
+    mocks.docs["paypalWebhookEvents/EV-STALE"] = {
+      status: "claimed",
+      claimId: "attempt-that-died",
+      claimedAt: Date.now() - 10 * 60 * 1000,
+      eventType: "PAYMENT.CAPTURE.COMPLETED",
+    };
+
+    const response = await POST(request({ ...captureEvent(), id: "EV-STALE" }));
+
+    expect(response.status).toBe(200);
+    // Not a duplicate: the claim was stale, so this delivery did the work.
+    await expect(response.json()).resolves.not.toMatchObject({ duplicate: true });
+    expect(mocks.docs["paypalWebhookEvents/EV-STALE"]).toMatchObject({
+      status: "processed",
+    });
+    expect(mocks.txUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "paypalWebhookEvents/EV-STALE" }),
+      expect.objectContaining({ claimId: expect.any(String) })
+    );
+  });
+
+  it("keeps a claim that is still fresh, however often it is retried", async () => {
+    seedOrder();
+    seedRequest();
+    mocks.docs["paypalWebhookEvents/EV-LIVE"] = {
+      status: "claimed",
+      claimId: "attempt-in-progress",
+      claimedAt: Date.now(),
+    };
+
+    const response = await POST(request({ ...captureEvent(), id: "EV-LIVE" }));
+
+    await expect(response.json()).resolves.toMatchObject({ duplicate: true });
+    expect(settlementWrites(mocks.txUpdate)).toHaveLength(0);
+  });
+
+  it("treats a marker written before this change as processed", async () => {
+    // Older markers carry no status: they were only ever written after success, so
+    // they must still deduplicate across the deploy.
+    mocks.docs["paypalWebhookEvents/EV-LEGACY"] = {
+      eventType: "PAYMENT.CAPTURE.COMPLETED",
+      processedAt: "__SERVER_TS__",
+    };
+
+    const response = await POST(request({ ...captureEvent(), id: "EV-LEGACY" }));
+
+    await expect(response.json()).resolves.toMatchObject({ duplicate: true });
+  });
+
+  it("releases the claim when processing fails, so the retry can work", async () => {
+    // The capture pays less than the order requires, which is the drift the handler
+    // refuses to settle.
+    seedOrder();
+    seedRequest();
+    const mismatched = captureEvent({ amount: { value: "99.00", currency_code: "USD" } });
+
+    const failed = await POST(request({ ...mismatched, id: "EV-RETRY" }));
+
+    expect(failed.status).toBe(500);
+    // The claim is gone, not left behind: a stuck marker would make PayPal's retry look
+    // like a duplicate and drop the event.
+    expect(mocks.docs["paypalWebhookEvents/EV-RETRY"]).toBeUndefined();
+
+    // And the retry therefore gets to process it - with the right amount this time.
+    seedOrder();
+    const retried = await POST(request({ ...captureEvent(), id: "EV-RETRY" }));
+
+    expect(retried.status).toBe(200);
+    expect(mocks.docs["paypalWebhookEvents/EV-RETRY"]).toMatchObject({
+      status: "processed",
+    });
+  });
+
   it("skips a PayPal event id it has already processed", async () => {
     mocks.docs["paypalWebhookEvents/EV-1"] = {
       eventType: "PAYMENT.CAPTURE.COMPLETED",
@@ -370,8 +514,13 @@ describe("POST /api/webhook", () => {
 
     await POST(request(captureEvent()));
 
-    const firstWrite = mocks.ops.findIndex((op) => op.startsWith("write:"));
-    const lastRead = mocks.ops.reduce(
+    // The claim is its own transaction, so the ordering guarantee is checked on the
+    // settlement's documents only.
+    const settlementOps = mocks.ops.filter(
+      (op) => !op.slice(op.indexOf(":") + 1).startsWith("paypalWebhookEvents/")
+    );
+    const firstWrite = settlementOps.findIndex((op) => op.startsWith("write:"));
+    const lastRead = settlementOps.reduce(
       (last, op, index) => (op.startsWith("read:") ? index : last),
       -1
     );
@@ -557,7 +706,7 @@ describe("POST /api/webhook", () => {
       success: false,
       code: "WEBHOOK_PROCESSING_ERROR",
     });
-    expect(mocks.txSet).not.toHaveBeenCalled();
+    expect(settlementWrites(mocks.txSet)).toHaveLength(0);
   });
 
   it("returns 500 when the wallet cannot cover the reserved amount", async () => {
@@ -568,7 +717,7 @@ describe("POST /api/webhook", () => {
     const response = await POST(request(captureEvent()));
 
     expect(response.status).toBe(500);
-    expect(mocks.txSet).not.toHaveBeenCalled();
+    expect(settlementWrites(mocks.txSet)).toHaveLength(0);
   });
 
   it("stops when the request disappeared", async () => {
@@ -585,12 +734,13 @@ describe("POST /api/webhook", () => {
 
     await POST(request(captureEvent()));
 
-    expect(mocks.txUpdate).toHaveBeenCalledTimes(1);
+    expect(settlementWrites(mocks.txUpdate)).toHaveLength(1);
     expect(mocks.txUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ path: "paypalPaymentOrders/ORDER-1" }),
       expect.objectContaining({ status: "completed" })
     );
-    expect(mocks.txSet).not.toHaveBeenCalled();
+    // No ledger entry, no wallet movement: the order mark is the whole write.
+    expect(settlementWrites(mocks.txSet)).toHaveLength(0);
   });
 
   it("returns 500 when processing throws so PayPal retries (idempotent handler)", async () => {

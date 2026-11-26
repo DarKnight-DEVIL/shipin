@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { withErrorHandler } from "@/utils/errors";
 import { childLogger } from "@/lib/logger";
 
@@ -33,6 +34,19 @@ import {
 const PAYPAL_WEBHOOK_ID = serverEnv.PAYPAL_WEBHOOK_ID;
 
 const webhookLogger = childLogger({ service: "paypal-webhook" });
+
+/** Marker states for `paypalWebhookEvents/{eventId}`. */
+const CLAIM_STATUS_CLAIMED = "claimed";
+const CLAIM_STATUS_PROCESSED = "processed";
+
+/**
+ * How long a claim is believed before a retry may take it over.
+ *
+ * Processing is one Firestore transaction and a notification, so anything beyond a few
+ * seconds here means the attempt died. Two minutes is still shorter than PayPal's first
+ * repeat interval, so a crashed attempt costs a retry rather than the event.
+ */
+const CLAIM_LEASE_MS = 2 * 60 * 1000;
 
 /**
  * Headers PayPal signs every delivery with.
@@ -200,13 +214,63 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  // PayPal retries a delivery it could not confirm, so the same event id can
-  // arrive twice. The marker is written only after the handler succeeds: a
-  // failed attempt still returns 500 and is retried.
+  /*
+   * Claim the event before processing it, not after.
+   *
+   * Checking for a marker and writing one afterwards is a check-then-act race: two
+   * simultaneous deliveries of the same id both see "not seen", both process, and only
+   * then does one of the writes find the other. A transaction on the marker document
+   * serialises the two, so exactly one of them gets to work.
+   *
+   * The claim is released when processing fails, because PayPal's retry must be able to
+   * try again - the failure path is the reason the marker used to be written last. A
+   * claim that is never released (the process died mid-flight) expires after the lease,
+   * which is what stops one crashed attempt from swallowing an event for good.
+   */
   const eventRef = adminDb.collection("paypalWebhookEvents").doc(eventId);
+  const claimId = randomUUID();
 
-  const seen = await eventRef.get();
-  if (seen.exists) {
+  const claim = await adminDb.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(eventRef);
+    const now = Date.now();
+
+    if (!snapshot.exists) {
+      transaction.set(eventRef, {
+        status: CLAIM_STATUS_CLAIMED,
+        claimId,
+        // Epoch millis rather than a server timestamp: the lease is compared here, and
+        // two minutes is coarse enough that a server clock skips nothing.
+        claimedAt: now,
+        eventType: event.event_type ?? "unknown",
+      });
+
+      return "claimed" as const;
+    }
+
+    const data = (snapshot.data() ?? {}) as Record<string, unknown>;
+
+    // A marker with no status predates this claim and was only written after success.
+    if (data.status !== CLAIM_STATUS_CLAIMED) return "duplicate" as const;
+
+    const claimedAt = typeof data.claimedAt === "number" ? data.claimedAt : null;
+
+    // An unreadable claim time is treated as fresh: stealing a claim we cannot date is
+    // how an event gets processed twice.
+    if (claimedAt === null || now - claimedAt < CLAIM_LEASE_MS) {
+      return "duplicate" as const;
+    }
+
+    // The attempt that claimed this died without releasing it. Take it over.
+    transaction.update(eventRef, {
+      claimId,
+      claimedAt: now,
+      eventType: event.event_type ?? "unknown",
+    });
+
+    return "claimed" as const;
+  });
+
+  if (claim === "duplicate") {
     return NextResponse.json({
       received: true,
       success: true,
@@ -237,9 +301,30 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     }
   } catch (error) {
     console.error("Webhook processing error:", error);
+
+    /*
+     * Release the claim so PayPal's retry can process the event. Deleting only our own
+     * claim matters: if a takeover happened, the marker belongs to another attempt and
+     * removing it would let the next delivery run in parallel with it.
+     */
+    try {
+      await adminDb.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(eventRef);
+        const data = (snapshot.data() ?? {}) as Record<string, unknown>;
+
+        if (snapshot.exists && data.claimId === claimId) {
+          transaction.delete(eventRef);
+        }
+      });
+    } catch (releaseError) {
+      // Better a stuck claim, which expires, than a 500 that hides the real failure.
+      webhookLogger.error("Could not release the webhook claim", {
+        eventId,
+        error: releaseError instanceof Error ? releaseError.message : "unknown",
+      });
+    }
+
     // Return 500 so PayPal will retry the webhook delivery.
-    // handleCaptureCompleted is idempotent (checks captureId + request status),
-    // so retries are safe.
     return NextResponse.json(
       {
         success: false,
@@ -250,10 +335,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  await eventRef.set({
-    eventType: event.event_type ?? "unknown",
-    processedAt: FieldValue.serverTimestamp(),
-  });
+  await eventRef.set(
+    {
+      status: CLAIM_STATUS_PROCESSED,
+      claimId,
+      eventType: event.event_type ?? "unknown",
+      processedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
 
   // PayPal requires a 2xx to stop delivery; `received` is the provider contract.
   return NextResponse.json({ received: true, success: true });

@@ -405,6 +405,13 @@ These are the gaps that the Discord alert alone will not catch. Add in this orde
    rate exceeds 2% over 5 minutes, or when `paypal` webhook verification
    failures exceed 1.
 
+   Each event is **claimed** before it is processed: `paypalWebhookEvents/{eventId}`
+   is written inside a transaction first, so two simultaneous deliveries cannot both
+   decide they are the first. The claim is released when processing fails (PayPal's
+   retry then gets a clean run), and a claim older than two minutes is treated as an
+   attempt that died and may be taken over. A marker with no `status` field predates
+   this and counts as processed, so a deploy mid-retry does not double-process.
+
    The webhook also refuses — with `400 MISSING_EVENT_ID` and a `critical` alert
    (`PAYPAL_WEBHOOK_MISSING_EVENT_ID`) — any signed payload that arrives without an
    event id. Such a body cannot be deduplicated, so the retry PayPal sends would be
