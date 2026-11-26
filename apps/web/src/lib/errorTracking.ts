@@ -201,8 +201,14 @@ export function resolveErrorAlertWebhook(): string | null {
   const dedicated = process.env.ERROR_ALERT_WEBHOOK_URL?.trim();
   if (dedicated) return dedicated;
 
-  const fallback = process.env.ALERT_WEBHOOK_URL?.trim();
-  if (fallback) return fallback;
+  const alert = process.env.ALERT_WEBHOOK_URL?.trim();
+  if (alert) return alert;
+
+  // The App Check channel is already wired to the operator's Discord in this
+  // deployment. Falling back to it means error tracking works the day it ships,
+  // instead of staying silent until someone adds a fourth variable.
+  const appCheck = process.env.APP_CHECK_ALERT_WEBHOOK_URL?.trim();
+  if (appCheck) return appCheck;
 
   const breach = process.env.BREACH_ALERT_WEBHOOK_URL?.trim();
   return breach || null;

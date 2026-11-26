@@ -212,6 +212,17 @@ describe("alerting", () => {
     expect(resolveErrorAlertWebhook()).toBe("https://hooks.test/breach");
   });
 
+  it("reuses the App Check channel when nothing error-specific is set", () => {
+    // The operator already has a working Discord channel; refusing to use it
+    // would leave error tracking silent until a fourth variable is added.
+    vi.stubEnv("ERROR_ALERT_WEBHOOK_URL", "");
+    vi.stubEnv("ALERT_WEBHOOK_URL", "");
+    vi.stubEnv("BREACH_ALERT_WEBHOOK_URL", "");
+    vi.stubEnv("APP_CHECK_ALERT_WEBHOOK_URL", "https://hooks.test/appcheck");
+
+    expect(resolveErrorAlertWebhook()).toBe("https://hooks.test/appcheck");
+  });
+
   it("colours a critical alert differently from a warning", () => {
     const critical = buildErrorAlertPayload(
       buildErrorEvent(new Error("x"), { category: "payment-drift", severity: "critical" })
