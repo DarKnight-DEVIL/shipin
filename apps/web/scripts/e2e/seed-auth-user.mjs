@@ -85,12 +85,20 @@ async function seedAccount({
   role,
   displayName,
   totpSecret = "",
+  emailVerified = true,
+  profileEmailVerified = emailVerified,
 }) {
   const profile = {
     email,
     displayName,
     role,
-    emailVerified: true,
+    /*
+     * Deliberately settable apart from the Auth flag. The admin list reads
+     * verification from Auth because the profile copy is only written by the
+     * override; a fixture where the two disagree is the only way to notice a
+     * regression back to reading the profile.
+     */
+    emailVerified: profileEmailVerified,
     ...(totpSecret
       ? {
           mfa: {
@@ -109,7 +117,7 @@ async function seedAccount({
     uid = existing.uid;
     await auth.updateUser(uid, {
       password,
-      emailVerified: true,
+      emailVerified,
       displayName,
     });
   } catch (error) {
@@ -119,7 +127,7 @@ async function seedAccount({
     const created = await auth.createUser({
       email,
       password,
-      emailVerified: true,
+      emailVerified,
       displayName,
     });
     uid = created.uid;
@@ -150,9 +158,27 @@ const uid = await seedAccount({
   displayName: "E2E Admin",
 });
 
+/*
+ * An account Auth considers unverified while its profile claims the opposite.
+ * `admin-verify-email.spec.ts` needs something for the "Verify email" action to
+ * act on, and the disagreement is the point: the list must trust Auth.
+ */
+const unverifiedEmail =
+  process.env.E2E_SEED_UNVERIFIED_EMAIL ?? "e2e-unverified@shipin.test";
+const unverifiedUid = await seedAccount({
+  email: unverifiedEmail,
+  password,
+  role: "customer",
+  displayName: "E2E Unverified",
+  emailVerified: false,
+  profileEmailVerified: true,
+});
+
 console.log(`E2E_ADMIN_EMAIL=${email}`);
 console.log(`E2E_ADMIN_PASSWORD=${password}`);
 console.log(`E2E_ADMIN_UID=${uid}`);
+console.log(`E2E_UNVERIFIED_EMAIL=${unverifiedEmail}`);
+console.log(`E2E_UNVERIFIED_UID=${unverifiedUid}`);
 
 if (totpSecret) {
   const refundAdminUid = await seedAccount({

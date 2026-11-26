@@ -177,6 +177,8 @@ if (signedIn) {
   // `E2E_ADMIN_PASSWORD` are repository secrets in CI (the staging admin), and
   // the seeder prints what it seeds: inheriting them would write that password
   // into a public job log and sign the emulator run in as the real operator.
+  const unverifiedEmail =
+    process.env.E2E_SEED_UNVERIFIED_EMAIL ?? "e2e-unverified@shipin.test";
   const adminEmail = SEED_EMAIL;
   const adminPassword = SEED_PASSWORD;
   const refundAdminEmail = "e2e-refund-admin@shipin.test";
@@ -202,6 +204,10 @@ if (signedIn) {
     // values. `E2E_SEED_*` is what the seeder reads.
     E2E_ADMIN_EMAIL: adminEmail,
     E2E_ADMIN_PASSWORD: adminPassword,
+    // Seeded unverified: Auth says false while the profile says true, so the
+    // override spec fails if the admin list ever reads the profile instead.
+    E2E_SEED_UNVERIFIED_EMAIL: unverifiedEmail,
+    E2E_UNVERIFIED_EMAIL: unverifiedEmail,
     E2E_SEED_EMAIL: adminEmail,
     E2E_SEED_PASSWORD: adminPassword,
     E2E_SEED_MFA_EMAIL: refundAdminEmail,
@@ -212,6 +218,16 @@ if (signedIn) {
     // as an RP ID (a passkey would be scoped to every tenant). This run serves
     // its own build on localhost, so it claims that origin.
     APP_URL: "http://localhost:3000",
+    // App Check stays off for this run: the emulator cannot mint a reCAPTCHA
+    // Enterprise token, so an enforced build refuses every API call with 401 before
+    // the route reads its body - which looks like a broken endpoint, not a broken
+    // environment. .env.local may set APP_CHECK_ENFORCEMENT=true for manual runs;
+    // this empties it for the build under test. Production keeps it on.
+    // "false", not "": the build inlines NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY
+    // from .env.local, and enforcement falls back to production-plus-site-key when
+    // the flag is neither "true" nor "false" - so an empty value leaves the gate ON
+    // and every API call answers 401 "App verification failed".
+    APP_CHECK_ENFORCEMENT: "false",
     // The emulator ignores the key's value but the specs require it present.
     E2E_FIREBASE_API_KEY: process.env.E2E_FIREBASE_API_KEY || "fake-api-key",
     // Second factor for the seeded admin, and the codes the refund spec mints.
@@ -295,6 +311,10 @@ const specs = [
         // Full refund chain: the only check that drives the real endpoints end
         // to end. It skips itself unless the fixture and TOTP above are set.
         "tests/admin-refund.spec.ts",
+        // Drives the email-verification override through the real UI. Local
+        // only: it mutates the account it acts on, and on staging that would be
+        // somebody's real address.
+        "tests/admin-verify-email.spec.ts",
       ]
     : []),
 ].join(" ");
