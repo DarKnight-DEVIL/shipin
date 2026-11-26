@@ -168,6 +168,43 @@ describe("moneySchema", () => {
     expect(moneySchema.safeParse(999999999).success).toBe(true);
   });
 
+  it("rejects a third decimal instead of rounding it away", () => {
+    /*
+     * The guard is a validator, not a rounder: 10.005 must fail, not become 10.01. A
+     * schema that silently repaired an amount would charge a customer something they
+     * never asked for, and the caller would never learn it happened.
+     */
+    expect(moneySchema.safeParse(10.005).success).toBe(false);
+    expect(moneySchema.safeParse(1.005).success).toBe(false);
+    expect(moneySchema.safeParse(0.001).success).toBe(false);
+    expect(moneySchema.safeParse(0.009).success).toBe(false);
+  });
+
+  it("accepts the two-decimal amounts floats represent imprecisely", () => {
+    // 4.35 and 0.07 are not exact in binary; a naive `n * 100 % 1 === 0` check would
+    // reject real prices, which is the failure that strands a customer at checkout.
+    for (const amount of [4.35, 0.07, 0.29, 1.1, 19.99, 1234.56, 0.01]) {
+      expect(moneySchema.safeParse(amount).success).toBe(true);
+    }
+  });
+
+  it("rejects a float that arrived as the result of arithmetic", () => {
+    // 0.1 + 0.2 is 0.30000000000000004: the client should be sending minor units, and
+    // accepting this would carry the drift into the ledger.
+    expect(moneySchema.safeParse(0.1 + 0.2).success).toBe(false);
+  });
+
+  it("holds at both ends of the range", () => {
+    expect(moneySchema.safeParse(0.01).success).toBe(true);
+    expect(moneySchema.safeParse(999999999).success).toBe(true);
+    // Two decimals still work where the float step is coarse (ulp ~1.2e-7 here).
+    expect(moneySchema.safeParse(999999998.99).success).toBe(true);
+    expect(moneySchema.safeParse(999999998.995).success).toBe(false);
+    // And the cap is the cap: a fraction above it is refused for its size, not its
+    // precision.
+    expect(moneySchema.safeParse(999999999.01).success).toBe(false);
+  });
+
   it("rejects invalid amounts", () => {
     expect(moneySchema.safeParse(0).success).toBe(false);
     expect(moneySchema.safeParse(-5).success).toBe(false);
