@@ -377,7 +377,7 @@ must inspect the body — alert when `status !== "healthy"`.
 | Job | Schedule | Failure signal |
 |---|---|---|
 | Quote expiry (`expire-quotes-cron.yml` → `POST /api/admin/requests/quotes/expire`) | hourly, GitHub Actions | the run goes red; it posts to the optional `ALERT_WEBHOOK_URL` secret and writes a job summary |
-| Wallet ledger invariants (`wallet-invariants-cron.yml` → `POST /api/admin/wallet/invariants`) | daily, GitHub Actions | 409 on any balance/ledger/hold mismatch or a truncated scan; posts to `ALERT_WEBHOOK_URL` and writes the drift report to the job summary |
+| Wallet ledger invariants (`wallet-invariants-cron.yml` → `POST /api/admin/wallet/invariants`) | daily, GitHub Actions | 409 on any balance/ledger/hold mismatch or a truncated scan; posts to `ALERT_WEBHOOK_URL` and writes the drift report to the job summary. The sweep reads every collection to the end, so truncation means the wall-clock budget ran out: the response names the collection and the reason, and `WALLET_SWEEP_BUDGET_MS` (with the route's `maxDuration`) is the knob |
 
 GitHub schedules are best-effort: a run can be delayed or skipped under load, so
 `expired: 0` from one run is not proof the sweep is broken — check the run

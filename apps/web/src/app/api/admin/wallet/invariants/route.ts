@@ -21,10 +21,19 @@
  * answers 409 and stores its verdict at `system/walletInvariants` for the
  * scheduled run to alert on.
  *
- * The sweep is bounded: every collection is read in document-id order with a
- * fixed page cap. If any scan hits its cap, no comparison is made — a partial
- * ledger sum would invent drift for every wallet — and the run reports
- * `WALLET_SWEEP_TRUNCATED` instead.
+ * The sweep reads each collection to EXHAUSTION in document-id order. It used to
+ * stop at a fixed number of pages, which made the failure it exists to catch
+ * invisible exactly when the data grew: past the cap it stopped comparing and
+ * reported `WALLET_SWEEP_TRUNCATED` every night, forever, while real drift sat
+ * unreported. Two limits remain, and neither can silently hide drift:
+ *
+ *   - a wall-clock budget shared by the whole sweep, because a function has to
+ *     return before the platform kills it;
+ *   - a document cap far above any real deployment, as a runaway guard.
+ *
+ * Hitting either is reported with the collection, what stopped it and how much was
+ * read, so the next step is a knob to turn rather than an unexplained 409. A partial
+ * scan is never compared: an incomplete ledger sum would mark every wallet wrong.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -40,17 +49,35 @@ import { storedMinor, toDecimal } from "@/lib/money";
 import { withErrorHandler } from "@/utils/errors";
 
 const PAGE_SIZE = 200;
-/** 25 pages = 5,000 wallets; a real deployment is far below this. */
-const MAX_WALLET_PAGES = 25;
-/** 100 pages = 20,000 ledger entries. */
-const MAX_LEDGER_PAGES = 100;
-/** 20 pages = 4,000 active holds (consumed holds are deleted). */
-const MAX_HOLD_PAGES = 20;
+
+/**
+ * Wall-clock budget for the whole sweep, shared by the three scans.
+ *
+ * Set below `maxDuration` so the route returns its own 409 instead of being killed
+ * mid-scan with no body. Raise it together with `maxDuration` if a deployment's
+ * ledger outgrows it; the response names this variable when it runs out.
+ */
+const DEFAULT_BUDGET_MS = 25_000;
+const BUDGET_ENV = "WALLET_SWEEP_BUDGET_MS";
+
+/**
+ * Runaway guard, not a capacity limit: 200,000 documents per collection at 200 per
+ * page is 1,000 round trips, which the budget stops long before. Reaching it means a
+ * collection is far outside anything this app writes.
+ */
+const MAX_DOCS_PER_COLLECTION = 200_000;
 
 /** Mismatches stored in `system/walletInvariants` (the response carries all). */
 const MAX_STORED_DRIFT = 100;
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
+
+/**
+ * Bigger than DEFAULT_BUDGET_MS on purpose: a function killed by the platform
+ * returns no body at all, which the cron workflow can only report as a transport
+ * failure. This route always answers for itself.
+ */
+export const maxDuration = 60;
 
 type WalletDriftKind =
   | "wallet_negative_balance"
@@ -67,7 +94,15 @@ interface WalletDrift {
 
 interface Scan {
   docs: DocumentSnapshot[];
-  truncated: boolean;
+  /** Null when the collection was read to the end. */
+  truncation: { reason: string; docsRead: number } | null;
+}
+
+function sweepBudgetMs(): number {
+  const configured = Number(process.env[BUDGET_ENV]);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_BUDGET_MS;
 }
 
 /**
@@ -79,29 +114,48 @@ interface Scan {
  */
 async function scanCollection(
   collection: string,
-  maxPages: number
+  deadline: number
 ): Promise<Scan> {
   const docs: DocumentSnapshot[] = [];
   let cursor: DocumentSnapshot | undefined;
 
-  for (let page = 0; page < maxPages; page += 1) {
+  for (;;) {
+    if (docs.length >= MAX_DOCS_PER_COLLECTION) {
+      return {
+        docs,
+        truncation: {
+          reason: `document cap (${MAX_DOCS_PER_COLLECTION}) reached`,
+          docsRead: docs.length,
+        },
+      };
+    }
+
+    if (Date.now() >= deadline) {
+      return {
+        docs,
+        truncation: {
+          reason: `time budget (${sweepBudgetMs()}ms, ${BUDGET_ENV}) spent`,
+          docsRead: docs.length,
+        },
+      };
+    }
+
     const query = adminDb
       .collection(collection)
       .orderBy(FieldPath.documentId())
-      // firestore-list: internal — fixed page cap; truncation is reported.
+      // firestore-list: internal — reads until the collection ends; see Scan.
       .limit(PAGE_SIZE);
 
     const snapshot = await (cursor ? query.startAfter(cursor) : query).get();
     docs.push(...snapshot.docs);
 
-    if (snapshot.size < PAGE_SIZE) return { docs, truncated: false };
+    // A short page is the end of the collection. This is the only normal exit.
+    if (snapshot.size < PAGE_SIZE) return { docs, truncation: null };
 
     // A full page is non-empty, so there is always a last document to cursor
     // from. Casting keeps this from becoming an unreachable branch.
     cursor = snapshot.docs.at(-1) as DocumentSnapshot;
   }
-
-  return { docs, truncated: true };
 }
 
 /** Unix-ms, ISO string or Firestore Timestamp → Date. */
@@ -190,13 +244,25 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const now = new Date();
 
+  const deadline = Date.now() + sweepBudgetMs();
+
   const [wallets, ledger, holds] = await Promise.all([
-    scanCollection("wallets", MAX_WALLET_PAGES),
-    scanCollection("walletTransactions", MAX_LEDGER_PAGES),
-    scanCollection("walletHolds", MAX_HOLD_PAGES),
+    scanCollection("wallets", deadline),
+    scanCollection("walletTransactions", deadline),
+    scanCollection("walletHolds", deadline),
   ]);
 
-  const truncated = wallets.truncated || ledger.truncated || holds.truncated;
+  const truncated = Boolean(
+    wallets.truncation || ledger.truncation || holds.truncation
+  );
+
+  // Named per collection: "the sweep was truncated" told an operator nothing about
+  // which knob to turn or how close the data is to the limit.
+  const truncation = {
+    ...(wallets.truncation ? { wallets: wallets.truncation } : {}),
+    ...(ledger.truncation ? { walletTransactions: ledger.truncation } : {}),
+    ...(holds.truncation ? { walletHolds: holds.truncation } : {}),
+  };
 
   const ledgerTotals = sumByUser(ledger.docs);
   const activeHolds = sumByUser(
@@ -279,6 +345,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       drift: drift.slice(0, MAX_STORED_DRIFT),
       driftTruncated: drift.length > MAX_STORED_DRIFT,
       truncated,
+      truncation,
     });
 
   for (const entry of drift) {
@@ -296,6 +363,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     drift,
     driftTruncated: drift.length > MAX_STORED_DRIFT,
     truncated,
+    ...(truncated ? { truncation } : {}),
     scannedAt: now.toISOString(),
   };
 

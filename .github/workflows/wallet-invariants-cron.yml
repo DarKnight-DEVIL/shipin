@@ -122,7 +122,7 @@ jobs:
             echo ""
             echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo ""
-            echo "The endpoint compares every page of \`wallets\` with the sum of \`walletTransactions.amount\`, the sum of active \`walletHolds.amount\`, and zero. It is read-only: confirm the ledger and the balance before changing either. A truncated scan reports \`WALLET_SWEEP_TRUNCATED\` instead of drift, so raise the page caps rather than editing wallets. Scheduled runs can be delayed or skipped by GitHub — check the run history before assuming the endpoint is broken."
+            echo "The endpoint compares every page of \`wallets\` with the sum of \`walletTransactions.amount\`, the sum of active \`walletHolds.amount\`, and zero. It is read-only: confirm the ledger and the balance before changing either. A truncated scan reports \`WALLET_SWEEP_TRUNCATED\` with the collection that stopped it and how many documents were read, instead of drift. The sweep reads each collection to the end, so truncation means the wall-clock budget was spent: raise \`WALLET_SWEEP_BUDGET_MS\` (and the route's \`maxDuration\`) rather than editing wallets. Scheduled runs can be delayed or skipped by GitHub — check the run history before assuming the endpoint is broken."
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ -z "$ALERT_WEBHOOK_URL" ]; then

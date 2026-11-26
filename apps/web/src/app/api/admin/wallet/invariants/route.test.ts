@@ -51,18 +51,42 @@ const mocks = vi.hoisted(() => {
             ? state.holds
             : [];
 
-    const query = {
-      orderBy: () => query,
-      limit: () => query,
-      startAfter: () => query,
-      get: async () => {
-        const matched = rows();
-        return { size: matched.length, docs: matched.map(snapshotOf) };
-      },
+    /*
+     * Real pagination: document-id order, `limit`, and `startAfter` by id. A fake
+     * that returned every row regardless would pass a scan that never advanced its
+     * cursor - which is the bug this file is meant to catch.
+     */
+    const buildQuery = () => {
+      const state = { limit: Number.POSITIVE_INFINITY, after: null as string | null };
+
+      const query = {
+        orderBy: () => query,
+        limit: (value: number) => {
+          state.limit = value;
+          return query;
+        },
+        startAfter: (doc: { id?: string }) => {
+          state.after = doc?.id ?? null;
+          return query;
+        },
+        get: async () => {
+          const sorted = [...rows()].sort((a, b) =>
+            a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+          );
+          const afterCursor = state.after
+            ? sorted.filter((row) => row.id > (state.after as string))
+            : sorted;
+          const page = afterCursor.slice(0, state.limit);
+
+          return { size: page.length, docs: page.map(snapshotOf) };
+        },
+      };
+
+      return query;
     };
 
     return {
-      ...query,
+      ...buildQuery(),
       doc: (id?: string) => ({
         id,
         get: async () => {
@@ -454,11 +478,31 @@ describe("POST /api/admin/wallet/invariants — verdict", () => {
     expect(mocks.state.system.walletInvariants.drift).toEqual([]);
   });
 
-  it("reports a truncated scan instead of inventing drift", async () => {
-    // One full page is enough to make the fake paginate to the cap: the same
-    // page is returned with a cursor, so the scan ends truncated.
-    for (let index = 0; index < 200; index += 1) {
-      wallet({ balance: 0 }, `w-${index}`);
+  it("reads past the old five-thousand-wallet page cap", async () => {
+    // The previous implementation stopped at 25 pages of 200 and then reported
+    // truncation on every run forever. 5,001 wallets is one document past that cap.
+    const total = 5_001;
+    for (let index = 0; index < total; index += 1) {
+      wallet({ balance: 0 }, `w-${String(index).padStart(5, "0")}`);
+    }
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(body.truncated).toBe(false);
+    expect(body.checked.wallets).toBe(total);
+    expect(body.drift).toEqual([]);
+    expect(response.status).toBe(200);
+  });
+
+  it("names the collection and the reason when the budget runs out", async () => {
+    // A truncated sweep must still say which knob to turn. 1ms is spent long before
+    // 5,001 wallets are read, so the sweep cannot finish and must not pretend to.
+    // Stubbed rather than assigned: a direct write survives the test and silently
+    // truncates the next one, which is how this failed the first time.
+    vi.stubEnv("WALLET_SWEEP_BUDGET_MS", "1");
+    for (let index = 0; index < 5_001; index += 1) {
+      wallet({ balance: 0 }, `w-${String(index).padStart(5, "0")}`);
     }
 
     const response = await POST(signedRequest());
@@ -467,8 +511,32 @@ describe("POST /api/admin/wallet/invariants — verdict", () => {
     expect(response.status).toBe(409);
     expect(body.code).toBe("WALLET_SWEEP_TRUNCATED");
     expect(body.truncated).toBe(true);
+
     // Partial sums would mark every wallet wrong; none are reported.
     expect(body.drift).toEqual([]);
+
+    // Which collection, why, and how far it got.
+    expect(body.truncation.wallets.reason).toContain("WALLET_SWEEP_BUDGET_MS");
+    expect(body.truncation.wallets.docsRead).toBeGreaterThan(0);
+    expect(mocks.state.system.walletInvariants.truncation).toMatchObject({
+      wallets: expect.objectContaining({ docsRead: expect.any(Number) }),
+    });
+  });
+
+  it("compares the whole ledger, not just the first page", async () => {
+    // 450 ledger rows for one wallet is three pages; the sum must include all of them
+    // or a correct balance looks like drift.
+    wallet({ balance: 450 }, "w1");
+    for (let index = 0; index < 450; index += 1) {
+      ledgerEntry("w1", 1, `tx-${String(index).padStart(4, "0")}`);
+    }
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(body.checked.ledgerEntries).toBe(450);
+    expect(body.drift).toEqual([]);
+    expect(response.status).toBe(200);
   });
 
   it("stores the verdict for the next run and for operators", async () => {
