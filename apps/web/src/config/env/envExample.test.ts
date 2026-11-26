@@ -111,7 +111,7 @@ describe(".env.example", () => {
     // production refuses to boot without it, and `mfaSession.ts` fails closed
     // rather than deriving anything — so the file told operators to skip a
     // variable that stops the deploy. `APP_URL` was "an optional convenience"
-    // while the WebAuthn path throws without an absolute value.
+    // while link-building throws without an absolute value.
     //
     // What matters is the claim, not the word: "required in production,
     // optional in development" is accurate for the Upstash pair and every

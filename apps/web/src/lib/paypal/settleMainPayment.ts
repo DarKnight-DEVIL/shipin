@@ -19,8 +19,14 @@ import {
 
 import { adminDb } from "@/lib/firebaseAdmin";
 
-import { roundMoney, toNumber } from "./amounts";
-import { minorFromStored, storedMinor } from "@/lib/money";
+import { roundMoney, sameCents, toNumber } from "./amounts";
+import {
+  isMinor,
+  minorFromStored,
+  storedMinor,
+  subtractMinor,
+} from "@/lib/money";
+import { mainPaymentStatusError } from "./requestPaymentState";
 import { balanceFields, ledgerFields, reservedFields } from "@/lib/moneyMode";
 import type { PaymentFailure } from "./types";
 import {
@@ -81,7 +87,7 @@ export async function settleMainPayment({
    */
   const calculatedPayPalAmount = roundMoney(totalRequired - walletApplied);
 
-  if (Math.abs(calculatedPayPalAmount - expectedPayPalAmount) > 0.01) {
+  if (!sameCents(calculatedPayPalAmount, expectedPayPalAmount)) {
     console.error("Stored payment calculation mismatch:", {
       baseAmount,
       totalRequired,
@@ -95,6 +101,15 @@ export async function settleMainPayment({
       ok: false,
       status: 400,
       error: "The stored payment calculation could not be verified.",
+    };
+  }
+
+  const expectedCurrency = String(paymentOrder.currency ?? "USD").toUpperCase();
+  if (capturedCurrency.toUpperCase() !== expectedCurrency) {
+    return {
+      ok: false,
+      status: 400,
+      error: "The captured currency does not match this payment order.",
     };
   }
 
@@ -119,6 +134,8 @@ export async function settleMainPayment({
   const walletTransactionRef = adminDb
     .collection("walletTransactions")
     .doc(`paypal_${captureId}`);
+
+  let refusal: PaymentFailure | null = null;
 
   await adminDb.runTransaction(async (transaction) => {
     // Every read comes before the first write: Firestore rejects the reverse
@@ -147,21 +164,44 @@ export async function settleMainPayment({
       throw new Error("Request for this payment could not be found.");
     }
 
+    const requestData = requestSnapshot.data() ?? {};
+    const statusError = mainPaymentStatusError(requestData.status);
+    if (statusError) {
+      refusal = {
+        ok: false,
+        status: 409,
+        error: statusError,
+        code: "REQUEST_NOT_PAYABLE",
+      };
+      return;
+    }
+
     /*
      * Read the balance through the compat helper (ADR-0008, phase 2): a wallet
      * may hold the decimal field or the integer one, and the debit is
      * arithmetic that must not run in floats.
      */
     const currentBalanceMinor = walletSnapshot.exists
-      ? Math.max(0, storedMinor(walletSnapshot.data(), "balance"))
+      ? storedMinor(walletSnapshot.data(), "balance")
       : 0;
     const walletAppliedMinor = minorFromStored(walletApplied);
 
-    if (walletAppliedMinor > currentBalanceMinor + 1) {
+    if (!isMinor(currentBalanceMinor) || currentBalanceMinor < 0) {
+      throw new Error("The wallet balance is invalid.");
+    }
+
+    if (!isMinor(walletAppliedMinor) || walletAppliedMinor < 0) {
+      throw new Error("The stored wallet amount is invalid.");
+    }
+
+    if (walletAppliedMinor > currentBalanceMinor) {
       throw new Error("Insufficient wallet balance to complete this payment.");
     }
 
-    const newBalanceMinor = currentBalanceMinor - walletAppliedMinor;
+    const newBalanceMinor = subtractMinor(
+      currentBalanceMinor,
+      walletAppliedMinor
+    );
 
     if (walletApplied > 0) {
       // Consume the reservation in the same write that debits the balance.
@@ -221,6 +261,8 @@ export async function settleMainPayment({
       completedAt: FieldValue.serverTimestamp(),
     });
   });
+
+  if (refusal) return refusal;
 
   return { ok: true, paymentMethod, walletApplied, totalRequired, baseAmount };
 }

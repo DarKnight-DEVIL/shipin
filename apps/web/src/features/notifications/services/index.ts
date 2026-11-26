@@ -4,10 +4,8 @@ import {
   where,
   limit,
   getDocs,
-  doc,
   orderBy,
   onSnapshot,
-  getDoc,
 } from "firebase/firestore";
 
 export { WHATSAPP_COUNTRIES } from "./whatsappCountries";
@@ -173,11 +171,13 @@ export async function getNotificationPreferences(
   userId: string
 ): Promise<NotificationPreferences> {
   try {
-    const snapshot = await getDoc(doc(db, "users", userId));
-    if (!snapshot.exists()) {
-      return DEFAULT_NOTIFICATION_PREFERENCES;
-    }
-    const saved = snapshot.data()?.preferences?.notifications;
+    void userId;
+
+    const saved = await customerApi<{
+      notifications?: Partial<NotificationPreferences> | null;
+    }>("/api/notifications/preferences").then(
+      (result) => result.notifications
+    );
     if (!saved) {
       return DEFAULT_NOTIFICATION_PREFERENCES;
     }

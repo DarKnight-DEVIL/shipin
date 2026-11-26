@@ -17,6 +17,7 @@ vi.mock("@/lib/firebaseAdmin", () => ({
 // route consults them before writing anything.
 vi.mock("@/lib/r2Access", () => ({
   authorizeInspectionAccess: mocks.authorize,
+  authorizeInspectionUpload: mocks.authorize,
   parseInspectionKey: () => "req-1",
 }));
 vi.mock("@/lib/r2", () => ({
@@ -48,7 +49,9 @@ function uploadRequest(
     form.append(
       "file",
       options.file ??
-        new File([new Uint8Array([1, 2, 3])], "box.jpg", { type: "image/jpeg" })
+        new File([new Uint8Array([0xff, 0xd8, 0xff, 1])], "box.jpg", {
+          type: "image/jpeg",
+        })
     );
   }
   if (options.requestId !== null) {
@@ -155,9 +158,20 @@ describe("POST /api/r2/upload", () => {
     ["image/png", "png"],
     ["image/webp", "webp"],
   ])("stores %s under the inspection directory", async (type, extension) => {
-    const file = new File([new Uint8Array([1])], `photo.${extension}`, {
-      type,
-    });
+    const signatures: Record<string, number[]> = {
+      "image/jpeg": [0xff, 0xd8, 0xff, 1],
+      "image/png": [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+      "image/webp": [
+        0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50,
+      ],
+    };
+    const file = new File(
+      [new Uint8Array(signatures[type])],
+      `photo.${extension}`,
+      {
+        type,
+      }
+    );
 
     const response = await POST(
       uploadRequest({ token: "good", file, requestId: "req-1" })
@@ -190,7 +204,7 @@ describe("POST /api/r2/upload", () => {
     await POST(uploadRequest({ token: "good", file, requestId: "req-1" }));
 
     // The id that is authorised is the id the object key uses, byte for byte.
-    expect(mocks.authorize).toHaveBeenCalledWith("admin-1", "req-1");
+    expect(mocks.authorize).toHaveBeenCalledWith("admin-1");
   });
 
   it("refuses to rewrite a request id instead of validating it", async () => {
@@ -244,9 +258,13 @@ describe("POST /api/r2/upload", () => {
   });
 
   it("does not normalise case or the separator", async () => {
-    const file = new File([new Uint8Array([1])], "photo.jpg", {
-      type: "image/jpeg",
-    });
+    const file = new File(
+      [new Uint8Array([0xff, 0xd8, 0xff, 1])],
+      "photo.jpg",
+      {
+        type: "image/jpeg",
+      }
+    );
 
     const response = await POST(
       uploadRequest({ token: "good", file, requestId: "Req_1-2" })
@@ -256,7 +274,7 @@ describe("POST /api/r2/upload", () => {
     // Firestore ids are case-sensitive, so `Req_1-2` and `req_1-2` are two requests: the
     // key must not collapse them.
     expect(body.key).toContain("inspection/Req_1-2/");
-    expect(mocks.authorize).toHaveBeenCalledWith("admin-1", "Req_1-2");
+    expect(mocks.authorize).toHaveBeenCalledWith("admin-1");
   });
 
   it("refuses to upload into a request the caller does not own", async () => {

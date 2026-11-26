@@ -9,7 +9,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   users: new Map<string, Record<string, unknown>>(),
-  updates: [] as { uid: string; data: Record<string, unknown> }[],
+  secrets: new Map<string, Record<string, unknown>>(),
+  updates: [] as {
+    collection: string;
+    uid: string;
+    data: Record<string, unknown>;
+  }[],
   verifyIdToken: vi.fn(),
   verifyAppCheckRequest: vi.fn(),
   verifyTotp: vi.fn(),
@@ -21,14 +26,17 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminAuth: { verifyIdToken: mocks.verifyIdToken, getUser: mocks.getUser },
   adminDb: {
-    collection: () => ({
+    collection: (collection: string) => ({
       doc: (uid: string) => ({
         get: async () => {
-          const data = mocks.users.get(uid);
+          const data =
+            collection === "userSecrets"
+              ? mocks.secrets.get(uid)
+              : mocks.users.get(uid);
           return { exists: data !== undefined, data: () => data };
         },
         update: async (data: Record<string, unknown>) => {
-          mocks.updates.push({ uid, data });
+          mocks.updates.push({ collection, uid, data });
         },
       }),
     }),
@@ -40,7 +48,11 @@ vi.mock("@/lib/appCheck", () => ({
 }));
 
 vi.mock("firebase-admin/firestore", () => ({
-  FieldValue: { delete: () => "__DELETE__" },
+  FieldValue: {
+    delete: () => "__DELETE__",
+    arrayRemove: (value: unknown) => ({ arrayRemove: value }),
+    serverTimestamp: () => "__SERVER_TS__",
+  },
 }));
 
 vi.mock("@/lib/mfa", () => ({
@@ -72,9 +84,7 @@ function adminUser(overrides: Record<string, unknown> = {}) {
   return {
     role: "admin",
     email: "admin@shipin.app",
-    mfa: {
-      totp: { enabled: true, secret: "SECRET", backupCodes: ["hash-1"] },
-    },
+    mfa: { totp: { enabled: true } },
     ...overrides,
   };
 }
@@ -83,6 +93,7 @@ beforeEach(async () => {
   vi.resetModules();
   ({ getAdminAuthError, requireAdmin } = await import("./adminAuth"));
   mocks.users.clear();
+  mocks.secrets.clear();
   mocks.updates.length = 0;
   mocks.verifyIdToken.mockReset();
   mocks.verifyAppCheckRequest.mockReset();
@@ -100,6 +111,9 @@ beforeEach(async () => {
     email_verified: true,
   });
   mocks.users.set(UID, adminUser());
+  mocks.secrets.set(UID, {
+    totp: { secret: "SECRET", backupCodes: ["hash-1"] },
+  });
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -172,24 +186,27 @@ describe("requireAdmin — profile and role", () => {
     ).rejects.toThrow(code);
   });
 
-  it("verifies a supplied TOTP code even when none is enrolled", async () => {
+  it("verifies a supplied TOTP code before rejecting it", async () => {
+    //
+    // The work happens either way, so response time does not reveal whether the
+    // code - or the account - is the part that failed. This used to be written
+    // against an account whose only factor was a security key; that account now
+    // has no factor at all, and MFA_SETUP_REQUIRED answers before any code is read.
     mocks.users.set(
       UID,
       adminUser({
-        mfa: {
-          totp: { enabled: false },
-          webauthn: { enabled: true, credentialIds: ["cred-1"] },
-        },
+        mfa: { totp: { enabled: true } },
       })
     );
+    mocks.verifyTotp.mockReturnValue(false);
 
     await expect(
       requireAdmin(bearer({ "x-mfa-totp": "123456" }))
     ).rejects.toThrow("MFA_REQUIRED");
 
-    // The work happens either way, so response time does not reveal whether
-    // this administrator has TOTP enrolled.
-    expect(mocks.verifyTotp).toHaveBeenCalledTimes(1);
+    // Called twice by design: once in the short-circuit check and once to keep
+    // the failure path's timing the same as the success path's.
+    expect(mocks.verifyTotp).toHaveBeenCalledTimes(2);
   });
 
   it("checks account state before MFA so a banned admin never reaches a factor", async () => {
@@ -201,16 +218,11 @@ describe("requireAdmin — profile and role", () => {
 });
 
 describe("requireAdmin — elevated MFA session", () => {
-  it("accepts a verified session for a security-key-only admin", async () => {
+  it("accepts a verified session for an admin with an authenticator app", async () => {
     mocks.users.set(
       UID,
       adminUser({
-        mfa: {
-          webauthn: {
-            enabled: true,
-            credentialIds: ["cred-1"],
-          },
-        },
+        mfa: { totp: { enabled: true } },
       })
     );
     mocks.getMfaSession.mockReturnValue({
@@ -227,7 +239,9 @@ describe("requireAdmin — elevated MFA session", () => {
   it("ignores a session issued to another account", async () => {
     mocks.users.set(
       UID,
-      adminUser({ mfa: { webauthn: { enabled: true, credentialIds: ["c"] } } })
+      adminUser({
+        mfa: { totp: { enabled: true } },
+      })
     );
     mocks.getMfaSession.mockReturnValue({
       uid: "someone-else",
@@ -240,7 +254,9 @@ describe("requireAdmin — elevated MFA session", () => {
   it("still requires a code when there is no session", async () => {
     mocks.users.set(
       UID,
-      adminUser({ mfa: { webauthn: { enabled: true, credentialIds: ["c"] } } })
+      adminUser({
+        mfa: { totp: { enabled: true } },
+      })
     );
 
     await expect(requireAdmin(bearer())).rejects.toThrow("MFA_REQUIRED");
@@ -270,6 +286,42 @@ describe("requireAdmin — MFA enforcement", () => {
       mfaVerified: true,
     });
     expect(mocks.verifyTotp).toHaveBeenCalledWith("SECRET", "123456", 1);
+  });
+
+  it("accepts the same TOTP code on back-to-back requests", async () => {
+    /*
+     * Header-based TOTP is per-request proof, and a client cannot mint a different
+     * code inside the 30-second step the code is valid for. Refusing the repeat - as
+     * an earlier draft of the replay guard did - broke the second of two legitimate
+     * admin calls, which is what the refund smoke test does constantly. The replay
+     * refusal lives in the elevation route, where a code mints a lasting session.
+     */
+    mocks.verifyTotp.mockReturnValue(true);
+
+    await expect(
+      requireAdmin(bearer({ "x-mfa-totp": "123456" }))
+    ).resolves.toMatchObject({ mfaVerified: true });
+    await expect(
+      requireAdmin(bearer({ "x-mfa-totp": "123456" }))
+    ).resolves.toMatchObject({ mfaVerified: true });
+    // Once per request: the short-circuit only doubles the count on the failure path.
+    expect(mocks.verifyTotp).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not record a replay marker from a header verification", async () => {
+    // The elevation route owns `lastTotpCodeHash`: a marker written on every admin
+    // API call would make the elevation route refuse a code that merely authenticated
+    // a read, not an elevation.
+    mocks.verifyTotp.mockReturnValue(true);
+
+    await requireAdmin(bearer({ "x-mfa-totp": "123456" }));
+
+    expect(
+      mocks.updates.filter(
+        (update) =>
+          update.collection === "userSecrets" && "totp.lastTotpCodeHash" in update.data
+      )
+    ).toEqual([]);
   });
 
   it("rejects an invalid TOTP code", async () => {
@@ -336,10 +388,15 @@ describe("requireAdmin — MFA enforcement", () => {
   });
 
   it("ignores a WebAuthn header at the gate (fail closed)", async () => {
+    /*
+     * Security keys are gone, so the header is now simply an unknown header - and an
+     * unknown header must never be proof. This is the fail-closed case, not a
+     * compatibility one.
+     */
     mocks.users.set(
       UID,
       adminUser({
-        mfa: { webauthn: { enabled: true, credentialIds: ["cred-1"] } },
+        mfa: { totp: { enabled: true } },
       })
     );
 

@@ -6,6 +6,7 @@ import { requireAuthWithProfile } from "@/lib/auth";
 import { generateBackupCodes, hashBackupCode, verifyTotp } from "@/lib/mfa";
 import { withErrorHandler } from "@/utils/errors";
 import { readAndValidateBody, verifyTotpBodySchema } from "@/lib/validation";
+import { loadTotpSecrets, userSecretsRef } from "@/lib/mfaSecrets";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -60,10 +61,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  const totp = (
-    snapshot.data()?.mfa as { totp?: { secret?: unknown } } | undefined
-  )?.totp;
-  const secret = typeof totp?.secret === "string" ? totp.secret : null;
+  const secrets = await loadTotpSecrets(auth.profile.uid, snapshot.data()?.mfa);
+  const secret = secrets.secret ?? null;
 
   if (!secret) {
     return NextResponse.json(
@@ -92,9 +91,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const backupCodes = generateBackupCodes(BACKUP_CODE_COUNT);
 
+  await userSecretsRef(auth.profile.uid).set(
+    {
+      totp: { secret, backupCodes: backupCodes.map(hashBackupCode) },
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
   await snapshot.ref.update({
-    "mfa.totp.enabled": true,
-    "mfa.totp.backupCodes": backupCodes.map(hashBackupCode),
+    "mfa.totp": { enabled: true },
     "mfa.preferredMethod": "totp",
     updatedAt: FieldValue.serverTimestamp(),
   });

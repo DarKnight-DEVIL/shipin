@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 const mocks = vi.hoisted(() => ({
   requireAuthWithProfile: vi.fn(),
   set: vi.fn(),
+  get: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -11,14 +12,16 @@ vi.mock("@/lib/auth", () => ({
 }));
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
-    collection: vi.fn(() => ({ doc: vi.fn(() => ({ set: mocks.set })) })),
+    collection: vi.fn(() => ({
+      doc: vi.fn(() => ({ set: mocks.set, get: mocks.get })),
+    })),
   },
 }));
 vi.mock("firebase-admin/firestore", () => ({
   FieldValue: { serverTimestamp: () => "__SERVER_TS__" },
 }));
 
-import { PATCH } from "./route";
+import { GET, PATCH } from "./route";
 
 const request = (body: unknown) =>
   new NextRequest("http://localhost/api/profile/preferences", {
@@ -31,6 +34,47 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ profile: { uid: "user-1" } });
   mocks.set.mockReset().mockResolvedValue(undefined);
+  mocks.get.mockReset().mockResolvedValue({
+    data: () => ({ preferences: { dashboardMetrics: ["active"] } }),
+  });
+});
+
+describe("GET /api/profile/preferences", () => {
+  it("rejects unauthenticated callers", async () => {
+    mocks.requireAuthWithProfile.mockResolvedValue(
+      NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    );
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/profile/preferences")
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it("returns the saved dashboard metrics", async () => {
+    const response = await GET(
+      new NextRequest("http://localhost/api/profile/preferences")
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      dashboardMetrics: ["active"],
+    });
+  });
+
+  it("returns null when nothing is saved", async () => {
+    mocks.get.mockResolvedValue({ data: () => ({}) });
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/profile/preferences")
+    );
+
+    await expect(response.json()).resolves.toMatchObject({
+      dashboardMetrics: null,
+    });
+  });
 });
 
 describe("PATCH /api/profile/preferences", () => {

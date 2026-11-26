@@ -15,6 +15,13 @@ const NO_STORE = { "Cache-Control": "no-store" } as const;
  * (docs/AUDIT.md §2.3).
  */
 const ANALYTICS_CACHE_TTL_MS = 60_000;
+
+/**
+ * The dashboard reads a bounded window rather than every request ever created.
+ * Totals are therefore over this window; the response says when the cap was hit
+ * so nobody reads a truncated number as the whole business.
+ */
+const ANALYTICS_MAX_REQUESTS = 10_000;
 let analyticsCache: { at: number; body: unknown } | null = null;
 
 interface RequestData {
@@ -110,6 +117,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
         "refundRequest.status",
         "quoteRegenerationRequested"
       )
+      .limit(ANALYTICS_MAX_REQUESTS)
       .get();
     const requests = snapshot.docs.map(
       (doc) => ({ id: doc.id, ...doc.data() }) as RequestData
@@ -125,8 +133,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
      * requests that actually carry a priced quote for the customer to approve.
      */
     const quoteReady = requests.filter(
-      (r) =>
-        r.status === "review" && (r.quote?.breakdown?.grandTotal ?? 0) > 0
+      (r) => r.status === "review" && (r.quote?.breakdown?.grandTotal ?? 0) > 0
     ).length;
 
     let grossRevenue = 0;
@@ -256,6 +263,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
 
     const body = {
       success: true,
+      truncated: snapshot.size >= ANALYTICS_MAX_REQUESTS,
       stats,
       monthlyRevenue: Object.entries(months)
         .sort(([a], [b]) => a.localeCompare(b))

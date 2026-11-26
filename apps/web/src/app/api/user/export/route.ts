@@ -34,6 +34,13 @@ async function buildExportResponse(uid: string): Promise<NextResponse> {
   });
 
   try {
+    /*
+     * Portability is a complete export, but one account must not be able to
+     * turn it into an unbounded collection scan. Each top-level collection is
+     * capped far above a real customer's history; the response flags the cap.
+     */
+    const EXPORT_ROW_LIMIT = 5_000;
+
     // Collect all user data
     const [
       userDoc,
@@ -46,11 +53,23 @@ async function buildExportResponse(uid: string): Promise<NextResponse> {
       rightsReqsSnap,
     ] = await Promise.all([
       adminDb.collection("users").doc(uid).get(),
-      adminDb.collection("requests").where("userId", "==", uid).get(),
+      adminDb
+        .collection("requests")
+        .where("userId", "==", uid)
+        .limit(EXPORT_ROW_LIMIT)
+        .get(),
       adminDb.collection("wallets").doc(uid).get(),
       adminDb.collection("users").doc(uid).collection("addresses").get(),
-      adminDb.collection("notifications").where("userId", "==", uid).get(),
-      adminDb.collection("supportTickets").where("customerId", "==", uid).get(),
+      adminDb
+        .collection("notifications")
+        .where("userId", "==", uid)
+        .limit(EXPORT_ROW_LIMIT)
+        .get(),
+      adminDb
+        .collection("supportTickets")
+        .where("customerId", "==", uid)
+        .limit(EXPORT_ROW_LIMIT)
+        .get(),
       adminDb
         .collection("consentLogs")
         .where("userId", "==", uid)
@@ -65,8 +84,12 @@ async function buildExportResponse(uid: string): Promise<NextResponse> {
         .get(),
     ]);
 
+    const profile = userDoc.exists ? userDoc.data() : null;
+    if (profile) delete profile.mfa;
+
     const exportData = {
-      profile: userDoc.exists ? userDoc.data() : null,
+      // Secrets and backup-code hashes stay out of a portability bundle.
+      profile,
       orders: ordersSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
       wallet: walletDoc.exists ? walletDoc.data() : null,
       addresses: addressesSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
@@ -80,6 +103,10 @@ async function buildExportResponse(uid: string): Promise<NextResponse> {
         id: d.id,
         ...d.data(),
       })),
+      truncated:
+        ordersSnap.size >= EXPORT_ROW_LIMIT ||
+        notificationsSnap.size >= EXPORT_ROW_LIMIT ||
+        supportSnap.size >= EXPORT_ROW_LIMIT,
       exportedAt: new Date().toISOString(),
       exportRequestId: requestId,
     };

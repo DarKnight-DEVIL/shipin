@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireAuthWithProfile: vi.fn(),
   get: vi.fn(),
   refUpdate: vi.fn(),
+  secretSet: vi.fn(),
   generateTotpSecret: vi.fn(),
   getTotpQrUrl: vi.fn(),
   renderTotpQrDataUrl: vi.fn(),
@@ -15,10 +16,11 @@ vi.mock("@/lib/auth", () => ({
 }));
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
-    collection: vi.fn(() => ({
+    collection: vi.fn((name: string) => ({
       doc: vi.fn(() => ({
         get: mocks.get,
         update: vi.fn(),
+        set: name === "userSecrets" ? mocks.secretSet : vi.fn(),
       })),
     })),
   },
@@ -45,6 +47,7 @@ beforeEach(() => {
     token: { email: "token@example.com" },
   });
   mocks.refUpdate.mockReset().mockResolvedValue(undefined);
+  mocks.secretSet.mockReset().mockResolvedValue(undefined);
   mocks.get.mockReset().mockResolvedValue({
     exists: true,
     data: () => ({ email: "admin@example.com" }),
@@ -97,8 +100,12 @@ describe("POST /api/auth/mfa/totp/setup", () => {
   it("stores a new unconfirmed secret and returns the QR payload", async () => {
     const response = await POST(request());
 
+    expect(mocks.secretSet).toHaveBeenCalledWith({
+      totp: { secret: "NEWSECRET", backupCodes: [] },
+      updatedAt: "__SERVER_TS__",
+    });
     expect(mocks.refUpdate).toHaveBeenCalledWith({
-      "mfa.totp": { secret: "NEWSECRET", enabled: false, backupCodes: [] },
+      "mfa.totp": { enabled: false },
       "mfa.required": true,
       updatedAt: "__SERVER_TS__",
     });

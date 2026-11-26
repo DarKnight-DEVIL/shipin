@@ -81,8 +81,13 @@ describe("availableMfaMethods / hasAnyMfaMethod", () => {
     expect(availableMfaMethods(profile)).toEqual(["totp", "backup"]);
   });
 
-  it("offers WebAuthn when a credential with a public key is stored", () => {
-    const profile: MfaProfile = {
+  it("does not count a leftover security-key record as a second factor", () => {
+    /*
+     * Security keys are no longer offered. An account that held one has nothing this
+     * build can verify, so it must be told to enrol an authenticator app instead of
+     * being sent to a form that cannot complete.
+     */
+    const profile = {
       mfa: {
         webauthn: {
           enabled: true,
@@ -94,41 +99,17 @@ describe("availableMfaMethods / hasAnyMfaMethod", () => {
               transports: [],
               name: "key",
               createdAt: Date.now(),
-              deviceType: "singleDevice",
-              backedUp: false,
             },
           ],
         },
       },
-    };
-
-    expect(availableMfaMethods(profile)).toEqual(["webauthn"]);
-    expect(hasAnyMfaMethod(profile)).toBe(true);
-  });
-
-  it("does not offer unverifiable legacy WebAuthn ids but still counts them", () => {
-    const profile: MfaProfile = {
-      mfa: {
-        webauthn: { enabled: true, credentials: [], credentialIds: ["cred-1"] },
-      },
-    };
+    } as unknown as MfaProfile;
 
     expect(availableMfaMethods(profile)).toEqual([]);
-    expect(hasAnyMfaMethod(profile)).toBe(true);
-  });
-
-  it("will not accept a webauthn proof as a code", () => {
-    const profile: MfaProfile = {
-      mfa: {
-        webauthn: { enabled: true, credentials: [], credentialIds: ["cred-1"] },
-      },
-    };
-
-    // A code cannot stand in for an assertion; the session route verifies the
-    // signature separately.
+    expect(hasAnyMfaMethod(profile)).toBe(false);
     expect(verifyMfaProof(profile, { totp: "123456" })).toEqual({
       ok: false,
-      reason: "INVALID_CODE",
+      reason: "NO_MFA_CONFIGURED",
     });
   });
 });

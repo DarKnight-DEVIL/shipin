@@ -1,15 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getDoc: vi.fn(),
   customerApi: vi.fn(),
-  doc: vi.fn((_db: unknown, col: string, id: string) => ({
-    path: `${col}/${id}`,
-  })),
 }));
 
-vi.mock("firebase/firestore", () => ({ doc: mocks.doc, getDoc: mocks.getDoc }));
-vi.mock("@/lib/firebaseDb", () => ({ db: {} }));
 vi.mock("@/lib/customerApiClient", () => ({ customerApi: mocks.customerApi }));
 
 import {
@@ -20,38 +14,37 @@ import {
   updateUserProfile,
 } from "./userProfile";
 
+const profile = (overrides: Record<string, unknown> = {}) => ({
+  displayName: "Ada",
+  email: "ada@example.com",
+  phone: "+44",
+  ...overrides,
+});
+
 beforeEach(() => {
-  // The repair result is cached per account for the tab, so each test starts
-  // from an empty cache.
   clearUserProfileCache();
-  mocks.getDoc.mockReset();
   mocks.customerApi.mockReset();
   mocks.customerApi.mockResolvedValue({ success: true });
 });
 
 describe("getUserProfile", () => {
-  it("returns the stored profile", async () => {
-    mocks.getDoc.mockResolvedValue({
-      exists: () => true,
-      data: () => ({
-        displayName: "Ada",
-        email: "ada@example.com",
-        phone: "+44",
-      }),
-    });
+  it("reads the safe projection from the API", async () => {
+    mocks.customerApi.mockResolvedValue({ profile: profile() });
 
-    await expect(getUserProfile("user-1")).resolves.toEqual({
-      displayName: "Ada",
-      email: "ada@example.com",
-      phone: "+44",
-    });
-    expect(mocks.doc).toHaveBeenCalledWith({}, "users", "user-1");
+    await expect(getUserProfile("user-1")).resolves.toEqual(profile());
+    expect(mocks.customerApi).toHaveBeenCalledWith("/api/profile");
   });
 
   it("returns null when no profile exists", async () => {
-    mocks.getDoc.mockResolvedValue({ exists: () => false });
+    mocks.customerApi.mockResolvedValue({ profile: null });
 
     await expect(getUserProfile("missing")).resolves.toBeNull();
+  });
+
+  it("wraps API failures", async () => {
+    mocks.customerApi.mockRejectedValue(new Error("offline"));
+
+    await expect(getUserProfile("user-1")).rejects.toBeInstanceOf(Error);
   });
 });
 
@@ -105,30 +98,27 @@ describe("createUserProfile", () => {
 
 describe("ensureUserProfile", () => {
   it("keeps an existing profile and does not write", async () => {
-    mocks.getDoc.mockResolvedValue({
-      exists: () => true,
-      data: () => ({
-        displayName: "Ada",
-        email: "ada@example.com",
-        phone: "",
-        role: "customer",
-      }),
+    mocks.customerApi.mockResolvedValue({
+      profile: profile({ role: "customer" }),
     });
 
-    const profile = await ensureUserProfile({
+    const result = await ensureUserProfile({
       uid: "user-1",
       displayName: "Ada",
       email: "ada@example.com",
     });
 
-    expect(profile).toMatchObject({ displayName: "Ada", role: "customer" });
-    expect(mocks.customerApi).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ displayName: "Ada", role: "customer" });
+    expect(mocks.customerApi).toHaveBeenCalledTimes(1);
+    expect(mocks.customerApi).toHaveBeenCalledWith("/api/profile");
   });
 
   it("creates the missing profile for a Google account", async () => {
-    mocks.getDoc.mockResolvedValue({ exists: () => false });
+    mocks.customerApi
+      .mockResolvedValueOnce({ profile: null })
+      .mockResolvedValueOnce({ success: true });
 
-    const profile = await ensureUserProfile({
+    const result = await ensureUserProfile({
       uid: "google-1",
       displayName: "Ada Lovelace",
       email: "ada@example.com",
@@ -144,7 +134,7 @@ describe("ensureUserProfile", () => {
         photoURL: "https://img/ada.png",
       },
     });
-    expect(profile).toMatchObject({
+    expect(result).toMatchObject({
       displayName: "Ada Lovelace",
       email: "ada@example.com",
       photoURL: "https://img/ada.png",
@@ -152,7 +142,9 @@ describe("ensureUserProfile", () => {
   });
 
   it("derives a display name from the email when Firebase has none", async () => {
-    mocks.getDoc.mockResolvedValue({ exists: () => false });
+    mocks.customerApi
+      .mockResolvedValueOnce({ profile: null })
+      .mockResolvedValueOnce({ success: true });
 
     await ensureUserProfile({
       uid: "user-2",
@@ -169,7 +161,9 @@ describe("ensureUserProfile", () => {
   });
 
   it("falls back to a generic name when the account has no name or email", async () => {
-    mocks.getDoc.mockResolvedValue({ exists: () => false });
+    mocks.customerApi
+      .mockResolvedValueOnce({ profile: null })
+      .mockResolvedValueOnce({ success: true });
 
     await ensureUserProfile({ uid: "user-3" });
 
@@ -182,40 +176,35 @@ describe("ensureUserProfile", () => {
   });
 
   it("shares one read between the sign-in flow and the layout that follows", async () => {
-    mocks.getDoc.mockResolvedValue({
-      exists: () => true,
-      data: () => ({
-        displayName: "Ada",
-        email: "ada@example.com",
-        phone: "",
-        role: "admin",
-      }),
+    mocks.customerApi.mockResolvedValue({
+      profile: profile({ role: "admin" }),
     });
 
-    // Sign-in reads the profile to pick a destination, then the platform
-    // layout repairs the same account as it mounts. One Firestore read.
     const [atSignIn, atLayout] = await Promise.all([
       ensureUserProfile({ uid: "user-1", email: "ada@example.com" }),
       ensureUserProfile({ uid: "user-1", email: "ada@example.com" }),
     ]);
 
-    expect(mocks.getDoc).toHaveBeenCalledTimes(1);
+    expect(mocks.customerApi).toHaveBeenCalledTimes(1);
     expect(atSignIn).toBe(atLayout);
     expect(atSignIn).toMatchObject({ role: "admin" });
   });
 
   it("keeps the cache per account", async () => {
-    mocks.getDoc.mockResolvedValue({ exists: () => false });
+    mocks.customerApi.mockResolvedValue({ profile: null });
 
     await ensureUserProfile({ uid: "user-a" });
     await ensureUserProfile({ uid: "user-b" });
 
-    expect(mocks.getDoc).toHaveBeenCalledTimes(2);
+    expect(mocks.customerApi).toHaveBeenCalledTimes(4);
   });
 
   it("does not cache a repair that failed, so the next caller retries", async () => {
-    mocks.getDoc.mockResolvedValue({ exists: () => false });
-    mocks.customerApi.mockRejectedValueOnce(new Error("network down"));
+    mocks.customerApi
+      .mockResolvedValueOnce({ profile: null })
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValueOnce({ profile: null })
+      .mockResolvedValueOnce({ success: true });
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await expect(
@@ -225,22 +214,19 @@ describe("ensureUserProfile", () => {
     const retried = await ensureUserProfile({ uid: "user-5", email: "a@b.co" });
 
     expect(retried).toMatchObject({ email: "a@b.co" });
-    expect(mocks.customerApi).toHaveBeenCalledTimes(2);
+    expect(mocks.customerApi).toHaveBeenCalledTimes(4);
 
     errorSpy.mockRestore();
   });
 
   it("does not cache a rejected read", async () => {
-    mocks.getDoc.mockRejectedValueOnce(new Error("offline"));
+    mocks.customerApi
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ profile: profile() });
 
     await expect(ensureUserProfile({ uid: "user-6" })).rejects.toThrow(
       "offline"
     );
-
-    mocks.getDoc.mockResolvedValue({
-      exists: () => true,
-      data: () => ({ displayName: "Ada", email: "ada@example.com", phone: "" }),
-    });
 
     await expect(ensureUserProfile({ uid: "user-6" })).resolves.toMatchObject({
       displayName: "Ada",
@@ -248,8 +234,9 @@ describe("ensureUserProfile", () => {
   });
 
   it("returns null instead of throwing when the repair fails", async () => {
-    mocks.getDoc.mockResolvedValue({ exists: () => false });
-    mocks.customerApi.mockRejectedValue(new Error("network down"));
+    mocks.customerApi
+      .mockResolvedValueOnce({ profile: null })
+      .mockRejectedValueOnce(new Error("network down"));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await expect(
@@ -263,16 +250,13 @@ describe("ensureUserProfile", () => {
 
 describe("updateUserProfile", () => {
   it("drops the cached repair result so the next reader sees the edit", async () => {
-    mocks.getDoc.mockResolvedValue({
-      exists: () => true,
-      data: () => ({ displayName: "Ada", email: "ada@example.com", phone: "" }),
-    });
+    mocks.customerApi.mockResolvedValue({ profile: profile() });
 
     await ensureUserProfile({ uid: "user-7", email: "ada@example.com" });
     await updateUserProfile("user-7", { displayName: "Ada Lovelace" });
     await ensureUserProfile({ uid: "user-7", email: "ada@example.com" });
 
-    expect(mocks.getDoc).toHaveBeenCalledTimes(2);
+    expect(mocks.customerApi).toHaveBeenCalledTimes(3);
   });
 
   it("patches only the supplied fields", async () => {

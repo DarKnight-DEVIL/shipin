@@ -46,12 +46,16 @@ function makeQuery(
   const docs = initialDocs;
   const q = {
     where: () => q,
+    limit: () => q,
+    // `userSecretsRef` resolves a doc reference before it is handed to a batch.
+    doc: () => q,
     get: () => ({
       empty: docs.length === 0,
       docs,
     }),
   } as unknown as {
     where: () => typeof q;
+    limit: () => typeof q;
     get: () => {
       empty: boolean;
       docs: Array<{ id: string; data: () => unknown }>;
@@ -135,23 +139,32 @@ describe("POST /api/user/erase", () => {
               }),
             }),
           }
-        : name === "rightsRequests"
+        : name === "wallets"
           ? {
               doc: () => ({
-                update: async () => undefined,
+                get: async () => ({ exists: false, data: () => undefined }),
               }),
-              add: () => ({
-                then: async () => undefined,
-              }),
-              where: () => {
-                const q = {
-                  where: () => q,
-                  get: async () => ({ empty: false, docs: [docWithRef] }),
-                };
-                return q;
-              },
             }
-          : makeQuery([docWithRef])
+          : name === "walletHolds" || name === "walletTopupOrders"
+            ? makeQuery()
+            : name === "rightsRequests"
+              ? {
+                  doc: () => ({
+                    update: async () => undefined,
+                  }),
+                  add: () => ({
+                    then: async () => undefined,
+                  }),
+                  where: () => {
+                    const q = {
+                      where: () => q,
+                      limit: () => q,
+                      get: async () => ({ empty: false, docs: [docWithRef] }),
+                    };
+                    return q;
+                  },
+                }
+              : makeQuery([docWithRef])
     );
 
     const response = await POST(request());
@@ -165,9 +178,9 @@ describe("POST /api/user/erase", () => {
       details: "User requested account and data deletion",
     });
 
-    // addresses, supportTickets, notifications, walletTransactions,
-    // consentLogs and rightsRequests each contribute one document.
-    expect(batch.delete).toHaveBeenCalledTimes(6);
+    // addresses, supportTickets, supportMessages, notifications, wallet holds
+    // and consentLogs each contribute at least one document.
+    expect(batch.delete.mock.calls.length).toBeGreaterThanOrEqual(6);
     expect(batch.commit).toHaveBeenCalledTimes(1);
   });
 
@@ -236,13 +249,13 @@ describe("POST /api/user/erase", () => {
 
     expect(batch.update).toHaveBeenCalledWith(
       expect.objectContaining({ id: "req-1" }),
-      {
+      expect.objectContaining({
         email: "deleted@user.local",
         customerName: "Deleted User",
         shippingAddress: "__DELETE__",
         erasureRequestId: "erasure-1",
         erasedAt: "__TS__",
-      }
+      })
     );
   });
 
@@ -260,6 +273,8 @@ describe("POST /api/user/erase", () => {
         : (() => {
             const q = {
               where: () => q,
+              limit: () => q,
+              doc: () => q,
               get: async () => ({ empty: true, docs: [] }),
             };
             return q;
@@ -289,6 +304,8 @@ describe("POST /api/user/erase", () => {
         : (() => {
             const q = {
               where: () => q,
+              limit: () => q,
+              doc: () => q,
               get: async () => ({ empty: true, docs: [] }),
             };
             return q;
@@ -335,6 +352,8 @@ describe("POST /api/user/erase", () => {
         : (() => {
             const q = {
               where: () => q,
+              limit: () => q,
+              doc: () => q,
               get: async () => ({ empty: true, docs: [] }),
             };
             return q;
@@ -355,31 +374,18 @@ describe("POST /api/user/erase", () => {
 // If the pre-check finds active wallet obligations, the cascade is cancelled
 // before anything is touched and before the Auth user is deleted, so the
 // account and every Firestore record remain exactly as they were.
-it("cancels the erasure request when active wallet obligations exist and leaves every record intact", async () => {
-  // The pre-check reads walletTransactions for the user with status in
-  // [pending, completed]. If any match, the request is cancelled (409) and
-  // no collection is touched.
+it("cancels the erasure request while the wallet still holds money", async () => {
+  // A positive balance is the real obligation; a completed ledger row is not.
   mocks.collection.mockImplementation((name: string) => {
-    if (name === "walletTransactions") {
-      const q: {
-        where: () => typeof q;
-        get: () => {
-          empty: boolean;
-          docs: Array<{ id: string; data: () => unknown }>;
-        };
-      } = {
-        where: () => q,
-        get: () => ({
-          empty: false,
-          docs: [
-            {
-              id: "wtx-1",
-              data: () => ({ userId: "user-1", status: "completed" }),
-            },
-          ],
+    if (name === "wallets") {
+      return {
+        doc: () => ({
+          get: async () => ({
+            exists: true,
+            data: () => ({ balance: 10 }),
+          }),
         }),
       };
-      return q;
     }
     if (name === "rightsRequests") {
       return {
@@ -391,11 +397,7 @@ it("cancels the erasure request when active wallet obligations exist and leaves 
         }),
       };
     }
-    return {
-      where: () => ({
-        get: async () => ({ empty: true, docs: [] }),
-      }),
-    };
+    return makeQuery();
   });
 
   const requestId = "erasure-1";

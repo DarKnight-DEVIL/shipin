@@ -5,6 +5,7 @@ import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { recordAdminAudit } from "@/lib/adminAudit";
 import { withErrorHandler } from "@/utils/errors";
 import { getAdminAuthError, requireAdmin } from "@/lib/adminAuth";
+import { userSecretsRef } from "@/lib/mfaSecrets";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -52,6 +53,9 @@ export const POST = withErrorHandler(
       } catch (authError) {
         console.error("Could not clear Firebase MFA factors:", authError);
       }
+      // The secret record is server-only and has no value after a reset.
+      await userSecretsRef(uid).delete();
+
       await userRef.update({
         "mfa.totp": FieldValue.delete(),
         "mfa.sms": FieldValue.delete(),

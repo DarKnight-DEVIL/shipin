@@ -5,7 +5,11 @@
 
 import fs from "fs";
 import path from "path";
-import { format } from "date-fns";
+
+/** `yyyy-MM-dd` without pulling a date library into a CI-only script. */
+function format(date) {
+  return date.toISOString().slice(0, 10);
+}
 
 // Known credentials and their rotation cadence (90 days)
 const CREDENTIALS = [
@@ -26,7 +30,8 @@ const CREDENTIALS = [
   },
   {
     name: "CRON_SECRET",
-    usedBy: "Vercel production; cron workflows (quote expiry, PayPal reconcile, retention purge)",
+    usedBy:
+      "Vercel production; cron workflows (quote expiry, PayPal reconcile, retention purge)",
     cadenceDays: 90,
     lastRotated: new Date("2026-11-14"),
   },
@@ -47,7 +52,7 @@ async function main() {
   // Extract the credential rotation table from Section 9
   // Find the table after "## 9. Credential rotation"
   const tableSectionMatch = opsContent.match(
-    /## 9\.\s+Credential rotation[\s\S]*?(?=\n##|\n---|$)/
+    /## (?:9|11)\.\s+Credential rotation[\s\S]*?(?=\n##|\n---|$)/i
   );
 
   let tableRows = [];
@@ -56,22 +61,24 @@ async function main() {
     let inTable = false;
     for (const line of lines) {
       // Start collecting after the header row
-      if (line.includes("| Credential | Used by | Cadence | Last rotated / set | Next due |")) {
+      if (
+        /\|\s*Credential\s*\|/.test(line) &&
+        /\|\s*Next due\s*\|/i.test(line)
+      ) {
         inTable = true;
         continue;
       }
       if (inTable && line.startsWith("|")) {
         const cols = line
           .split("|")
-          .map((c) => c.trim())
-          .filter((c) => c && c !== "|");
-        if (cols.length >= 6) {
-          // Columns: index 1=Credential, 2=Used by, 3=Cadence, 4=Last rotated / set, 5=Next due
-          const credentialName = cols[1];
-          const usedBy = cols[2];
-          const cadenceText = cols[3];
-          const lastRotatedText = cols[4] || "";
-          const nextDueText = cols[5] || "";
+          .slice(1, -1)
+          .map((c) => c.trim());
+        if (cols.length >= 5 && cols[0] && cols[0] !== "Credential") {
+          const credentialName = cols[0];
+          const usedBy = cols[1];
+          const cadenceText = cols[2];
+          const lastRotatedText = cols[3] || "";
+          const nextDueText = cols[4] || "";
 
           tableRows.push({
             credentialName,
@@ -82,7 +89,11 @@ async function main() {
           });
         }
         // Stop at next section heading
-        if (cols.length > 0 && !line.includes("Credential") && line.trim().startsWith("##")) {
+        if (
+          cols.length > 0 &&
+          !line.includes("Credential") &&
+          line.trim().startsWith("##")
+        ) {
           inTable = false;
         }
       } else {
@@ -103,6 +114,7 @@ async function main() {
   const now = new Date();
   const overdue = [];
   const current = [];
+  const unrecorded = [];
 
   console.log("🔑 Credential Rotation Status Check\n");
   console.log("=".repeat(60));
@@ -110,12 +122,15 @@ async function main() {
   for (const cred of CREDENTIALS) {
     const tableEntry = tableMap[cred.name];
 
-    // Determine last rotated date
-    let lastRotatedDate;
-    if (tableEntry && tableEntry.lastRotatedText.includes("Not recorded")) {
-      // Never rotated - use project start approximation
-      lastRotatedDate = new Date("2024-01-01");
-    } else if (tableEntry && tableEntry.lastRotatedText) {
+    // Determine last rotated date. An unrecorded date is reported as unknown,
+    // not treated as overdue: a missing entry is a documentation gap, not proof
+    // that the credential is stale.
+    let lastRotatedDate = cred.lastRotated ?? null;
+    if (
+      tableEntry &&
+      tableEntry.lastRotatedText &&
+      !/not recorded|unknown|n\/a/i.test(tableEntry.lastRotatedText)
+    ) {
       // Parse date from table - try various formats
       let parsedDate = null;
       // Try "YYYY-MM-DD" format
@@ -132,7 +147,10 @@ async function main() {
       }
       if (parsedDate) lastRotatedDate = parsedDate;
     }
-    if (!lastRotatedDate) lastRotatedDate = new Date("2024-01-01");
+    if (!lastRotatedDate) {
+      unrecorded.push({ name: cred.name, usedBy: cred.usedBy });
+      continue;
+    }
 
     // Calculate next due date (90 days from last rotated)
     const nextDue = new Date(lastRotatedDate);
@@ -140,7 +158,11 @@ async function main() {
 
     // Also check the table's "Next due" if it has a valid date (not "Now")
     let tableNextDue;
-    if (tableEntry && tableEntry.nextDueText && !tableEntry.nextDueText.includes("Now")) {
+    if (
+      tableEntry &&
+      tableEntry.nextDueText &&
+      !/now/i.test(tableEntry.nextDueText)
+    ) {
       // Try to parse the date
       const yyMdMatch = tableEntry.nextDueText.match(/\d{4}-\d{2}-\d{2}/);
       if (yyMdMatch) {
@@ -155,11 +177,18 @@ async function main() {
     const isOverdue = now >= effectiveNextDue;
 
     // Also check if the table says "Now"
-    const tableNow = tableEntry && tableEntry.nextDueText && tableEntry.nextDueText.includes("Now");
+    const tableNow =
+      tableEntry &&
+      tableEntry.nextDueText &&
+      /now/i.test(tableEntry.nextDueText);
 
     if (tableNow || isOverdue) {
-      const daysOverdue = Math.floor((now - effectiveNextDue) / (1000 * 60 * 60 * 24));
-      const daysSinceLast = Math.floor((now - lastRotatedDate) / (1000 * 60 * 60 * 24));
+      const daysOverdue = Math.floor(
+        (now - effectiveNextDue) / (1000 * 60 * 60 * 24)
+      );
+      const daysSinceLast = Math.floor(
+        (now - lastRotatedDate) / (1000 * 60 * 60 * 24)
+      );
 
       overdue.push({
         name: cred.name,
@@ -171,7 +200,9 @@ async function main() {
         cadenceDays: cred.cadenceDays,
       });
     } else {
-      const daysUntilDue = Math.floor((effectiveNextDue - now) / (1000 * 60 * 60 * 24));
+      const daysUntilDue = Math.floor(
+        (effectiveNextDue - now) / (1000 * 60 * 60 * 24)
+      );
 
       current.push({
         name: cred.name,
@@ -191,27 +222,51 @@ async function main() {
       console.log(`\n  🚩 ${c.name}`);
       console.log(`     Used by: ${c.usedBy}`);
       console.log(`     Last rotated: ${format(c.lastRotated, "yyyy-MM-dd")}`);
-      console.log(`     Next due:     ${format(c.nextDue, "yyyy-MM-dd")} (${c.daysOverdue} day${c.daysOverdue !== 1 ? "s" : ""} overdue)`);
-      console.log(`     Days since last rotation: ${c.daysSinceLast} day${c.daysSinceLast !== 1 ? "s" : ""}`);
+      console.log(
+        `     Next due:     ${format(c.nextDue, "yyyy-MM-dd")} (${c.daysOverdue} day${c.daysOverdue !== 1 ? "s" : ""} overdue)`
+      );
+      console.log(
+        `     Days since last rotation: ${c.daysSinceLast} day${c.daysSinceLast !== 1 ? "s" : ""}`
+      );
     });
   } else {
     console.log("  None - all credentials are within their rotation window.");
   }
 
-  console.log(`\nCredentials currently within rotation window (${current.length}):`);
+  console.log(
+    `\nCredentials currently within rotation window (${current.length}):`
+  );
   if (current.length > 0) {
     current.forEach((c) => {
       console.log(`\n  ✅ ${c.name}`);
       console.log(`     Used by: ${c.usedBy}`);
       console.log(`     Last rotated: ${format(c.lastRotated, "yyyy-MM-dd")}`);
-      console.log(`     Next due:     ${format(c.nextDue, "yyyy-MM-dd")} (in ${c.daysUntilDue} day${c.daysUntilDue !== 1 ? "s" : ""})`);
+      console.log(
+        `     Next due:     ${format(c.nextDue, "yyyy-MM-dd")} (in ${c.daysUntilDue} day${c.daysUntilDue !== 1 ? "s" : ""})`
+      );
     });
+  }
+
+  console.log(
+    `\nCredentials with no recorded rotation date (${unrecorded.length}):`
+  );
+  if (unrecorded.length > 0) {
+    unrecorded.forEach((c) => {
+      console.log(`\n  ❔ ${c.name}`);
+      console.log(`     Used by: ${c.usedBy}`);
+      console.log(
+        "     Record the rotation date in docs/OPERATIONS.md §11 to start tracking it."
+      );
+    });
+  } else {
+    console.log("  None.");
   }
 
   console.log("\n" + "=".repeat(60));
   console.log(`Total checked: ${CREDENTIALS.length}`);
   console.log(`Overdue: ${overdue.length}`);
   console.log(`On track: ${current.length}`);
+  console.log(`Unrecorded: ${unrecorded.length}`);
 
   if (overdue.length > 0) {
     console.error("\n⚠️  One or more credentials are overdue for rotation.");

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   txSet: vi.fn(),
   txUpdate: vi.fn(),
   walletGet: vi.fn(),
+  registryGet: vi.fn(),
 }));
 
 vi.mock("@/lib/firebaseAdmin", () => ({
@@ -20,6 +21,13 @@ vi.mock("@/lib/firebaseAdmin", () => ({
         }
         if (name === "walletTransactions") {
           return { id: "wtx-1", __kind: "walletTransaction" };
+        }
+        if (name === "paypalRefundTransactions") {
+          return {
+            id: "refund-transaction",
+            __kind: "refundTransaction",
+            get: mocks.registryGet,
+          };
         }
         return { id: id ?? "new-id", __kind: "request", get: mocks.get };
       },
@@ -104,11 +112,14 @@ beforeEach(() => {
   mocks.walletGet
     .mockReset()
     .mockResolvedValue(snapshot({ balance: 10, currency: "EUR" }));
+  mocks.registryGet.mockReset().mockResolvedValue({ exists: false });
   mocks.txGet
     .mockReset()
     .mockImplementation(async (ref: { __kind?: string }) =>
       ref.__kind === "wallet"
         ? snapshot({ balance: 10, currency: "EUR" })
+        : ref.__kind === "refundTransaction"
+          ? mocks.registryGet()
         : mocks.get()
     );
   mocks.txSet.mockReset();
@@ -147,7 +158,7 @@ describe("POST /api/admin/requests/[requestId]/partial-refund/complete", () => {
     });
   });
 
-  it("reports a transaction that finds the offer changed method", async () => {
+  it("answers 400 when the offer changed method before the transaction", async () => {
     mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
       ref.__kind === "wallet"
         ? snapshot({ balance: 10, currency: "EUR" })
@@ -159,11 +170,12 @@ describe("POST /api/admin/requests/[requestId]/partial-refund/complete", () => {
 
     const response = await POST(request(), context());
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: "BAD_REQUEST" });
     expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 
-  it("reports a transaction that finds the request emptied", async () => {
+  it("answers 400 when the transaction finds the request emptied", async () => {
     mocks.txGet.mockImplementation(async () => ({
       exists: true,
       data: () => undefined,
@@ -171,11 +183,14 @@ describe("POST /api/admin/requests/[requestId]/partial-refund/complete", () => {
 
     const response = await POST(request(), context());
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "No partial refund offer exists.",
+    });
     expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 
-  it("reports a transaction whose payment no longer covers the refund", async () => {
+  it("answers 400 when the payment no longer covers the refund", async () => {
     mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
       ref.__kind === "wallet"
         ? snapshot({ balance: 10, currency: "EUR" })
@@ -187,18 +202,15 @@ describe("POST /api/admin/requests/[requestId]/partial-refund/complete", () => {
 
     const response = await POST(request(), context());
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error:
+        "The partial refund amount cannot be covered by the original payment sources.",
+    });
     expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 
-  it("reports a transaction that now needs a PayPal transaction id", async () => {
-    mocks.get.mockResolvedValue(
-      snapshot({
-        ...requestDoc,
-        payment: { walletAmount: 50, paypalAmount: 100 },
-        partialRefundOffer: { ...acceptedOffer, amount: 50 },
-      })
-    );
+  it("answers 400 when the transaction now needs a PayPal transaction id", async () => {
     mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
       ref.__kind === "wallet"
         ? snapshot({ balance: 10, currency: "EUR" })
@@ -211,7 +223,10 @@ describe("POST /api/admin/requests/[requestId]/partial-refund/complete", () => {
 
     const response = await POST(request({}), context());
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
     expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 
@@ -255,7 +270,11 @@ describe("POST /api/admin/requests/[requestId]/partial-refund/complete", () => {
 
   it("uses a zero balance and USD when the wallet document is empty", async () => {
     mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
-      ref.__kind === "wallet" ? snapshot({}) : mocks.get()
+      ref.__kind === "wallet"
+        ? snapshot({})
+        : ref.__kind === "refundTransaction"
+          ? snapshot(undefined)
+          : mocks.get()
     );
 
     const response = await POST(request(), context());
@@ -268,7 +287,7 @@ describe("POST /api/admin/requests/[requestId]/partial-refund/complete", () => {
     );
   });
 
-  it("reports a transaction whose request has no payment record", async () => {
+  it("answers 400 when the request has no payment record", async () => {
     mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
       ref.__kind === "wallet"
         ? snapshot({ balance: 10, currency: "EUR" })
@@ -277,7 +296,7 @@ describe("POST /api/admin/requests/[requestId]/partial-refund/complete", () => {
 
     const response = await POST(request(), context());
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
     expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 
@@ -367,7 +386,11 @@ describe("POST /api/admin/requests/[requestId]/partial-refund/complete", () => {
     const response = await POST(request(), context());
 
     expect(response.status).toBe(400);
-    expect(mocks.runTransaction).not.toHaveBeenCalled();
+    // Validation now happens inside the transaction; it must still write
+    // nothing for a rejected offer.
+    expect(mocks.runTransaction).toHaveBeenCalledTimes(1);
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+    expect(mocks.txSet).not.toHaveBeenCalled();
   });
 
   it("only processes original-payment offers", async () => {
@@ -526,7 +549,34 @@ describe("POST /api/admin/requests/[requestId]/partial-refund/complete", () => {
     );
   });
 
-  it("reports a transaction that finds the offer already processed", async () => {
+  it("rejects a transaction already recorded by another refund", async () => {
+    mocks.registryGet.mockResolvedValue({ exists: true });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "DUPLICATE_TRANSACTION",
+    });
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+    expect(mocks.txSet).not.toHaveBeenCalled();
+  });
+
+  it("registers the partial-refund transaction", async () => {
+    await POST(request(), context());
+
+    expect(mocks.txSet).toHaveBeenCalledWith(
+      expect.objectContaining({ __kind: "refundTransaction" }),
+      expect.objectContaining({
+        transactionId: "tx-1",
+        requestId: "req-1",
+        kind: "partial",
+        amount: 30,
+      })
+    );
+  });
+
+  it("answers 400 when the transaction finds the offer already processed", async () => {
     mocks.txGet.mockResolvedValue(
       snapshot({
         ...requestDoc,
@@ -536,16 +586,17 @@ describe("POST /api/admin/requests/[requestId]/partial-refund/complete", () => {
 
     const response = await POST(request(), context());
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
     expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 
-  it("reports a transaction whose request vanished", async () => {
+  it("answers 404 when the request vanished before the transaction", async () => {
     mocks.txGet.mockResolvedValue(snapshot(undefined));
 
     const response = await POST(request(), context());
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ code: "NOT_FOUND" });
   });
 
   it("accumulates onto earlier refunds", async () => {

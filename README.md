@@ -33,7 +33,7 @@ src/
                    warehouse, notifications, finance, admin
   hooks/           Client hooks (auth, support)
   lib/             Server/client primitives: auth, adminAuth, firebaseAdmin,
-                   paypal, wallet, mfa, webauthn, rate limiting, mailer
+                   paypal, wallet, mfa, rate limiting, mailer
   config/env/      Validated server and client environment access
   proxy.ts         Request proxy (security headers, rate limiting, CORS)
   types/           Shared domain types
@@ -126,10 +126,11 @@ Quality bar for changes: `npx tsc --noEmit`, `npm run lint` (0 errors), `npm tes
 
 ## Security
 
-- **Admin MFA is mandatory.** `requireAdmin` accepts a TOTP, backup or one-time SMS code, or a
-  verified elevated session cookie issued by `POST /api/auth/mfa/session`. That session also
-  covers WebAuthn, which is verified there with a per-request challenge, signature and counter
-  check; a bare `X-MFA-WebAuthn` header is never trusted.
+- **Admin MFA is mandatory.** `requireAdmin` accepts a TOTP or backup code, or a verified
+  elevated session cookie issued by `POST /api/auth/mfa/session`. One body supplies the proof,
+  so the elevation is bound to the challenge the server issued; a bare header is never trusted.
+  Security keys and passkeys were withdrawn before launch (see `docs/OPERATIONS.md` §4a) and
+  SMS is not enabled yet — an authenticator app is the only factor today.
 - **App Check via reCAPTCHA Enterprise.** The client initializes App Check from
   `NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY`, refreshes tokens in the background, and sends
   `X-Firebase-AppCheck` on every API call. `APP_CHECK_ENFORCEMENT=true` makes API routes reject

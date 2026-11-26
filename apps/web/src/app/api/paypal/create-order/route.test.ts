@@ -73,6 +73,7 @@ const snap = (data: Record<string, unknown> | undefined) => ({
 
 const requestDoc = {
   userId: "user-1",
+  status: "awaiting_payment",
   requestNumber: "REQ-100",
   quote: { expiresAt: "2027-01-01", breakdown: { grandTotal: 100 } },
 };
@@ -95,9 +96,7 @@ beforeEach(() => {
     // `get` answers per document path, as a real transaction read does.
     const mockTransaction = {
       get: async (ref: { path?: string }) =>
-        ref?.path?.startsWith("wallets/")
-          ? mocks.walletGet()
-          : mocks.holdGet(),
+        ref?.path?.startsWith("wallets/") ? mocks.walletGet() : mocks.holdGet(),
       set: mocks.txSet,
       delete: mocks.txDelete,
     };
@@ -228,6 +227,19 @@ describe("POST /api/paypal/create-order", () => {
     });
   });
 
+  it("refuses a request that is already paid", async () => {
+    mocks.requestGet.mockResolvedValue(snap({ ...requestDoc, status: "paid" }));
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: "REQUEST_NOT_PAYABLE",
+    });
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
   it("refuses an amount above the amount due", async () => {
     const response = await POST(request({ ...body, amount: 200 }));
 
@@ -246,7 +258,7 @@ describe("POST /api/paypal/create-order", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       success: false,
-      error: "Payment amount could not be verified.",
+      error: "PayPal payment amount exceeds the amount due.",
     });
   });
 
@@ -340,7 +352,9 @@ describe("POST /api/paypal/create-order", () => {
     // The reservation was made, then released: the hold is gone and the wallet
     // no longer counts the money as promised.
     expect(mocks.txSet).toHaveBeenCalledWith(
-      expect.objectContaining({ path: expect.stringMatching(/^walletHolds\//) }),
+      expect.objectContaining({
+        path: expect.stringMatching(/^walletHolds\//),
+      }),
       expect.objectContaining({ amount: 20, status: "reserved" })
     );
     expect(mocks.txDelete).toHaveBeenCalledWith(
@@ -654,10 +668,7 @@ describe("POST /api/paypal/create-order", () => {
      */
     for (const [signal, message] of [
       ["INVALID_PAYMENT_AMOUNT", "Invalid payment amount."],
-      [
-        "PAYMENT_AMOUNT_MISMATCH",
-        "Payment amount could not be verified.",
-      ],
+      ["PAYMENT_AMOUNT_MISMATCH", "Payment amount could not be verified."],
     ] as const) {
       mocks.runTransaction.mockRejectedValueOnce(new Error(signal));
 

@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   requireAuthWithProfile: vi.fn(),
-  get: vi.fn(),
+  profileGet: vi.fn(),
+  secretsGet: vi.fn(),
+  secretSet: vi.fn(),
   refUpdate: vi.fn(),
   generateBackupCodes: vi.fn(),
   hashBackupCode: vi.fn((code: string) => `hash:${code}`),
@@ -15,8 +17,12 @@ vi.mock("@/lib/auth", () => ({
 }));
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
-    collection: vi.fn(() => ({
-      doc: vi.fn(() => ({ get: mocks.get, update: vi.fn() })),
+    collection: vi.fn((name: string) => ({
+      doc: vi.fn(() => ({
+        get: name === "userSecrets" ? mocks.secretsGet : mocks.profileGet,
+        set: mocks.secretSet,
+        update: vi.fn(),
+      })),
     })),
   },
 }));
@@ -37,17 +43,24 @@ const request = (body: unknown = { code: "123456" }) =>
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 
-const profile = (totp: Record<string, unknown> = { secret: "SECRET" }) => ({
+const profile = (totp: Record<string, unknown> = { enabled: false }) => ({
   exists: true,
   data: () => ({ mfa: { totp } }),
   ref: { update: mocks.refUpdate },
+});
+
+const secretRecord = (secret?: string) => ({
+  exists: secret !== undefined,
+  data: () => (secret ? { totp: { secret } } : undefined),
 });
 
 beforeEach(() => {
   mocks.requireAuthWithProfile
     .mockReset()
     .mockResolvedValue({ profile: { uid: "admin-1", role: "admin" } });
-  mocks.get.mockReset().mockResolvedValue(profile());
+  mocks.profileGet.mockReset().mockResolvedValue(profile());
+  mocks.secretsGet.mockReset().mockResolvedValue(secretRecord("SECRET"));
+  mocks.secretSet.mockReset().mockResolvedValue(undefined);
   mocks.refUpdate.mockReset().mockResolvedValue(undefined);
   mocks.generateBackupCodes.mockReset().mockReturnValue(["CODE-1", "CODE-2"]);
   mocks.verifyTotp.mockReset().mockReturnValue(true);
@@ -76,7 +89,7 @@ describe("POST /api/auth/mfa/totp/verify", () => {
     const response = await POST(request());
 
     expect(response.status).not.toBe(403);
-    expect(mocks.get).toHaveBeenCalled();
+    expect(mocks.profileGet).toHaveBeenCalled();
   });
 
   it("rejects an unreadable body", async () => {
@@ -94,12 +107,12 @@ describe("POST /api/auth/mfa/totp/verify", () => {
       const response = await POST(request({ code }));
 
       expect(response.status).toBe(400);
-      expect(mocks.get).not.toHaveBeenCalled();
+      expect(mocks.profileGet).not.toHaveBeenCalled();
     }
   );
 
   it("404s when the profile is missing", async () => {
-    mocks.get.mockResolvedValue({ exists: false });
+    mocks.profileGet.mockResolvedValue({ exists: false });
 
     const response = await POST(request());
 
@@ -107,7 +120,7 @@ describe("POST /api/auth/mfa/totp/verify", () => {
   });
 
   it("requires that enrollment was started", async () => {
-    mocks.get.mockResolvedValue(profile({}));
+    mocks.secretsGet.mockResolvedValue(secretRecord());
 
     const response = await POST(request());
 
@@ -134,9 +147,18 @@ describe("POST /api/auth/mfa/totp/verify", () => {
 
     expect(mocks.verifyTotp).toHaveBeenCalledWith("SECRET", "123456", 1);
     expect(mocks.generateBackupCodes).toHaveBeenCalledWith(10);
+    expect(mocks.secretSet).toHaveBeenCalledWith(
+      {
+        totp: {
+          secret: "SECRET",
+          backupCodes: ["hash:CODE-1", "hash:CODE-2"],
+        },
+        updatedAt: "__SERVER_TS__",
+      },
+      { merge: true }
+    );
     expect(mocks.refUpdate).toHaveBeenCalledWith({
-      "mfa.totp.enabled": true,
-      "mfa.totp.backupCodes": ["hash:CODE-1", "hash:CODE-2"],
+      "mfa.totp": { enabled: true },
       "mfa.preferredMethod": "totp",
       updatedAt: "__SERVER_TS__",
     });

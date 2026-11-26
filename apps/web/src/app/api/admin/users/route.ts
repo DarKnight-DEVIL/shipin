@@ -38,9 +38,10 @@ function mfaSummary(mfa: unknown): boolean {
   const record = (mfa ?? {}) as Record<string, unknown>;
   const totp = record.totp as { enabled?: boolean } | undefined;
   const sms = record.sms as { enabled?: boolean } | undefined;
-  const webauthn = record.webauthn as { enabled?: boolean } | undefined;
 
-  return Boolean(totp?.enabled || sms?.enabled || webauthn?.enabled);
+  // Security keys are no longer offered, so a leftover record does not count as an
+  // enrolled factor here either.
+  return Boolean(totp?.enabled || sms?.enabled);
 }
 
 /**

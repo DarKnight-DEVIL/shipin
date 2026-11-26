@@ -7,59 +7,18 @@
 
 import { mfaApi } from "@/lib/mfaApi";
 
-export interface SecurityKeySummary {
-  id: string;
-  name: string;
-  createdAt: number;
-  /**
-   * Relying-party ID the key was enrolled for, or null when this deployment could not
-   * derive one (/api/health reports that case separately).
-   */
-  rpID: string | null;
-}
-
 export interface MfaConfigStatus {
   totp: { enabled: boolean; pending: boolean };
   sms: { enabled: boolean; phoneNumber: string | null };
   backupCodes: number;
-  webauthn: {
-    enabled: boolean;
-    /** RP ID this deployment uses now; a key tagged with another one cannot work. */
-    rpID: string | null;
-    credentials: SecurityKeySummary[];
-  };
 }
 
 type StatusResponse = {
   totp?: { enabled?: unknown; pending?: unknown };
   sms?: { enabled?: unknown; phoneNumber?: unknown };
   backupCodes?: unknown;
-  webauthn?: { enabled?: unknown; rpID?: unknown; credentials?: unknown };
 };
 
-function readSecurityKeys(value: unknown): SecurityKeySummary[] {
-  if (!Array.isArray(value)) return [];
-
-  return value.flatMap((entry) => {
-    const key = entry as {
-      id?: unknown;
-      name?: unknown;
-      createdAt?: unknown;
-      rpID?: unknown;
-    };
-
-    if (typeof key?.id !== "string") return [];
-
-    return [
-      {
-        id: key.id,
-        name: typeof key.name === "string" ? key.name : "Security key",
-        createdAt: typeof key.createdAt === "number" ? key.createdAt : 0,
-        rpID: typeof key.rpID === "string" ? key.rpID : null,
-      },
-    ];
-  });
-}
 
 type TotpSetupResponse = {
   secret?: unknown;
@@ -91,11 +50,6 @@ export async function getMfaConfigStatus(
         typeof body.sms?.phoneNumber === "string" ? body.sms.phoneNumber : null,
     },
     backupCodes: typeof body.backupCodes === "number" ? body.backupCodes : 0,
-    webauthn: {
-      enabled: Boolean(body.webauthn?.enabled),
-      rpID: typeof body.webauthn?.rpID === "string" ? body.webauthn.rpID : null,
-      credentials: readSecurityKeys(body.webauthn?.credentials),
-    },
   };
 }
 

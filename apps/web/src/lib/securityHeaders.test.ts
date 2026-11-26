@@ -70,7 +70,7 @@ describe("SECURITY_HEADERS", () => {
     expect(policy).toContain("payment=(self)");
     // Passkey sign-in runs navigator.credentials.get on this origin; denying
     // it made the security-key button fail without ever prompting.
-    expect(policy).toContain("publickey-credentials-get=(self)");
+    expect(policy).toContain("publickey-credentials-get=()");
   });
 
   it("lets the app write to the clipboard but never read it", () => {

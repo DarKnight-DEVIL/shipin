@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 
-import { extractAuth, requireAuthWithProfile, verifyIdToken } from "@/lib/auth";
+import {
+  extractAuth,
+  requireAuthAccount,
+  requireAuthWithProfile,
+  verifyIdToken,
+} from "@/lib/auth";
 import { adminDb } from "@/lib/firebaseAdmin";
+import { projectUserProfile } from "@/lib/userProfile";
 import { ValidationError, withErrorHandler } from "@/utils/errors";
 
 const profileEmailSchema = z
@@ -67,6 +73,32 @@ function badRequest(message: string) {
     { status: 401, headers: { "Cache-Control": "no-store" } }
   );
 }
+
+/**
+ * GET /api/profile
+ *
+ * Returns only the client-safe profile projection. The browser no longer reads
+ * `users/{uid}` directly: that document can still contain a legacy TOTP secret
+ * until it is migrated, and firestore.rules denies the owner's direct read
+ * while one is present.
+ *
+ * `requireAuthAccount` applies the same gate as every other authenticated
+ * route (App Check, verified email, unblocked account) and migrates the legacy
+ * secret before handing the document back, so nothing sensitive can reach the
+ * response.
+ */
+export const GET = withErrorHandler(async (request: NextRequest) => {
+  const auth = await requireAuthAccount(request);
+  if (auth instanceof NextResponse) return auth;
+
+  return NextResponse.json(
+    {
+      success: true,
+      profile: auth.profile ? projectUserProfile(auth.profile) : null,
+    },
+    { status: 200, headers: { "Cache-Control": "no-store" } }
+  );
+});
 
 /**
  * POST /api/profile

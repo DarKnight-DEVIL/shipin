@@ -518,21 +518,9 @@ export const verifyTotpBodySchema = z.object({
 
 /** POST /api/auth/mfa/session — the second-factor step-up. */
 export const mfaSessionBodySchema = z.object({
-  method: z.enum(["totp", "backup", "webauthn"]).optional(),
+  method: z.enum(["totp", "backup"]).optional(),
   // A TOTP code is 6 digits; a backup code is XXXX-XXXX-XXXX-XXXX.
   code: z.string().max(32).optional(),
-  credential: z.unknown().optional(),
-});
-
-/** DELETE /api/auth/mfa/webauthn/credentials */
-export const webauthnDeleteBodySchema = z.object({
-  id: z.string().trim().min(1, "A credential id is required.").max(512),
-});
-
-/** POST /api/auth/mfa/webauthn/register/complete */
-export const webauthnRegisterBodySchema = z.object({
-  credential: z.record(z.string(), z.unknown()),
-  credentialName: z.string().trim().max(100).optional(),
 });
 
 /** POST /api/auth/password-leak-check — a k-anonymity hash prefix. */
@@ -731,10 +719,23 @@ export type ParsedBody<T> =
  * a route can keep its specific "enter the 6-digit code" wording for the
  * latter while still answering 400 for both.
  */
+const MAX_BODY_BYTES = 64 * 1024;
+
 export async function readAndValidateBody<T extends z.ZodType>(
   request: Request,
   schema: T
 ): Promise<ParsedBody<z.infer<T>>> {
+  const declaredLength = Number(
+    request.headers?.get?.("content-length") ?? NaN
+  );
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
+    return {
+      success: false,
+      reason: "parse",
+      error: "Request body is too large.",
+    };
+  }
+
   let raw: unknown;
 
   try {

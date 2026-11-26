@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { FieldValue } from "firebase-admin/firestore";
+
 import { withErrorHandler } from "@/utils/errors";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
-import { FieldValue } from "firebase-admin/firestore";
 import { logRightsRequest } from "@/lib/compliance/rightsOps2";
+import {
+  commitInChunks,
+  type FirestoreBatchOperation,
+} from "@/lib/firestoreBatch";
+import { storedMinor } from "@/lib/money";
+import { userSecretsRef } from "@/lib/mfaSecrets";
 
 /** Values written in place of the erased PII. */
 const ERASED_NAME = "Deleted User";
@@ -36,21 +43,40 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const uid = auth.profile.uid;
 
   try {
-    // 2b. Pre-check: refuse to start erasure when the account still holds
-    // active financial obligations, so the user is not stranded mid-flow.
-    // This runs BEFORE any data is touched and BEFORE the Auth user is
-    // deleted, so a cancellation here leaves everything intact.
-    const obligationsSnap = await adminDb
-      .collection("walletTransactions")
-      .where("userId", "==", uid)
-      .where("status", "in", ["pending", "completed"])
-      .get();
-    if (
-      obligationsSnap.docs.some((doc) => {
-        const status = doc.data().status;
-        return status === "pending" || status === "completed";
-      })
-    ) {
+    /*
+     * Real obligations, not ledger history: a settled transaction is a record
+     * of money that already moved, while a positive wallet balance or an active
+     * hold is money the customer can still spend. The old check treated every
+     * completed transaction as an obligation, which blocked erasure forever.
+     */
+    const [walletSnap, activeHoldsSnap, pendingTopupsSnap] = await Promise.all([
+      adminDb.collection("wallets").doc(uid).get(),
+      adminDb
+        .collection("walletHolds")
+        .where("userId", "==", uid)
+        .where("status", "==", "reserved")
+        // firestore-list: internal — existence probe for any active hold.
+        .limit(1)
+        .get(),
+      adminDb
+        .collection("walletTopupOrders")
+        .where("userId", "==", uid)
+        .where("capturePending", "==", true)
+        // firestore-list: internal — existence probe for any pending top-up.
+        .limit(1)
+        .get(),
+    ]);
+
+    const walletData = walletSnap.exists ? walletSnap.data() : undefined;
+    const hasBalance = storedMinor(walletData, "balance") > 0;
+    const hasReserved = storedMinor(walletData, "reserved") > 0;
+    const hasObligation =
+      hasBalance ||
+      hasReserved ||
+      !activeHoldsSnap.empty ||
+      !pendingTopupsSnap.empty;
+
+    if (hasObligation) {
       await adminDb.collection("rightsRequests").doc(requestId).update({
         status: "cancelled",
         cancelledAt: FieldValue.serverTimestamp(),
@@ -61,7 +87,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         {
           success: false,
           error:
-            "Account erasure is blocked by active wallet transactions. Contact support to review.",
+            "Account erasure is blocked by an active wallet balance, hold, or pending top-up. Contact support to review.",
           code: "ERASURE_CANCELLED",
           requestId,
         },
@@ -69,40 +95,86 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       );
     }
 
-    const batch = adminDb.batch();
+    const operations: FirestoreBatchOperation[] = [
+      // The TOTP secret and backup-code hashes are authentication data with no
+      // retention value. Delete them before the profile is anonymised.
+      { type: "delete", ref: userSecretsRef(uid) },
+    ];
 
     // 1. Delete the user's own subcollections and the records that exist only to
-    //    serve them. None of these carries a legal retention obligation.
+    //    serve them. Ledger entries and PayPal order records are deliberately
+    //    retained: they are the financial audit trail, and deleting them is a
+    //    legal-retention decision rather than a privacy one.
     const addressesSnap = await adminDb
       .collection("users")
       .doc(uid)
       .collection("addresses")
       .get();
-    addressesSnap.docs.forEach((doc) => batch.delete(doc.ref));
+    addressesSnap.docs.forEach((doc) =>
+      operations.push({ type: "delete", ref: doc.ref })
+    );
 
     const ticketsSnap = await adminDb
       .collection("supportTickets")
       .where("customerId", "==", uid)
       .get();
-    ticketsSnap.docs.forEach((doc) => batch.delete(doc.ref));
+    ticketsSnap.docs.forEach((doc) =>
+      operations.push({ type: "delete", ref: doc.ref })
+    );
+
+    // Support messages are keyed by ticket, not by user, so they survive a
+    // ticket-only cascade and keep the customer's words in the database.
+    for (const ticket of ticketsSnap.docs) {
+      const messagesSnap = await adminDb
+        .collection("supportMessages")
+        .where("ticketId", "==", ticket.id)
+        .get();
+      messagesSnap.docs.forEach((doc) =>
+        operations.push({ type: "delete", ref: doc.ref })
+      );
+    }
 
     const notificationsSnap = await adminDb
       .collection("notifications")
       .where("userId", "==", uid)
       .get();
-    notificationsSnap.docs.forEach((doc) => batch.delete(doc.ref));
+    notificationsSnap.docs.forEach((doc) =>
+      operations.push({ type: "delete", ref: doc.ref })
+    );
 
-    const walletTxnsSnap = await adminDb
-      .collection("walletTransactions")
+    const holdsSnap = await adminDb
+      .collection("walletHolds")
       .where("userId", "==", uid)
       .get();
-    walletTxnsSnap.docs.forEach((doc) => batch.delete(doc.ref));
+    holdsSnap.docs.forEach((doc) =>
+      operations.push({ type: "delete", ref: doc.ref })
+    );
 
     const consentLogsSnap = await adminDb
       .collection("consentLogs")
       .where("userId", "==", uid)
       .get();
-    consentLogsSnap.docs.forEach((doc) => batch.delete(doc.ref));
+    consentLogsSnap.docs.forEach((doc) =>
+      operations.push({ type: "delete", ref: doc.ref })
+    );
+
+    // Payment orders are financial evidence. Remove the account identifier but
+    // keep the order, capture and amount for reconciliation and tax.
+    const paymentOrdersSnap = await adminDb
+      .collection("paypalPaymentOrders")
+      .where("userId", "==", uid)
+      .get();
+    paymentOrdersSnap.docs.forEach((doc) =>
+      operations.push({
+        type: "update",
+        ref: doc.ref,
+        data: {
+          userId: FieldValue.delete(),
+          erasureRequestId: requestId,
+          erasedAt: FieldValue.serverTimestamp(),
+        },
+      })
+    );
 
     // Rights requests are records *about* the user, but the one being served
     // here is the proof that erasure happened. Keep it, drop the rest.
@@ -112,30 +184,37 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       .get();
     rightsReqsSnap.docs
       .filter((doc) => doc.id !== requestId)
-      .forEach((doc) => batch.delete(doc.ref));
+      .forEach((doc) => operations.push({ type: "delete", ref: doc.ref }));
 
     // 2. Requests are anonymised, not deleted: invoices and shipment records
     //    are retained for tax/audit, but the personal fields in them are not.
-    //    Previously this cascade never touched `requests` at all, so a "deleted"
-    //    user's name, email and shipping address stayed queryable.
     const requestsSnap = await adminDb
       .collection("requests")
       .where("userId", "==", uid)
       .get();
     requestsSnap.docs.forEach((doc) =>
-      batch.update(doc.ref, {
-        email: ERASED_EMAIL,
-        customerName: ERASED_NAME,
-        shippingAddress: FieldValue.delete(),
-        erasureRequestId: requestId,
-        erasedAt: FieldValue.serverTimestamp(),
+      operations.push({
+        type: "update",
+        ref: doc.ref,
+        data: {
+          email: ERASED_EMAIL,
+          customerName: ERASED_NAME,
+          shippingAddress: FieldValue.delete(),
+          notes: FieldValue.delete(),
+          adminNotes: FieldValue.delete(),
+          internalNotes: FieldValue.delete(),
+          customerNotes: FieldValue.delete(),
+          additionalNotes: FieldValue.delete(),
+          erasureRequestId: requestId,
+          erasedAt: FieldValue.serverTimestamp(),
+        },
       })
     );
 
-    await batch.commit();
+    await commitInChunks(adminDb, operations);
 
-    // 3. Anonymise the profile but keep the document (legal/tax trail), with the
-    //    real request id instead of a placeholder.
+    // 3. Anonymise the profile but keep the document (legal/tax trail). MFA
+    //    secrets, backup-code hashes and replay markers have no retention value.
     await adminDb.collection("users").doc(uid).update({
       erased: true,
       erasedAt: FieldValue.serverTimestamp(),
@@ -145,6 +224,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       phone: "",
       photoURL: "",
       dateOfBirth: null,
+      mfa: FieldValue.delete(),
+      notificationPreferences: FieldValue.delete(),
     });
 
     // 4. Delete the Firebase Auth user, which is what actually ends the

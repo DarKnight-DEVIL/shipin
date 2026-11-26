@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   verifyIdToken: vi.fn(),
   verifyAppCheckRequest: vi.fn(),
   getUser: vi.fn(),
+  secretsGet: vi.fn(),
   update: vi.fn(),
   availableMfaMethods: vi.fn(),
   verifyMfaProof: vi.fn(),
@@ -24,8 +25,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminAuth: { verifyIdToken: mocks.verifyIdToken },
   adminDb: {
-    collection: () => ({
-      doc: () => ({ get: mocks.getUser, update: mocks.update }),
+    collection: (name: string) => ({
+      doc: () => ({
+        get: name === "userSecrets" ? mocks.secretsGet : mocks.getUser,
+        update: mocks.update,
+      }),
     }),
   },
 }));
@@ -35,19 +39,6 @@ vi.mock("@/lib/appCheck", () => ({
 vi.mock("@/lib/mfaProof", () => ({
   availableMfaMethods: mocks.availableMfaMethods,
   verifyMfaProof: mocks.verifyMfaProof,
-}));
-vi.mock("@/lib/webauthn", () => ({
-  isChallengeExpired: mocks.isChallengeExpired,
-  readStoredCredentials: mocks.readStoredCredentials,
-  verifyAssertion: mocks.verifyAssertion,
-  // Mirrors the real rule for a credential with no tag: usable here.
-  credentialUsableHere: (credential: { rpID?: string }, rpID: string) =>
-    !credential.rpID || credential.rpID === rpID,
-  getWebAuthnConfig: () => ({
-    origin: "https://shipin.test",
-    rpID: "shipin.test",
-    rpName: "ShipIN",
-  }),
 }));
 vi.mock("@/lib/mfaSession", () => ({
   MFA_SESSION_TTL_MS: 900_000,
@@ -82,13 +73,7 @@ const authRequest = (body?: unknown) =>
 
 const adminProfile = {
   role: "admin",
-  mfa: {
-    webauthn: {
-      credentials: [{ credentialID: "cred-1", counter: 1 }],
-      pendingChallenge: "challenge-1",
-      pendingExpires: Date.now() + 60_000,
-    },
-  },
+  mfa: { totp: { enabled: true } },
 };
 
 const limit = { allowed: true };
@@ -103,6 +88,10 @@ beforeEach(() => {
   mocks.getUser
     .mockReset()
     .mockResolvedValue({ exists: true, data: () => adminProfile });
+  mocks.secretsGet.mockReset().mockResolvedValue({
+    exists: true,
+    data: () => ({ totp: { secret: "SECRET", backupCodes: [] } }),
+  });
   mocks.update.mockReset().mockResolvedValue(undefined);
   mocks.availableMfaMethods.mockReset().mockReturnValue(["totp"]);
   mocks.verifyMfaProof
@@ -301,146 +290,6 @@ describe("POST /api/auth/mfa/session", () => {
     );
   });
 
-  it("rejects a malformed WebAuthn assertion", async () => {
-    const response = await POST(
-      authRequest({ method: "webauthn", credential: { id: "x" } })
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({ code: "WEBAUTHN_INVALID_RESPONSE" })
-    );
-  });
-
-  it("requires a registered security key", async () => {
-    mocks.readStoredCredentials.mockReturnValue([]);
-
-    const response = await POST(
-      authRequest({ method: "webauthn", credential: validAssertion() })
-    );
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({ code: "MFA_SETUP_REQUIRED" })
-    );
-  });
-
-  it("rejects a missing or expired challenge", async () => {
-    mocks.getUser.mockResolvedValue({
-      exists: true,
-      data: () => ({ role: "admin", mfa: {} }),
-    });
-
-    const response = await POST(
-      authRequest({ method: "webauthn", credential: validAssertion() })
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({ code: "WEBAUTHN_CHALLENGE_EXPIRED" })
-    );
-  });
-
-  it("rejects a challenge the clock has passed", async () => {
-    mocks.isChallengeExpired.mockReturnValue(true);
-
-    const response = await POST(
-      authRequest({ method: "webauthn", credential: validAssertion() })
-    );
-
-    expect(response.status).toBe(400);
-    expect(mocks.verifyAssertion).not.toHaveBeenCalled();
-  });
-
-  it("rejects an unknown credential and burns the challenge", async () => {
-    mocks.readStoredCredentials.mockReturnValue([
-      { credentialID: "someone-else", counter: 1 },
-    ]);
-
-    const response = await POST(
-      authRequest({ method: "webauthn", credential: validAssertion() })
-    );
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({ code: "WEBAUTHN_UNKNOWN_CREDENTIAL" })
-    );
-    expect(mocks.update).toHaveBeenCalledWith({
-      "mfa.webauthn.pendingChallenge": null,
-      "mfa.webauthn.pendingExpires": null,
-    });
-  });
-
-  it("rejects a failed signature and burns the challenge", async () => {
-    mocks.readStoredCredentials.mockReturnValue([
-      { credentialID: "other", counter: 1 },
-    ]);
-    mocks.verifyAssertion.mockResolvedValue({ verified: false });
-
-    const response = await POST(
-      authRequest({ method: "webauthn", credential: validAssertion("other") })
-    );
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({ code: "MFA_INVALID_CODE" })
-    );
-    expect(mocks.update).toHaveBeenCalled();
-  });
-
-  it("elevates after a verified security key and stores the counter", async () => {
-    const response = await POST(
-      authRequest({ method: "webauthn", credential: validAssertion() })
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({
-        elevated: true,
-        method: "webauthn",
-        expiresAt: 42,
-      })
-    );
-    expect(response.headers.get("set-cookie")).toContain(
-      "mfa_session=elevated"
-    );
-    expect(mocks.update).toHaveBeenCalledWith({
-      // rpID is stamped on use: a credential enrolled before the tag existed is
-      // labelled from its first successful verification instead of staying ambiguous.
-      "mfa.webauthn.credentials": [
-        { credentialID: "cred-1", counter: 2, rpID: "shipin.test" },
-      ],
-      "mfa.webauthn.pendingChallenge": null,
-      "mfa.webauthn.pendingExpires": null,
-    });
-  });
-
-  it("refuses a key enrolled for a domain this site no longer uses", async () => {
-    /*
-     * A credential's RP ID is fixed at enrolment. After a move to another domain the key
-     * is still on file and still listed; without this check the library would answer
-     * "could not be verified" and the customer would keep retrying a key that can never
-     * work here.
-     */
-    mocks.readStoredCredentials.mockReturnValue([
-      { credentialID: "cred-1", counter: 1, rpID: "old.example" },
-    ]);
-
-    const response = await POST(
-      authRequest({ method: "webauthn", credential: validAssertion() })
-    );
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({ code: "WEBAUTHN_RP_MISMATCH" })
-    );
-    expect(mocks.verifyAssertion).not.toHaveBeenCalled();
-    // The challenge is single-use no matter how the attempt ended.
-    expect(mocks.update).toHaveBeenCalledWith(
-      expect.objectContaining({ "mfa.webauthn.pendingChallenge": null })
-    );
-  });
-
   it("requires a verification code", async () => {
     const response = await POST(authRequest({ method: "totp", code: "   " }));
 
@@ -568,12 +417,3 @@ describe("DELETE /api/auth/mfa/session", () => {
     expect(response.headers.get("set-cookie")).toContain("mfa_session=");
   });
 });
-
-function validAssertion(id = "cred-1") {
-  return {
-    id,
-    rawId: id,
-    type: "public-key",
-    response: { clientDataJSON: "x", authenticatorData: "y", signature: "z" },
-  };
-}

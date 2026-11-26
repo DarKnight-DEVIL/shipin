@@ -9,6 +9,7 @@ import {
   renderTotpQrDataUrl,
 } from "@/lib/mfa";
 import { withErrorHandler } from "@/utils/errors";
+import { userSecretsRef } from "@/lib/mfaSecrets";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -56,12 +57,17 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const qrUrl = getTotpQrUrl(secret, ISSUER, email);
   const qrDataUrl = await renderTotpQrDataUrl(qrUrl);
 
+  // Replace the server-only record so a previous secret, backup codes and
+  // replay markers all become invalid together.
+  await userSecretsRef(auth.profile.uid).set({
+    totp: { secret, backupCodes: [] },
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  // The profile keeps only the public flag the security screen and admin list
+  // read. Assigning the whole object also removes inherited secret fields.
   await snapshot.ref.update({
-    "mfa.totp": {
-      secret,
-      enabled: false,
-      backupCodes: [],
-    },
+    "mfa.totp": { enabled: false },
     "mfa.required": true,
     updatedAt: FieldValue.serverTimestamp(),
   });

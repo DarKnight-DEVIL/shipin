@@ -249,6 +249,13 @@ gcloud firestore export gs://shipin-backups/$(date +%F) \
 # schedule it (Cloud Scheduler -> gcloud firestore export), not from a laptop
 ```
 
+**Decision:** the daily export is owned by Cloud Scheduler, not GitHub Actions.
+An export needs a GCP service account with `datastore.importExportAdmin` and
+bucket write access; putting that key in repository secrets would make the
+backup job a second production credential to rotate. There is intentionally no
+`.github/workflows` backup job. Verify the export exists in the bucket and that
+the Cloud Scheduler job is enabled; both are part of the restore drill below.
+
 ### Targets
 
 | Scenario | RPO | RTO | Procedure |
@@ -372,37 +379,6 @@ see §5), so a missing store cannot reach this endpoint in a healthy deployment.
 `degraded` returns 200 because the site still serves traffic, but a monitor
 must inspect the body — alert when `status !== "healthy"`.
 
-### WebAuthn origin drift (`webauthn` in the body)
-
-Passkeys are bound to the origin they were registered on, and in production that
-origin comes from `APP_URL` — never from the request, so a forged `Host` cannot widen
-it. The reverse is silent: point a custom domain at the deployment without updating
-`APP_URL` and every security-key ceremony fails while the rest of the site works.
-
-`GET /api/health` therefore compares the host that answered with `APP_URL`:
-
-```json
-"webauthn": {
-  "origin": "https://shipin-psi.vercel.app",
-  "rpID": "shipin-psi.vercel.app",
-  "servedHost": "shipin-psi.vercel.app",
-  "matches": true,
-  "error": null,
-  "degraded": false
-}
-```
-
-- `matches: false` in production sets `status: "degraded"` and adds a
-  `webauthnWarning`. Fix it by pointing `APP_URL` at the hostname customers use, then
-  redeploy — existing passkeys stay bound to the old origin, so users re-enrol.
-- `matches: null` means one side is unknown (`Host` stripped by a proxy, or no
-  `APP_URL`); it is reported, not judged.
-- Under `next dev` a mismatch is **not** degraded: `APP_URL` names the deployment and
-  the request arrives on `localhost`, which is the normal case.
-
-Vercel preview deployments are a different origin by design — passkeys do not work on
-them, and the preview's health body says so.
-
 ### Scheduled jobs
 
 | Job | Schedule | Failure signal |
@@ -464,38 +440,25 @@ These are the gaps that the Discord alert alone will not catch. Add in this orde
 
 ## 4a. Moving to another domain
 
-Passkeys are the one credential a domain change destroys, so decide the RP ID
-*before* the move:
+Security keys and passkeys are **not offered** (see the MFA note in §4), so a domain
+move no longer invalidates a credential — an authenticator app is unaffected: a TOTP
+code is `HMAC(secret, time)` and the `otpauth` entry is labelled `ShipIN Admin:<email>`,
+neither of which contains a domain. SMS is not enabled yet either.
 
-- **Same domain, new subdomain** (`app.shipin.com` → `track.shipin.com`): set
-  `WEBAUTHN_RP_ID=shipin.com` and redeploy *before* switching. An RP ID may be a
-  parent of `APP_URL`'s host, so every existing passkey keeps working on the new
-  subdomain and nobody re-enrols. The value is validated: it must be a bare
-  hostname, a parent of `APP_URL`'s host, a domain ShipIN owns (not `vercel.app`,
-  not a public suffix, not an IP), so a typo fails at the ceremony rather than
-  silently issuing credentials that can never be used.
-- **Different domain** (`shipin-psi.vercel.app` → `shipin.app`): nothing carries
-  over. Every passkey is re-enrolled, and users see the old key flagged in
-  Admin → Security as "registered for <old rpID>".
+What still has to change by hand:
 
-Checklist, in order:
+1. `APP_URL` and `NEXT_PUBLIC_APP_URL` point at the new host, then redeploy. They build
+   verification and password-reset links.
+2. Firebase console → Authentication → **Authorized domains**: add the new host, or
+   Google sign-in fails with `auth/unauthorized-domain`.
+3. Google Cloud console → the reCAPTCHA Enterprise key behind App Check: add the new
+   host to its domain allowlist, or App Check rejects every request.
+4. Keep the old host answering with a 301 for a release: in-flight PayPal orders and
+   already-sent email links point at it.
+5. `APP_ALLOWED_ORIGINS` if the old and new hosts must both be trusted during the
+   switch (see `DEPLOYMENT.md`).
 
-1. `WEBAUTHN_RP_ID` set (only if staying under one domain you own).
-2. `APP_URL` and `NEXT_PUBLIC_APP_URL` point at the new host, then redeploy.
-3. Firebase console → Authentication → **Authorized domains**: add the new host,
-   or Google sign-in fails with `auth/unauthorized-domain`.
-4. Google Cloud console → the reCAPTCHA Enterprise key behind App Check: add the
-   new host to its domain allowlist, or App Check rejects every request.
-5. `/api/health` → `webauthn.matches` must be `true` (see §4). A `false` there is
-   the two-URL-copy mistake: everything works except security keys.
-6. Keep the old host answering with a 301 for a release: in-flight PayPal orders
-   and already-sent email links point at it.
-7. Tell admins with a passkey-only second factor to add TOTP or backup codes
-   **before** the move; a key enrolled for the old domain cannot elevate after it.
-   `scripts/break-glass/mfa-reset.ts` is the recovery if someone is locked out.
-
-TOTP, backup codes, and SMS are unaffected: the shared secret has no origin in it,
-so authenticator codes generated today still verify after any move.
+Nothing in MFA needs re-enrolling, and `/api/health` has no passkey field to watch.
 
 ---
 
@@ -565,22 +528,44 @@ recurrence.
 
 ## 7. Admin lockout - break-glass MFA reset
 
-Every admin route requires MFA. A raw `X-MFA-WebAuthn` header is deliberately
-**not** accepted by `requireAdmin` (see `lib/adminAuth.ts`): a bare
-assertion proves nothing without a per-request challenge and a signature check
-against the stored public key. The supported path for a security key is to complete
-`POST /api/auth/mfa/session` and present the short-lived signed cookie it
-issues.
+Every admin route requires MFA: a TOTP or backup code header, or the short-lived
+signed cookie issued by `POST /api/auth/mfa/session` (see `lib/adminAuth.ts`). Security
+keys and passkeys are no longer offered, and SMS is not enabled yet, so an
+authenticator app plus its backup codes are the only factors an admin can hold.
+
+TOTP secrets and backup-code hashes are stored in `userSecrets/{uid}`, not on the
+self-readable `users/{uid}` document. A deployment that predates that split still
+has the fields on the profile; `loadTotpSecrets` copies them into `userSecrets` and
+deletes the profile copies on the first authenticated API request (or break-glass run).
+`firestore.rules` denies the owner's direct read of `users/{uid}` while those fields are
+still present, and the browser fetches a safe projection from `/api/profile` instead.
+The reset paths clear both stores. For existing deployments, run the one-off backfill so
+accounts that never make an API request lose their profile copy too:
+
+```bash
+cd apps/web
+node --env-file=.env.production scripts/migrations/migration-runner.ts 005-mfa-secrets --dry-run
+node --env-file=.env.production scripts/migrations/migration-runner.ts 005-mfa-secrets
+```
+
+PayPal refund ids are deduplicated across full and partial refunds through
+`paypalRefundTransactions/{stableHash(transactionId)}`. Backfill the ids recorded before
+that registry existed (both routes write to it atomically for new refunds):
+
+```bash
+cd apps/web
+node --env-file=.env.production scripts/migrations/migration-runner.ts 006-paypal-refund-transactions --dry-run
+node --env-file=.env.production scripts/migrations/migration-runner.ts 006-paypal-refund-transactions
+```
 
 That leaves one gap. `POST /api/admin/users/{uid}/mfa/reset` also requires an
-admin who already passed MFA, so **the last admin who loses their security key
+admin who already passed MFA, so **the last admin who loses their authenticator
 cannot use it** - and with no backup admin there is no way back into `/admin`.
 
 Prevent it. It takes a minute:
 
-1. Enrol a **second** factor on every admin - TOTP or a backup code, not only the
-   key. The gate accepts `X-MFA-TOTP` and `X-MFA-Backup` for exactly
-   this case.
+1. Enrol **both** an authenticator app and its backup codes on every admin. The
+   gate accepts `X-MFA-TOTP` and `X-MFA-Backup` for exactly this case.
 2. Keep a second admin account with its own factors, so the audited reset API
    stays available.
 
@@ -591,10 +576,10 @@ run it can already read and rewrite every wallet in the project.
 ```bash
 cd apps/web
 node --env-file=.env.production scripts/break-glass/mfa-reset.ts \
-  --email admin@example.com --reason "security key lost"              # dry run
+  --email admin@example.com --reason "lost authenticator"             # dry run
 
 node --env-file=.env.production scripts/break-glass/mfa-reset.ts \
-  --email admin@example.com --reason "security key lost" \
+  --email admin@example.com --reason "lost authenticator" \
   --confirm admin@example.com                                        # apply
 ```
 
@@ -780,3 +765,17 @@ curl -sS -X POST -H "x-cron-timestamp: $TS" -H "x-cron-signature: $SIG" \
 The response reports `photos` and `support` counts plus `passComplete`. An empty
 run with `scanned: 0` on both is the healthy steady state; a run where
 `objectsFailed` keeps growing means R2 credentials or bucket policy are wrong.
+
+## 11. Credential rotation
+
+The monthly `credential-rotation-check` workflow reads this table. A credential
+with no date is reported as unrecorded and does not fail the job; only a listed
+`Next due` date in the past fails it.
+
+| Credential | Used by | Cadence | Last rotated / set | Next due |
+| --- | --- | --- | --- | --- |
+| PAYPAL_CLIENT_SECRET | PayPal REST OAuth and captures | 90 days | Not recorded | — |
+| R2_ACCESS_KEY_ID | R2 uploads and presigned reads | 90 days | Not recorded | — |
+| R2_SECRET_ACCESS_KEY | R2 uploads and presigned reads | 90 days | Not recorded | — |
+| CRON_SECRET | Cron workflows (quote expiry, PayPal reconcile, sweeps, retention purge) | 90 days | 2026-11-14 | 2027-02-12 |
+| FIREBASE_ADMIN_PRIVATE_KEY | Firebase Admin SDK and staging E2E | 90 days | Not recorded | — |

@@ -21,8 +21,8 @@
  *     first and says what to install.
  *
  * `--signed-in` also starts the Auth emulator, seeds an admin account
- * (`scripts/e2e/seed-auth-user.mjs`) and adds signed-in-smoke.spec.ts,
- * mfa-passkey.spec.ts and admin-refund.spec.ts, so the sign-in and money paths
+ * (`scripts/e2e/seed-auth-user.mjs`) and adds signed-in-smoke.spec.ts and
+ * admin-refund.spec.ts, so the sign-in and money paths
  * are covered without a staging account. It is a superset of the default run —
  * CI calls exactly this mode, so there is one definition of the suite instead
  * of two that can drift.
@@ -169,7 +169,7 @@ if (signedIn) {
   const totpSecret = generateSecret();
 
   // Two admins, deliberately: the refund chain needs an enrolled second factor,
-  // while the passkey spec and the MFA-gate spec both need an admin with none.
+  // while the MFA-gate spec needs an admin with none.
   // Defines the credentials once and hands the same pair to the seeder and the
   // specs, so the two can never disagree about who was seeded.
   //
@@ -214,9 +214,9 @@ if (signedIn) {
     E2E_SEED_MFA_PASSWORD: refundAdminPassword,
     E2E_REFUND_ADMIN_EMAIL: refundAdminEmail,
     E2E_REFUND_ADMIN_PASSWORD: refundAdminPassword,
-    // `.env.local` points APP_URL at Vercel, which a production server refuses
-    // as an RP ID (a passkey would be scoped to every tenant). This run serves
-    // its own build on localhost, so it claims that origin.
+    // `.env.local` points APP_URL at the Vercel deployment. This run serves its
+    // own build on localhost, so it claims that origin - which is also what the
+    // password-reset and verification links are minted against.
     APP_URL: "http://localhost:3000",
     // App Check stays off for this run: the emulator cannot mint a reCAPTCHA
     // Enterprise token, so an enforced build refuses every API call with 401 before
@@ -275,7 +275,7 @@ try {
 if (!authEmulatorRunning) {
   console.warn(
     "::warning:: Firebase Auth emulator could not start (network restrictions on this runner). " +
-      "Skipping signed-in specs (signed-in-smoke.spec.ts, mfa-passkey.spec.ts) and running read-only E2E suite instead."
+      "Skipping signed-in specs (signed-in-smoke.spec.ts, admin-refund.spec.ts) and running read-only E2E suite instead."
   );
 }
 
@@ -306,7 +306,6 @@ const specs = [
   ...(signedIn
     ? [
         "tests/signed-in-smoke.spec.ts",
-        "tests/mfa-passkey.spec.ts",
         // Full refund chain: the only check that drives the real endpoints end
         // to end. It skips itself unless the fixture and TOTP above are set.
         "tests/admin-refund.spec.ts",

@@ -109,51 +109,6 @@ export function enrolledPhoneFactor(user: User): PhoneMultiFactorInfo | null {
   return (factor as PhoneMultiFactorInfo | undefined) ?? null;
 }
 
-/**
- * Send an enrollment code to `phoneNumber`.
- *
- * Returns the `verificationId` that `confirmSmsEnrollment` needs; the code
- * itself never reaches this app.
- */
-export async function startSmsEnrollment(
-  auth: Auth,
-  user: User,
-  phoneNumber: string
-): Promise<string> {
-  const verifier = createVerifier(auth);
-
-  try {
-    const session = await multiFactor(user).getSession();
-    const provider = new PhoneAuthProvider(auth);
-
-    return await provider.verifyPhoneNumber({ phoneNumber, session }, verifier);
-  } catch (error) {
-    throw toMfaError(error);
-  } finally {
-    // Each ceremony owns its widget; a stale one would keep the old
-    // reCAPTCHA token around for the next attempt.
-    verifier.clear();
-  }
-}
-
-/** Complete enrollment with the code the user received. */
-export async function confirmSmsEnrollment(
-  user: User,
-  verificationId: string,
-  code: string
-): Promise<void> {
-  try {
-    const credential = PhoneAuthProvider.credential(verificationId, code);
-
-    await multiFactor(user).enroll(
-      PhoneMultiFactorGenerator.assertion(credential),
-      "ShipIN SMS"
-    );
-  } catch (error) {
-    throw toMfaError(error);
-  }
-}
-
 export interface SecondFactorChallenge {
   resolver: MultiFactorResolver;
   verificationId: string;

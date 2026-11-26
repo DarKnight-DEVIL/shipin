@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 const mocks = vi.hoisted(() => ({
   extractAuth: vi.fn(),
   verifyIdToken: vi.fn(),
+  requireAuthAccount: vi.fn(),
   requireAuthWithProfile: vi.fn(),
   set: vi.fn(),
   update: vi.fn(),
@@ -12,12 +13,16 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth", () => ({
   extractAuth: mocks.extractAuth,
   verifyIdToken: mocks.verifyIdToken,
+  requireAuthAccount: mocks.requireAuthAccount,
   requireAuthWithProfile: mocks.requireAuthWithProfile,
 }));
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
     collection: vi.fn(() => ({
-      doc: vi.fn(() => ({ set: mocks.set, update: mocks.update })),
+      doc: vi.fn(() => ({
+        set: mocks.set,
+        update: mocks.update,
+      })),
     })),
   },
 }));
@@ -25,7 +30,7 @@ vi.mock("firebase-admin/firestore", () => ({
   FieldValue: { serverTimestamp: () => "__SERVER_TS__" },
 }));
 
-import { PATCH, POST } from "./route";
+import { GET, PATCH, POST } from "./route";
 
 const request = (body: unknown, method = "POST") =>
   new NextRequest("http://localhost/api/profile", {
@@ -43,6 +48,91 @@ beforeEach(() => {
     .mockResolvedValue({ profile: { uid: "user-1" } });
   mocks.set.mockReset().mockResolvedValue(undefined);
   mocks.update.mockReset().mockResolvedValue(undefined);
+  mocks.requireAuthAccount.mockReset().mockResolvedValue({
+    token: { uid: "user-1" },
+    profile: {
+      displayName: "Ada",
+      email: "ada@example.com",
+      phone: "+44",
+    },
+  });
+});
+
+describe("GET /api/profile", () => {
+  it("returns a safe projection", async () => {
+    const response = await GET(
+      new NextRequest("http://localhost/api/profile")
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      profile: {
+        displayName: "Ada",
+        email: "ada@example.com",
+        phone: "+44",
+      },
+    });
+  });
+
+  it("returns null when the account has no profile", async () => {
+    mocks.requireAuthAccount.mockResolvedValue({
+      token: { uid: "user-1" },
+      profile: null,
+    });
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/profile")
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      profile: null,
+    });
+  });
+
+  it("never returns a legacy TOTP secret", async () => {
+    mocks.requireAuthAccount.mockResolvedValue({
+      token: { uid: "user-1" },
+      profile: {
+        displayName: "Ada",
+        mfa: {
+          totp: { enabled: true, secret: "JBSWY3DPEHPK3PXP" },
+        },
+      },
+    });
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/profile")
+    );
+    const body = await response.json();
+
+    expect(body.profile.mfa).toEqual({
+      totp: { enabled: true },
+      sms: { enabled: false },
+      required: false,
+    });
+    expect(JSON.stringify(body)).not.toContain("JBSWY3DPEHPK3PXP");
+  });
+
+  it("passes the shared auth gate's rejection through", async () => {
+    mocks.requireAuthAccount.mockResolvedValue(
+      NextResponse.json(
+        { success: false, code: "ACCOUNT_SUSPENDED" },
+        { status: 403 }
+      )
+    );
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/profile")
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "ACCOUNT_SUSPENDED",
+    });
+  });
 });
 
 describe("POST /api/profile", () => {

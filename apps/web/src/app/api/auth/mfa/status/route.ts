@@ -2,18 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { requireAuthWithProfile } from "@/lib/auth";
-import {
-  getWebAuthnConfig,
-  readStoredCredentials,
-  type WebAuthnRecord,
-} from "@/lib/webauthn";
 import { withErrorHandler } from "@/utils/errors";
+import { loadTotpSecrets } from "@/lib/mfaSecrets";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 type MfaShape = {
-  totp?: { enabled?: boolean; secret?: string; backupCodes?: string[] };
-  webauthn?: WebAuthnRecord;
+  totp?: { enabled?: boolean };
 };
 
 /**
@@ -60,17 +55,9 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
   const mfa = (snapshot.data()?.mfa ?? {}) as MfaShape;
   const totp = mfa.totp;
-  const credentials = readStoredCredentials(mfa.webauthn);
-
-  // A misconfigured APP_URL must not turn the whole status endpoint into a 500: the
-  // passkey card can still show what is enrolled, and /api/health reports the config.
-  let currentRpID: string | null = null;
-
-  try {
-    currentRpID = getWebAuthnConfig().rpID;
-  } catch {
-    currentRpID = null;
-  }
+  const secrets = await loadTotpSecrets(auth.profile.uid, mfa);
+  const hasSecret = Boolean(secrets.secret);
+  const enabled = totp?.enabled === true && hasSecret;
 
   // SMS is a Firebase Identity Platform factor, not a Firestore record:
   // Google sends and verifies the code, so the enrolled phone lives on the
@@ -93,31 +80,16 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     {
       success: true,
       totp: {
-        enabled: Boolean(totp?.enabled && totp?.secret),
+        enabled,
         // A secret without `enabled` means enrollment started but the first
         // code was never confirmed.
-        pending: Boolean(totp?.secret && !totp?.enabled),
+        pending: hasSecret && !enabled,
       },
       sms: {
         enabled: smsPhoneNumber !== null,
         phoneNumber: maskPhoneNumber(smsPhoneNumber),
       },
-      backupCodes: Array.isArray(totp?.backupCodes)
-        ? totp.backupCodes.length
-        : 0,
-      webauthn: {
-        enabled: credentials.length > 0,
-        // The RP ID this deployment uses now, so the console can mark a key that was
-        // enrolled for a previous domain instead of offering one that cannot work.
-        rpID: currentRpID,
-        // Names and dates only; public keys stay server-side.
-        credentials: credentials.map((credential) => ({
-          id: credential.credentialID,
-          name: credential.name,
-          createdAt: credential.createdAt,
-          rpID: credential.rpID ?? null,
-        })),
-      },
+      backupCodes: secrets.backupCodes?.length ?? 0,
     },
     { status: 200, headers: NO_STORE }
   );

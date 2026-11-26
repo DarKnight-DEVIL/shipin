@@ -5,6 +5,7 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { generateBackupCodes, hashBackupCode, verifyTotp } from "@/lib/mfa";
+import { loadTotpSecrets, userSecretsRef } from "@/lib/mfaSecrets";
 import {
   readAndValidateBody,
   regenerateBackupCodesBodySchema,
@@ -56,8 +57,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   }
 
   const userData = userSnapshot.data();
-  const totpSecret = userData?.mfa?.totp?.secret;
-  const totpEnabled = userData?.mfa?.totp?.enabled;
+  const secrets = await loadTotpSecrets(auth.profile.uid, userData?.mfa);
+  const totpSecret = secrets.secret;
+  const totpEnabled = userData?.mfa?.totp?.enabled === true;
 
   if (!totpEnabled || !totpSecret) {
     return NextResponse.json(
@@ -82,8 +84,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const backupCodes = generateBackupCodes(10);
   const hashedBackupCodes = backupCodes.map(hashBackupCode);
 
-  await adminDb.collection("users").doc(auth.profile.uid).update({
-    "mfa.totp.backupCodes": hashedBackupCodes,
+  await userSecretsRef(auth.profile.uid).update({
+    "totp.backupCodes": hashedBackupCodes,
     updatedAt: FieldValue.serverTimestamp(),
   });
 

@@ -15,8 +15,10 @@ import { verifyPayPalWebhook } from "@/lib/paypal";
 import { captureServerError } from "@/lib/errorTracking";
 import { sendNotification } from "@/features/notifications/services/notificationService";
 import { buildPaymentReceivedNotification } from "@/lib/paypal/paymentReceivedNotification";
-import { roundMoney, toNumber } from "@/lib/paypal/amounts";
+import { roundMoney, sameCents, toNumber } from "@/lib/paypal/amounts";
+import { mainPaymentStatusError } from "@/lib/paypal/requestPaymentState";
 import {
+  isMinor,
   minorFromStored,
   storedMinor,
   subtractMinor,
@@ -252,7 +254,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     // A marker with no status predates this claim and was only written after success.
     if (data.status !== CLAIM_STATUS_CLAIMED) return "duplicate" as const;
 
-    const claimedAt = typeof data.claimedAt === "number" ? data.claimedAt : null;
+    const claimedAt =
+      typeof data.claimedAt === "number" ? data.claimedAt : null;
 
     // An unreadable claim time is treated as fresh: stealing a claim we cannot date is
     // how an event gets processed twice.
@@ -403,8 +406,16 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
 
   const capturedAmount = roundMoney(toNumber(capture.amount?.value));
   const expectedAmount = roundMoney(toNumber(paymentOrder.paypalAmount));
+  const capturedCurrency = capture.amount?.currency_code || "USD";
+  const expectedCurrency = String(paymentOrder.currency ?? "USD").toUpperCase();
 
-  if (Math.abs(capturedAmount - expectedAmount) > 0.01) {
+  if (capturedCurrency.toUpperCase() !== expectedCurrency) {
+    throw new Error(
+      `PayPal capture currency mismatch: expected ${expectedCurrency}, got ${capturedCurrency}`
+    );
+  }
+
+  if (!sameCents(capturedAmount, expectedAmount)) {
     console.error("PayPal capture amount mismatch:", {
       captureId,
       orderId,
@@ -441,7 +452,6 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
     toNumber(paymentOrder.totalRequired) || capturedAmount + walletApplied
   );
   const baseAmount = roundMoney(toNumber(paymentOrder.baseAmount));
-  const capturedCurrency = capture.amount?.currency_code || "USD";
   const paymentMethod = walletApplied > 0 ? "wallet_and_paypal" : "paypal";
 
   const customerName = await adminDb.runTransaction(async (transaction) => {
@@ -472,7 +482,10 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
      * The request was settled by another path. Finish the payment-order mark
      * so this delivery stops retrying, but do not move money a second time.
      */
-    if (requestData.status === "paid") {
+    if (
+      requestData.status === "paid" ||
+      requestData.payment?.status === "completed"
+    ) {
       transaction.update(paymentOrderRef, {
         status: "completed",
         captureId,
@@ -481,6 +494,11 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
         completedAt: FieldValue.serverTimestamp(),
       });
       return;
+    }
+
+    const statusError = mainPaymentStatusError(requestData.status);
+    if (statusError) {
+      throw new Error(statusError);
     }
 
     /*
@@ -492,6 +510,14 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
     let newBalanceMinor = storedMinor(walletSnapshot.data(), "balance");
     const walletAppliedMinor = minorFromStored(walletApplied);
 
+    if (!isMinor(newBalanceMinor) || newBalanceMinor < 0) {
+      throw new Error(`Wallet balance is invalid for ${orderId}`);
+    }
+
+    if (!isMinor(walletAppliedMinor) || walletAppliedMinor < 0) {
+      throw new Error(`Stored wallet amount is invalid for ${orderId}`);
+    }
+
     if (walletApplied > 0 && !ledgerSnapshot.exists) {
       if (!walletSnapshot.exists) {
         // Wallet document missing but payment order says wallet was used.
@@ -501,7 +527,7 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
         );
       }
 
-      if (newBalanceMinor + 1 < walletAppliedMinor) {
+      if (walletAppliedMinor > newBalanceMinor) {
         // The hold should make this impossible; if it happens the balance must
         // not go negative and the capture needs a human, not a retry loop.
         throw new Error(

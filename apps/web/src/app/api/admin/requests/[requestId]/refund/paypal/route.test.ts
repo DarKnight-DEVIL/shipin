@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
   getAdminAuthError: vi.fn(),
   get: vi.fn(),
+  registryGet: vi.fn(),
+  txGet: vi.fn(),
+  txSet: vi.fn(),
   runTransaction: vi.fn(),
   txUpdate: vi.fn(),
   recordAdminAudit: vi.fn(),
@@ -21,8 +24,19 @@ vi.mock("@/lib/adminAudit", () => ({
 
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
-    collection: () => ({
-      doc: () => ({ get: mocks.get, update: mocks.txUpdate }),
+    collection: (name: string) => ({
+      doc: () =>
+        name === "paypalRefundTransactions"
+          ? {
+              __kind: "refundTransaction",
+              get: mocks.registryGet,
+              set: mocks.txSet,
+            }
+          : {
+              __kind: "request",
+              get: mocks.get,
+              update: mocks.txUpdate,
+            },
     }),
     runTransaction: mocks.runTransaction,
   },
@@ -72,12 +86,19 @@ beforeEach(() => {
     .mockReset()
     .mockReturnValue({ status: 401, error: "Authentication required." });
   mocks.get.mockReset();
+  mocks.registryGet.mockReset().mockResolvedValue({ exists: false });
+  mocks.txSet.mockReset();
   mocks.txUpdate.mockReset();
   mocks.recordAdminAudit.mockReset().mockResolvedValue(undefined);
   mocks.runTransaction
     .mockReset()
     .mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
-      fn({ get: mocks.get, update: mocks.txUpdate })
+      fn({ get: mocks.txGet, update: mocks.txUpdate, set: mocks.txSet })
+    );
+  mocks.txGet
+    .mockReset()
+    .mockImplementation(async (ref: { __kind?: string }) =>
+      ref.__kind === "refundTransaction" ? mocks.registryGet() : mocks.get()
     );
   respondWith({
     status: "refund_requested",
@@ -120,14 +141,14 @@ describe("POST /api/admin/requests/[requestId]/refund/paypal", () => {
     respondWith({ refundRequest: refundRequest({ walletAmount: undefined }) });
 
     const response = await POST(
-      request({ amount: 50, transactionId: "tx-9" }),
+      request({ amount: 100, transactionId: "tx-9" }),
       context()
     );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       success: true,
-      refund: { amount: 50, transactionId: "tx-9", status: "completed" },
+      refund: { amount: 100, transactionId: "tx-9", status: "completed" },
     });
   });
 
@@ -187,6 +208,22 @@ describe("POST /api/admin/requests/[requestId]/refund/paypal", () => {
     expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 
+  it("rejects a partial amount on the full-refund endpoint", async () => {
+    // Partial refunds have their own endpoint, which records the offer's
+    // calculated split. This route must not accept less than the full PayPal
+    // portion and then mark the whole refund completed.
+    const response = await POST(
+      request({ amount: 50, transactionId: "tx-1" }),
+      context()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "REFUND_AMOUNT_MISMATCH",
+    });
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
   it("rejects a request with no refund workflow", async () => {
     respondWith({ status: "purchased" });
 
@@ -221,6 +258,33 @@ describe("POST /api/admin/requests/[requestId]/refund/paypal", () => {
 
     expect(response.status).toBe(400);
     expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects a transaction already recorded by a partial refund", async () => {
+    mocks.registryGet.mockResolvedValue({ exists: true });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "DUPLICATE_TRANSACTION",
+    });
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+    expect(mocks.txSet).not.toHaveBeenCalled();
+  });
+
+  it("registers the transaction with the refund", async () => {
+    await POST(request(), context());
+
+    expect(mocks.txSet).toHaveBeenCalledWith(
+      expect.objectContaining({ __kind: "refundTransaction" }),
+      expect.objectContaining({
+        transactionId: "tx-1",
+        requestId: "req-1",
+        kind: "full",
+        amount: 100,
+      })
+    );
   });
 
   it("rejects a refund with no PayPal portion at all", async () => {

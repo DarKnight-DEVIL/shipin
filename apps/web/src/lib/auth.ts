@@ -12,6 +12,7 @@ import { getAdminAuthError, type AdminUser } from "./adminAuth";
 import { getAccountBlock } from "./accountStatus";
 import { verifyAppCheckRequest } from "./appCheck";
 import { recordAppCheckRejection } from "./appCheckMetrics";
+import { legacyTotpSecrets, loadTotpSecrets } from "./mfaSecrets";
 import { toShipINError, serializeError } from "@/utils/errors";
 
 export interface VerifyIdTokenOptions {
@@ -167,6 +168,21 @@ async function loadAccount(uid: string): Promise<AccountLookup> {
       };
     }
 
+    // Any authenticated API call is an opportunity to finish the cutover.
+    // Firestore rules deny the owner's direct read while a legacy secret is
+    // still on the profile, so the client uses this route's projection instead.
+    // A failed migration must not fail the request: the API still reads the
+    // profile through the Admin SDK, and rules keep the secret unreadable.
+    if (profile && legacyTotpSecrets(profile.mfa)) {
+      try {
+        await loadTotpSecrets(uid, profile.mfa);
+      } catch (error) {
+        console.error("[Auth] Legacy MFA secret migration failed:", {
+          errorCode: error instanceof Error ? error.name : "UNKNOWN",
+        });
+      }
+    }
+
     return { ok: true, profile };
   } catch (error) {
     console.error("[Auth] Account status check failed:", {
@@ -187,6 +203,28 @@ async function loadAccount(uid: string): Promise<AccountLookup> {
 }
 
 /**
+ * Verify the request and read the caller's profile through the Admin SDK.
+ *
+ * This is the one gate every authenticated route runs: App Check, bearer token,
+ * verified email, and an account that has not been disabled, suspended, banned
+ * or deleted. The raw profile comes back so a route that must project it does
+ * not read `users/{uid}` a second time — and so the legacy MFA migration in
+ * `loadAccount` happens before any profile field is returned.
+ */
+export async function requireAuthAccount(request: Request): Promise<
+  | { token: DecodedIdToken; profile: Record<string, unknown> | null }
+  | NextResponse
+> {
+  const decoded = await verifyRequest(request);
+  if (decoded instanceof NextResponse) return decoded;
+
+  const account = await loadAccount(decoded.uid);
+  if (!account.ok) return account.response;
+
+  return { token: decoded, profile: account.profile };
+}
+
+/**
  * Require any authenticated user with a verified email and an account that has
  * not been disabled, suspended, banned or deleted.
  *
@@ -196,13 +234,10 @@ async function loadAccount(uid: string): Promise<AccountLookup> {
 export async function requireAuth(
   request: Request
 ): Promise<DecodedIdToken | NextResponse> {
-  const decoded = await verifyRequest(request);
-  if (decoded instanceof NextResponse) return decoded;
+  const auth = await requireAuthAccount(request);
+  if (auth instanceof NextResponse) return auth;
 
-  const account = await loadAccount(decoded.uid);
-  if (!account.ok) return account.response;
-
-  return decoded;
+  return auth.token;
 }
 
 export async function requireAuthWithProfile(
@@ -212,13 +247,12 @@ export async function requireAuthWithProfile(
   | { token: DecodedIdToken; profile: { uid: string; role?: string } }
   | NextResponse
 > {
-  const decoded = await verifyRequest(request);
-  if (decoded instanceof NextResponse) return decoded;
+  const auth = await requireAuthAccount(request);
+  if (auth instanceof NextResponse) return auth;
 
-  const account = await loadAccount(decoded.uid);
-  if (!account.ok) return account.response;
+  const { profile } = auth;
 
-  if (!account.profile) {
+  if (!profile) {
     return NextResponse.json(
       {
         success: false,
@@ -230,8 +264,8 @@ export async function requireAuthWithProfile(
   }
 
   const role =
-    account.profile.role === "admin" || account.profile.role === "customer"
-      ? account.profile.role
+    profile.role === "admin" || profile.role === "customer"
+      ? profile.role
       : undefined;
 
   if (allowedRoles && !allowedRoles.includes(role ?? "customer")) {
@@ -245,7 +279,7 @@ export async function requireAuthWithProfile(
     );
   }
 
-  return { token: decoded, profile: { uid: decoded.uid, role } };
+  return { token: auth.token, profile: { uid: auth.token.uid, role } };
 }
 
 export async function requireAdmin(

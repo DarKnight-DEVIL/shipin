@@ -1,17 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getDoc: vi.fn(),
   customerApi: vi.fn(),
 }));
 
-vi.mock("firebase/firestore", () => ({
-  doc: vi.fn((_db: unknown, col: string, id: string) => ({
-    path: `${col}/${id}`,
-  })),
-  getDoc: mocks.getDoc,
-}));
-vi.mock("@/lib/firebaseDb", () => ({ db: {} }));
 vi.mock("@/lib/customerApiClient", () => ({ customerApi: mocks.customerApi }));
 
 import {
@@ -23,7 +15,6 @@ import { getUserPreferences, saveDashboardMetrics } from "./userPreferences";
 import type { DashboardMetricId } from "./dashboardMetrics";
 
 beforeEach(() => {
-  mocks.getDoc.mockReset();
   mocks.customerApi.mockReset();
   mocks.customerApi.mockResolvedValue({ success: true });
 });
@@ -50,11 +41,12 @@ describe("dashboardMetrics catalogue", () => {
 
 describe("getUserPreferences", () => {
   it("falls back to defaults when the user has no document", async () => {
-    mocks.getDoc.mockResolvedValue({ exists: () => false });
+    mocks.customerApi.mockResolvedValue({ dashboardMetrics: null });
 
     await expect(getUserPreferences("user-1")).resolves.toEqual({
       dashboardMetrics: DEFAULT_DASHBOARD_METRICS,
     });
+    expect(mocks.customerApi).toHaveBeenCalledWith("/api/profile/preferences");
   });
 
   it("returns saved metrics that pass validation", async () => {
@@ -64,10 +56,7 @@ describe("getUserPreferences", () => {
       "shipped",
       "refunded",
     ];
-    mocks.getDoc.mockResolvedValue({
-      exists: () => true,
-      data: () => ({ preferences: { dashboardMetrics: saved } }),
-    });
+    mocks.customerApi.mockResolvedValue({ dashboardMetrics: saved });
 
     await expect(getUserPreferences("user-1")).resolves.toEqual({
       dashboardMetrics: saved,
@@ -75,20 +64,15 @@ describe("getUserPreferences", () => {
   });
 
   it("drops unknown metric ids but keeps the rest", async () => {
-    mocks.getDoc.mockResolvedValue({
-      exists: () => true,
-      data: () => ({
-        preferences: {
-          dashboardMetrics: [
-            "active",
-            "paid",
-            "shipped",
-            "refunded",
-            "bogus",
-            42,
-          ],
-        },
-      }),
+    mocks.customerApi.mockResolvedValue({
+      dashboardMetrics: [
+        "active",
+        "paid",
+        "shipped",
+        "refunded",
+        "bogus",
+        42,
+      ],
     });
 
     await expect(getUserPreferences("user-1")).resolves.toEqual({
@@ -97,11 +81,8 @@ describe("getUserPreferences", () => {
   });
 
   it("falls back when too few valid metrics remain", async () => {
-    mocks.getDoc.mockResolvedValue({
-      exists: () => true,
-      data: () => ({
-        preferences: { dashboardMetrics: ["active", "bogus", "nope"] },
-      }),
+    mocks.customerApi.mockResolvedValue({
+      dashboardMetrics: ["active", "bogus", "nope"],
     });
 
     await expect(getUserPreferences("user-1")).resolves.toEqual({
@@ -110,10 +91,7 @@ describe("getUserPreferences", () => {
   });
 
   it("falls back when the stored value is not an array", async () => {
-    mocks.getDoc.mockResolvedValue({
-      exists: () => true,
-      data: () => ({ preferences: { dashboardMetrics: "active" } }),
-    });
+    mocks.customerApi.mockResolvedValue({ dashboardMetrics: "active" });
 
     await expect(getUserPreferences("user-1")).resolves.toEqual({
       dashboardMetrics: DEFAULT_DASHBOARD_METRICS,
@@ -121,7 +99,7 @@ describe("getUserPreferences", () => {
   });
 
   it("wraps read failures", async () => {
-    mocks.getDoc.mockRejectedValue(new Error("permission-denied"));
+    mocks.customerApi.mockRejectedValue(new Error("permission-denied"));
 
     await expect(getUserPreferences("user-1")).rejects.toMatchObject({
       name: "AuthorizationError",

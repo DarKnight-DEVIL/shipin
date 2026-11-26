@@ -12,7 +12,6 @@ import {
   endMfaSession,
   getMfaSessionStatus,
   startMfaSession,
-  startWebAuthnSession,
 } from "./mfaSessionClient";
 
 const fetchMock = vi.fn();
@@ -87,22 +86,6 @@ describe("startMfaSession", () => {
     ).resolves.toEqual({
       expiresAt: null,
       method: "backup",
-    });
-  });
-});
-
-describe("startWebAuthnSession", () => {
-  it("posts the assertion as a webauthn session", async () => {
-    mocks.mfaApi.mockResolvedValue({ expiresAt: 456 });
-
-    await expect(
-      startWebAuthnSession("token", { id: "credential-1" })
-    ).resolves.toEqual({ expiresAt: 456, method: "webauthn" });
-
-    expect(mocks.mfaApi).toHaveBeenCalledWith("/api/auth/mfa/session", {
-      idToken: "token",
-      method: "POST",
-      body: { method: "webauthn", credential: { id: "credential-1" } },
     });
   });
 });

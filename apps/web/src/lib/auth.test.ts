@@ -19,6 +19,20 @@ vi.mock("@/lib/firebaseAdmin", () => ({
   },
 }));
 
+// The gate migrates a legacy TOTP secret on every profile read; stub the
+// secrets module so these tests never touch `userSecrets` writes.
+const mfaMocks = vi.hoisted(() => ({
+  legacyTotpSecrets: vi.fn(
+    (_mfa?: unknown): { secret?: string } | null => null
+  ),
+  loadTotpSecrets: vi.fn(async (_uid?: string, _mfa?: unknown) => ({})),
+}));
+
+vi.mock("@/lib/mfaSecrets", () => ({
+  legacyTotpSecrets: mfaMocks.legacyTotpSecrets,
+  loadTotpSecrets: mfaMocks.loadTotpSecrets,
+}));
+
 vi.mock("@/config/env", () => ({
   serverEnv: {
     NODE_ENV: "test",
@@ -61,6 +75,7 @@ vi.mock("@/config/env", () => ({
 let extractAuth: typeof import("@/lib/auth").extractAuth;
 let handleAuthError: typeof import("@/lib/auth").handleAuthError;
 let requireAuth: typeof import("@/lib/auth").requireAuth;
+let requireAuthAccount: typeof import("@/lib/auth").requireAuthAccount;
 let verifyIdToken: typeof import("@/lib/auth").verifyIdToken;
 let requireAuthWithProfile: typeof import("@/lib/auth").requireAuthWithProfile;
 let requireAdmin: typeof import("@/lib/auth").requireAdmin;
@@ -80,6 +95,7 @@ beforeAll(async () => {
     extractAuth,
     handleAuthError,
     requireAuth,
+    requireAuthAccount,
     verifyIdToken,
     requireAuthWithProfile,
     requireAdmin,
@@ -299,6 +315,71 @@ describe("requireAuth", () => {
 
     expect(result.status).toBe(500);
     expect(await result.json()).toMatchObject({ code: "INTERNAL_ERROR" });
+  });
+});
+
+describe("requireAuthAccount", () => {
+  const request = {
+    headers: { get: () => "Bearer good-token" },
+  } as unknown as Request;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAdminAuth.verifyIdToken.mockResolvedValue({
+      uid: "user-1",
+      email_verified: true,
+    });
+    mfaMocks.legacyTotpSecrets.mockReturnValue(null);
+    mfaMocks.loadTotpSecrets.mockResolvedValue({});
+  });
+
+  it("returns the raw profile with the verified token", async () => {
+    mockProfile({ role: "customer", displayName: "Ada" });
+
+    await expect(requireAuthAccount(request)).resolves.toMatchObject({
+      token: { uid: "user-1" },
+      profile: { displayName: "Ada" },
+    });
+  });
+
+  it("returns a null profile when the document is missing", async () => {
+    mockProfile(null);
+
+    await expect(requireAuthAccount(request)).resolves.toMatchObject({
+      profile: null,
+    });
+  });
+
+  it("migrates a legacy TOTP secret before returning the profile", async () => {
+    const mfa = { totp: { enabled: true, secret: "JBSWY3DPEHPK3PXP" } };
+    mfaMocks.legacyTotpSecrets.mockReturnValue({
+      secret: "JBSWY3DPEHPK3PXP",
+    });
+    mockProfile({ role: "customer", mfa });
+
+    await requireAuthAccount(request);
+
+    expect(mfaMocks.loadTotpSecrets).toHaveBeenCalledWith("user-1", mfa);
+  });
+
+  it("still answers when the migration fails", async () => {
+    mfaMocks.legacyTotpSecrets.mockReturnValue({ secret: "JBSWY3DPEHPK3PXP" });
+    mfaMocks.loadTotpSecrets.mockRejectedValue(new Error("firestore down"));
+    mockProfile({ role: "customer" });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(requireAuthAccount(request)).resolves.toMatchObject({
+      token: { uid: "user-1" },
+    });
+  });
+
+  it("refuses a blocked account before returning the profile", async () => {
+    mockProfile({ role: "customer", banned: true });
+
+    const result = (await requireAuthAccount(request)) as Response;
+
+    expect(result.status).toBe(403);
+    expect(await result.json()).toMatchObject({ code: "ACCOUNT_BANNED" });
   });
 });
 

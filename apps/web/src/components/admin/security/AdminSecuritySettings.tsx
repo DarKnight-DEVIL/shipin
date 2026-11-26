@@ -22,7 +22,6 @@ import {
 import BackupCodesCard from "./BackupCodesCard";
 import SmsEnrollmentCard from "./SmsEnrollmentCard";
 import TotpEnrollmentCard from "./TotpEnrollmentCard";
-import WebAuthnCard from "./WebAuthnCard";
 
 type Loaded = {
   idToken: string;
@@ -154,12 +153,6 @@ export default function AdminSecuritySettings() {
       />
 
       <BackupCodesCard
-        idToken={state.idToken}
-        status={state.config}
-        onChanged={refresh}
-      />
-
-      <WebAuthnCard
         idToken={state.idToken}
         status={state.config}
         onChanged={refresh}

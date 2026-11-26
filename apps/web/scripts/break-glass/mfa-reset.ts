@@ -56,7 +56,9 @@ export interface TargetState {
 
 export interface ResetDeps {
   getUserByEmail(email: string): Promise<{ uid: string; email?: string }>;
-  getUser(uid: string): Promise<{ multiFactor?: { enrolledFactors?: unknown[] } }>;
+  getUser(
+    uid: string
+  ): Promise<{ multiFactor?: { enrolledFactors?: unknown[] } }>;
   readUserDoc(uid: string): Promise<Record<string, unknown> | undefined>;
   countOtherAdminsWithMfa(uid: string): Promise<number>;
   clearAuthFactors(uid: string): Promise<void>;
@@ -66,8 +68,7 @@ export interface ResetDeps {
 }
 
 export type PlanResult =
-  | { ok: false; error: string }
-  | { ok: true; state: TargetState };
+  { ok: false; error: string } | { ok: true; state: TargetState };
 
 /**
  * Look before leaping: resolve the account, confirm it is an admin, and report
@@ -149,7 +150,11 @@ export async function applyReset(
   }
 
   if (!reason.trim()) {
-    return { ok: false, message: "A --reason is required so the audit entry says why.", state };
+    return {
+      ok: false,
+      message: "A --reason is required so the audit entry says why.",
+      state,
+    };
   }
 
   await deps.clearAuthFactors(state.uid);
@@ -207,12 +212,10 @@ export interface EnrolTarget {
 export interface EnrolDeps {
   getUserByEmail(email: string): Promise<{ uid: string; email?: string }>;
   readUserDoc(uid: string): Promise<Record<string, unknown> | undefined>;
+  /** Server-only secret record; absent on a pre-migration deployment. */
+  readUserSecrets(uid: string): Promise<Record<string, unknown> | undefined>;
   writePendingSecret(uid: string, secret: string): Promise<void>;
-  enableTotp(
-    uid: string,
-    secret: string,
-    backupCodes: string[]
-  ): Promise<void>;
+  enableTotp(uid: string, secret: string, backupCodes: string[]): Promise<void>;
   writeAudit(entry: Record<string, unknown>): Promise<void>;
   generateSecret(): string;
   verifyCode(secret: string, code: string): boolean;
@@ -222,8 +225,7 @@ export interface EnrolDeps {
 }
 
 export type EnrolResolution =
-  | { ok: false; error: string }
-  | { ok: true; target: EnrolTarget };
+  { ok: false; error: string } | { ok: true; target: EnrolTarget };
 
 export async function resolveEnrolTarget(
   email: string,
@@ -244,7 +246,11 @@ export async function resolveEnrolTarget(
     return { ok: false, error: `${trimmed} is not an admin.` };
   }
 
-  const totp = ((doc.mfa ?? {}) as { totp?: Record<string, unknown> }).totp;
+  const publicTotp = ((doc.mfa ?? {}) as { totp?: Record<string, unknown> })
+    .totp;
+  const secretDoc = await deps.readUserSecrets(user.uid);
+  const totp =
+    (secretDoc?.totp as Record<string, unknown> | undefined) ?? publicTotp;
 
   return {
     ok: true,
@@ -252,11 +258,13 @@ export async function resolveEnrolTarget(
       uid: user.uid,
       email: user.email ?? trimmed,
       pendingSecret:
-        typeof totp?.secret === "string" && totp.enabled !== true
+        typeof totp?.secret === "string" && publicTotp?.enabled !== true
           ? totp.secret
           : null,
-      enabled: totp?.enabled === true,
-      backupCodes: Array.isArray(totp?.backupCodes) ? totp.backupCodes.length : 0,
+      enabled: publicTotp?.enabled === true,
+      backupCodes: Array.isArray(totp?.backupCodes)
+        ? totp.backupCodes.length
+        : 0,
     },
   };
 }
@@ -312,7 +320,8 @@ export async function stageTotpEnrolment(
 
   return {
     ok: true,
-    message: "Pending secret written. Add it to your authenticator app, then confirm with --code.",
+    message:
+      "Pending secret written. Add it to your authenticator app, then confirm with --code.",
     secret,
     otpauthUrl: buildOtpauthUrl(secret, resolved.target.email),
   };
@@ -336,13 +345,17 @@ export async function confirmTotpEnrolment(
   if (!target.pendingSecret) {
     return {
       ok: false,
-      message: "No pending authenticator secret. Run --enrol-totp first to get one.",
+      message:
+        "No pending authenticator secret. Run --enrol-totp first to get one.",
     };
   }
 
   const trimmed = (code ?? "").trim();
   if (!/^\d{6}$/.test(trimmed)) {
-    return { ok: false, message: "--code must be the 6 digits the app is showing." };
+    return {
+      ok: false,
+      message: "--code must be the 6 digits the app is showing.",
+    };
   }
 
   if (!deps.verifyCode(target.pendingSecret, trimmed)) {
@@ -438,19 +451,41 @@ async function main() {
       getUserByEmail: (address) => auth.getUserByEmail(address),
       readUserDoc: async (uid) =>
         (await db.collection("users").doc(uid).get()).data(),
+      readUserSecrets: async (uid) =>
+        (await db.collection("userSecrets").doc(uid).get()).data(),
       writePendingSecret: async (uid, secret) => {
-        await db.collection("users").doc(uid).update({
-          "mfa.totp": { secret, enabled: false, backupCodes: [] },
-          "mfa.required": true,
-          "mfa.enrolStagedAt": FieldValue.serverTimestamp(),
-        });
+        await db
+          .collection("userSecrets")
+          .doc(uid)
+          .set({
+            totp: { secret, backupCodes: [] },
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        await db
+          .collection("users")
+          .doc(uid)
+          .update({
+            "mfa.totp": { enabled: false },
+            "mfa.required": true,
+            "mfa.enrolStagedAt": FieldValue.serverTimestamp(),
+          });
       },
       enableTotp: async (uid, secret, backupCodes) => {
-        await db.collection("users").doc(uid).update({
-          "mfa.totp": { secret, enabled: true, backupCodes },
-          "mfa.enrolledAt": FieldValue.serverTimestamp(),
-          "mfa.enrolledBy": "break-glass",
-        });
+        await db.collection("userSecrets").doc(uid).set(
+          {
+            totp: { secret, backupCodes },
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        await db
+          .collection("users")
+          .doc(uid)
+          .update({
+            "mfa.totp": { enabled: true },
+            "mfa.enrolledAt": FieldValue.serverTimestamp(),
+            "mfa.enrolledBy": "break-glass",
+          });
       },
       writeAudit: async (entry) => {
         await db.collection("adminAuditLog").add({
@@ -502,7 +537,9 @@ async function main() {
           ].join("\n"),
           { mode: 0o600 }
         );
-        console.log(`Backup codes written to ${file} (read once, then delete it).`);
+        console.log(
+          `Backup codes written to ${file} (read once, then delete it).`
+        );
       }
 
       return;
@@ -542,12 +579,19 @@ async function main() {
   const deps: ResetDeps = {
     getUserByEmail: (address) => auth.getUserByEmail(address),
     getUser: (uid) => auth.getUser(uid),
-    readUserDoc: async (uid) => (await db.collection("users").doc(uid).get()).data(),
+    readUserDoc: async (uid) =>
+      (await db.collection("users").doc(uid).get()).data(),
     countOtherAdminsWithMfa: async (uid) => {
-      const admins = await db.collection("users").where("role", "==", "admin").get();
+      const admins = await db
+        .collection("users")
+        .where("role", "==", "admin")
+        .get();
 
       return admins.docs.filter(
-        (doc) => doc.id !== uid && doc.data().mfa && Object.keys(doc.data().mfa).length > 0
+        (doc) =>
+          doc.id !== uid &&
+          doc.data().mfa &&
+          Object.keys(doc.data().mfa).length > 0
       ).length;
     },
     clearAuthFactors: async (uid) => {
@@ -561,6 +605,10 @@ async function main() {
 
       for (const field of MFA_FIELDS) update[field] = FieldValue.delete();
 
+      // The TOTP secret and backup-code hashes are server-only now; leaving
+      // them behind would make the reset look complete while a valid factor
+      // remained in the database.
+      await db.collection("userSecrets").doc(uid).delete();
       await db.collection("users").doc(uid).update(update);
     },
     revokeRefreshTokens: (uid) => auth.revokeRefreshTokens(uid),

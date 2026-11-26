@@ -24,19 +24,10 @@ vi.mock("@/lib/firebase", () => ({
 vi.mock("@/lib/mfaSessionClient", () => ({
   getMfaSessionStatus: vi.fn(),
   startMfaSession: vi.fn(),
-  startWebAuthnSession: vi.fn(),
 }));
 
-vi.mock("@/lib/webauthnClient", () => ({
-  isWebAuthnSupported: vi.fn(() => true),
-  assertSecurityKey: vi.fn(),
-  WebAuthnCeremonyError: class extends Error {},
-}));
-
-const { getMfaSessionStatus, startWebAuthnSession, startMfaSession } =
+const { getMfaSessionStatus, startMfaSession } =
   await import("@/lib/mfaSessionClient");
-const { assertSecurityKey, isWebAuthnSupported } =
-  await import("@/lib/webauthnClient");
 
 const BASE_STATUS = {
   elevated: false,
@@ -55,9 +46,6 @@ function renderGate() {
 beforeEach(() => {
   vi.mocked(getMfaSessionStatus).mockReset();
   vi.mocked(startMfaSession).mockReset();
-  vi.mocked(startWebAuthnSession).mockReset();
-  vi.mocked(assertSecurityKey).mockReset();
-  vi.mocked(isWebAuthnSupported).mockReturnValue(true);
   appCheckState.detail = null;
 });
 
@@ -129,72 +117,6 @@ describe("AdminMfaGate", () => {
     expect(screen.queryByRole("button", { name: "Verify" })).not.toBeInTheDocument();
   });
 
-  it("elevates with a security key assertion", async () => {
-    vi.mocked(getMfaSessionStatus).mockResolvedValue({
-      ...BASE_STATUS,
-      methods: ["webauthn"],
-    });
-    vi.mocked(assertSecurityKey).mockResolvedValue({
-      id: "cred-1",
-      type: "public-key",
-    } as never);
-    vi.mocked(startWebAuthnSession).mockResolvedValue({
-      expiresAt: 123,
-      method: "webauthn",
-    });
-
-    renderGate();
-
-    fireEvent.click(await screen.findByRole("button", { name: "Verify" }));
-
-    // No code field for a security key, just the ceremony button.
-    expect(screen.getByText("Security key")).toBeInTheDocument();
-    expect(
-      screen.queryByPlaceholderText("6-digit code")
-    ).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Use security key" }));
-
-    await waitFor(() =>
-      expect(startWebAuthnSession).toHaveBeenCalledWith("id-token", {
-        id: "cred-1",
-        type: "public-key",
-      })
-    );
-    expect(assertSecurityKey).toHaveBeenCalledWith("id-token");
-    expect(startMfaSession).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(
-        screen.queryByText(/Verify with your second factor/i)
-      ).not.toBeInTheDocument()
-    );
-  });
-
-  it("reports a cancelled ceremony without elevating", async () => {
-    vi.mocked(getMfaSessionStatus).mockResolvedValue({
-      ...BASE_STATUS,
-      methods: ["webauthn"],
-    });
-
-    const { WebAuthnCeremonyError } = await import("@/lib/webauthnClient");
-
-    vi.mocked(assertSecurityKey).mockRejectedValue(
-      new (WebAuthnCeremonyError as unknown as new (m: string) => Error)(
-        "Security key prompt was cancelled."
-      )
-    );
-
-    renderGate();
-
-    fireEvent.click(await screen.findByRole("button", { name: "Verify" }));
-    fireEvent.click(screen.getByRole("button", { name: "Use security key" }));
-
-    expect(
-      await screen.findByText("Security key prompt was cancelled.")
-    ).toBeInTheDocument();
-    expect(startWebAuthnSession).not.toHaveBeenCalled();
-  });
-
   it("offers code entry when the account uses an authenticator app", async () => {
     vi.mocked(getMfaSessionStatus).mockResolvedValue({
       ...BASE_STATUS,
@@ -216,7 +138,6 @@ describe("AdminMfaGate", () => {
     await waitFor(() =>
       expect(startMfaSession).toHaveBeenCalledWith("id-token", "totp", "123456")
     );
-    expect(assertSecurityKey).not.toHaveBeenCalled();
   });
 
   it("re-runs the page data once the session is elevated", async () => {
@@ -253,20 +174,4 @@ describe("AdminMfaGate", () => {
     await waitFor(() => expect(mounts).toBe(2));
   });
 
-  it("explains when a security-key account is opened in a browser without WebAuthn", async () => {
-    vi.mocked(isWebAuthnSupported).mockReturnValue(false);
-    vi.mocked(getMfaSessionStatus).mockResolvedValue({
-      ...BASE_STATUS,
-      methods: ["webauthn"],
-    });
-
-    renderGate();
-
-    expect(
-      await screen.findByText(/this browser does not support WebAuthn/i)
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Verify" })
-    ).not.toBeInTheDocument();
-  });
 });

@@ -139,8 +139,10 @@ export default function PrivacyPolicyPage() {
             </h3>
             <p className="mb-4">
               For account protection, we may store multi-factor authentication
-              configuration (TOTP secrets, backup codes, WebAuthn credential
-              identifiers) if you enable it. Backup codes are stored hashed.
+              configuration (TOTP secrets and backup codes) if you enable it.
+              Backup codes are stored hashed. The authenticator app is the only
+              second factor offered today; security keys and SMS codes are not
+              available.
             </p>
           </section>
 

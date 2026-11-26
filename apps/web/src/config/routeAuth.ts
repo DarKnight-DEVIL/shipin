@@ -121,8 +121,15 @@ export type RouteClassification = RouteAuth | "unclassified";
  * exception in this set, so the carve-out cannot leak.
  */
 const EXACT_ONLY: ReadonlySet<string> = new Set([
+  "/api/auth/login-intent",
+  "/api/auth/password-leak-check",
+  "/api/auth/verify-email-link",
   "/api/admin/requests/quotes/expire",
+  "/api/admin/compliance/retention/purge",
+  "/api/admin/payments/reconcile",
   "/api/admin/wallet/invariants",
+  "/api/admin/payments/sweep",
+  "/api/notifications/unsubscribe",
 ]);
 
 export function classifyRoute(pathname: string): RouteClassification {

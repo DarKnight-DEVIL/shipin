@@ -287,6 +287,26 @@ describe("users", () => {
     await expectAllowed(read(customer(), `users/${CUSTOMER}`));
   });
 
+  it("denies the owner's read while a legacy TOTP secret is still present", async () => {
+    await seed(`users/${CUSTOMER}`, {
+      role: "customer",
+      displayName: "Customer",
+      mfa: { totp: { enabled: true, secret: "JBSWY3DPEHPK3PXP" } },
+    });
+
+    await expectDenied(read(customer(), `users/${CUSTOMER}`));
+  });
+
+  it("allows the owner's read once only the public MFA flag remains", async () => {
+    await seed(`users/${CUSTOMER}`, {
+      role: "customer",
+      displayName: "Customer",
+      mfa: { totp: { enabled: true } },
+    });
+
+    await expectAllowed(read(customer(), `users/${CUSTOMER}`));
+  });
+
   it("blocks reading another customer profile", async () => {
     await expectDenied(read(customer(), `users/${OTHER_CUSTOMER}`));
   });
@@ -331,6 +351,61 @@ describe("users", () => {
       create({ uid: NEW_CUSTOMER }, `users/${NEW_CUSTOMER}`, {
         displayName: "New",
         role: "customer",
+      })
+    );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* server-only MFA secrets                                                     */
+/* -------------------------------------------------------------------------- */
+
+describe("userSecrets", () => {
+  it("blocks the owner from reading their TOTP secret", async () => {
+    // This is the whole point of the move: the profile is self-readable, the
+    // secret record is Admin SDK only.
+    await seed(`userSecrets/${CUSTOMER}`, {
+      totp: { secret: "SECRET", backupCodes: ["hash-1"] },
+    });
+
+    await expectDenied(read(customer(), `userSecrets/${CUSTOMER}`));
+  });
+
+  it("blocks even an admin from reading it through the client", async () => {
+    await seed(`userSecrets/${CUSTOMER}`, { totp: { secret: "SECRET" } });
+
+    await expectDenied(read({ uid: ADMIN }, `userSecrets/${CUSTOMER}`));
+  });
+
+  it("blocks client writes and deletes", async () => {
+    await seed(`userSecrets/${CUSTOMER}`, { totp: { secret: "SECRET" } });
+
+    await expectDenied(
+      create(customer(), `userSecrets/${NEW_CUSTOMER}`, {
+        totp: { secret: "attacker" },
+      })
+    );
+    await expectDenied(
+      update(customer(), `userSecrets/${CUSTOMER}`, {
+        totp: { secret: "attacker" },
+      })
+    );
+    await expectDenied(remove(customer(), `userSecrets/${CUSTOMER}`));
+  });
+});
+
+describe("paypalRefundTransactions", () => {
+  it("is Admin SDK only", async () => {
+    await seed("paypalRefundTransactions/tx-1", {
+      transactionId: "tx-1",
+      requestId: "req-1",
+    });
+
+    await expectDenied(read(customer(), "paypalRefundTransactions/tx-1"));
+    await expectDenied(read({ uid: ADMIN }, "paypalRefundTransactions/tx-1"));
+    await expectDenied(
+      create(customer(), "paypalRefundTransactions/tx-2", {
+        transactionId: "tx-2",
       })
     );
   });
@@ -1169,7 +1244,10 @@ describe("support", () => {
 
   it("blocks editing or deleting a message once sent", async () => {
     await seed("supportTickets/ticket-18", ticket());
-    await seed("supportMessages/message-13", message({ ticketId: "ticket-18" }));
+    await seed(
+      "supportMessages/message-13",
+      message({ ticketId: "ticket-18" })
+    );
 
     await expectDenied(
       update(customer(), "supportMessages/message-13", {

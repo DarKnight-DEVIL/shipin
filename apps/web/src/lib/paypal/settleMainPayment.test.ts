@@ -45,6 +45,11 @@ const orderSnap = (data: Record<string, unknown> | undefined) => ({
   data: () => data,
 });
 
+const requestSnap = {
+  exists: true,
+  data: () => ({ status: "awaiting_payment" }),
+};
+
 const input = (overrides: Record<string, unknown> = {}) => ({
   requestRef: requestRef as never,
   paymentOrderRef: paymentOrderRef as never,
@@ -87,7 +92,7 @@ describe("settleMainPayment", () => {
       .mockResolvedValueOnce(
         orderSnap({ ...paymentOrder, status: "capturing" })
       )
-      .mockResolvedValueOnce({ exists: true });
+      .mockResolvedValueOnce(requestSnap);
 
     await expect(settleMainPayment(input())).resolves.toEqual({
       ok: true,
@@ -160,7 +165,7 @@ describe("settleMainPayment", () => {
         data: () => ({ balance: 100, currency: "INR" }),
       })
       .mockResolvedValueOnce(orderSnap(paymentOrder))
-      .mockResolvedValueOnce({ exists: true });
+      .mockResolvedValueOnce(requestSnap);
 
     await settleMainPayment(input());
 
@@ -173,7 +178,7 @@ describe("settleMainPayment", () => {
       .mockResolvedValueOnce(
         orderSnap({ ...paymentOrder, walletApplied: 0, totalRequired: 84.7 })
       )
-      .mockResolvedValueOnce({ exists: true });
+      .mockResolvedValueOnce(requestSnap);
 
     await expect(
       settleMainPayment(
@@ -198,7 +203,7 @@ describe("settleMainPayment", () => {
       .mockResolvedValueOnce(
         orderSnap({ ...paymentOrder, status: "completed" })
       )
-      .mockResolvedValueOnce({ exists: true });
+      .mockResolvedValueOnce(requestSnap);
 
     await expect(settleMainPayment(input())).resolves.toMatchObject({
       ok: true,
@@ -258,7 +263,7 @@ describe("settleMainPayment", () => {
     mocks.txGet
       .mockResolvedValueOnce(walletSnap(100))
       .mockResolvedValueOnce(orderSnap(undefined))
-      .mockResolvedValueOnce({ exists: true });
+      .mockResolvedValueOnce(requestSnap);
 
     await expect(settleMainPayment(input())).rejects.toThrow(
       "PayPal payment order could not be found."
@@ -269,18 +274,35 @@ describe("settleMainPayment", () => {
     mocks.txGet
       .mockResolvedValueOnce(walletSnap(100))
       .mockResolvedValueOnce(orderSnap({ ...paymentOrder, userId: "user-2" }))
-      .mockResolvedValueOnce({ exists: true });
+      .mockResolvedValueOnce(requestSnap);
 
     await expect(settleMainPayment(input())).rejects.toThrow(
       "Payment ownership verification failed."
     );
   });
 
+  it("refuses a request that is no longer payable", async () => {
+    mocks.txGet
+      .mockResolvedValueOnce(walletSnap(100))
+      .mockResolvedValueOnce(orderSnap(paymentOrder))
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ status: "refunded" }),
+      });
+
+    await expect(settleMainPayment(input())).resolves.toMatchObject({
+      ok: false,
+      status: 409,
+      code: "REQUEST_NOT_PAYABLE",
+    });
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
   it("throws when the wallet no longer covers its share", async () => {
     mocks.txGet
       .mockResolvedValueOnce(walletSnap(5))
       .mockResolvedValueOnce(orderSnap(paymentOrder))
-      .mockResolvedValueOnce({ exists: true });
+      .mockResolvedValueOnce(requestSnap);
 
     await expect(settleMainPayment(input())).rejects.toThrow(
       "Insufficient wallet balance to complete this payment."

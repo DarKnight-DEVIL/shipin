@@ -50,7 +50,7 @@ export function walletHoldDocId(idempotencyKey: string): string {
  * writer is still decimal until phase 3.
  */
 export function reservedBalance(wallet: DocumentData | undefined): number {
-  return toDecimal(Math.max(0, storedMinor(wallet, "reserved")));
+  return toDecimal(storedMinor(wallet, "reserved"));
 }
 
 /** What the customer can still spend or reserve right now. */
@@ -58,11 +58,7 @@ export function availableWalletBalance(
   wallet: DocumentData | undefined
 ): number {
   return toDecimal(
-    Math.max(
-      0,
-      storedMinor(wallet, "balance") -
-        Math.max(0, storedMinor(wallet, "reserved"))
-    )
+    storedMinor(wallet, "balance") - storedMinor(wallet, "reserved")
   );
 }
 
@@ -82,7 +78,7 @@ export function reservedAfterReleaseMinor(
   const data = hold.data() ?? {};
   if (data.status !== "reserved") return current;
 
-  return Math.max(0, current - Math.max(0, storedMinor(data, "amount")));
+  return current - storedMinor(data, "amount");
 }
 
 export function reservedAfterRelease(

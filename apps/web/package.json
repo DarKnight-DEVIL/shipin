@@ -42,6 +42,7 @@
     "check:firestore-list-caps": "node scripts/check-firestore-list-caps.mjs",
     "check:env-inlining": "node scripts/check-env-inlining.mjs",
     "check:orphan-modules": "node scripts/check-orphan-modules.mjs",
+    "check:user-profile-reads": "node scripts/check-user-profile-direct-reads.mjs",
     "check:production-env": "node --experimental-strip-types scripts/check-production-env.ts",
     "check:licenses": "node scripts/check-licenses.mjs"
   },
@@ -51,8 +52,6 @@
     "@paypal/react-paypal-js": "10.6.1",
     "@react-pdf/renderer": "4.9.1",
     "@shipin/config": "*",
-    "@simplewebauthn/browser": "14.0.0",
-    "@simplewebauthn/server": "14.1.0",
     "@upstash/ratelimit": "2.2.2",
     "@upstash/redis": "1.41.1",
     "@vercel/analytics": "2.0.1",

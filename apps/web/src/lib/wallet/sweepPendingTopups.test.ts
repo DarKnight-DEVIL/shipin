@@ -111,6 +111,29 @@ describe("sweepPendingTopups", () => {
     ]);
   });
 
+  it("keeps going when settleWalletTopup itself throws", async () => {
+    /*
+     * The credit call is awaited inside the loop's try, so a throw from it - a Firestore
+     * write failing, say - must land in `failures` like a refused settlement does, and
+     * must not stop the remaining top-ups from being drained.
+     */
+    const d = deps({
+      listPendingTopups: async () => [topup("T7"), topup("T8")],
+      fetchOrder: async () => completed(),
+      credit: vi.fn(async (t: StuckTopup) => {
+        if (t.id === "T7") throw new Error("firestore write failed");
+        return { ok: true as const, alreadyProcessed: false };
+      }),
+    });
+
+    const result = await sweepPendingTopups(d);
+
+    expect(result.credited).toBe(1);
+    expect(result.failures).toEqual([
+      { topupId: "T7", error: "firestore write failed" },
+    ]);
+  });
+
   it("reports a completed order whose capture cannot be read", async () => {
     const d = deps({
       listPendingTopups: async () => [topup("T7")],

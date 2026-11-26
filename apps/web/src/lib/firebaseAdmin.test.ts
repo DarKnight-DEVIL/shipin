@@ -35,7 +35,13 @@ vi.mock("firebase-admin/app", () => ({
   initializeApp: mocks.initializeApp,
   cert: mocks.cert,
 }));
-vi.mock("firebase-admin/firestore", () => ({
+vi.mock("firebase-admin/firestore", async (importOriginal) => ({
+  // The suite shares one module registry per worker (`isolate: false`), so whichever
+  // file imports this module first decides what every other file in that worker sees.
+  // This file only needs `getFirestore`, but a mock that dropped the rest of the
+  // module once `FieldValue` users were grouped into the same worker — so the real
+  // exports are passed through and only the handle is faked.
+  ...(await importOriginal()),
   getFirestore: mocks.getFirestore,
 }));
 vi.mock("firebase-admin/auth", () => ({ getAuth: mocks.getAuth }));

@@ -40,6 +40,7 @@
     "check:firestore-indexes": "npm run check:firestore-indexes --workspace=@shipin/web",
     "check:firestore-list-caps": "npm run check:firestore-list-caps --workspace=@shipin/web",
     "check:orphan-modules": "npm run check:orphan-modules --workspace=@shipin/web",
+    "check:user-profile-reads": "npm run check:user-profile-reads --workspace=@shipin/web",
     "check:workflows": "node scripts/check-workflow-encoding.mjs",
     "audit:gate": "node scripts/audit-gate.mjs"
   },

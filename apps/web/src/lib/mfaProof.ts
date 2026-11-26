@@ -17,10 +17,7 @@
 
 import { verifyBackupCode, verifyTotp } from "./mfa";
 
-export type MfaMethod = "totp" | "backup" | "webauthn";
-
-/** Methods whose proof is a short code verified by `verifyMfaProof`. */
-export type CodeMfaMethod = Exclude<MfaMethod, "webauthn">;
+export type MfaMethod = "totp" | "backup";
 
 export interface MfaProof {
   totp?: string | null;
@@ -30,7 +27,7 @@ export interface MfaProof {
 /** Shape of the `users/{uid}` document fields this module cares about. */
 export interface MfaProfile {
   mfa?: {
-    preferredMethod?: "totp" | "webauthn";
+    preferredMethod?: "totp";
     totp?: {
       enabled: boolean;
       secret: string;
@@ -43,30 +40,11 @@ export interface MfaProfile {
       pendingCode?: string;
       pendingExpires?: number;
     };
-    webauthn?: {
-      enabled: boolean;
-      credentials: {
-        credentialID: string;
-        publicKey: string;
-        counter: number;
-        transports: string[];
-        name: string;
-        createdAt: number;
-        deviceType?: "singleDevice" | "multiDevice";
-        backedUp?: boolean;
-      }[];
-      /**
-       * Legacy records stored credential IDs without public keys, so they can
-       * never be verified. Kept only so such accounts are still recognised as
-       * MFA-enrolled instead of being asked to start from scratch.
-       */
-      credentialIds?: string[];
-    };
   } | null;
 }
 
 export type MfaVerification =
-  | { ok: true; method: CodeMfaMethod }
+  | { ok: true; method: MfaMethod }
   | { ok: false; reason: "NO_MFA_CONFIGURED" | "INVALID_CODE" };
 
 /** Which methods the account can actually use right now. */
@@ -84,48 +62,18 @@ export function availableMfaMethods(profile: MfaProfile | null): MfaMethod[] {
     methods.push("backup");
   }
 
-  if (hasWebAuthnCredential(mfa.webauthn)) {
-    methods.push("webauthn");
-  }
-
   return methods;
 }
 
 /**
- * Whether a WebAuthn credential can actually be used.
+ * Whether the account has any MFA configured.
  *
- * A credential is only usable when both its ID and public key are stored — the
- * legacy `credentialIds`-only records cannot be verified, so they do not count.
- */
-function hasWebAuthnCredential(
-  webauthn: NonNullable<NonNullable<MfaProfile["mfa"]>["webauthn"]> | undefined
-): boolean {
-  if (!webauthn?.enabled) return false;
-
-  return (webauthn.credentials ?? []).some(
-    (credential) =>
-      typeof (credential as { credentialID?: string }).credentialID ===
-        "string" && typeof credential?.publicKey === "string"
-  );
-}
-
-/**
- * Whether the account has *any* MFA configured, including WebAuthn.
- *
- * Legacy `credentialIds` records have no public key and cannot verify, but
- * they are still counted here so such an account is told MFA_REQUIRED instead
- * of being asked to enroll from scratch.
+ * Security keys are no longer offered, and a record left behind by one is not a method:
+ * an account that held only a passkey has nothing it can verify, so it is told to
+ * enrol TOTP rather than sent to a form it cannot complete.
  */
 export function hasAnyMfaMethod(profile: MfaProfile | null): boolean {
-  if (availableMfaMethods(profile).length > 0) return true;
-
-  const webauthn = profile?.mfa?.webauthn;
-
-  return Boolean(
-    webauthn?.enabled &&
-    ((webauthn?.credentials?.length ?? 0) > 0 ||
-      (webauthn?.credentialIds?.length ?? 0) > 0)
-  );
+  return availableMfaMethods(profile).length > 0;
 }
 
 /**

@@ -27,6 +27,29 @@ const dashboardPreferencesSchema = z.object({
 });
 
 /**
+ * GET /api/profile/preferences
+ *
+ * Dashboard card choices are stored on `users/{uid}`. The browser fetches them
+ * here rather than reading the profile document, which rules deny while a
+ * legacy MFA secret is still present.
+ */
+export const GET = withErrorHandler(async (request: NextRequest) => {
+  const auth = await requireAuthWithProfile(request);
+  if (auth instanceof NextResponse) return auth;
+
+  const snapshot = await adminDb
+    .collection("users")
+    .doc(auth.profile.uid)
+    .get();
+  const saved = snapshot.data()?.preferences?.dashboardMetrics;
+
+  return NextResponse.json(
+    { success: true, dashboardMetrics: Array.isArray(saved) ? saved : null },
+    { status: 200, headers: { "Cache-Control": "no-store" } }
+  );
+});
+
+/**
  * PATCH /api/profile/preferences
  *
  * Saves which cards the signed-in user wants on their dashboard.

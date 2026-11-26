@@ -24,6 +24,29 @@ export function parseInspectionKey(key: string): string | null {
 }
 
 /**
+ * Inspection evidence is written only by staff. Customers can read the photos
+ * for their own request, but an upload from a customer account is refused: the
+ * evidence is warehouse-created and an owner-supplied file would be
+ * indistinguishable from it once stored.
+ */
+export async function authorizeInspectionUpload(
+  uid: string
+): Promise<R2AccessDenial | null> {
+  const profileSnapshot = await adminDb.collection("users").doc(uid).get();
+  const role = profileSnapshot.exists
+    ? profileSnapshot.data()?.role
+    : undefined;
+
+  if (role === "admin") return null;
+
+  return {
+    status: 403,
+    error: "Only staff can upload inspection photos.",
+    code: "ADMIN_ACCESS_REQUIRED",
+  };
+}
+
+/**
  * Allow the request's owner or an admin (warehouse staff work every request).
  *
  * A request that does not exist and a request owned by somebody else return the

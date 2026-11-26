@@ -28,7 +28,6 @@ Set these in your Vercel project settings → Environment Variables:
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Yes | Cloudflare R2 uploads |
 | `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | Optional | WhatsApp Business API |
 | `MFA_SESSION_SECRET` | **Yes** | Signs admin MFA session cookies (min 32 chars). Production boot fails without it |
-| `WEBAUTHN_RP_ID` | Optional | Relying-party ID for passkeys, defaulting to `APP_URL`'s hostname. Set it to a parent domain you own (e.g. `shipin.com` while `APP_URL` is `app.shipin.com`) so passkeys survive a move to another subdomain — an RP ID cannot change after enrolment. Must be a bare hostname, a parent of `APP_URL`'s host, and not a shared hosting domain, public suffix or IP. See `docs/OPERATIONS.md` §4a |
 | `BREACH_ALERT_WEBHOOK_URL` | Optional | Slack/incident webhook pinged for a critical data breach |
 | Alert webhook (any of `APP_CHECK_ALERT_WEBHOOK_URL`, `ERROR_ALERT_WEBHOOK_URL`, `ALERT_WEBHOOK_URL`, `BREACH_ALERT_WEBHOOK_URL`) | **Yes, at least one** | Operator channel for App Check outage, payment drift, MFA revocation-store failure and cron failure. **Production boot fails without one** |
 | `UPSTASH_REDIS_REST_URL` | **Yes** | **Global rate limiting. The server refuses to start without it** |
@@ -87,7 +86,7 @@ explicit rather than wildcarded:
 
 | Host | Role |
 |------|------|
-| `https://shipin-psi.vercel.app` | **Canonical** — use for `NEXT_PUBLIC_APP_URL`, `APP_URL`, links and passkeys. Also the code fallback (`SITE_URL_FALLBACK`) when the variable is unset |
+| `https://shipin-psi.vercel.app` | **Canonical** — use for `NEXT_PUBLIC_APP_URL`, `APP_URL` and links. Also the code fallback (`SITE_URL_FALLBACK`) when the variable is unset |
 | `https://shipin.co` | Intended long-term domain, but it answers **410 Gone** today. Do not make it canonical, and do not use it as a fallback, until hosting is live |
 | `https://shipin-9576a.web.app` | Firebase Hosting alias (secondary, API access only) |
 | `https://shipin-9576a.firebaseapp.com` | Firebase Hosting alias (secondary, API access only) |
@@ -104,14 +103,13 @@ explicit rather than wildcarded:
   `NEXT_PUBLIC_APP_URL` stays the canonical domain on previews, so links in
   emails sent from a preview still point at production.
 - Set both `NEXT_PUBLIC_APP_URL` and `APP_URL` to the canonical domain users
-  actually visit. They build verification links and the WebAuthn relying party,
-  so a mismatch sends users to the wrong site and breaks passkeys.
-- WebAuthn cannot span domains. `vercel.app`, `web.app` and `firebaseapp.com`
-  are separate registrable domains, so a passkey registered on one is invalid
-  on another. **Vercel is the canonical host**, so the relying party is
-  `shipin-psi.vercel.app`; passkeys registered on the Firebase aliases will not
-  validate. If a custom domain is added later, migrate MFA to it deliberately
-  (existing passkeys have to be re-registered).
+  actually visit. They build verification links and password-reset links, so a
+  mismatch sends users to the wrong site.
+- **Security keys and passkeys are withdrawn** (an authenticator app is the only
+  second factor today), so there is no relying-party ID to configure and no
+  credential that a domain move can invalidate. Moving to a custom domain still
+  needs the Firebase Auth authorized-domain list, the App Check reCAPTCHA key's
+  domain allowlist and both URL variables updated — see `docs/OPERATIONS.md` §4a.
 - `firebase.json` configures Firestore rules and indexes only. Firebase
   Storage is not used (files live in Cloudflare R2), so there are no Storage
   rules to deploy and the client config carries no `storageBucket`. There is

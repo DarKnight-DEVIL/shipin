@@ -38,8 +38,9 @@ Messages you send through our support system are stored so our team can respond.
 
 ### 2.5 Authentication Security
 For account protection, we may store multi-factor authentication configuration
-(TOTP secrets, backup codes, WebAuthn credential identifiers) if you enable it.
-Backup codes are stored hashed.
+(TOTP secrets and backup codes) if you enable it. Backup codes are stored hashed.
+The authenticator app is the only second factor we offer today; security keys and
+SMS codes are not available.
 
 ## 3. How We Use Your Information
 

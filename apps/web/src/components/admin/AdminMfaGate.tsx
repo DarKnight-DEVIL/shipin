@@ -17,16 +17,7 @@ import { ShieldCheck } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 
 import { auth, getAppCheckFailureDetail } from "@/lib/firebase";
-import {
-  getMfaSessionStatus,
-  startMfaSession,
-  startWebAuthnSession,
-} from "@/lib/mfaSessionClient";
-import {
-  assertSecurityKey,
-  isWebAuthnSupported,
-  WebAuthnCeremonyError,
-} from "@/lib/webauthnClient";
+import { getMfaSessionStatus, startMfaSession } from "@/lib/mfaSessionClient";
 import { MfaApiError } from "@/lib/mfaApi";
 
 import type { MfaMethod } from "@/lib/mfaProof";
@@ -39,7 +30,6 @@ type GateStatus =
   | "elevated"
   | "needs-code"
   | "not-configured"
-  | "unsupported"
   /**
    * The request was refused before MFA was evaluated - an App Check token could
    * not be minted, or the network failed. Rendering the code form here is what
@@ -51,18 +41,12 @@ type GateStatus =
 const METHOD_LABELS: Record<MfaMethod, string> = {
   totp: "Authenticator app",
   backup: "Backup code",
-  webauthn: "Security key",
 };
 
-/** WebAuthn has no typed code, so only code methods have a placeholder. */
-const METHOD_PLACEHOLDERS: Partial<Record<MfaMethod, string>> = {
+const METHOD_PLACEHOLDERS: Record<MfaMethod, string> = {
   totp: "6-digit code",
   backup: "XXXX-XXXX",
 };
-
-function isCodeMethod(method: MfaMethod): boolean {
-  return method !== "webauthn";
-}
 
 export default function AdminMfaGate({
   children,
@@ -117,24 +101,9 @@ export default function AdminMfaGate({
         return;
       }
 
-      // A security-key-only account in a browser without WebAuthn cannot be
-      // elevated here; say so instead of showing a ceremony that cannot run.
-      const hasUsableMethod = result.methods.some(
-        (candidate) => candidate !== "webauthn" || isWebAuthnSupported()
-      );
-
-      if (!hasUsableMethod) {
-        setStatus("unsupported");
-        return;
-      }
-
       setStatus("needs-code");
 
-      const preferred =
-        result.methods.find((candidate) => candidate !== "webauthn") ??
-        result.methods[0];
-
-      if (preferred) setMethod(preferred);
+      setMethod(result.methods[0]!);
     } catch (requestError) {
       if (
         requestError instanceof MfaApiError &&
@@ -184,30 +153,6 @@ export default function AdminMfaGate({
   function closeForm() {
     setFormOpen(false);
     setCode("");
-  }
-
-  /** Run the security-key ceremony, then exchange the assertion for a session. */
-  async function verifyWithSecurityKey() {
-    if (submitting || !user) return;
-
-    setSubmitting(true);
-    setError(null);
-
-    try {
-      const idToken = await user.getIdToken();
-      const assertion = await assertSecurityKey(idToken);
-      await startWebAuthnSession(idToken, assertion);
-
-      markElevated();
-    } catch (ceremonyError) {
-      setError(
-        ceremonyError instanceof WebAuthnCeremonyError
-          ? ceremonyError.message
-          : "Security key verification failed. Try again."
-      );
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   /** Submit a typed code (TOTP or backup) for an elevated session. */
@@ -266,9 +211,7 @@ export default function AdminMfaGate({
                 ? "Verify with your second factor to unlock admin actions"
                 : status === "not-configured"
                   ? "No MFA method configured"
-                  : status === "unsupported"
-                    ? "Unsupported MFA method in this browser"
-                    : status === "signed-out"
+                  : status === "signed-out"
                       ? "Not signed in as admin"
                       : "Checking verification status…"}
           </span>
@@ -316,55 +259,33 @@ export default function AdminMfaGate({
             </div>
           ) : null}
 
-          {isCodeMethod(method) ? (
-            <form onSubmit={handleSubmit}>
-              <div className="mb-4">
-                <label className="block text-sm mb-2" htmlFor="mfa-code">
-                  Verification code
-                  {METHOD_PLACEHOLDERS[method] ? (
-                    <span className="text-gray-500">
-                      {" "}
-                      ({METHOD_PLACEHOLDERS[method]})
-                    </span>
-                  ) : null}
-                </label>
-                <input
-                  id="mfa-code"
-                  value={code}
-                  onChange={(event) => setCode(event.target.value)}
-                  placeholder={METHOD_PLACEHOLDERS[method] ?? ""}
-                  autoComplete="one-time-code"
-                  inputMode="numeric"
-                  className="w-full p-2 border rounded"
-                />
-              </div>
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label className="block text-sm mb-2" htmlFor="mfa-code">
+                Verification code
+                <span className="text-gray-500">
+                  {" "}
+                  ({METHOD_PLACEHOLDERS[method]})
+                </span>
+              </label>
+              <input
+                id="mfa-code"
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+                placeholder={METHOD_PLACEHOLDERS[method]}
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                className="w-full p-2 border rounded"
+              />
+            </div>
 
-              <div className="flex gap-3">
-                <button
-                  type="submit"
-                  disabled={submitting || !code.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-60"
-                >
-                  Verify
-                </button>
-                <button
-                  type="button"
-                  onClick={closeForm}
-                  className="px-4 py-2 bg-gray-200 rounded"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          ) : (
             <div className="flex gap-3">
               <button
-                type="button"
-                onClick={verifyWithSecurityKey}
-                disabled={submitting}
+                type="submit"
+                disabled={submitting || !code.trim()}
                 className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-60"
               >
-                Use security key
+                Verify
               </button>
               <button
                 type="button"
@@ -374,7 +295,7 @@ export default function AdminMfaGate({
                 Cancel
               </button>
             </div>
-          )}
+          </form>
 
           {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
         </div>
@@ -384,8 +305,8 @@ export default function AdminMfaGate({
         <div className="p-4 rounded-md mb-6 border border-amber-300 bg-amber-50">
           <p className="text-sm">
             This account has no second factor yet, so admin actions stay locked.
-            Enrol one - an authenticator app, a security key or SMS - and the
-            banner will ask for a code instead.
+            Enrol an authenticator app and the banner will ask for a code
+            instead. Security keys and SMS are not available yet.
           </p>
           <Link
             href="/admin/security"
@@ -419,15 +340,6 @@ export default function AdminMfaGate({
               Reported reason: <code>{appCheckDetail}</code>
             </p>
           ) : null}
-        </div>
-      ) : null}
-
-      {status === "unsupported" ? (
-        <div className="p-4 rounded-md mb-6 border-red-200">
-          <p className="text-sm text-red-600">
-            This browser does not support WebAuthn, which this account uses for
-            MFA. Use a current browser to elevate your session.
-          </p>
         </div>
       ) : null}
 

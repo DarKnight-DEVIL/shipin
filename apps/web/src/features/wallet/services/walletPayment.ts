@@ -3,6 +3,8 @@ import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { calculatePayment } from "@/features/finance/services/calculatePayment";
+import { isQuoteExpired } from "@/features/requests/services/quoteExpiry";
+import { mainPaymentStatusError } from "@/lib/paypal/requestPaymentState";
 import type { QuoteBreakdown } from "@/types/request";
 import { toShipINError } from "@/utils/errors";
 import { minorFromStored, storedMinor } from "@/lib/money";
@@ -20,6 +22,8 @@ export interface WalletPaymentResult {
 export type WalletPaymentErrorCode =
   | "REQUEST_NOT_FOUND"
   | "ALREADY_PAID"
+  | "REQUEST_NOT_PAYABLE"
+  | "QUOTE_EXPIRED"
   | "WALLET_NOT_FOUND"
   | "INSUFFICIENT_BALANCE"
   | "QUOTE_AMOUNT_MISSING";
@@ -128,9 +132,23 @@ export async function processWalletPayment(
         throw new WalletPaymentFailure("REQUEST_NOT_FOUND");
       }
 
-      // Prevent duplicate payment.
+      // Prevent duplicate and non-payable payments. This is the same state
+      // table the PayPal checkout uses, so a cancelled, refunded or rejected
+      // request cannot be settled through the wallet instead.
       if (request.status === "paid") {
         throw new WalletPaymentFailure("ALREADY_PAID");
+      }
+
+      const statusError = mainPaymentStatusError(request.status);
+      if (statusError) {
+        throw new WalletPaymentFailure("REQUEST_NOT_PAYABLE");
+      }
+
+      const quote = request.quote as { expiresAt?: unknown } | undefined;
+      if (
+        isQuoteExpired(quote?.expiresAt as Parameters<typeof isQuoteExpired>[0])
+      ) {
+        throw new WalletPaymentFailure("QUOTE_EXPIRED");
       }
 
       // Price the payment from the stored quote, never from the caller.
@@ -154,7 +172,7 @@ export async function processWalletPayment(
        * this a wallet payment made while a PayPal capture was in flight could
        * drain the balance the capture is about to settle from.
        */
-      const reservedMinor = Math.max(0, storedMinor(wallet, "reserved"));
+      const reservedMinor = storedMinor(wallet, "reserved");
       const availableMinor = currentBalanceMinor - reservedMinor;
       const amountMinor = minorFromStored(amount);
 
@@ -237,6 +255,18 @@ export function walletPaymentErrorResponse(
       return {
         code: "ALREADY_PAID",
         message: "This request has already been paid.",
+        status: 400,
+      };
+    case "REQUEST_NOT_PAYABLE":
+      return {
+        code: "REQUEST_NOT_PAYABLE",
+        message: "This request is no longer awaiting payment.",
+        status: 409,
+      };
+    case "QUOTE_EXPIRED":
+      return {
+        code: "QUOTE_EXPIRED",
+        message: "This quotation has expired. Please request a new quote.",
         status: 400,
       };
     case "WALLET_NOT_FOUND":

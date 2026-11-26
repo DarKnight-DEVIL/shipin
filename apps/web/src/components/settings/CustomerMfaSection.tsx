@@ -5,20 +5,18 @@
  *
  * Self-contained: loads the caller's MFA status from
  * /api/auth/mfa/status and drives the standard enrollment endpoints
- * (TOTP, backup codes, SMS, security keys). Every call is authenticated
- * with the signed-in customer's Firebase ID token.
+ * (TOTP and backup codes). Every call is authenticated with the signed-in
+ * customer's Firebase ID token.
+ *
+ * SMS and security keys are shown as unavailable rather than hidden: both were
+ * announced, and a missing card reads as "this product has no SMS" instead of
+ * "SMS is coming".
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
-import {
-  FirebaseMfaError,
-  RECAPTCHA_CONTAINER_ID,
-  confirmSmsEnrollment,
-  startSmsEnrollment,
-} from "@/lib/firebaseMfa";
 import { MfaApiError } from "@/lib/mfaApi";
 import {
   beginTotpEnrollment,
@@ -27,15 +25,6 @@ import {
   regenerateBackupCodes,
   type MfaConfigStatus,
 } from "@/lib/mfaSetupClient";
-import {
-  WebAuthnCeremonyError,
-  completeSecurityKeyRegistration,
-  isWebAuthnSupported,
-  registerSecurityKey,
-  removeSecurityKey,
-} from "@/lib/webauthnClient";
-
-const E164 = /^\+[1-9]\d{1,14}$/;
 
 const cardClass =
   "rounded-xl border border-[var(--border)] bg-[var(--surface-2)]/40 p-4";
@@ -49,11 +38,7 @@ const secondaryBtn =
   "rounded-lg bg-[var(--surface-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--foreground)] transition hover:bg-[var(--surface-3,rgba(148,163,184,0.18))] disabled:cursor-not-allowed disabled:opacity-60";
 
 function errorMessage(caught: unknown, fallback: string): string {
-  if (
-    caught instanceof MfaApiError ||
-    caught instanceof WebAuthnCeremonyError ||
-    caught instanceof FirebaseMfaError
-  ) {
+  if (caught instanceof MfaApiError) {
     return caught.message;
   }
   if (caught instanceof Error && caught.message) return caught.message;
@@ -72,16 +57,6 @@ export default function CustomerMfaSection() {
   const [totpQr, setTotpQr] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [freshCodes, setFreshCodes] = useState<string[]>([]);
-
-  // SMS
-  const [phone, setPhone] = useState("");
-  const [smsCode, setSmsCode] = useState("");
-  const [smsPending, setSmsPending] = useState(false);
-  const [smsVerificationId, setSmsVerificationId] = useState("");
-
-  // Security key
-  const [keyName, setKeyName] = useState("");
-  const [pendingRemoval, setPendingRemoval] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const user = auth.currentUser;
@@ -162,113 +137,6 @@ export default function CustomerMfaSection() {
     });
   }
 
-  function submitPhone(event: React.FormEvent) {
-    event.preventDefault();
-
-    const value = phone.trim();
-
-    if (!E164.test(value)) {
-      setError("Use international format, for example +15551234567.");
-      return;
-    }
-
-    const user = auth.currentUser;
-
-    if (!user) {
-      setError("Sign in to manage two-factor authentication.");
-      return;
-    }
-
-    setBusy("sms-send");
-    setError(null);
-    setMessage(null);
-
-    void (async () => {
-      try {
-        // Google sends and verifies this code; nothing is stored in Firestore.
-        const verificationId = await startSmsEnrollment(auth, user, value);
-        setSmsVerificationId(verificationId);
-        setSmsPending(true);
-        setSmsCode("");
-        setMessage(`Google sent a code to ${value}.`);
-      } catch (caught) {
-        setError(errorMessage(caught, "Could not send the code."));
-      } finally {
-        setBusy(null);
-      }
-    })();
-  }
-
-  function submitSmsCode(event: React.FormEvent) {
-    event.preventDefault();
-
-    const user = auth.currentUser;
-
-    if (!user) {
-      setError("Sign in to manage two-factor authentication.");
-      return;
-    }
-
-    setBusy("sms-verify");
-    setError(null);
-
-    void (async () => {
-      try {
-        await confirmSmsEnrollment(user, smsVerificationId, smsCode.trim());
-        setSmsPending(false);
-        setSmsCode("");
-        setPhone("");
-        setSmsVerificationId("");
-        setMessage(
-          "SMS enabled. You will be asked for a code at every sign-in."
-        );
-        await load();
-      } catch (caught) {
-        setError(errorMessage(caught, "Could not verify that code."));
-      } finally {
-        setBusy(null);
-      }
-    })();
-  }
-  function addSecurityKey(event: React.FormEvent) {
-    event.preventDefault();
-
-    if (!isWebAuthnSupported()) {
-      setError(
-        "This browser does not support security keys. Use a current browser over HTTPS."
-      );
-      return;
-    }
-
-    const name = keyName.trim() || "Security key";
-
-    void withToken("webauthn-add", async (idToken) => {
-      const credential = await registerSecurityKey(idToken, name);
-      await completeSecurityKeyRegistration(idToken, credential, name);
-      setKeyName("");
-      setMessage("Security key added.");
-      await load();
-    });
-  }
-
-  function deleteSecurityKey(id: string) {
-    const remaining = status?.webauthn.credentials.length ?? 0;
-    const otherFactors =
-      (status?.totp.enabled ? 1 : 0) + (status?.sms.enabled ? 1 : 0);
-
-    if (remaining <= 1 && otherFactors === 0) {
-      setError("Add another factor before removing your only second factor.");
-      return;
-    }
-
-    void withToken("webauthn-remove", async (idToken) => {
-      await removeSecurityKey(idToken, id);
-      setPendingRemoval(null);
-      setMessage("Security key removed.");
-      await load();
-    });
-  }
-
   function regenerate(event: React.FormEvent) {
     event.preventDefault();
 
@@ -285,7 +153,6 @@ export default function CustomerMfaSection() {
     ? [
         status.totp.enabled ? "Authenticator" : null,
         status.sms.enabled ? "SMS" : null,
-        status.webauthn.enabled ? "Security key" : null,
       ].filter(Boolean)
     : [];
 
@@ -457,132 +324,31 @@ export default function CustomerMfaSection() {
         ) : null}
       </div>
 
-      {/* Security key ----------------------------------------------------- */}
+      {/* Not yet available ------------------------------------------------ */}
       <div className={cardClass}>
-        <p className={titleClass}>Security key or passkey</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className={titleClass}>Security key or passkey</p>
+          <span className="rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted)]">
+            Coming soon
+          </span>
+        </div>
         <p className={hintClass}>
-          A hardware key or the passkey built into this device. Requires a
-          WebAuthn-capable browser over HTTPS.
+          A hardware key or the passkey built into your device. Not available
+          yet - the authenticator app above is the second factor to use today.
         </p>
-
-        {status?.webauthn.credentials.length ? (
-          <ul className="mt-3 divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
-            {status.webauthn.credentials.map((key) => (
-              <li
-                key={key.id}
-                className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
-              >
-                <span className="text-[12px] text-[var(--foreground)]">
-                  {key.name}
-                </span>
-                {pendingRemoval === key.id ? (
-                  <span className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="rounded-lg bg-rose-500 px-2.5 py-1 text-[11px] font-semibold text-white"
-                      onClick={() => deleteSecurityKey(key.id)}
-                      disabled={busy !== null}
-                    >
-                      Confirm
-                    </button>
-                    <button
-                      type="button"
-                      className={secondaryBtn}
-                      onClick={() => setPendingRemoval(null)}
-                    >
-                      Cancel
-                    </button>
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    className={secondaryBtn}
-                    onClick={() => setPendingRemoval(key.id)}
-                  >
-                    Remove
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-
-        <form onSubmit={addSecurityKey} className="mt-3 flex flex-wrap gap-2">
-          <input
-            value={keyName}
-            onChange={(event) => setKeyName(event.target.value)}
-            placeholder="Key name (e.g. YubiKey)"
-            maxLength={60}
-            className={`${inputClass} max-w-[240px]`}
-          />
-          <button
-            type="submit"
-            className={secondaryBtn}
-            disabled={busy !== null || !keyName.trim()}
-          >
-            {busy === "webauthn-add" ? "Waiting for key…" : "Add security key"}
-          </button>
-        </form>
       </div>
 
-      {/* SMS -------------------------------------------------------------- */}
       <div className={cardClass}>
-        {/* Invisible reCAPTCHA for the Identity Platform ceremony. */}
-        <div id={RECAPTCHA_CONTAINER_ID} />
-        <p className={titleClass}>SMS codes</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className={titleClass}>SMS codes</p>
+          <span className="rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted)]">
+            Coming soon
+          </span>
+        </div>
         <p className={hintClass}>
-          A six-digit code by text message. Weaker than an app-based code, but
-          useful as a fallback.
-          {status?.sms.enabled && status.sms.phoneNumber
-            ? ` Currently enabled for ${status.sms.phoneNumber}.`
-            : ""}
+          A six-digit code by text message. Not available yet - there is
+          nothing to set up here, and no codes are sent until it launches.
         </p>
-
-        {smsPending ? (
-          <form onSubmit={submitSmsCode} className="mt-3 flex flex-wrap gap-2">
-            <input
-              value={smsCode}
-              onChange={(event) => setSmsCode(event.target.value)}
-              placeholder="123456"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              className={`${inputClass} max-w-[160px]`}
-            />
-            <button
-              type="submit"
-              className={primaryBtn}
-              disabled={busy !== null || smsCode.length !== 6}
-            >
-              {busy === "sms-verify" ? "Verifying…" : "Verify and enable"}
-            </button>
-            <button
-              type="button"
-              className={secondaryBtn}
-              onClick={() => setSmsPending(false)}
-            >
-              Cancel
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={submitPhone} className="mt-3 flex flex-wrap gap-2">
-            <input
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              placeholder="+15551234567"
-              inputMode="tel"
-              autoComplete="tel"
-              className={`${inputClass} max-w-[240px]`}
-            />
-            <button
-              type="submit"
-              className={secondaryBtn}
-              disabled={busy !== null}
-            >
-              {busy === "sms-send" ? "Sending…" : "Send code"}
-            </button>
-          </form>
-        )}
       </div>
     </div>
   );

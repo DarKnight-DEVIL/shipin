@@ -187,6 +187,17 @@ describe("processWalletPayment", () => {
     await expect(fn(REQUEST_ID, USER_ID)).rejects.toThrow("ALREADY_PAID");
   });
 
+  it("rejects a request that is no longer payable", async () => {
+    const fn = await withFreshService(
+      { ...QUOTED_REQUEST, status: "refunded" },
+      { balance: 200 }
+    );
+
+    await expect(fn(REQUEST_ID, USER_ID)).rejects.toThrow(
+      "REQUEST_NOT_PAYABLE"
+    );
+  });
+
   it("rejects insufficient balance", async () => {
     const fn = await withFreshService(QUOTED_REQUEST, { balance: 30 });
 
@@ -247,6 +258,12 @@ describe("walletPaymentErrorResponse", () => {
       400,
     ],
     ["ALREADY_PAID", "This request has already been paid.", 400],
+    ["REQUEST_NOT_PAYABLE", "This request is no longer awaiting payment.", 409],
+    [
+      "QUOTE_EXPIRED",
+      "This quotation has expired. Please request a new quote.",
+      400,
+    ],
     ["WALLET_NOT_FOUND", "Wallet not found.", 400],
     ["INSUFFICIENT_BALANCE", "Insufficient wallet balance.", 400],
   ];

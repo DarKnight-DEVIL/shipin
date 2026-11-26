@@ -8,6 +8,11 @@ import { requireAdmin, getAdminAuthError } from "@/lib/adminAuth";
 import { withErrorHandler } from "@/utils/errors";
 import { recordAdminAudit } from "@/lib/adminAudit";
 import { adminCreditBodySchema, readAndValidateBody } from "@/lib/validation";
+import {
+  readIdempotencyKey,
+  readIdempotentResponse,
+  rememberIdempotentResponse,
+} from "@/lib/idempotency";
 import { isMinor, minorFromStored, storedMinor, toDecimal } from "@/lib/money";
 import { balanceFields, ledgerFields } from "@/lib/moneyMode";
 import { walletCreditMax } from "@/config/walletCreditLimit";
@@ -40,6 +45,18 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const requestId = parsed.data.requestId ?? null;
 
     const isRefund = type === "refund";
+
+    const idempotencyKey = readIdempotencyKey(request);
+    const replayScope = {
+      uid: admin.uid,
+      scope: "admin.wallet.credit",
+      key: idempotencyKey ?? "",
+    };
+
+    if (idempotencyKey) {
+      const prior = await readIdempotentResponse(replayScope);
+      if (prior) return NextResponse.json(prior.body, { status: prior.status });
+    }
 
     /*
      * ========================================
@@ -197,6 +214,19 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         if (requestData?.refundRequest?.walletStatus === "completed") {
           throw new Error("WALLET_REFUND_ALREADY_COMPLETED");
         }
+
+        const recordedWalletMinor = minorFromStored(
+          requestData?.refundRequest?.walletAmount ?? 0
+        );
+        const requestedCreditMinor = minorFromStored(creditAmount);
+
+        if (recordedWalletMinor <= 0) {
+          throw new Error("REFUND_HAS_NO_WALLET_PORTION");
+        }
+
+        if (recordedWalletMinor !== requestedCreditMinor) {
+          throw new Error("REFUND_AMOUNT_MISMATCH");
+        }
       }
 
       /*
@@ -223,7 +253,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
        * ====================================
        */
 
-      const newBalanceMinor = currentBalanceMinor + minorFromStored(creditAmount);
+      const newBalanceMinor =
+        currentBalanceMinor + minorFromStored(creditAmount);
       const newBalance = toDecimal(newBalanceMinor);
 
       /*
@@ -311,8 +342,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         transaction.update(requestRef, {
           "refundRequest.walletStatus": "completed",
 
-          "refundRequest.walletAmount": creditAmount,
-
           "refundRequest.walletCompletedAt": FieldValue.serverTimestamp(),
 
           ...(fullyRefunded
@@ -359,7 +388,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       },
     });
 
-    return NextResponse.json({
+    const responseBody = {
       success: true,
 
       customerId,
@@ -373,7 +402,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       transactionId: transactionRef.id,
 
       type: isRefund ? "refund" : "admin_credit",
-    });
+    };
+
+    if (idempotencyKey) {
+      await rememberIdempotentResponse(replayScope, {
+        status: 200,
+        body: responseBody,
+      });
+    }
+
+    return NextResponse.json(responseBody);
   } catch (error) {
     /*
      * ========================================
@@ -470,6 +508,27 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
           {
             status: 400,
           }
+        );
+      }
+
+      if (error.message === "REFUND_HAS_NO_WALLET_PORTION") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "This refund has no wallet portion to credit.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (error.message === "REFUND_AMOUNT_MISMATCH") {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "The wallet credit must equal the recorded wallet portion of this refund.",
+          },
+          { status: 400 }
         );
       }
 

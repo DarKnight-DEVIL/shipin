@@ -40,12 +40,30 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // Firestore rules cannot redact one field from a document read. Until the
+    // legacy TOTP fields are moved to userSecrets/{uid}, the owner's direct
+    // read of users/{uid} would return the secret. Deny that read instead; the
+    // app fetches a safe projection from /api/profile, which migrates first.
+    function hasLegacyTotpSecret() {
+      return 'mfa' in resource.data
+        && resource.data.mfa is map
+        && 'totp' in resource.data.mfa
+        && resource.data.mfa.totp is map
+        && resource.data.mfa.totp.keys().hasAny([
+             'secret',
+             'backupCodes',
+             'lastTotpCodeHash',
+             'lastTotpVerifiedAt',
+             'lastBackupCodeUsedAt'
+           ]);
+    }
+
     // ------------------------------------------------------------------ users
     // A customer owns their profile, but not the fields that grant privilege
     // or move money. Without this split a customer could write `role: "admin"`
     // on their own document, enrol their own MFA, and inherit the console.
     match /users/{userId} {
-      allow read: if isSelf(userId);
+      allow read: if isSelf(userId) && !hasLegacyTotpSecret();
 
       allow create: if isSelf(userId)
         && (!('role' in request.resource.data) || request.resource.data.role == 'customer')
@@ -65,6 +83,22 @@ service cloud.firestore {
            ]);
 
       allow delete: if false;
+    }
+
+    // ----------------------------------------------------------- user secrets
+    // TOTP secrets, backup-code hashes and replay markers. Admin SDK only:
+    // these fields used to sit on the self-readable users/{uid} document, where
+    // an XSS could copy a working second factor. The explicit false keeps a
+    // future wildcard rule from quietly exposing it.
+    match /userSecrets/{userId} {
+      allow read, write: if false;
+    }
+
+    // PayPal refund ids are uniqueness keys for the money paths. Admin SDK
+    // only; an explicit deny keeps a future wildcard from exposing which
+    // transaction ids exist.
+    match /paypalRefundTransactions/{transactionId} {
+      allow read, write: if false;
     }
 
     // --------------------------------------------------------------- requests

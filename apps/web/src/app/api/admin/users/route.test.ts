@@ -182,6 +182,7 @@ describe("GET /api/admin/users", () => {
         }),
         doc("u-sms", { mfa: { sms: { enabled: true } }, createdAt: 5 }),
         doc("u-key", {
+          // A leftover security-key record is not an enrolled factor any more.
           mfa: { webauthn: { enabled: true } },
           role: "superuser",
         }),
@@ -218,7 +219,7 @@ describe("GET /api/admin/users", () => {
     expect(body.users[3]).toMatchObject({
       uid: "u-key",
       role: "customer",
-      mfaEnabled: true,
+      mfaEnabled: false,
     });
     // The query, not the route, decides the order and the page size.
     expect(calls.map((call) => call.method)).toEqual([

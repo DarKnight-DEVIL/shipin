@@ -1,19 +1,16 @@
+import crypto from "crypto";
+
 import { NextRequest, NextResponse } from "next/server";
+import { FieldValue } from "firebase-admin/firestore";
 
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
+import { hashBackupCode } from "@/lib/mfa";
+import { loadTotpSecrets, userSecretsRef } from "@/lib/mfaSecrets";
 import {
   availableMfaMethods,
   verifyMfaProof,
   type MfaMethod,
 } from "@/lib/mfaProof";
-import {
-  credentialUsableHere,
-  getWebAuthnConfig,
-  isChallengeExpired,
-  readStoredCredentials,
-  verifyAssertion,
-  type WebAuthnRecord,
-} from "@/lib/webauthn";
 import {
   MFA_SESSION_TTL_MS,
   clearMfaSessionCookieHeader,
@@ -32,22 +29,6 @@ import { withErrorHandler } from "@/utils/errors";
 import { mfaSessionBodySchema, readAndValidateBody } from "@/lib/validation";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
-
-/** Shape of an AuthenticationResponseJSON we are willing to verify. */
-function readAssertion(value: unknown) {
-  if (!value || typeof value !== "object") return null;
-
-  const assertion = value as Record<string, unknown>;
-
-  const valid =
-    typeof assertion.id === "string" &&
-    typeof assertion.rawId === "string" &&
-    assertion.type === "public-key" &&
-    typeof assertion.response === "object" &&
-    assertion.response !== null;
-
-  return valid ? (value as never) : null;
-}
 
 /** Build the elevated-session response shared by every MFA method. */
 function elevatedResponse(uid: string, method: MfaMethod) {
@@ -172,10 +153,28 @@ async function resolveAdminCaller(
       ?.sign_in_second_factor
   );
 
+  /*
+   * `users/{uid}` now holds only the public `mfa.totp.enabled` flag. Merge the
+   * server-only secret record into the in-memory profile so the shared proof
+   * helpers see the same shape they saw before the split.
+   */
+  const publicMfa =
+    typeof profile.mfa === "object" && profile.mfa !== null
+      ? (profile.mfa as Record<string, unknown>)
+      : {};
+  const totpSecrets = await loadTotpSecrets(decoded.uid, publicMfa);
+  const publicTotp =
+    typeof publicMfa.totp === "object" && publicMfa.totp !== null
+      ? (publicMfa.totp as Record<string, unknown>)
+      : {};
+
   return {
     uid: decoded.uid,
     email: decoded.email,
-    profile,
+    profile: {
+      ...profile,
+      mfa: { ...publicMfa, totp: { ...publicTotp, ...totpSecrets } },
+    },
     secondFactorVerified,
   };
 }
@@ -255,131 +254,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const body = parsed.data;
 
-  if (body.method === "webauthn") {
-    const assertion = readAssertion(body.credential);
-
-    if (!assertion) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Invalid security key response.",
-          code: "WEBAUTHN_INVALID_RESPONSE",
-        },
-        { status: 400, headers: NO_STORE }
-      );
-    }
-
-    const userRef = adminDb.collection("users").doc(caller.uid);
-    const record =
-      (caller.profile as { mfa?: { webauthn?: WebAuthnRecord } } | undefined)
-        ?.mfa?.webauthn ?? {};
-    const credentials = readStoredCredentials(record);
-
-    if (credentials.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "No security key is registered for this account.",
-          code: "MFA_SETUP_REQUIRED",
-        },
-        { status: 403, headers: NO_STORE }
-      );
-    }
-
-    if (!record.pendingChallenge || isChallengeExpired(record.pendingExpires)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "This sign-in attempt expired. Try again.",
-          code: "WEBAUTHN_CHALLENGE_EXPIRED",
-        },
-        { status: 400, headers: NO_STORE }
-      );
-    }
-
-    const presented = (assertion as { id: string }).id;
-    const stored = credentials.find(
-      (credential) => credential.credentialID === presented
-    );
-
-    // The challenge is single-use no matter how verification goes.
-    const clearChallenge = () =>
-      userRef.update({
-        "mfa.webauthn.pendingChallenge": null,
-        "mfa.webauthn.pendingExpires": null,
-      });
-
-    if (!stored) {
-      await clearChallenge();
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: "That security key is not registered for this account.",
-          code: "WEBAUTHN_UNKNOWN_CREDENTIAL",
-        },
-        { status: 401, headers: NO_STORE }
-      );
-    }
-
-    /*
-     * A credential is bound to the RP ID it was enrolled for. After a move to another
-     * domain the stored key is still listed but can never verify here, and the library
-     * would answer only "could not be verified" - true and useless. The tag makes it a
-     * sentence the customer can act on.
-     */
-    const { rpID } = getWebAuthnConfig(request.nextUrl.origin);
-
-    if (!credentialUsableHere(stored, rpID)) {
-      await clearChallenge();
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: `This key was registered for ${stored.rpID}, which this site no longer uses. Register it again to use it here.`,
-          code: "WEBAUTHN_RP_MISMATCH",
-        },
-        { status: 401, headers: NO_STORE }
-      );
-    }
-
-    const result = await verifyAssertion({
-      response: assertion,
-      expectedChallenge: record.pendingChallenge,
-      credential: stored,
-      // Same origin rule as the verify route: the ceremony is bound to the
-      // origin that served the page, which is not necessarily APP_URL in dev.
-      requestOrigin: request.nextUrl.origin,
-    });
-
-    if (!result.verified) {
-      await clearChallenge();
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: "That security key could not be verified.",
-          code: "MFA_INVALID_CODE",
-        },
-        { status: 401, headers: NO_STORE }
-      );
-    }
-
-    await userRef.update({
-      "mfa.webauthn.credentials": credentials.map((credential) =>
-        credential.credentialID === stored.credentialID
-          ? // Re-stamped on use, so a credential enrolled before the tag existed is
-            // labelled from the first successful sign-in instead of staying ambiguous.
-            { ...credential, counter: result.newCounter, rpID }
-          : credential
-      ),
-      "mfa.webauthn.pendingChallenge": null,
-      "mfa.webauthn.pendingExpires": null,
-    });
-
-    return elevatedResponse(caller.uid, "webauthn");
-  }
-
   const code = typeof body.code === "string" ? body.code.trim() : "";
   const method: MfaMethod | undefined =
     body.method === "totp" || body.method === "backup"
@@ -397,10 +271,26 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  const verification = verifyMfaProof(caller.profile as never, {
-    totp: method === "totp" ? code : undefined,
-    backup: method === "backup" ? code : undefined,
-  });
+  const profileMfa = caller.profile?.mfa as
+    | {
+        totp?: {
+          lastTotpCodeHash?: string;
+          lastTotpVerifiedAt?: number;
+        };
+      }
+    | undefined;
+  const codeHash = crypto.createHash("sha256").update(code).digest("hex");
+  const replayedTotp =
+    method === "totp" &&
+    profileMfa?.totp?.lastTotpCodeHash === codeHash &&
+    Date.now() - Number(profileMfa?.totp?.lastTotpVerifiedAt ?? 0) < 90_000;
+
+  const verification = replayedTotp
+    ? ({ ok: false, reason: "INVALID_CODE" } as const)
+    : verifyMfaProof(caller.profile as never, {
+        totp: method === "totp" ? code : undefined,
+        backup: method === "backup" ? code : undefined,
+      });
 
   if (!verification.ok) {
     if (verification.reason === "NO_MFA_CONFIGURED") {
@@ -424,6 +314,20 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       { status: 401, headers: NO_STORE }
     );
   }
+
+  await userSecretsRef(caller.uid).update(
+    verification.method === "backup"
+      ? {
+          "totp.backupCodes": FieldValue.arrayRemove(hashBackupCode(code)),
+          "totp.lastBackupCodeUsedAt": Date.now(),
+          updatedAt: FieldValue.serverTimestamp(),
+        }
+      : {
+          "totp.lastTotpCodeHash": codeHash,
+          "totp.lastTotpVerifiedAt": Date.now(),
+          updatedAt: FieldValue.serverTimestamp(),
+        }
+  );
 
   return elevatedResponse(caller.uid, verification.method);
 });

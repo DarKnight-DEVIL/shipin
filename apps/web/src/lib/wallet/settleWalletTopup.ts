@@ -11,10 +11,15 @@
  * crediting again. That is what lets a sweep run while a browser is retrying.
  */
 
-import { FieldValue, type DocumentData, type DocumentReference } from "firebase-admin/firestore";
+import {
+  FieldValue,
+  type DocumentData,
+  type DocumentReference,
+} from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { minorFromStored, storedMinor, toDecimal } from "@/lib/money";
+import { sameCents } from "@/lib/paypal/amounts";
 import { balanceFields, isMinorOnlyMode, ledgerFields } from "@/lib/moneyMode";
 
 export interface WalletCapture {
@@ -38,7 +43,8 @@ export async function settleWalletTopup({
   topupOrder,
   capture,
 }: WalletTopupSettlementInput): Promise<WalletTopupSettlement> {
-  const storedAmount = Number(topupOrder.amount);
+  const storedAmountMinor = storedMinor(topupOrder, "amount");
+  const storedAmount = toDecimal(storedAmountMinor);
 
   if (!Number.isFinite(capture.amount) || capture.amount <= 0) {
     return { ok: false, error: "Invalid PayPal capture amount.", status: 400 };
@@ -54,7 +60,7 @@ export async function settleWalletTopup({
 
   if (
     !Number.isFinite(storedAmount) ||
-    Math.abs(capturedOrZero(capture) - storedAmount) > 0.01
+    !sameCents(capturedOrZero(capture), storedAmount)
   ) {
     return {
       ok: false,
@@ -69,7 +75,9 @@ export async function settleWalletTopup({
   }
 
   const walletRef = adminDb.collection("wallets").doc(userId);
-  const transactionRef = adminDb.collection("walletTransactions").doc(capture.captureId);
+  const transactionRef = adminDb
+    .collection("walletTransactions")
+    .doc(capture.captureId);
 
   const result = await adminDb.runTransaction(async (transaction) => {
     const walletSnapshot = await transaction.get(walletRef);
@@ -91,8 +99,13 @@ export async function settleWalletTopup({
      * balance of nothing. The read above is inside this transaction, so an
      * absolute write is just as atomic as the increment beside it.
      */
+    const currentBalanceMinor = storedMinor(walletSnapshot.data(), "balance");
+    if (currentBalanceMinor < 0) {
+      throw new Error("The wallet balance is negative.");
+    }
+
     const newBalanceMinor =
-      storedMinor(walletSnapshot.data(), "balance") + minorFromStored(capture.amount);
+      currentBalanceMinor + minorFromStored(capture.amount);
     const newBalance = toDecimal(newBalanceMinor);
 
     if (walletSnapshot.exists) {

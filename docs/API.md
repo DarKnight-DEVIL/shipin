@@ -97,10 +97,6 @@ clients branch on it rather than on the status alone.
 | `/api/auth/mfa/status` | customer |
 | `/api/auth/mfa/totp/setup` | customer |
 | `/api/auth/mfa/totp/verify` | customer |
-| `/api/auth/mfa/webauthn/credentials` | customer |
-| `/api/auth/mfa/webauthn/register/complete` | customer |
-| `/api/auth/mfa/webauthn/register/start` | customer |
-| `/api/auth/mfa/webauthn/verify` | customer |
 | `/api/auth/password-leak-check` | public |
 | `/api/compliance/breach` | admin |
 | `/api/compliance/dashboard` | admin |

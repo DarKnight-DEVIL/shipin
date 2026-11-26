@@ -19,6 +19,7 @@ vi.mock("@/lib/firebaseAdmin", () => ({
 // the subject lazily, after a module reset, keeps these tests independent of
 // file order: without it this file could receive that mock instead of its own.
 let authorizeInspectionAccess: (typeof import("./r2Access"))["authorizeInspectionAccess"];
+let authorizeInspectionUpload: (typeof import("./r2Access"))["authorizeInspectionUpload"];
 let parseInspectionKey: (typeof import("./r2Access"))["parseInspectionKey"];
 
 const snap = (data: Record<string, unknown> | undefined) => ({
@@ -39,8 +40,11 @@ beforeEach(async () => {
   vi.resetModules();
   mocks.collection.mockReset();
   mocks.getAll.mockReset();
-  ({ authorizeInspectionAccess, parseInspectionKey } =
-    await import("./r2Access"));
+  ({
+    authorizeInspectionAccess,
+    authorizeInspectionUpload,
+    parseInspectionKey,
+  } = await import("./r2Access"));
 });
 
 describe("parseInspectionKey", () => {
@@ -71,6 +75,23 @@ describe("authorizeInspectionAccess", () => {
     await expect(
       authorizeInspectionAccess("staff-1", "req-1")
     ).resolves.toBeNull();
+  });
+
+  it("allows only admins to upload inspection photos", async () => {
+    mocks.collection.mockImplementation(() => ({
+      doc: () => ({ get: async () => snap({ role: "customer" }) }),
+    }));
+
+    await expect(authorizeInspectionUpload("user-1")).resolves.toMatchObject({
+      status: 403,
+      code: "ADMIN_ACCESS_REQUIRED",
+    });
+
+    mocks.collection.mockImplementation(() => ({
+      doc: () => ({ get: async () => snap({ role: "admin" }) }),
+    }));
+
+    await expect(authorizeInspectionUpload("staff-1")).resolves.toBeNull();
   });
 
   it("denies a signed-in stranger", async () => {

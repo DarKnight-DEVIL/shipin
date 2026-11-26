@@ -58,28 +58,6 @@ export async function startMfaSession(
 }
 
 /**
- * Elevate using a WebAuthn assertion.
- *
- * The assertion must come from `assertSecurityKey()` in the same ceremony:
- * the server verifies the signature against the challenge it issued.
- */
-export async function startWebAuthnSession(
-  idToken: string,
-  credential: unknown
-): Promise<{ expiresAt: number | null; method: MfaMethod }> {
-  const body = await mfaApi<SessionResponse>(SESSION_PATH, {
-    idToken,
-    method: "POST",
-    body: { method: "webauthn", credential },
-  });
-
-  return {
-    expiresAt: typeof body.expiresAt === "number" ? body.expiresAt : null,
-    method: "webauthn",
-  };
-}
-
-/**
  * End the elevated session (call on admin sign-out).
  *
  * The route requires the caller's ID token, so pass one obtained *before*

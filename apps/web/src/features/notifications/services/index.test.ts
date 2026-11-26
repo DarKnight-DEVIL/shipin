@@ -205,18 +205,18 @@ describe("subscribeToNotifications", () => {
 
 describe("notification preferences", () => {
   it("returns defaults when the user document is missing", async () => {
-    mocks.getDoc.mockResolvedValue({ exists: () => false });
+    mocks.customerApi.mockResolvedValue({ notifications: null });
 
     await expect(getNotificationPreferences("user-1")).resolves.toEqual(
       DEFAULT_NOTIFICATION_PREFERENCES
     );
+    expect(mocks.customerApi).toHaveBeenCalledWith(
+      "/api/notifications/preferences"
+    );
   });
 
   it("returns defaults when nothing is saved yet", async () => {
-    mocks.getDoc.mockResolvedValue({
-      exists: () => true,
-      data: () => ({ preferences: {} }),
-    });
+    mocks.customerApi.mockResolvedValue({ notifications: null });
 
     await expect(getNotificationPreferences("user-1")).resolves.toEqual(
       DEFAULT_NOTIFICATION_PREFERENCES
@@ -224,17 +224,12 @@ describe("notification preferences", () => {
   });
 
   it("merges partial saved preferences over the defaults", async () => {
-    mocks.getDoc.mockResolvedValue({
-      exists: () => true,
-      data: () => ({
-        preferences: {
-          notifications: {
-            channels: { whatsapp: true },
-            whatsapp: { phone: "+919876543210" },
-            categories: { support: false },
-          },
-        },
-      }),
+    mocks.customerApi.mockResolvedValue({
+      notifications: {
+        channels: { whatsapp: true },
+        whatsapp: { phone: "+919876543210" },
+        categories: { support: false },
+      },
     });
 
     const result = await getNotificationPreferences("user-1");
@@ -256,7 +251,7 @@ describe("notification preferences", () => {
   });
 
   it("falls back to defaults when the read fails", async () => {
-    mocks.getDoc.mockRejectedValue(new Error("offline"));
+    mocks.customerApi.mockRejectedValue(new Error("offline"));
 
     await expect(getNotificationPreferences("user-1")).resolves.toEqual(
       DEFAULT_NOTIFICATION_PREFERENCES

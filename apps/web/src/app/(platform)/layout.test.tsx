@@ -30,7 +30,6 @@ const state = vi.hoisted(() => ({
   currentUserReads: 0,
   authCallback: null as null | ((user: unknown) => Promise<void> | void),
   unsubscribe: vi.fn(),
-  getDoc: vi.fn(),
   customerApi: vi.fn(),
 }));
 
@@ -60,15 +59,8 @@ vi.mock("@/lib/firebase", () => ({
   },
 }));
 
-// The repair reads Firestore directly, then POSTs /api/profile when the
-// document is missing.
-vi.mock("firebase/firestore", () => ({
-  doc: (_db: unknown, collection: string, id: string) => ({
-    path: `${collection}/${id}`,
-  }),
-  getDoc: state.getDoc,
-}));
-vi.mock("@/lib/firebaseDb", () => ({ db: {} }));
+// The repair reads the safe profile projection, then POSTs /api/profile when
+// the document is missing.
 vi.mock("@/lib/customerApiClient", () => ({ customerApi: state.customerApi }));
 
 vi.mock("@/components/platform/PlatformShell", () => ({
@@ -105,8 +97,7 @@ const signedInUser = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const existingProfile = {
-  exists: () => true,
-  data: () => ({ displayName: "Ada", email: "ada@example.com", phone: "" }),
+  profile: { displayName: "Ada", email: "ada@example.com", phone: "" },
 };
 
 /** Deliver an auth-state change and let React flush it. */
@@ -124,8 +115,7 @@ beforeEach(() => {
   state.authCallback = null;
   state.replace.mockReset();
   state.unsubscribe.mockReset();
-  state.getDoc.mockReset().mockResolvedValue(existingProfile);
-  state.customerApi.mockReset().mockResolvedValue({ success: true });
+  state.customerApi.mockReset().mockResolvedValue(existingProfile);
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -175,7 +165,7 @@ describe("PlatformLayout: signed out", () => {
 
     expect(screen.getByTestId("page")).toBeTruthy();
     expect(screen.queryByTestId("loading")).toBeNull();
-    expect(state.getDoc).not.toHaveBeenCalled();
+    expect(state.customerApi).not.toHaveBeenCalled();
     expect(state.replace).not.toHaveBeenCalled();
   });
 
@@ -194,13 +184,13 @@ describe("PlatformLayout: signed out", () => {
 
 describe("PlatformLayout: signed in", () => {
   it("holds the page behind the loading skeleton until the repair settles", async () => {
-    // Own the promise so no other test can overwrite getDoc's behaviour
+    // Own the promise so no other test can overwrite the API's behaviour
     // while React is waiting for the profile document.
     let resolveProfile!: (value: unknown) => void;
     const profilePromise = new Promise<unknown>((resolve) => {
       resolveProfile = resolve;
     });
-    state.getDoc.mockImplementation(() => profilePromise);
+    state.customerApi.mockImplementation(() => profilePromise);
 
     render(<PlatformLayout>{page}</PlatformLayout>);
 
@@ -227,14 +217,13 @@ describe("PlatformLayout: signed in", () => {
     await emitAuth(signedInUser());
     await waitFor(() => expect(screen.getByTestId("page")).toBeTruthy());
 
-    expect(state.getDoc).toHaveBeenCalledTimes(1);
-    expect(state.getDoc.mock.calls[0][0]).toEqual({ path: "users/user-1" });
-    expect(state.customerApi).not.toHaveBeenCalled();
+    expect(state.customerApi).toHaveBeenCalledTimes(1);
+    expect(state.customerApi).toHaveBeenCalledWith("/api/profile");
     expect(state.replace).not.toHaveBeenCalled();
   });
 
   it("still renders the page when the repair fails", async () => {
-    state.getDoc.mockRejectedValue(new Error("offline"));
+    state.customerApi.mockRejectedValue(new Error("offline"));
 
     render(<PlatformLayout>{page}</PlatformLayout>);
 
@@ -248,11 +237,11 @@ describe("PlatformLayout: signed in", () => {
 
     await emitAuth(signedInUser());
     await waitFor(() => expect(screen.getByTestId("page")).toBeTruthy());
-    expect(state.getDoc).toHaveBeenCalledTimes(1);
+    expect(state.customerApi).toHaveBeenCalledTimes(1);
 
     // Navigate: the effect depends on pathname, so it unsubscribes, subscribes
     // again, and fires the repair a second time. The service cache is what
-    // keeps it at one Firestore read.
+    // keeps it at one profile read.
     state.pathname = "/wallet";
     rerender(<PlatformLayout>{page}</PlatformLayout>);
     expect(state.unsubscribe).toHaveBeenCalledTimes(1);
@@ -260,7 +249,7 @@ describe("PlatformLayout: signed in", () => {
     await emitAuth(signedInUser());
     await waitFor(() => expect(screen.getByTestId("page")).toBeTruthy());
 
-    expect(state.getDoc).toHaveBeenCalledTimes(1);
+    expect(state.customerApi).toHaveBeenCalledTimes(1);
   });
 });
 

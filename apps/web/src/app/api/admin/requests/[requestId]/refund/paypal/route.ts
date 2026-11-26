@@ -5,6 +5,8 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { requireAdmin, getAdminAuthError } from "@/lib/adminAuth";
 import { recordAdminAudit } from "@/lib/adminAudit";
 import { withErrorHandler, createShipINError } from "@/utils/errors";
+import { sameCents } from "@/lib/paypal/amounts";
+import { paypalRefundTransactionRef } from "@/lib/paypal/refundTransactions";
 import {
   paypalRefundBodySchema,
   requestIdSchema,
@@ -67,9 +69,13 @@ export const POST = withErrorHandler(
 
     const { amount, transactionId } = parsedBody.data;
     const requestRef = adminDb.collection("requests").doc(requestId);
+    const refundTransactionRef = paypalRefundTransactionRef(transactionId);
 
     const outcome = await adminDb.runTransaction(async (transaction) => {
-      const snapshot = await transaction.get(requestRef);
+      const [snapshot, existingTransaction] = await Promise.all([
+        transaction.get(requestRef),
+        transaction.get(refundTransactionRef),
+      ]);
 
       if (!snapshot.exists) {
         throw createShipINError("Request not found.", "NOT_FOUND", 404);
@@ -83,6 +89,17 @@ export const POST = withErrorHandler(
           "No refund workflow exists for this request.",
           "BAD_REQUEST",
           400
+        );
+      }
+
+      // The registry is the single uniqueness check shared with the partial
+      // refund route, and it is read in this same transaction: the same PayPal
+      // refund id cannot settle twice, whichever route records it.
+      if (existingTransaction.exists) {
+        throw createShipINError(
+          "That PayPal refund transaction has already been recorded.",
+          "DUPLICATE_TRANSACTION",
+          409
         );
       }
 
@@ -114,10 +131,10 @@ export const POST = withErrorHandler(
 
       const refundAmount = roundMoney(Number(amount));
 
-      if (refundAmount > paypalPortion + 0.01) {
+      if (!sameCents(refundAmount, paypalPortion)) {
         throw createShipINError(
-          "The PayPal refund cannot exceed the PayPal portion of this refund.",
-          "BAD_REQUEST",
+          "The recorded PayPal refund must equal the PayPal portion of this refund.",
+          "REFUND_AMOUNT_MISMATCH",
           400
         );
       }
@@ -142,6 +159,14 @@ export const POST = withErrorHandler(
           : {}),
 
         updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      transaction.set(refundTransactionRef, {
+        transactionId,
+        requestId,
+        kind: "full",
+        amount: refundAmount,
+        createdAt: FieldValue.serverTimestamp(),
       });
 
       return { refundAmount, walletDone };

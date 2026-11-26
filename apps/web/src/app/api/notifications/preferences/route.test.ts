@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 const mocks = vi.hoisted(() => ({
   requireAuthWithProfile: vi.fn(),
   update: vi.fn(),
+  get: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -11,14 +12,16 @@ vi.mock("@/lib/auth", () => ({
 }));
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
-    collection: vi.fn(() => ({ doc: vi.fn(() => ({ update: mocks.update })) })),
+    collection: vi.fn(() => ({
+      doc: vi.fn(() => ({ update: mocks.update, get: mocks.get })),
+    })),
   },
 }));
 vi.mock("firebase-admin/firestore", () => ({
   FieldValue: { serverTimestamp: () => "__SERVER_TS__" },
 }));
 
-import { PATCH } from "./route";
+import { GET, PATCH } from "./route";
 
 const preferences = {
   channels: { inApp: true, email: false, whatsapp: false },
@@ -44,6 +47,45 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ profile: { uid: "user-1" } });
   mocks.update.mockReset().mockResolvedValue(undefined);
+  mocks.get.mockReset().mockResolvedValue({
+    data: () => ({ preferences: { notifications: { categories: {} } } }),
+  });
+});
+
+describe("GET /api/notifications/preferences", () => {
+  it("rejects unauthenticated callers", async () => {
+    mocks.requireAuthWithProfile.mockResolvedValue(
+      NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    );
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/notifications/preferences")
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it("returns the saved notification preferences", async () => {
+    const response = await GET(
+      new NextRequest("http://localhost/api/notifications/preferences")
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      notifications: { categories: {} },
+    });
+  });
+
+  it("returns null when nothing is saved", async () => {
+    mocks.get.mockResolvedValue({ data: () => ({ preferences: {} }) });
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/notifications/preferences")
+    );
+
+    await expect(response.json()).resolves.toMatchObject({ notifications: null });
+  });
 });
 
 describe("PATCH /api/notifications/preferences", () => {

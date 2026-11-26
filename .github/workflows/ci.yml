@@ -61,6 +61,9 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Verify Firebase authorized domains contract
+        run: npm run check:authorized-domains
+
       - name: TypeScript check
         run: npm run typecheck
 
@@ -75,6 +78,13 @@ jobs:
 
       - name: Verify Firestore list caps are declared
         run: npm run check:firestore-list-caps
+
+      # The profile is a projection from /api/profile because users/{uid} can
+      # carry server-owned fields, and firestore.rules only denies the owner's
+      # read while a legacy secret is present. A direct client read would
+      # silently bypass the projection for every migrated account.
+      - name: Verify no client module reads users/{uid} directly
+        run: npm run check:user-profile-reads
 
       # A UTF-16 workflow file is invisible to GitHub: no run, no failure, no
       # notification. expire-quotes-cron.yml sat that way, so the hourly job
@@ -215,6 +225,9 @@ jobs:
       # would otherwise inherit the global thresholds silently.
       - name: Verify money-path files are under a stricter floor
         run: npm run check:money-globs
+
+      - name: Run API contract tests
+        run: npm run test:contract
 
       - name: Run tests with coverage
         run: npm run test:coverage
@@ -513,4 +526,9 @@ jobs:
       # flips, fails the job.
       - name: Run Firestore rules tests
         run: npm run test:rules
+
+      # Admin-only routes get their own emulator suite: role enforcement and
+      # MFA-gated writes behave differently from customer rules.
+      - name: Run admin route contract tests
+        run: npm run test:admin
 

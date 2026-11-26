@@ -7,7 +7,10 @@ import { applyReset, inspect, type ResetDeps } from "./mfa-reset";
  * admin cannot pass the gate, so the tests are mostly about the ways it must
  * refuse: the wrong account, a typo in `--confirm`, no stated reason.
  */
-function deps(overrides: Partial<ResetDeps> = {}, doc: Record<string, unknown> = {}) {
+function deps(
+  overrides: Partial<ResetDeps> = {},
+  doc: Record<string, unknown> = {}
+) {
   const calls = {
     clearAuthFactors: vi.fn(async () => {}),
     clearFirestoreFields: vi.fn(async () => {}),
@@ -18,7 +21,11 @@ function deps(overrides: Partial<ResetDeps> = {}, doc: Record<string, unknown> =
   const base: ResetDeps = {
     getUserByEmail: async (email) => ({ uid: "admin-1", email }),
     getUser: async () => ({ multiFactor: { enrolledFactors: [{}, {}] } }),
-    readUserDoc: async () => ({ role: "admin", mfa: { webauthn: [{ id: "k" }] }, ...doc }),
+    readUserDoc: async () => ({
+      role: "admin",
+      mfa: { webauthn: [{ id: "k" }] },
+      ...doc,
+    }),
     countOtherAdminsWithMfa: async () => 0,
     ...calls,
     ...overrides,
@@ -42,11 +49,17 @@ describe("inspect", () => {
   });
 
   it("lists only the factor fields that are actually present", async () => {
-    const { deps: d } = deps({}, { mfa: { totp: { secret: "s" }, sms: { phone: "+1" } } });
+    const { deps: d } = deps(
+      {},
+      { mfa: { totp: { secret: "s" }, sms: { phone: "+1" } } }
+    );
 
     const result = await inspect("admin@example.com", d);
 
-    expect(result.ok && result.state.mfaFields).toEqual(["mfa.totp", "mfa.sms"]);
+    expect(result.ok && result.state.mfaFields).toEqual([
+      "mfa.totp",
+      "mfa.sms",
+    ]);
   });
 
   it("refuses a customer, who already has an audited support path", async () => {
@@ -83,7 +96,12 @@ describe("applyReset", () => {
   it("writes nothing on a dry run", async () => {
     const { deps: d, calls } = deps();
 
-    const result = await applyReset("admin@example.com", undefined, "key lost", d);
+    const result = await applyReset(
+      "admin@example.com",
+      undefined,
+      "key lost",
+      d
+    );
 
     expect(result.ok).toBe(false);
     expect(result.message).toContain("Dry run");
@@ -96,7 +114,12 @@ describe("applyReset", () => {
   it("writes nothing when --confirm does not match the account", async () => {
     const { deps: d, calls } = deps();
 
-    const result = await applyReset("admin@example.com", "other@example.com", "key lost", d);
+    const result = await applyReset(
+      "admin@example.com",
+      "other@example.com",
+      "key lost",
+      d
+    );
 
     expect(result.ok).toBe(false);
     expect(result.message).toContain("does not match");
@@ -106,7 +129,12 @@ describe("applyReset", () => {
   it("writes nothing without a reason, so the audit entry is never blank", async () => {
     const { deps: d, calls } = deps();
 
-    const result = await applyReset("admin@example.com", "admin@example.com", "  ", d);
+    const result = await applyReset(
+      "admin@example.com",
+      "admin@example.com",
+      "  ",
+      d
+    );
 
     expect(result.ok).toBe(false);
     expect(result.message).toContain("--reason");
@@ -125,7 +153,10 @@ describe("applyReset", () => {
 
     expect(result.ok).toBe(true);
     expect(calls.clearAuthFactors).toHaveBeenCalledWith("admin-1");
-    expect(calls.clearFirestoreFields).toHaveBeenCalledWith("admin-1", "break-glass");
+    expect(calls.clearFirestoreFields).toHaveBeenCalledWith(
+      "admin-1",
+      "break-glass"
+    );
     expect(calls.revokeRefreshTokens).toHaveBeenCalledWith("admin-1");
     expect(calls.writeAudit).toHaveBeenCalledWith({
       actorUid: "break-glass-script",
@@ -140,7 +171,12 @@ describe("applyReset", () => {
   it("matches --confirm case-insensitively, because email addresses are", async () => {
     const { deps: d, calls } = deps();
 
-    const result = await applyReset("admin@example.com", "ADMIN@example.COM", "key lost", d);
+    const result = await applyReset(
+      "admin@example.com",
+      "ADMIN@example.COM",
+      "key lost",
+      d
+    );
 
     expect(result.ok).toBe(true);
     expect(calls.revokeRefreshTokens).toHaveBeenCalled();

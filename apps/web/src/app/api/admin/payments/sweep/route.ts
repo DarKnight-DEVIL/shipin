@@ -31,6 +31,7 @@ import type { StuckPaymentOrder } from "@/lib/paypal/sweepPendingPayments";
 import { sweepPendingPayments } from "@/lib/paypal/sweepPendingPayments";
 import { settleWalletTopup } from "@/lib/wallet/settleWalletTopup";
 import { sweepPendingTopups } from "@/lib/wallet/sweepPendingTopups";
+import { releaseExpiredWalletHolds } from "@/lib/paypal/walletHolds";
 import { withErrorHandler } from "@/utils/errors";
 import { captureServerError } from "@/lib/errorTracking";
 import { sendNotification } from "@/features/notifications/services/notificationService";
@@ -76,7 +77,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const cronSecret = process.env.CRON_SECRET;
 
   if (!cronSecret) {
-    console.error("[paypal-sweep] CRON_SECRET is not configured; the sweep refused to run.");
+    console.error(
+      "[paypal-sweep] CRON_SECRET is not configured; the sweep refused to run."
+    );
     return NextResponse.json(
       { success: false, error: "Cron not configured.", code: "CONFIG_ERROR" },
       { status: 500, headers: NO_STORE }
@@ -92,12 +95,18 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const now = Date.now();
 
+  // A scheduled home for holds whose checkout was abandoned. `create-order`
+  // still sweeps them opportunistically, but a customer who never returns must
+  // not leave their balance reserved forever.
+  const releasedWalletHolds = await releaseExpiredWalletHolds();
+
   const listStuckOrders = async (): Promise<StuckPaymentOrder[]> => {
     const snapshot = await adminDb
       .collection("paypalPaymentOrders")
       .where("status", "==", "created")
       .where("createdAt", "<=", new Date(now - MIN_AGE_MS))
       .where("createdAt", ">=", new Date(now - MAX_AGE_MS))
+      // firestore-list: internal — recovery scan, bounded per sweep run.
       .limit(SWEEP_LIMIT)
       .get();
 
@@ -137,7 +146,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       // and heard nothing - so the receipt goes out here too. A failed
       // notification must not undo a settled payment.
       try {
-        const requestData = (await adminDb.collection("requests").doc(requestId).get()).data();
+        const requestData = (
+          await adminDb.collection("requests").doc(requestId).get()
+        ).data();
 
         await sendNotification(
           buildPaymentReceivedNotification({
@@ -150,7 +161,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
           })
         );
       } catch (error) {
-        console.warn("[paypal-sweep] Payment receipt notification failed", { requestId, error });
+        console.warn("[paypal-sweep] Payment receipt notification failed", {
+          requestId,
+          error,
+        });
       }
 
       return { ok: true };
@@ -165,9 +179,13 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         return { ok: false, error: "Order is missing its request references." };
       }
 
-      const requestSnapshot = await adminDb.collection("requests").doc(requestId).get();
+      const requestSnapshot = await adminDb
+        .collection("requests")
+        .doc(requestId)
+        .get();
       const requestData = requestSnapshot.data();
-      if (!requestData) return { ok: false, error: "Request no longer exists." };
+      if (!requestData)
+        return { ok: false, error: "Request no longer exists." };
 
       const settlement = await settleAdditionalItemPayment({
         requestRef: adminDb.collection("requests").doc(requestId),
@@ -212,6 +230,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       const snapshot = await adminDb
         .collection("walletTopupOrders")
         .where("capturePending", "==", true)
+        // firestore-list: internal — recovery scan, bounded per sweep run.
         .limit(SWEEP_LIMIT)
         .get();
 
@@ -240,7 +259,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       // PayPal never captured this order, so nothing is owed and the flag must
       // stop being re-examined.
       await topupOrder.ref.set(
-        { capturePending: false, abandonedAt: new Date(), abandonedBy: "paypal-sweep" },
+        {
+          capturePending: false,
+          abandonedAt: new Date(),
+          abandonedBy: "paypal-sweep",
+        },
         { merge: true }
       );
     },
@@ -266,7 +289,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
           failedCount: failures.length,
           firstOrderIds: failures
             .slice(0, 5)
-            .map((failure) => ("orderId" in failure ? failure.orderId : failure.topupId)),
+            .map((failure) =>
+              "orderId" in failure ? failure.orderId : failure.topupId
+            ),
         },
       }
     );
@@ -281,6 +306,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       ...result,
       failures,
       topups,
+      releasedWalletHolds,
     },
     { status: failures.length === 0 ? 200 : 500, headers: NO_STORE }
   );

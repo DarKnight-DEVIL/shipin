@@ -86,6 +86,7 @@ const snap = (data: Record<string, unknown> | undefined) => ({
 
 const requestDoc = {
   userId: "user-1",
+  status: "awaiting_payment",
   customerName: "Ada",
   additionalItemRequests: [],
 };
@@ -298,6 +299,21 @@ describe("POST /api/paypal/capture-order", () => {
       alreadyCompleted: true,
       paymentType: "main",
       captureId: "cap-0",
+    });
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("refuses to settle a request that is no longer payable", async () => {
+    mocks.requestGet.mockResolvedValue(
+      snap({ ...requestDoc, status: "refunded" })
+    );
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: "REQUEST_NOT_PAYABLE",
     });
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
@@ -657,7 +673,11 @@ describe("POST /api/paypal/capture-order", () => {
      * as "we could not tidy up", and the customer would retry against a claim that is
      * still leased either way.
      */
-    mocks.fetch.mockResolvedValue({ ok: false, status: 422, json: async () => ({}) });
+    mocks.fetch.mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({}),
+    });
 
     // Claim succeeds, then the release transaction throws.
     mocks.runTransaction

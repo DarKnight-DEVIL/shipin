@@ -35,13 +35,12 @@ vi.mock("firebase/auth", () => {
 });
 
 import {
-  FirebaseMfaError,
-  confirmSmsEnrollment,
+
   confirmSecondFactorChallenge,
   enrolledPhoneFactor,
   isMultiFactorRequired,
   startSecondFactorChallenge,
-  startSmsEnrollment,
+
 } from "./firebaseMfa";
 
 const auth = {} as never;
@@ -68,41 +67,6 @@ describe("isMultiFactorRequired", () => {
     ).toBe(true);
     expect(isMultiFactorRequired({ code: "auth/wrong-password" })).toBe(false);
     expect(isMultiFactorRequired(null)).toBe(false);
-  });
-});
-
-describe("startSmsEnrollment", () => {
-  it("verifies the number with the enrollment session and clears the verifier", async () => {
-    await expect(startSmsEnrollment(auth, user, "+15551234567")).resolves.toBe(
-      "verification-id"
-    );
-
-    expect(mocks.getSession).toHaveBeenCalled();
-    expect(mocks.verifyPhoneNumber).toHaveBeenCalledWith(
-      { phoneNumber: "+15551234567", session: { session: "session-1" } },
-      expect.anything()
-    );
-    expect(mocks.clear).toHaveBeenCalled();
-  });
-
-  it("turns a Firebase failure into a displayable error", async () => {
-    mocks.verifyPhoneNumber.mockRejectedValue({
-      code: "auth/invalid-phone-number",
-    });
-
-    await expect(
-      startSmsEnrollment(auth, user, "+1555")
-    ).rejects.toBeInstanceOf(FirebaseMfaError);
-  });
-});
-
-describe("confirmSmsEnrollment", () => {
-  it("enrolls the phone factor from the code", async () => {
-    await confirmSmsEnrollment(user, "verification-id", "123456");
-
-    expect(mocks.credential).toHaveBeenCalledWith("verification-id", "123456");
-    expect(mocks.assertion).toHaveBeenCalledWith("phone-credential");
-    expect(mocks.enroll).toHaveBeenCalledWith("assertion", "ShipIN SMS");
   });
 });
 
@@ -135,6 +99,21 @@ describe("startSecondFactorChallenge", () => {
     ).rejects.toMatchObject({ code: "MFA_UNSUPPORTED_FACTOR" });
   });
 
+  it("surfaces a failed send as a displayable error", async () => {
+    mocks.getResolver.mockReturnValue({
+      hints: [{ factorId: "phone", phoneNumber: "+1******4567" }],
+      session: "session-1",
+    });
+    mocks.verifyPhoneNumber.mockRejectedValue({ code: "auth/too-many-requests" });
+
+    await expect(
+      startSecondFactorChallenge(auth, {
+        code: "auth/multi-factor-auth-required",
+      } as never)
+    ).rejects.toMatchObject({ code: "auth/too-many-requests" });
+    expect(mocks.clear).toHaveBeenCalled();
+  });
+
   it("sends a code for the enrolled phone and keeps the resolver", async () => {
     const hint = { factorId: "phone", phoneNumber: "+1******4567" };
     const resolver = { hints: [hint], session: "session-1" };
@@ -159,6 +138,46 @@ describe("startSecondFactorChallenge", () => {
 });
 
 describe("confirmSecondFactorChallenge", () => {
+  it("turns a known Firebase code into its own sentence", async () => {
+    // The mapping is what a person reads; an unmapped failure here used to surface as
+    // a bare "FirebaseError: auth/..." page.
+    const resolver = { resolveSignIn: mocks.resolveSignIn, hints: [], session: "s" };
+    mocks.resolveSignIn.mockRejectedValue({ code: "auth/invalid-verification-code" });
+
+    await expect(
+      confirmSecondFactorChallenge(
+        { resolver, verificationId: "v", phoneNumber: null } as never,
+        "000000"
+      )
+    ).rejects.toMatchObject({
+      code: "auth/invalid-verification-code",
+      message: "That code is not correct. Try again.",
+    });
+  });
+
+  it("falls back to a generic message for an unknown or missing code", async () => {
+    const resolver = { resolveSignIn: mocks.resolveSignIn, hints: [], session: "s" };
+
+    mocks.resolveSignIn.mockRejectedValueOnce(new Error("network down"));
+    await expect(
+      confirmSecondFactorChallenge(
+        { resolver, verificationId: "v", phoneNumber: null } as never,
+        "000000"
+      )
+    ).rejects.toMatchObject({
+      code: "MFA_FAILED",
+      message: expect.stringContaining("could not be completed"),
+    });
+
+    mocks.resolveSignIn.mockRejectedValueOnce({ code: "auth/something-new" });
+    await expect(
+      confirmSecondFactorChallenge(
+        { resolver, verificationId: "v", phoneNumber: null } as never,
+        "000000"
+      )
+    ).rejects.toMatchObject({ code: "auth/something-new" });
+  });
+
   it("resolves the sign-in and returns the authenticated user", async () => {
     const signedIn = { uid: "admin-1" };
     const resolver = {

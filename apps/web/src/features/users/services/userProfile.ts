@@ -1,95 +1,22 @@
-import { doc, getDoc } from "firebase/firestore";
-
-import { db } from "@/lib/firebaseDb";
 import { customerApi } from "@/lib/customerApiClient";
+import type { UserProfile } from "@/lib/userProfile";
 import { toShipINError } from "@/utils/errors";
 
-export interface UserProfile {
-  displayName: string;
-
-  email: string;
-
-  phone: string;
-
-  photoURL?: string;
-
-  /**
-   * Administrator role.
-   *
-   * Normal customers do not need this field.
-   */
-  role?: "admin" | "customer";
-
-  /**
-   * Multi-factor authentication configuration.
-   * Only applicable for admin users.
-   */
-  mfa?: {
-    /**
-     * TOTP configuration
-     */
-    totp?: {
-      /** Base32-encoded secret for TOTP generation */
-      secret: string;
-      /** Whether TOTP is enabled and verified */
-      enabled: boolean;
-      /** Backup codes (SHA-256 hashed) */
-      backupCodes?: string[];
-      /** Last used backup code index (for tracking) */
-      lastBackupCodeIndex?: number;
-    };
-
-    /**
-     * WebAuthn/Passkey credentials
-     */
-    webauthn?: {
-      /** Array of registered credential IDs (base64url encoded) */
-      credentialIds: string[];
-      /** Human-readable names for each credential */
-      credentialNames: string[];
-      /** Whether WebAuthn is enabled */
-      enabled: boolean;
-    };
-
-    /**
-     * SMS-based MFA
-     */
-    sms?: {
-      /** Phone number in E.164 format (e.g., +15551234567) */
-      phoneNumber: string;
-      /** Whether SMS MFA is enabled and verified */
-      enabled: boolean;
-    };
-
-    /**
-     * MFA enforcement policy
-     */
-    required?: boolean;
-  };
-
-  createdAt?: unknown;
-
-  updatedAt?: unknown;
-
-  /** ISO date (YYYY-MM-DD). Drives the DPDP age gate. */
-  dateOfBirth?: string;
-
-  /** Document schema version for migrations. Default: 1 */
-  schemaVersion?: number;
-}
+export type { UserProfile } from "@/lib/userProfile";
 
 export async function getUserProfile(
   userId: string
 ): Promise<UserProfile | null> {
-  const ref = doc(db, "users", userId);
+  void userId;
 
-  const snapshot = await getDoc(ref);
-
-  if (!snapshot.exists()) {
-    return null;
+  try {
+    const result = await customerApi<{ profile: UserProfile | null }>(
+      "/api/profile"
+    );
+    return result.profile;
+  } catch (error) {
+    throw toShipINError(error);
   }
-
-  return snapshot.data() as UserProfile;
 }
 
 export async function createUserProfile(

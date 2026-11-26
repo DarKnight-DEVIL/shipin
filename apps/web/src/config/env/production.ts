@@ -147,23 +147,23 @@ export function hasAlertWebhook(): boolean {
 
 /** 
  * The two origins this deployment declares for itself, and they get the same
- * rule. APP_URL drives WebAuthn's relying-party origin; NEXT_PUBLIC_APP_URL is
+ * rule. APP_URL builds verification and password-reset links; NEXT_PUBLIC_APP_URL is
  * its browser-visible copy and is folded into the CORS allowlist in
  * `lib/cors.ts` alongside it, so checking only one would leave the other able to
  * make a cleartext origin authoritative.
  * 
  * Both fail in confusing ways when they are not an absolute URL (\"foo\" parses
- * as a relative path and later throws inside the WebAuthn library), so check
+ * as a relative path and later throws when a link is built), so check
  * the shape while the error can still name the variable.
  * 
  * It must also be https://, because it is the origin the app TRUSTS rather than
- * merely a link prefix: WebAuthn assertions are verified against it and the CORS
+ * merely a link prefix: the CORS
  * allowlist is built from it. A cleartext origin in a real deployment would let
  * anyone on the path serve pages at that origin and pass every origin check that
  * depends on this value.
  * 
  * Loopback may keep http only under the E2E opt-out. It is unreachable from a
- * network and the browser treats it as a secure context for WebAuthn anyway,
+ * network and the browser treats it as a secure context anyway,
  * and `scripts/e2e-local.mjs` boots a production build on
  * http://localhost:3000, as does the compose stack — both already set
  * {@link RATE_LIMIT_STORE_OPTIONAL_ENV}. Without that flag a real deployment
@@ -204,7 +204,7 @@ function assertTrustedOrigin(key: (typeof TRUSTED_ORIGIN_ENV)[number]): void {
   if (!isLoopbackHostname(parsed.hostname)) {
     throw new Error(
       `[ShipIN] FATAL: ${key} must use https:// in production; got "${raw}". ` +
-        `It is the origin WebAuthn and the CORS allowlist trust, so http:// would make a cleartext origin authoritative. ` +
+        `It is the origin the CORS allowlist and every emailed link trust, so http:// would make a cleartext origin authoritative. ` +
         `Only loopback (http://localhost) may stay http, and only for the E2E suite.`
     );
   }
@@ -217,7 +217,7 @@ function assertTrustedOrigin(key: (typeof TRUSTED_ORIGIN_ENV)[number]): void {
   if (!isAppUrlE2eOptional()) {
     throw new Error(
       `[ShipIN] FATAL: ${key} may use http:// only on loopback with the E2E opt-out; got "${raw}". ` +
-        `A deployment must serve https://, because it is the origin WebAuthn and the CORS allowlist trust. ` +
+        `A deployment must serve https://, because it is the origin the CORS allowlist and every emailed link trust. ` +
         `Set ${APP_URL_E2E_OPTIONAL_ENV}=1 only for the local E2E suite.`
     );
   }

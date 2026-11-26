@@ -24,14 +24,12 @@ const DISABLED: MfaConfigStatus = {
   totp: { enabled: false, pending: false },
   sms: { enabled: false, phoneNumber: null },
   backupCodes: 0,
-  webauthn: { enabled: false, rpID: null, credentials: [] },
 };
 
 const ENABLED: MfaConfigStatus = {
   totp: { enabled: true, pending: false },
   sms: { enabled: false, phoneNumber: null },
   backupCodes: 10,
-  webauthn: { enabled: false, rpID: null, credentials: [] },
 };
 
 function renderCard(status: MfaConfigStatus, onChanged = vi.fn()) {

@@ -1,9 +1,13 @@
 import "server-only";
 
+import crypto from "crypto";
+
 import type { DecodedIdToken } from "firebase-admin/auth";
+import { FieldValue } from "firebase-admin/firestore";
 
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { verifyTotp, verifyBackupCode } from "@/lib/mfa";
+import { loadTotpSecrets, userSecretsRef } from "@/lib/mfaSecrets";
 import { getMfaSession } from "@/lib/mfaSession";
 import { getAccountBlock } from "@/lib/accountStatus";
 import { verifyAppCheckRequest } from "@/lib/appCheck";
@@ -100,7 +104,10 @@ export async function requireAdmin(request: Request): Promise<AdminUser> {
      */
     decodedToken = await adminAuth.verifyIdToken(idToken, true);
   } catch (error) {
-    console.error("Admin authentication failed:", error);
+    // Log only the Firebase error code: the raw error can carry the token or
+    // provider response into deployment logs.
+    const code = (error as { code?: string })?.code ?? "unknown";
+    console.error("Admin authentication failed:", code);
 
     throw new Error("INVALID_AUTHENTICATION");
   }
@@ -169,9 +176,13 @@ export async function requireAdmin(request: Request): Promise<AdminUser> {
    */
 
   const mfa = userData?.mfa || {};
-  const hasTotp = mfa.totp?.enabled && mfa.totp?.secret;
-  const hasWebAuthn =
-    mfa.webauthn?.enabled && (mfa.webauthn.credentialIds?.length ?? 0) > 0;
+  // The secret itself is in the server-only collection; `users/{uid}.mfa`
+  // carries only the public `enabled` flag. Legacy fields are migrated by the
+  // loader on first use.
+  const totpSecrets = await loadTotpSecrets(uid, mfa);
+  const hasTotp = mfa.totp?.enabled === true && Boolean(totpSecrets.secret);
+  // Security keys are no longer offered, so a record left behind by one is not a
+  // factor: an admin holding only that has nothing this build can verify.
   // Firebase (Identity Platform) second factors — SMS today — live on the
   // Auth user, not in Firestore. A token that completed the challenge carries
   // `firebase.sign_in_second_factor`, so it is proof in itself.
@@ -180,7 +191,7 @@ export async function requireAdmin(request: Request): Promise<AdminUser> {
       ?.sign_in_second_factor
   );
 
-  let hasAnyMfa = hasTotp || hasWebAuthn || secondFactorVerified;
+  let hasAnyMfa = hasTotp || secondFactorVerified;
 
   if (!hasAnyMfa) {
     // Nothing in Firestore: ask Auth whether a Firebase-managed factor exists,
@@ -210,8 +221,19 @@ export async function requireAdmin(request: Request): Promise<AdminUser> {
   // attacker whether an administrator has TOTP configured. The decoy secret can
   // never grant access — the result is only honoured when hasTotp is true.
   if (totpCode) {
-    const secret = hasTotp ? mfa.totp.secret : TIMING_DECOY_TOTP_SECRET;
+    const secret = hasTotp
+      ? (totpSecrets.secret as string)
+      : TIMING_DECOY_TOTP_SECRET;
 
+    /*
+     * No replay refusal here, deliberately. Header-based TOTP is per-request proof:
+     * a client cannot mint a different code inside the 30-second step it is valid
+     * for, so refusing a repeat does not stop an attacker - it stops the second of
+     * two legitimate back-to-back admin calls, which is what the refund smoke test
+     * does all the time. Replay refusal belongs where a code mints a lasting
+     * artifact: POST /api/auth/mfa/session refuses an elevation code it has already
+     * accepted, and that is the check worth having.
+     */
     if (hasTotp && verifyTotp(secret, totpCode, 1)) {
       mfaVerified = true;
     } else {
@@ -219,11 +241,19 @@ export async function requireAdmin(request: Request): Promise<AdminUser> {
     }
   }
 
-  // Backup code verification
-  if (!mfaVerified && backupCode && mfa.totp?.backupCodes?.length) {
-    const index = verifyBackupCode(backupCode, mfa.totp.backupCodes);
+  // Backup code verification. A used code is removed from the stored set, so
+  // the same code cannot elevate a second request.
+  const backupCodes = totpSecrets.backupCodes;
+  if (!mfaVerified && backupCode && backupCodes?.length) {
+    const index = verifyBackupCode(backupCode, backupCodes);
     if (index !== -1) {
       mfaVerified = true;
+
+      await userSecretsRef(uid).update({
+        "totp.backupCodes": FieldValue.arrayRemove(backupCodes[index]),
+        "totp.lastBackupCodeUsedAt": Date.now(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     }
   }
 

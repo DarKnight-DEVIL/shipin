@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import path from "path";
 
 /**
  * Firestore security-rules suite.
@@ -14,6 +15,15 @@ import { defineConfig } from "vitest/config";
  * JavaScript, so it cannot catch a regression in the rules themselves.
  */
 export default defineConfig({
+  resolve: {
+    alias: {
+      // The registry concurrency test drives the real route handlers, so the
+      // same aliases the app build uses apply here too.
+      "@": path.resolve(__dirname, "./src"),
+      // `server-only` throws outside a React Server Component bundle.
+      "server-only": path.resolve(__dirname, "./vitest.server-only-stub.ts"),
+    },
+  },
   test: {
     environment: "node",
     include: ["tests/rules/**/*.test.ts"],

@@ -28,6 +28,7 @@ import { minorFromStored, storedMinor } from "@/lib/money";
 import { roundMoney, sameCents, toNumber } from "@/lib/paypal/amounts";
 import { holdAmountFields, reservedFields } from "@/lib/moneyMode";
 import { createPayPalOrder } from "@/lib/paypal/createPayPalOrder";
+import { mainPaymentStatusError } from "@/lib/paypal/requestPaymentState";
 import {
   availableWalletBalance,
   releaseExpiredWalletHolds,
@@ -113,6 +114,20 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         },
         { status: 403 }
       );
+    }
+
+    if (paymentType === "main") {
+      const statusError = mainPaymentStatusError(requestData.status);
+      if (statusError) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: statusError,
+            code: "REQUEST_NOT_PAYABLE",
+          },
+          { status: 409 }
+        );
+      }
     }
 
     // --- 4. Price the payment from what ShipIN stored, not from the browser ---
@@ -233,7 +248,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const totalRequired = roundMoney(processing.totalToCharge);
     const requestedPayPalAmount = roundMoney(amount);
 
-    if (requestedPayPalAmount > totalRequired + 0.01) {
+    if (
+      minorFromStored(requestedPayPalAmount) > minorFromStored(totalRequired)
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -290,16 +307,13 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
          * wallet share does not leave the old amount reserved as well.
          */
         const previousHold = holdSnapshot.data();
-        const previousHoldAmount =
+        const previousHoldMinor =
           holdSnapshot.exists && previousHold?.status === "reserved"
-            ? roundMoney(Math.max(0, toNumber(previousHold?.amount)))
+            ? storedMinor(previousHold, "amount")
             : 0;
 
-        const reservedMinor = Math.max(
-          0,
-          storedMinor(walletSnapshot.data(), "reserved") -
-            minorFromStored(previousHoldAmount)
-        );
+        const reservedMinor =
+          storedMinor(walletSnapshot.data(), "reserved") - previousHoldMinor;
         /*
          * Pass the wallet through as stored, overriding only the reservation.
          * Rebuilding it as `{ balance, reserved }` dropped the minor fields, so
@@ -317,11 +331,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
           totalRequired - requestedPayPalAmount
         );
 
-        if (requestedWalletAmount < -0.01) {
+        if (minorFromStored(requestedWalletAmount) < 0) {
           throw new Error("INVALID_PAYMENT_AMOUNT");
         }
 
-        if (requestedWalletAmount > walletBalance + 0.01) {
+        if (
+          minorFromStored(requestedWalletAmount) >
+          minorFromStored(walletBalance)
+        ) {
           throw new Error("INSUFFICIENT_WALLET_BALANCE");
         }
 
@@ -377,7 +394,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
            */
           transaction.delete(holdRef);
 
-          if (previousHoldAmount > 0 && walletSnapshot.exists) {
+          if (previousHoldMinor > 0 && walletSnapshot.exists) {
             transaction.set(
               walletRef,
               {

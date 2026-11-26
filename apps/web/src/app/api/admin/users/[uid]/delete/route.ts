@@ -4,14 +4,26 @@ import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { recordAdminAudit } from "@/lib/adminAudit";
 import { withErrorHandler } from "@/utils/errors";
 import { getAdminAuthError, requireAdmin } from "@/lib/adminAuth";
-import { adminDeleteUserBodySchema, readAndValidateBody } from "@/lib/validation";
+import {
+  adminDeleteUserBodySchema,
+  readAndValidateBody,
+} from "@/lib/validation";
+import {
+  commitInChunks,
+  type FirestoreBatchOperation,
+} from "@/lib/firestoreBatch";
+import { userSecretsRef } from "@/lib/mfaSecrets";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 /** Collections that make an account a customer rather than a scratch signup. */
 const HISTORY_CHECKS = [
   { collection: "requests", field: "userId", label: "orders" },
-  { collection: "walletTransactions", field: "userId", label: "wallet history" },
+  {
+    collection: "walletTransactions",
+    field: "userId",
+    label: "wallet history",
+  },
   { collection: "walletHolds", field: "userId", label: "wallet holds" },
 ] as const;
 
@@ -87,7 +99,11 @@ export const POST = withErrorHandler(
 
         if (code === "auth/user-not-found") {
           return NextResponse.json(
-            { success: false, error: "User not found.", code: "USER_NOT_FOUND" },
+            {
+              success: false,
+              error: "User not found.",
+              code: "USER_NOT_FOUND",
+            },
             { status: 404, headers: NO_STORE }
           );
         }
@@ -116,7 +132,10 @@ export const POST = withErrorHandler(
        * in the browser: the form's disablement is a convenience, and a request that
        * skips it must fail too.
        */
-      if (email === "" || email.trim().toLowerCase() !== confirmEmail.toLowerCase()) {
+      if (
+        email === "" ||
+        email.trim().toLowerCase() !== confirmEmail.toLowerCase()
+      ) {
         return NextResponse.json(
           {
             success: false,
@@ -164,7 +183,11 @@ export const POST = withErrorHandler(
        * delete?" is the first question asked afterwards.
        */
       const removed: Record<string, number> = {};
-      const batch = adminDb.batch();
+      const operations: FirestoreBatchOperation[] = [
+        // Server-only MFA record; a delete of a missing document is a no-op.
+        { type: "delete", ref: userSecretsRef(uid) },
+      ];
+      removed.userSecrets = 1;
 
       const subcollections = await adminDb
         .collection("users")
@@ -173,7 +196,9 @@ export const POST = withErrorHandler(
 
       for (const sub of subcollections) {
         const snap = await sub.get();
-        snap.docs.forEach((doc) => batch.delete(doc.ref));
+        snap.docs.forEach((doc) =>
+          operations.push({ type: "delete", ref: doc.ref })
+        );
         removed[`users/${uid}/${sub.id}`] = snap.size;
       }
 
@@ -189,16 +214,35 @@ export const POST = withErrorHandler(
           .collection(check.collection)
           .where(check.field, "==", uid)
           .get();
-        snap.docs.forEach((doc) => batch.delete(doc.ref));
+        snap.docs.forEach((doc) =>
+          operations.push({ type: "delete", ref: doc.ref })
+        );
         removed[check.collection] = snap.size;
+
+        // Support messages are keyed by ticket id, so they are not reachable
+        // through the ticket's userId field.
+        if (check.collection === "supportTickets") {
+          let messages = 0;
+          for (const ticket of snap.docs) {
+            const messageSnap = await adminDb
+              .collection("supportMessages")
+              .where("ticketId", "==", ticket.id)
+              .get();
+            messageSnap.docs.forEach((doc) =>
+              operations.push({ type: "delete", ref: doc.ref })
+            );
+            messages += messageSnap.size;
+          }
+          removed.supportMessages = messages;
+        }
       }
 
       if (profileSnap.exists) {
-        batch.delete(profileSnap.ref);
+        operations.push({ type: "delete", ref: profileSnap.ref });
         removed.users = 1;
       }
 
-      await batch.commit();
+      await commitInChunks(adminDb, operations);
 
       /*
        * Last, and only after Firestore is clean: a half-deleted account that still

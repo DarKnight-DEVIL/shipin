@@ -168,55 +168,6 @@ beforeEach(() => {
 });
 
 describe("GET /api/health", () => {
-  it("says when passkeys cannot work on the host that answered", async () => {
-    /*
-     * The question this answers: APP_URL is valid, the site is up, and a passkey still
-     * cannot be used because the request arrived on a hostname the credentials were not
-     * registered for. Nothing else in the body shows that.
-     */
-    state.isProduction = true;
-    state.url = "https://redis.test";
-    state.token = "token";
-    // Otherwise the carrier feed marks the deployment degraded and the passkey
-    // mismatch this test is about would not be the thing that moved the status.
-    state.indiaPostUrl = "https://indiapost.test";
-    state.indiaPostClientId = "id";
-    state.indiaPostClientSecret = "secret";
-
-    const mismatched = await (
-      await GET(
-        new Request("https://shipin-preview.vercel.app/api/health", {
-          headers: { host: "shipin-preview.vercel.app" },
-        })
-      )
-    ).json();
-
-    expect(mismatched.webauthn).toMatchObject({
-      origin: "https://shipin.app",
-      rpID: "shipin.app",
-      servedHost: "shipin-preview.vercel.app",
-      matches: false,
-      degraded: true,
-    });
-    expect(mismatched.status).toBe("degraded");
-    expect(mismatched.webauthnWarning).toMatch(/passkey/i);
-
-    const matched = await (
-      await GET(
-        new Request("https://shipin.app/api/health", {
-          headers: { host: "shipin.app" },
-        })
-      )
-    ).json();
-
-    expect(matched.webauthn).toMatchObject({
-      matches: true,
-      degraded: false,
-    });
-    expect(matched.status).toBe("healthy");
-    expect(matched.webauthnWarning).toBeUndefined();
-  });
-
   it("reports the MFA revocation list, so a bypass is never silent", async () => {
     const response = await GET();
     const body = await response.json();

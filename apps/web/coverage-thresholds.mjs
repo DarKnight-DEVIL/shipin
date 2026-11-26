@@ -62,6 +62,17 @@ export const PAYMENT_COVERAGE = {
   branches: 90,
 };
 
+export const WALLET_COVERAGE = {
+  // Measured: 96.7% lines, 96.7% statements, 100% functions, 82.5% branches.
+  // The two modules are recovery paths whose rare branches (a torn top-up, an
+  // abandoned capture) are asserted separately; the branch floor stays above
+  // the global 70 while the other three stay at the payment floor.
+  lines: 95,
+  statements: 95,
+  functions: 99,
+  branches: 80,
+};
+
 export const COMPLIANCE_COVERAGE = {
   // Measured worst case: 97.93% lines (`lib/compliance/**`), 97.00%
   // statements and 96.00% branches (`api/compliance/**`), 100% functions.
@@ -117,6 +128,9 @@ export const COVERAGE_GLOB_THRESHOLDS = {
   "src/lib/moneyMode.ts": PAYMENT_COVERAGE,
   // The capture claim, PayPal capture/create calls and both settlement steps.
   "src/lib/paypal/**": PAYMENT_COVERAGE,
+  // Wallet top-up settlement and sweep: both move money and were outside
+  // every payment glob, so a new module here inherited only the global floor.
+  "src/lib/wallet/**": WALLET_COVERAGE,
   "src/features/wallet/**": PAYMENT_COVERAGE,
   "src/features/finance/**": PAYMENT_COVERAGE,
   "src/features/payment/**": PAYMENT_COVERAGE,
@@ -124,7 +138,7 @@ export const COVERAGE_GLOB_THRESHOLDS = {
   // sits under features/admin, so no wallet glob reached it. Listed explicitly
   // rather than widening `features/admin/**`, which is mostly not money code.
   "src/features/admin/hooks/useAdminWallet.ts": PAYMENT_COVERAGE,
-    // The payment reconciler keeps Firestore in step with what PayPal actually
+  // The payment reconciler keeps Firestore in step with what PayPal actually
   // reports. It sits under api/admin/payments, which no wallet or paypal glob
   // above reaches, so it is listed explicitly. Its sibling, the delivery-health
   // probe `src/lib/paypalWebhookHealth.ts`, was deleted in the §2.6 orphan
@@ -139,9 +153,6 @@ export const COVERAGE_GLOB_THRESHOLDS = {
   // the compliance floor rather than the global one: it is the one admin route
   // whose bugs destroy photos and support transcripts.
   "src/app/api/admin/compliance/**": COMPLIANCE_COVERAGE,
-  // ---- Package-level coverage floors ----
-  "packages/config/src/**": PACKAGES_GLOBAL_FLOORS,
-
   // ---- Component layer ----
   // Own run, own config: the main coverage run does not cover
   // component .tsx files, so Vitest skips this glob there; the

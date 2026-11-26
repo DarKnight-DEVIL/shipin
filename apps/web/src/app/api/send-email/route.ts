@@ -37,7 +37,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const rateLimit = await strictRateLimiter.record(request);
   const rateHeaders = new Headers();
   addRateLimitHeaders(rateHeaders, rateLimit);
-  if (!rateLimit.ok) {
+  // A store outage is not abuse. Treating it as a 429 made every send fail
+  // during a Redis blip, which is exactly when the alert email matters most.
+  if (!rateLimit.ok && !rateLimit.unavailable) {
     return NextResponse.json(
       {
         success: false,

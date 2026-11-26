@@ -14,7 +14,10 @@ import {
  * one, so the tests concentrate on the ways it must refuse to do that: an
  * already-working factor, a missing pending secret, a code that does not match.
  */
-function enrolDeps(overrides: Partial<EnrolDeps> = {}, doc: Record<string, unknown> = {}) {
+function enrolDeps(
+  overrides: Partial<EnrolDeps> = {},
+  doc: Record<string, unknown> = {}
+) {
   const calls = {
     writePendingSecret: vi.fn(async () => {}),
     enableTotp: vi.fn(async () => {}),
@@ -24,8 +27,10 @@ function enrolDeps(overrides: Partial<EnrolDeps> = {}, doc: Record<string, unkno
   const base: EnrolDeps = {
     getUserByEmail: async (email) => ({ uid: "admin-1", email }),
     readUserDoc: async () => ({ role: "admin", ...doc }),
+    readUserSecrets: async () => ({}),
     generateSecret: () => "JBSWY3DPEHPK3PXP",
-    verifyCode: (secret, code) => secret === "JBSWY3DPEHPK3PXP" && code === "123456",
+    verifyCode: (secret, code) =>
+      secret === "JBSWY3DPEHPK3PXP" && code === "123456",
     generateBackupCodes: (count) =>
       Array.from({ length: count }, (_, index) => `CODE-${index}`),
     hashBackupCode: (code) => `hashed:${code}`,
@@ -68,10 +73,32 @@ describe("resolveEnrolTarget", () => {
     expect(result.ok && result.target.enabled).toBe(false);
   });
 
+  it("reads the secret from the server-only record, not the profile", async () => {
+    const { deps: d } = enrolDeps(
+      {
+        readUserSecrets: async () => ({
+          totp: { secret: "SERVER-SECRET", backupCodes: ["a", "b"] },
+        }),
+      },
+      { mfa: { totp: { enabled: true } } }
+    );
+
+    const result = await resolveEnrolTarget("admin@example.com", d);
+
+    expect(result.ok && result.target.enabled).toBe(true);
+    expect(result.ok && result.target.backupCodes).toBe(2);
+    // An enabled factor is never staged over or treated as pending.
+    expect(result.ok && result.target.pendingSecret).toBe(null);
+  });
+
   it("does not treat an enabled secret as pending", async () => {
     const { deps: d } = enrolDeps(
       {},
-      { mfa: { totp: { secret: "LIVE", enabled: true, backupCodes: ["a", "b"] } } }
+      {
+        mfa: {
+          totp: { secret: "LIVE", enabled: true, backupCodes: ["a", "b"] },
+        },
+      }
     );
 
     const result = await resolveEnrolTarget("admin@example.com", d);
@@ -89,7 +116,10 @@ describe("stageTotpEnrolment", () => {
     const result = await stageTotpEnrolment("admin@example.com", d);
 
     expect(result.ok).toBe(true);
-    expect(calls.writePendingSecret).toHaveBeenCalledWith("admin-1", "JBSWY3DPEHPK3PXP");
+    expect(calls.writePendingSecret).toHaveBeenCalledWith(
+      "admin-1",
+      "JBSWY3DPEHPK3PXP"
+    );
     expect(result.otpauthUrl).toContain("secret=JBSWY3DPEHPK3PXP");
     expect(calls.writeAudit).toHaveBeenCalledWith(
       expect.objectContaining({ action: "mfa.break_glass_enrol_staged" })
@@ -184,7 +214,11 @@ describe("confirmTotpEnrolment", () => {
       { mfa: { totp: { secret: "JBSWY3DPEHPK3PXP", enabled: false } } }
     );
 
-    const result = await confirmTotpEnrolment("admin@example.com", " 123456 ", d);
+    const result = await confirmTotpEnrolment(
+      "admin@example.com",
+      " 123456 ",
+      d
+    );
 
     expect(result.ok).toBe(true);
     expect(calls.enableTotp).toHaveBeenCalledWith(

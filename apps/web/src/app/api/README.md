@@ -50,9 +50,6 @@
  * | `/api/auth/mfa/session` | GET, DELETE | Start / end admin elevated session |
  * | `/api/auth/mfa/totp/setup` | POST | Initiate TOTP enrollment |
  * | `/api/auth/mfa/totp/verify` | POST | Verify TOTP code |
- * | `/api/auth/mfa/webauthn/register/start` | POST | Begin WebAuthn registration |
- * | `/api/auth/mfa/webauthn/register/complete` | POST | Complete WebAuthn |
- * | `/api/auth/mfa/webauthn/credentials` | DELETE | Remove credential |
  * | `/api/auth/password-leak-check` | POST | Have-I-Been-Pwned check |
  *
  * ### Admin (`/api/admin`)

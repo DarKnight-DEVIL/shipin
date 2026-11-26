@@ -8,11 +8,13 @@ import { getR2Client, getR2BucketName } from "@/lib/r2";
 
 import { adminAuth } from "@/lib/firebaseAdmin";
 
-import { authorizeInspectionAccess } from "@/lib/r2Access";
+import { authorizeInspectionUpload } from "@/lib/r2Access";
 
 export const runtime = "nodejs";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+/** Room for the multipart envelope around one 10 MB file. */
+const MAX_REQUEST_BYTES = MAX_FILE_SIZE + 1024 * 1024;
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
@@ -59,6 +61,14 @@ export const POST = withErrorHandler(async (request: Request) => {
         {
           status: 401,
         }
+      );
+    }
+
+    const declaredLength = Number(request.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
+      return NextResponse.json(
+        { success: false, error: "Image must be 10 MB or smaller." },
+        { status: 413 }
       );
     }
 
@@ -141,7 +151,7 @@ export const POST = withErrorHandler(async (request: Request) => {
      * another customer's request folder — warehouse evidence is shown to that
      * customer and to admins.
      */
-    const denial = await authorizeInspectionAccess(uid, requestId);
+    const denial = await authorizeInspectionUpload(uid);
 
     if (denial) {
       return NextResponse.json(
@@ -162,6 +172,36 @@ export const POST = withErrorHandler(async (request: Request) => {
     const arrayBuffer = await file.arrayBuffer();
 
     const body = Buffer.from(arrayBuffer);
+
+    // `file.type` is caller-supplied. Sniff the signature so a renamed file
+    // cannot be stored and later served as an image.
+    const looksLikeImage =
+      (file.type === "image/jpeg" &&
+        body.length >= 3 &&
+        body[0] === 0xff &&
+        body[1] === 0xd8 &&
+        body[2] === 0xff) ||
+      (file.type === "image/png" &&
+        body.length >= 8 &&
+        body
+          .subarray(0, 8)
+          .equals(
+            Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+          )) ||
+      (file.type === "image/webp" &&
+        body.length >= 12 &&
+        body.subarray(0, 4).toString("ascii") === "RIFF" &&
+        body.subarray(8, 12).toString("ascii") === "WEBP");
+
+    if (!looksLikeImage) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "The file contents do not match an allowed image type.",
+        },
+        { status: 400 }
+      );
+    }
 
     await getR2Client().send(
       new PutObjectCommand({

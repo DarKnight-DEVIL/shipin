@@ -165,7 +165,10 @@ describe("POST /api/admin/wallet/credit", () => {
       const body = await over.json();
 
       expect(over.status).toBe(400);
-      expect(body).toMatchObject({ code: "CREDIT_LIMIT_EXCEEDED", limit: 25000 });
+      expect(body).toMatchObject({
+        code: "CREDIT_LIMIT_EXCEEDED",
+        limit: 25000,
+      });
       // The message names the limit that applied, not a stale hardcoded 10,000.
       expect(body.error).toBe(
         "A maximum of 25,000 credits can be added at once."
@@ -457,7 +460,7 @@ describe("POST /api/admin/wallet/credit", () => {
     expect(update).not.toHaveProperty("status");
   });
 
-  it("treats a refund result with no wallet amount as fully done when PayPal is done", async () => {
+  it("refuses a wallet credit when the refund has no wallet portion", async () => {
     snapshots({
       request: {
         userId: "customer-1",
@@ -479,11 +482,41 @@ describe("POST /api/admin/wallet/credit", () => {
       })
     );
 
-    expect(response.status).toBe(200);
-    expect(mocks.txUpdate).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ status: "refunded" })
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "This refund has no wallet portion to credit.",
+    });
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
+  it("refuses a credit that does not equal the recorded wallet portion", async () => {
+    snapshots({
+      request: {
+        userId: "customer-1",
+        refundRequest: {
+          status: "requested",
+          walletAmount: 20,
+          paypalAmount: 30,
+          paypalRefundStatus: "completed",
+        },
+      },
+    });
+
+    const response = await POST(
+      request({
+        customerId: "customer-1",
+        amount: 21,
+        type: "refund",
+        requestId: "req-1",
+      })
     );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error:
+        "The wallet credit must equal the recorded wallet portion of this refund.",
+    });
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
   });
 
   it("reports unknown failures as a server error", async () => {

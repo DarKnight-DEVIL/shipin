@@ -79,7 +79,10 @@ import { POST } from "./route";
 const context = (uid = "user-1") => ({ params: Promise.resolve({ uid }) });
 
 const request = (
-  body: unknown = { reason: "throwaway checkout test", confirmEmail: "customer@example.com" }
+  body: unknown = {
+    reason: "throwaway checkout test",
+    confirmEmail: "customer@example.com",
+  }
 ) =>
   new NextRequest("http://localhost/api/admin/users/user-1/delete", {
     method: "POST",
@@ -160,7 +163,10 @@ describe("POST /api/admin/users/[uid]/delete", () => {
 
   it("refuses when the typed address is not the account's address", async () => {
     const response = await POST(
-      request({ reason: "throwaway checkout test", confirmEmail: "someone@else.test" }),
+      request({
+        reason: "throwaway checkout test",
+        confirmEmail: "someone@else.test",
+      }),
       context()
     );
 
@@ -220,9 +226,13 @@ describe("POST /api/admin/users/[uid]/delete", () => {
 
   it("deletes Firestore records before the Auth user, then audits both", async () => {
     const order: string[] = [];
-    mocks.batchCommit.mockImplementation(async () => void order.push("firestore"));
+    mocks.batchCommit.mockImplementation(
+      async () => void order.push("firestore")
+    );
     mocks.deleteUser.mockImplementation(async () => void order.push("auth"));
-    mocks.recordAdminAudit.mockImplementation(async () => void order.push("audit"));
+    mocks.recordAdminAudit.mockImplementation(
+      async () => void order.push("audit")
+    );
 
     const response = await POST(request(), context());
 
@@ -323,8 +333,25 @@ describe("POST /api/admin/users/[uid]/delete", () => {
     });
   });
 
+  it("deletes the support messages that belong to the account's tickets", async () => {
+    mocks.queryResults.set("supportTickets", [
+      { id: "ticket-1", ref: { id: "ticket-1" } },
+    ]);
+    mocks.queryResults.set("supportMessages", [{ ref: { id: "message-1" } }]);
+
+    const response = await POST(request(), context());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mocks.batchDelete).toHaveBeenCalledWith({ id: "message-1" });
+    expect(body.removed.supportMessages).toBe(1);
+  });
+
   it("deletes the profile and the account's own documents, and reports counts", async () => {
-    mocks.queryResults.set("addresses", [{ ref: { id: "a1" } }, { ref: { id: "a2" } }]);
+    mocks.queryResults.set("addresses", [
+      { ref: { id: "a1" } },
+      { ref: { id: "a2" } },
+    ]);
     mocks.queryResults.set("notifications", [{ ref: { id: "n1" } }]);
 
     const response = await POST(request(), context());
@@ -335,7 +362,8 @@ describe("POST /api/admin/users/[uid]/delete", () => {
       addresses: 2,
       notifications: 1,
     });
-    // Two addresses, one notification, one profile.
-    expect(mocks.batchDelete).toHaveBeenCalledTimes(4);
+    // Two addresses, one notification, one profile, one server-only MFA record.
+    expect(mocks.batchDelete).toHaveBeenCalledTimes(5);
+    expect(body.removed.userSecrets).toBe(1);
   });
 });

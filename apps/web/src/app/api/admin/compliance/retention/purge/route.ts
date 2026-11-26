@@ -44,6 +44,37 @@ interface RetentionState {
   supportCursor?: unknown;
 }
 
+/**
+ * The stored cursor: `[orderBy value, document id]`, in field order.
+ *
+ * A lone timestamp is ambiguous (see the ordering comment in `purgeExpiredPhotos`),
+ * and anything that is not a well-formed pair is treated as no cursor rather than
+ * trusted: the cost of restarting from the oldest record is one re-scan of a page
+ * that has already been handled, while a corrupt cursor used as a position could
+ * skip live data.
+ */
+function asCursorPair(stored: unknown): [unknown, string] | undefined {
+  if (!Array.isArray(stored) || stored.length !== 2) return undefined;
+
+  const [, id] = stored;
+
+  return typeof id === "string" && id.length > 0
+    ? (stored as [unknown, string])
+    : undefined;
+}
+
+/** The position of `doc`, in the shape `asCursorPair` reads back. */
+function cursorPairOf(
+  doc: { id: string; data(): Record<string, unknown> } | undefined
+): [unknown, string] | undefined {
+  if (!doc) return undefined;
+
+  const ordered = doc.data();
+  const value = ordered.deliveredAt ?? ordered.resolvedAt;
+
+  return value === undefined || value === null ? undefined : [value, doc.id];
+}
+
 interface PhotoPurgeResult {
   scanned: number;
   cleared: number;
@@ -88,8 +119,20 @@ async function purgeExpiredPhotos(
     .where("deliveredAt", "<=", cutoff) as FirebaseQuery;
 
   // firestore-list: internal — one purge page; the cursor loop drains the backlog.
-  query = query.orderBy("deliveredAt", "asc").limit(PAGE_SIZE);
-  if (cursor) query = query.startAfter(cursor);
+  //
+  // `__name__` is the tiebreaker that makes the order total. `deliveredAt` alone is
+  // not unique: when a page boundary falls inside a group of documents sharing one
+  // timestamp, a value-only cursor (`startAfter(deliveredAt)`) resumes strictly after
+  // the whole group and silently skips the rest of it — records past their retention
+  // that no later page would return. Ordering by the document id as well, and
+  // cursoring on [timestamp, id], positions the next page exactly.
+  query = query
+    .orderBy("deliveredAt", "asc")
+    .orderBy("__name__", "asc")
+    // firestore-list: pagination — one page; the cursor loop drains the backlog.
+    .limit(PAGE_SIZE);
+  const startCursor = asCursorPair(cursor);
+  if (startCursor) query = query.startAfter(startCursor[0], startCursor[1]);
 
   const snapshot = await query.get();
 
@@ -101,7 +144,9 @@ async function purgeExpiredPhotos(
     passComplete: snapshot.size < PAGE_SIZE,
     // Advance past the last row of this page, not the cursor that started it:
     // storing the incoming cursor would make every full page repeat forever.
-    nextCursor: snapshot.docs.at(-1)?.data().deliveredAt,
+    // The pair is what makes that position exact across runs — the timestamp alone
+    // is ambiguous, and a DocumentSnapshot cannot be stored in `system/retention`.
+    nextCursor: cursorPairOf(snapshot.docs.at(-1)),
   };
 
   for (const doc of snapshot.docs) {
@@ -146,8 +191,14 @@ async function purgeExpiredSupport(
     .where("resolvedAt", "<=", cutoff) as FirebaseQuery;
 
   // firestore-list: internal — one purge page; the cursor loop drains the backlog.
-  query = query.orderBy("resolvedAt", "asc").limit(PAGE_SIZE);
-  if (cursor) query = query.startAfter(cursor);
+  // Same tiebreaker as the photo scan: `resolvedAt` is not unique either.
+  query = query
+    .orderBy("resolvedAt", "asc")
+    .orderBy("__name__", "asc")
+    // firestore-list: pagination — one page; the cursor loop drains the backlog.
+    .limit(PAGE_SIZE);
+  const startCursor = asCursorPair(cursor);
+  if (startCursor) query = query.startAfter(startCursor[0], startCursor[1]);
 
   const snapshot = await query.get();
 
@@ -156,13 +207,14 @@ async function purgeExpiredSupport(
     ticketsDeleted: 0,
     messagesDeleted: 0,
     passComplete: snapshot.size < PAGE_SIZE,
-    nextCursor: snapshot.docs.at(-1)?.data().resolvedAt,
+    nextCursor: cursorPairOf(snapshot.docs.at(-1)),
   };
 
   for (const doc of snapshot.docs) {
     const data = doc.data() as { status?: string; resolvedAt?: unknown };
     if (data.status !== "resolved") continue;
-    if (!isPastRetention(data.resolvedAt, SUPPORT_RETENTION_MONTHS, now)) continue;
+    if (!isPastRetention(data.resolvedAt, SUPPORT_RETENTION_MONTHS, now))
+      continue;
 
     const messages = await adminDb
       .collection("supportMessages")
@@ -184,7 +236,9 @@ async function purgeExpiredSupport(
 export const POST = withErrorHandler(async (request: NextRequest) => {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
-    console.error("[Cron] CRON_SECRET not configured; retention purge refused.");
+    console.error(
+      "[Cron] CRON_SECRET not configured; retention purge refused."
+    );
     return NextResponse.json(
       { success: false, error: "Cron not configured.", code: "CONFIG_ERROR" },
       { status: 500, headers: NO_STORE }
@@ -230,7 +284,7 @@ interface FirebaseQuery {
   where(field: string, op: string, value: unknown): FirebaseQuery;
   orderBy(field: string, direction: "asc" | "desc"): FirebaseQuery;
   limit(count: number): FirebaseQuery;
-  startAfter(value: unknown): FirebaseQuery;
+  startAfter(...values: unknown[]): FirebaseQuery;
   get(): Promise<{
     size: number;
     docs: Array<{

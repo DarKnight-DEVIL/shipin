@@ -15,5 +15,5 @@ export interface MFAToken {
   uid: string;
   mfaRequired: boolean;
   mfaSetupRequired: boolean;
-  availableMethods: ("totp" | "webauthn" | "sms")[];
+  availableMethods: ("totp" | "sms")[];
 }

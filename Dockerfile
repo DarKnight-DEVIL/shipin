@@ -66,6 +66,11 @@ COPY --from=builder /app/apps/web/public ./apps/web/public
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 
+# The same preflight `npm start` runs. It is plain Node + one import-free
+# config module, so copy only those files; the standalone tree excludes scripts.
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/scripts/start-preflight.ts ./apps/web/scripts/start-preflight.ts
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/src/config/env/production.ts ./apps/web/src/config/env/production.ts
+
 USER nextjs
 
 EXPOSE 3000
@@ -84,4 +89,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Same entrypoint as `npm start` in apps/web; its `prestart` hook performs the
 # public/ and .next/static copies that the COPYs above provide here.
-CMD ["node", "apps/web/server.js"]
+CMD ["sh", "-c", "node --experimental-strip-types apps/web/scripts/start-preflight.ts && exec node apps/web/server.js"]

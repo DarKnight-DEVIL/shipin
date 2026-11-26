@@ -27,6 +27,31 @@ const notificationPreferencesSchema = z.object({
 });
 
 /**
+ * GET /api/notifications/preferences
+ *
+ * Returns the saved channel/category settings from `users/{uid}`. The browser
+ * no longer reads that document directly, because firestore.rules deny the
+ * owner's read while a legacy MFA secret is still present.
+ */
+export const GET = withErrorHandler(async (request: NextRequest) => {
+  const auth = await requireAuthWithProfile(request);
+  if (auth instanceof NextResponse) return auth;
+
+  const snapshot = await adminDb
+    .collection("users")
+    .doc(auth.profile.uid)
+    .get();
+
+  return NextResponse.json(
+    {
+      success: true,
+      notifications: snapshot.data()?.preferences?.notifications ?? null,
+    },
+    { status: 200, headers: { "Cache-Control": "no-store" } }
+  );
+});
+
+/**
  * PATCH /api/notifications/preferences
  *
  * Saves the signed-in customer's notification channel and category settings.

@@ -6,6 +6,7 @@ import { withErrorHandler } from "@/utils/errors";
 import { requireAdmin, getAdminAuthError } from "@/lib/adminAuth";
 import { recordAdminAudit } from "@/lib/adminAudit";
 import { readAndValidateBody, refundOfferBodySchema } from "@/lib/validation";
+import { isMinor, storedMinor, toDecimal } from "@/lib/money";
 
 export const POST = withErrorHandler(
   async (
@@ -103,9 +104,11 @@ export const POST = withErrorHandler(
         );
       }
 
-      const amount = Number(payment.amountPaid ?? payment.amount ?? 0);
+      const amountMinor =
+        storedMinor(payment, "amountPaid") || storedMinor(payment, "amount");
+      const amount = toDecimal(amountMinor);
 
-      if (!Number.isFinite(amount) || amount <= 0) {
+      if (!isMinor(amountMinor) || amountMinor <= 0) {
         return NextResponse.json(
           {
             success: false,

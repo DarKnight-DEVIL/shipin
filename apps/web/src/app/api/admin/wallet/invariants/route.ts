@@ -37,10 +37,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import {
-  FieldPath,
-  type DocumentSnapshot,
-} from "firebase-admin/firestore";
+import { FieldPath, type DocumentSnapshot } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { verifyCronRequest } from "@/lib/cronAuth";
@@ -82,7 +79,8 @@ export const maxDuration = 60;
 type WalletDriftKind =
   | "wallet_negative_balance"
   | "wallet_balance_mismatch"
-  | "wallet_reserved_mismatch";
+  | "wallet_reserved_mismatch"
+  | "wallet_hold_expired";
 
 interface WalletDrift {
   kind: WalletDriftKind;
@@ -327,12 +325,35 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         });
       }
     }
+
+    /*
+     * A stale reservation still balances against its hold, so the reserved
+     * equality check above cannot see it. Flag the hold itself: an abandoned
+     * checkout must be released rather than holding a customer's money forever.
+     */
+    for (const hold of holds.docs) {
+      if (hold.get("status") !== "reserved") continue;
+      const expiresAt = asDate(hold.get("expiresAt"));
+      if (!expiresAt || expiresAt.getTime() > now.getTime()) continue;
+
+      const userId = hold.get("userId");
+      if (typeof userId !== "string" || !userId) continue;
+
+      const seen = firstSeen.get(`wallet_hold_expired|${hold.id}`);
+      drift.push({
+        kind: "wallet_hold_expired",
+        walletId: userId,
+        detail: `wallet hold ${hold.id} expired at ${expiresAt.toISOString()} but is still reserved`,
+        ...(seen ? { firstSeenAt: seen } : {}),
+      });
+    }
   }
 
   const checked = {
     wallets: wallets.docs.length,
     ledgerEntries: ledger.docs.length,
     activeHolds: activeHolds.matched,
+    holds: holds.docs.length,
   };
 
   await adminDb
@@ -342,8 +363,12 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       lastRunAt: now,
       checked,
       driftCount: drift.length,
-      drift: drift.slice(0, MAX_STORED_DRIFT),
-      driftTruncated: drift.length > MAX_STORED_DRIFT,
+      drift: truncated
+        ? (previousRun.get("drift") ?? []).slice(0, MAX_STORED_DRIFT)
+        : drift.slice(0, MAX_STORED_DRIFT),
+      driftTruncated: truncated
+        ? Boolean(previousRun.get("driftTruncated"))
+        : drift.length > MAX_STORED_DRIFT,
       truncated,
       truncation,
     });

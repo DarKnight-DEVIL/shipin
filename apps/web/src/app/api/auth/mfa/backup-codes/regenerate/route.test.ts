@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   requireAuthWithProfile: vi.fn(),
-  get: vi.fn(),
-  update: vi.fn(),
+  profileGet: vi.fn(),
+  secretsGet: vi.fn(),
+  secretUpdate: vi.fn(),
   generateBackupCodes: vi.fn(),
   hashBackupCode: vi.fn((code: string) => `hash:${code}`),
   verifyTotp: vi.fn(),
@@ -15,8 +16,11 @@ vi.mock("@/lib/auth", () => ({
 }));
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
-    collection: vi.fn(() => ({
-      doc: vi.fn(() => ({ get: mocks.get, update: mocks.update })),
+    collection: vi.fn((name: string) => ({
+      doc: vi.fn(() => ({
+        get: name === "userSecrets" ? mocks.secretsGet : mocks.profileGet,
+        update: mocks.secretUpdate,
+      })),
     })),
   },
 }));
@@ -41,11 +45,15 @@ beforeEach(() => {
   mocks.requireAuthWithProfile
     .mockReset()
     .mockResolvedValue({ profile: { uid: "admin-1", role: "admin" } });
-  mocks.get.mockReset().mockResolvedValue({
+  mocks.profileGet.mockReset().mockResolvedValue({
     exists: true,
-    data: () => ({ mfa: { totp: { enabled: true, secret: "SECRET" } } }),
+    data: () => ({ mfa: { totp: { enabled: true } } }),
   });
-  mocks.update.mockReset().mockResolvedValue(undefined);
+  mocks.secretsGet.mockReset().mockResolvedValue({
+    exists: true,
+    data: () => ({ totp: { secret: "SECRET", backupCodes: [] } }),
+  });
+  mocks.secretUpdate.mockReset().mockResolvedValue(undefined);
   mocks.generateBackupCodes.mockReset().mockReturnValue(["CODE-1", "CODE-2"]);
   mocks.verifyTotp.mockReset().mockReturnValue(true);
 });
@@ -59,7 +67,7 @@ describe("POST /api/auth/mfa/backup-codes/regenerate", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(401);
-    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.secretUpdate).not.toHaveBeenCalled();
   });
 
   it("lets a customer regenerate their own backup codes", async () => {
@@ -73,18 +81,18 @@ describe("POST /api/auth/mfa/backup-codes/regenerate", () => {
     const response = await POST(request());
 
     expect(response.status).not.toBe(403);
-    expect(mocks.get).toHaveBeenCalled();
+    expect(mocks.profileGet).toHaveBeenCalled();
   });
 
   it("requires a six digit code", async () => {
     const response = await POST(request({ totpCode: "123" }));
 
     expect(response.status).toBe(400);
-    expect(mocks.get).not.toHaveBeenCalled();
+    expect(mocks.profileGet).not.toHaveBeenCalled();
   });
 
   it("404s when the admin profile is missing", async () => {
-    mocks.get.mockResolvedValue({ exists: false });
+    mocks.profileGet.mockResolvedValue({ exists: false });
 
     const response = await POST(request());
 
@@ -92,7 +100,7 @@ describe("POST /api/auth/mfa/backup-codes/regenerate", () => {
   });
 
   it("refuses when TOTP is not enabled", async () => {
-    mocks.get.mockResolvedValue({
+    mocks.profileGet.mockResolvedValue({
       exists: true,
       data: () => ({ mfa: { totp: {} } }),
     });
@@ -103,7 +111,7 @@ describe("POST /api/auth/mfa/backup-codes/regenerate", () => {
     await expect(response.json()).resolves.toMatchObject({
       code: "TOTP_NOT_SETUP",
     });
-    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.secretUpdate).not.toHaveBeenCalled();
   });
 
   it("rejects a wrong TOTP code", async () => {
@@ -115,7 +123,7 @@ describe("POST /api/auth/mfa/backup-codes/regenerate", () => {
     await expect(response.json()).resolves.toMatchObject({
       code: "INVALID_TOTP_CODE",
     });
-    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.secretUpdate).not.toHaveBeenCalled();
   });
 
   it("generates ten fresh hashed codes", async () => {
@@ -123,8 +131,8 @@ describe("POST /api/auth/mfa/backup-codes/regenerate", () => {
 
     expect(mocks.generateBackupCodes).toHaveBeenCalledWith(10);
     expect(mocks.verifyTotp).toHaveBeenCalledWith("SECRET", "123456", 1);
-    expect(mocks.update).toHaveBeenCalledWith({
-      "mfa.totp.backupCodes": ["hash:CODE-1", "hash:CODE-2"],
+    expect(mocks.secretUpdate).toHaveBeenCalledWith({
+      "totp.backupCodes": ["hash:CODE-1", "hash:CODE-2"],
       updatedAt: "__SERVER_TS__",
     });
     expect(response.status).toBe(200);

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getAdminAuthError: vi.fn(),
   get: vi.fn(),
   update: vi.fn(),
+  deleteSecrets: vi.fn(),
   recordAdminAudit: vi.fn(),
   updateUser: vi.fn(),
 }));
@@ -18,8 +19,12 @@ vi.mock("@/lib/adminAuth", () => ({
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminAuth: { updateUser: mocks.updateUser },
   adminDb: {
-    collection: () => ({
-      doc: () => ({ get: mocks.get, update: mocks.update }),
+    collection: (name: string) => ({
+      doc: () => ({
+        get: mocks.get,
+        update: mocks.update,
+        delete: name === "userSecrets" ? mocks.deleteSecrets : vi.fn(),
+      }),
     }),
   },
 }));
@@ -50,6 +55,7 @@ describe("POST /api/admin/users/[uid]/mfa/reset", () => {
     mocks.getAdminAuthError.mockReset();
     mocks.get.mockReset();
     mocks.update.mockReset();
+    mocks.deleteSecrets.mockReset().mockResolvedValue(undefined);
     mocks.recordAdminAudit.mockReset();
     mocks.updateUser.mockReset().mockResolvedValue(undefined);
 
@@ -73,6 +79,7 @@ describe("POST /api/admin/users/[uid]/mfa/reset", () => {
 
     expect(res.status).toBe(200);
     expect(body).toEqual({ success: true, uid: "cust-1" });
+    expect(mocks.deleteSecrets).toHaveBeenCalled();
     expect(mocks.update).toHaveBeenCalledWith({
       "mfa.totp": "__DELETE__",
       "mfa.sms": "__DELETE__",

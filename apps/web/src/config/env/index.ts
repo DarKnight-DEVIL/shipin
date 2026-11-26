@@ -95,16 +95,6 @@ interface ServerEnv {
    * keeps the 10,000 default; see `src/config/walletCreditLimit.ts`.
    */
   WALLET_CREDIT_MAX?: string;
-  /**
-   * Relying-party ID for passkeys, defaulting to APP_URL's hostname.
-   *
-   * Set it to a parent domain you own (`shipin.com` while APP_URL is
-   * `app.shipin.com`) and a passkey survives a move to another subdomain - an RP
-   * ID is the one thing a WebAuthn credential cannot change after enrolment.
-   * Validated in `resolveRpID`: it must be a bare hostname, a parent of APP_URL's
-   * host, and a domain this deployment actually owns.
-   */
-  WEBAUTHN_RP_ID?: string;
 }
 
 interface ClientEnv {

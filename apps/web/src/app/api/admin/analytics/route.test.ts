@@ -21,7 +21,10 @@ vi.mock("@/lib/firebaseAdmin", () => ({
     collection: () => ({
       select: (...fields: string[]) => {
         mocks.select(fields);
-        return { get: mocks.get };
+        return {
+          limit: () => ({ get: mocks.get }),
+          get: mocks.get,
+        };
       },
     }),
   },

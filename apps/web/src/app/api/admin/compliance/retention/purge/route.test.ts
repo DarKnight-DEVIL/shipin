@@ -32,7 +32,7 @@ const state = {
   updates: [] as Array<{ id: string; value: Record<string, unknown> }>,
   deletes: [] as string[],
   sets: [] as Array<{ value: Record<string, unknown>; options?: unknown }>,
-  startsAfter: [] as unknown[],
+  startsAfter: [] as unknown[][],
 };
 
 const mocks = vi.hoisted(() => ({
@@ -79,8 +79,8 @@ function buildCollection(name: string) {
     where: () => query,
     orderBy: () => query,
     limit: () => query,
-    startAfter: (value: unknown) => {
-      state.startsAfter.push(value);
+    startAfter: (...values: unknown[]) => {
+      state.startsAfter.push(values);
       return query;
     },
     get: async () => {
@@ -265,23 +265,49 @@ describe("inspection photos", () => {
     await POST(signedRequest());
 
     const stored = state.sets[0].value as { photosCursor: unknown };
-    // Must be the last row's timestamp, never the cursor that started the page.
+    // Must be the last row's position, never the cursor that started the page.
+    // The pair — timestamp plus document id — is what makes it exact: a lone
+    // timestamp cannot say where a group of equal timestamps was cut.
     expect(stored.photosCursor).not.toBe("__DELETE__");
-    expect(stored.photosCursor).toBe(
-      (state.requests.at(-1)!.data() as { deliveredAt: unknown }).deliveredAt
-    );
+    expect(stored.photosCursor).toEqual([
+      (state.requests.at(-1)!.data() as { deliveredAt: unknown }).deliveredAt,
+      "r49",
+    ]);
   });
 
-  it("resumes from the stored cursor", async () => {
+  it("resumes from the stored pair cursor", async () => {
     state.system = {
-      photosCursor: "2023-06-01T00:00:00.000Z",
-      supportCursor: "2023-07-01T00:00:00.000Z",
+      photosCursor: ["2023-06-01T00:00:00.000Z", "req-17"],
+      supportCursor: ["2023-07-01T00:00:00.000Z", "ticket-9"],
     };
 
     await POST(signedRequest());
 
-    expect(state.startsAfter).toContain("2023-06-01T00:00:00.000Z");
-    expect(state.startsAfter).toContain("2023-07-01T00:00:00.000Z");
+    expect(state.startsAfter).toContainEqual([
+      "2023-06-01T00:00:00.000Z",
+      "req-17",
+    ]);
+    expect(state.startsAfter).toContainEqual([
+      "2023-07-01T00:00:00.000Z",
+      "ticket-9",
+    ]);
+  });
+
+  it("treats a cursor it cannot read as no cursor", async () => {
+    /*
+     * Deployments straddle: a run that stored the old lone-timestamp shape, or a
+     * hand-edited state document, must not be fed to `startAfter` as a position —
+     * a wrong position skips live data, while restarting from the oldest record
+     * only re-scans a page that has already been handled.
+     */
+    state.system = {
+      photosCursor: "2023-06-01T00:00:00.000Z",
+      supportCursor: ["2023-07-01T00:00:00.000Z"],
+    };
+
+    await POST(signedRequest());
+
+    expect(state.startsAfter).toEqual([]);
   });
 
   it("stores a null cursor when a full page has no usable timestamp to resume from", async () => {
@@ -370,9 +396,10 @@ describe("support conversations", () => {
 
     expect(state.deletes).toHaveLength(PAGE_SIZE);
     expect(state.sets[0].value).toMatchObject({
-      supportCursor: (
-        state.tickets.at(-1)!.data() as { resolvedAt: unknown }
-      ).resolvedAt,
+      supportCursor: [
+        (state.tickets.at(-1)!.data() as { resolvedAt: unknown }).resolvedAt,
+        "t49",
+      ],
     });
   });
 });

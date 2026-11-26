@@ -19,6 +19,7 @@ import {
 import { sendNotification } from "@/features/notifications/services/notificationService";
 import { buildPaymentReceivedNotification } from "@/lib/paypal/paymentReceivedNotification";
 import { roundMoney, sameCents, toNumber } from "@/lib/paypal/amounts";
+import { mainPaymentStatusError } from "@/lib/paypal/requestPaymentState";
 import { captureOrderBodySchema, readAndValidateBody } from "@/lib/validation";
 
 const fail = (failure: { error: string; status: number }) =>
@@ -162,6 +163,20 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         paymentType,
         captureId: paymentOrder.captureId || null,
       });
+    }
+
+    if (paymentType === "main") {
+      const statusError = mainPaymentStatusError(requestData.status);
+      if (statusError) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: statusError,
+            code: "REQUEST_NOT_PAYABLE",
+          },
+          { status: 409 }
+        );
+      }
     }
 
     // --- 8. What the browser paid must be what ShipIN stored ---

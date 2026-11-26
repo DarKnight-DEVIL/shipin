@@ -99,14 +99,15 @@ describe("wallet holds", () => {
   it("never reports more available balance than the unreserved part", () => {
     expect(availableWalletBalance({ balance: 100, reserved: 30 })).toBe(70);
     expect(availableWalletBalance({ balance: 100 })).toBe(100);
-    // Corrupt data must not produce a spendable negative or a huge number.
-    expect(availableWalletBalance({ balance: 10, reserved: 50 })).toBe(0);
-    expect(availableWalletBalance({ balance: 10, reserved: -5 })).toBe(10);
-    expect(availableWalletBalance({ balance: "nope", reserved: 1 })).toBe(0);
+    // Corrupt data is surfaced as a negative available balance rather than
+    // clamped to zero, so the payment guard refuses it instead of masking it.
+    expect(availableWalletBalance({ balance: 10, reserved: 50 })).toBe(-40);
+    expect(availableWalletBalance({ balance: 10, reserved: -5 })).toBe(15);
+    expect(availableWalletBalance({ balance: "nope", reserved: 1 })).toBe(-1);
   });
 
-  it("clamps the reserved amount at zero", () => {
-    expect(reservedBalance({ reserved: -5 })).toBe(0);
+  it("reads the reserved amount without masking an invalid value", () => {
+    expect(reservedBalance({ reserved: -5 })).toBe(-5);
     expect(reservedBalance({ reserved: 12.345 })).toBe(12.35);
     expect(reservedBalance(undefined)).toBe(0);
   });
@@ -127,13 +128,13 @@ describe("wallet holds", () => {
     expect(reservedAfterRelease(wallet, snapshot(undefined))).toBe(50);
   });
 
-  it("keeps the reserved total non-negative when the hold exceeds it", () => {
+  it("surfaces a negative reserved total when the hold exceeds it", () => {
     expect(
       reservedAfterRelease(
         snapshot({ balance: 100, reserved: 10 }),
         snapshot({ amount: 20, status: "reserved" })
       )
-    ).toBe(0);
+    ).toBe(-10);
   });
 
   it("derives a stable, path-safe hold id from the checkout key", () => {
@@ -242,7 +243,10 @@ describe("releaseExpiredWalletHolds", () => {
     await expect(releaseExpiredWalletHolds()).resolves.toBe(1);
 
     expect(db.txSets).toEqual([
-      { path: "wallets/user-1", data: expect.objectContaining({ reserved: 0 }) },
+      {
+        path: "wallets/user-1",
+        data: expect.objectContaining({ reserved: 0 }),
+      },
     ]);
     expect(db.txDeletes).toEqual(["walletHolds/hold-1"]);
   });

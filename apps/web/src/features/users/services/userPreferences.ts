@@ -1,6 +1,3 @@
-import { doc, getDoc } from "firebase/firestore";
-
-import { db } from "@/lib/firebaseDb";
 import { customerApi } from "@/lib/customerApiClient";
 import { toShipINError, ValidationError } from "@/utils/errors";
 
@@ -21,19 +18,13 @@ export async function getUserPreferences(
   userId: string
 ): Promise<UserPreferences> {
   try {
-    const userRef = doc(db, "users", userId);
+    void userId;
 
-    const snapshot = await getDoc(userRef);
+    const data = await customerApi<{ dashboardMetrics?: unknown }>(
+      "/api/profile/preferences"
+    );
 
-    if (!snapshot.exists()) {
-      return {
-        dashboardMetrics: DEFAULT_DASHBOARD_METRICS,
-      };
-    }
-
-    const data = snapshot.data();
-
-    const savedMetrics = data.preferences?.dashboardMetrics;
+    const savedMetrics = data.dashboardMetrics;
 
     /*
      * Validate Firestore data before using it.

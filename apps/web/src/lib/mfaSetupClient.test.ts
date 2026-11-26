@@ -28,26 +28,12 @@ describe("getMfaConfigStatus", () => {
       totp: { enabled: true, pending: false },
       sms: { enabled: true, phoneNumber: "+919876543210" },
       backupCodes: 7,
-      webauthn: {
-        enabled: true,
-        rpID: "shipin.test",
-        credentials: [
-          { id: "cred-1", name: "YubiKey", createdAt: 1700, rpID: "shipin.test" },
-        ],
-      },
     });
 
     await expect(getMfaConfigStatus("token")).resolves.toEqual({
       totp: { enabled: true, pending: false },
       sms: { enabled: true, phoneNumber: "+919876543210" },
       backupCodes: 7,
-      webauthn: {
-        enabled: true,
-        rpID: "shipin.test",
-        credentials: [
-          { id: "cred-1", name: "YubiKey", createdAt: 1700, rpID: "shipin.test" },
-        ],
-      },
     });
     expect(mocks.mfaApi).toHaveBeenCalledWith("/api/auth/mfa/status", {
       idToken: "token",
@@ -61,37 +47,9 @@ describe("getMfaConfigStatus", () => {
       totp: { enabled: false, pending: false },
       sms: { enabled: false, phoneNumber: null },
       backupCodes: 0,
-      webauthn: { enabled: false, rpID: null, credentials: [] },
     });
   });
 
-  it("drops security keys without an id and normalises the rest", async () => {
-    mocks.mfaApi.mockResolvedValue({
-      webauthn: {
-        credentials: [
-          { id: "good" },
-          { name: "no id" },
-          null,
-          { id: "also-good", name: 42, createdAt: "yesterday" },
-        ],
-      },
-    });
-
-    const status = await getMfaConfigStatus("token");
-
-    expect(status.webauthn.credentials).toEqual([
-      { id: "good", name: "Security key", createdAt: 0, rpID: null },
-      { id: "also-good", name: "Security key", createdAt: 0, rpID: null },
-    ]);
-  });
-
-  it("ignores a non-array credentials value", async () => {
-    mocks.mfaApi.mockResolvedValue({ webauthn: { credentials: "nope" } });
-
-    const status = await getMfaConfigStatus("token");
-
-    expect(status.webauthn.credentials).toEqual([]);
-  });
 });
 
 describe("beginTotpEnrollment", () => {

@@ -14,6 +14,7 @@ import {
 import { withErrorHandler, createShipINError } from "@/utils/errors";
 import { minorFromStored, storedMinor } from "@/lib/money";
 import { balanceFields, ledgerFields } from "@/lib/moneyMode";
+import { paypalRefundTransactionRef } from "@/lib/paypal/refundTransactions";
 
 function roundMoney(value: number) {
   return Number(value.toFixed(2));
@@ -33,6 +34,20 @@ async function requireAdminOrThrow(request: NextRequest) {
   }
 }
 
+/**
+ * POST /api/admin/requests/[requestId]/partial-refund/complete
+ *
+ * Completes an accepted partial-refund offer: credits the wallet share, records
+ * the PayPal share against its transaction id, and marks the offer completed.
+ *
+ * Every check runs inside the Firestore transaction that performs the writes.
+ * A pre-transaction read used to duplicate the same validation and throw plain
+ * errors on the second pass, so a refresh that changed the offer between the
+ * two reads answered 500. There is now one validation path, and each failure is
+ * a typed ShipINError with the status the admin client expects (404 for a
+ * missing request, 409 for a PayPal transaction already recorded, 400 for
+ * everything the admin can fix by retrying with correct input).
+ */
 export const POST = withErrorHandler(
   async (
     request: NextRequest,
@@ -43,9 +58,6 @@ export const POST = withErrorHandler(
     // half-authenticated admin session cannot reach the transaction below.
     const admin = await requireAdminOrThrow(request);
 
-    /*
-     * Validate params (requestId) and body together.
-     */
     const validatedParams = requestIdSchema.safeParse(await context.params);
     if (!validatedParams.success) {
       throw createShipINError("Invalid request ID.", "VALIDATION_ERROR", 400);
@@ -53,10 +65,14 @@ export const POST = withErrorHandler(
 
     const { requestId } = validatedParams.data;
 
-    const parseResult = validateBody(
-      await request.json(),
-      completePartialRefundBodySchema
-    );
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      throw createShipINError("Invalid request body.", "VALIDATION_ERROR", 400);
+    }
+
+    const parseResult = validateBody(body, completePartialRefundBodySchema);
     if (!parseResult.success) {
       throw createShipINError("Invalid request body.", "VALIDATION_ERROR", 400);
     }
@@ -64,128 +80,107 @@ export const POST = withErrorHandler(
     const { paypalRefundTransactionId } = parseResult.data;
 
     const requestRef = adminDb.collection("requests").doc(requestId);
-    const snapshot = await requestRef.get();
-
-    if (!snapshot.exists) {
-      throw createShipINError("Request not found.", "NOT_FOUND", 404);
-    }
-
-    const data = snapshot.data() || {};
-    const offer = data.partialRefundOffer;
-
-    if (!offer) {
-      throw createShipINError(
-        "No partial refund offer exists.",
-        "BAD_REQUEST",
-        400
-      );
-    }
-
-    if (offer.status !== "accepted") {
-      throw createShipINError(
-        "This partial refund is not awaiting admin processing.",
-        "BAD_REQUEST",
-        400
-      );
-    }
-
-    if (offer.selectedMethod !== "original_payment") {
-      throw createShipINError(
-        "This offer was not accepted using the original payment method.",
-        "BAD_REQUEST",
-        400
-      );
-    }
-
-    const amount = roundMoney(Number(offer.amount));
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw createShipINError("Invalid refund amount.", "BAD_REQUEST", 400);
-    }
-
-    const payment = data.payment || {};
-
-    const originalWalletAmount = roundMoney(Number(payment.walletAmount ?? 0));
-
-    const originalPaypalAmount = roundMoney(Number(payment.paypalAmount ?? 0));
-
-    const walletRefund = Math.min(amount, Math.max(0, originalWalletAmount));
-
-    const paypalRefund = roundMoney(amount - walletRefund);
-
-    if (paypalRefund > originalPaypalAmount + 0.01) {
-      throw createShipINError(
-        "The partial refund amount cannot be covered by the original payment sources.",
-        "BAD_REQUEST",
-        400
-      );
-    }
-
-    if (paypalRefund > 0 && !paypalRefundTransactionId) {
-      throw createShipINError(
-        "PayPal refund transaction ID is required before completing this refund.",
-        "VALIDATION_ERROR",
-        400
-      );
-    }
-
     const walletTransactionRef = adminDb.collection("walletTransactions").doc();
 
+    // Minted once, outside the transaction: Firestore retries the callback on
+    // contention and a retry must not produce a second wallet-ledger id.
     const partialRefundId = `partial_${requestId}_${Date.now()}`;
 
-    await adminDb.runTransaction(async (transaction) => {
-      const currentSnapshot = await transaction.get(requestRef);
+    const outcome = await adminDb.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(requestRef);
 
-      if (!currentSnapshot.exists) {
-        throw new Error("Request not found.");
+      if (!snapshot.exists) {
+        throw createShipINError("Request not found.", "NOT_FOUND", 404);
       }
 
-      const currentData = currentSnapshot.data() || {};
-      const currentOffer = currentData.partialRefundOffer;
+      const data = snapshot.data() || {};
+      const offer = data.partialRefundOffer;
 
-      if (!currentOffer || currentOffer.status !== "accepted") {
-        throw new Error("This partial refund has already been processed.");
-      }
-
-      if (currentOffer.selectedMethod !== "original_payment") {
-        throw new Error(
-          "This offer was not accepted using the original payment method."
+      if (!offer) {
+        throw createShipINError(
+          "No partial refund offer exists.",
+          "BAD_REQUEST",
+          400
         );
       }
 
-      const currentPayment = currentData.payment || {};
-
-      const currentWalletAmount = roundMoney(
-        Number(currentPayment.walletAmount ?? 0)
-      );
-
-      const currentPaypalAmount = roundMoney(
-        Number(currentPayment.paypalAmount ?? 0)
-      );
-
-      const currentAmount = roundMoney(Number(currentOffer.amount));
-
-      const currentWalletRefund = Math.min(
-        currentAmount,
-        Math.max(0, currentWalletAmount)
-      );
-
-      const currentPaypalRefund = roundMoney(
-        currentAmount - currentWalletRefund
-      );
-
-      if (currentPaypalRefund > currentPaypalAmount + 0.01) {
-        throw new Error("Refund amount exceeds the original payment sources.");
+      if (offer.status !== "accepted") {
+        throw createShipINError(
+          "This partial refund is not awaiting admin processing.",
+          "BAD_REQUEST",
+          400
+        );
       }
 
-      if (currentPaypalRefund > 0 && !paypalRefundTransactionId) {
-        throw new Error("PayPal refund transaction ID is required.");
+      if (offer.selectedMethod !== "original_payment") {
+        throw createShipINError(
+          "This offer was not accepted using the original payment method.",
+          "BAD_REQUEST",
+          400
+        );
+      }
+
+      const amount = roundMoney(Number(offer.amount));
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw createShipINError("Invalid refund amount.", "BAD_REQUEST", 400);
+      }
+
+      const payment = data.payment || {};
+
+      const originalWalletAmount = roundMoney(
+        Number(payment.walletAmount ?? 0)
+      );
+
+      const originalPaypalAmount = roundMoney(
+        Number(payment.paypalAmount ?? 0)
+      );
+
+      const walletRefund = Math.min(amount, Math.max(0, originalWalletAmount));
+
+      const paypalRefund = roundMoney(amount - walletRefund);
+
+      if (paypalRefund > originalPaypalAmount + 0.01) {
+        throw createShipINError(
+          "The partial refund amount cannot be covered by the original payment sources.",
+          "BAD_REQUEST",
+          400
+        );
+      }
+
+      if (paypalRefund > 0 && !paypalRefundTransactionId) {
+        throw createShipINError(
+          "PayPal refund transaction ID is required before completing this refund.",
+          "VALIDATION_ERROR",
+          400
+        );
+      }
+
+      /*
+       * Every read below stays above the first write: Firestore rejects a
+       * transaction that reads after it has written.
+       */
+      const refundTransactionRef =
+        paypalRefund > 0 && paypalRefundTransactionId
+          ? paypalRefundTransactionRef(paypalRefundTransactionId)
+          : null;
+
+      if (refundTransactionRef) {
+        const existingTransaction = await transaction.get(refundTransactionRef);
+
+        if (existingTransaction.exists) {
+          throw createShipINError(
+            "That PayPal refund transaction has already been recorded.",
+            "DUPLICATE_TRANSACTION",
+            409
+          );
+        }
       }
 
       let walletTransactionId: string | null = null;
 
-      if (currentWalletRefund > 0) {
-        const walletRef = adminDb.collection("wallets").doc(currentData.userId);
+      if (walletRefund > 0) {
+        const walletRef = adminDb.collection("wallets").doc(data.userId);
 
         const walletSnapshot = await transaction.get(walletRef);
 
@@ -199,7 +194,7 @@ export const POST = withErrorHandler(
           : 0;
 
         const newWalletBalanceMinor =
-          currentBalanceMinor + minorFromStored(currentWalletRefund);
+          currentBalanceMinor + minorFromStored(walletRefund);
 
         transaction.set(
           walletRef,
@@ -214,13 +209,13 @@ export const POST = withErrorHandler(
         );
 
         transaction.set(walletTransactionRef, {
-          userId: currentData.userId,
+          userId: data.userId,
           type: "refund",
           ...ledgerFields(
-            minorFromStored(currentWalletRefund),
+            minorFromStored(walletRefund),
             newWalletBalanceMinor
           ),
-          description: currentOffer.reason || "Partial refund",
+          description: offer.reason || "Partial refund",
           requestId,
           createdAt: FieldValue.serverTimestamp(),
           createdBy: admin.uid,
@@ -230,22 +225,22 @@ export const POST = withErrorHandler(
         walletTransactionId = walletTransactionRef.id;
       }
 
-      const existingRefunds = Array.isArray(currentData.partialRefunds)
-        ? currentData.partialRefunds
+      const existingRefunds = Array.isArray(data.partialRefunds)
+        ? data.partialRefunds
         : [];
 
       const previousRefundedAmount = roundMoney(
-        Number(currentData.totalRefundedAmount ?? 0)
+        Number(data.totalRefundedAmount ?? 0)
       );
 
       const partialRefund = {
         id: partialRefundId,
-        amount: currentAmount,
-        reason: currentOffer.reason || "",
+        amount,
+        reason: offer.reason || "",
         method: "original_payment",
-        walletRefundAmount: currentWalletRefund,
-        paypalRefundAmount: currentPaypalRefund,
-        ...(currentPaypalRefund > 0 ? { paypalRefundTransactionId } : {}),
+        walletRefundAmount: walletRefund,
+        paypalRefundAmount: paypalRefund,
+        ...(paypalRefund > 0 ? { paypalRefundTransactionId } : {}),
         createdAt: new Date(),
         createdBy: admin.uid,
         createdByEmail: admin.email || null,
@@ -254,22 +249,22 @@ export const POST = withErrorHandler(
       transaction.update(requestRef, {
         partialRefunds: [...existingRefunds, partialRefund],
 
-        totalRefundedAmount: roundMoney(previousRefundedAmount + currentAmount),
+        totalRefundedAmount: roundMoney(previousRefundedAmount + amount),
 
         "partialRefundOffer.status": "completed",
         "partialRefundOffer.completedAt": FieldValue.serverTimestamp(),
 
-        ...(currentPaypalRefund > 0
+        ...(paypalRefund > 0
           ? {
               "partialRefundOffer.paypalRefundTransactionId":
                 paypalRefundTransactionId,
-              "partialRefundOffer.paypalRefundAmount": currentPaypalRefund,
+              "partialRefundOffer.paypalRefundAmount": paypalRefund,
             }
           : {}),
 
-        ...(currentWalletRefund > 0
+        ...(walletRefund > 0
           ? {
-              "partialRefundOffer.walletRefundAmount": currentWalletRefund,
+              "partialRefundOffer.walletRefundAmount": walletRefund,
               "partialRefundOffer.walletTransactionId": walletTransactionId,
             }
           : {}),
@@ -278,6 +273,18 @@ export const POST = withErrorHandler(
 
         updatedAt: FieldValue.serverTimestamp(),
       });
+
+      if (refundTransactionRef) {
+        transaction.set(refundTransactionRef, {
+          transactionId: paypalRefundTransactionId,
+          requestId,
+          kind: "partial",
+          amount: paypalRefund,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+
+      return { amount, walletRefund, paypalRefund };
     });
 
     await recordAdminAudit({
@@ -287,9 +294,9 @@ export const POST = withErrorHandler(
       targetType: "request",
       targetId: requestId,
       detail: {
-        amount,
-        walletRefund,
-        paypalRefund,
+        amount: outcome.amount,
+        walletRefund: outcome.walletRefund,
+        paypalRefund: outcome.paypalRefund,
         paypalRefundTransactionId,
       },
     });
@@ -298,11 +305,11 @@ export const POST = withErrorHandler(
       success: true,
       requestId,
       refund: {
-        amount,
-        walletRefund,
-        paypalRefund,
+        amount: outcome.amount,
+        walletRefund: outcome.walletRefund,
+        paypalRefund: outcome.paypalRefund,
         paypalRefundTransactionId:
-          paypalRefund > 0 ? paypalRefundTransactionId : null,
+          outcome.paypalRefund > 0 ? paypalRefundTransactionId : null,
       },
     });
   }
