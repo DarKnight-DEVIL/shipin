@@ -20,14 +20,15 @@ import { createSharedRateLimiter } from "./redisRateLimiter";
 import type { RateLimitResult } from "./redisRateLimiter";
 import {
   TOKEN_IP_CEILING_MULTIPLIER,
-  rateLimitSubject,
+  resolveRateLimitSubject,
 } from "./rateLimitSubject";
 
 export interface RateLimitPolicy {
   maxRequests: number;
   windowMs: number;
   message: string;
-}
+}
+
 
 export interface SharedRateLimiter {
   record(request: Request): Promise<RateLimitResult>;
@@ -93,7 +94,7 @@ export class InMemoryRateLimiter {
     // Mirrors `createSharedRateLimiter`: a token buys a per-account bucket,
     // and the address keeps a ceiling so an unverified `sub` cannot mint
     // budgets by rotating tokens.
-    const subject = rateLimitSubject(request);
+    const subject = await resolveRateLimitSubject(request);
     const limit = this.policy.maxRequests;
 
     if (subject.kind === "ip") return this.count(subject.key, limit, now);

@@ -11,10 +11,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { InMemoryRateLimiter } from "./rateLimiter";
 import {
-  TOKEN_IP_CEILING_MULTIPLIER,
   UNIDENTIFIED_SUBJECT,
   rateLimitSubject,
-  readBearerUid,
+  resetRateLimitSubjectCacheForTests,
+  resolveRateLimitSubject,
+  setBearerVerifierForTests,
 } from "./rateLimitSubject";
 
 /** Build an unsigned JWT-looking token with the given payload. */
@@ -35,53 +36,6 @@ function requestWith(headers: Record<string, string> = {}): Request {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-});
-
-describe("readBearerUid", () => {
-  it("reads sub from a token even though it is not verified", () => {
-    const request = requestWith({
-      authorization: `Bearer ${fakeToken({ sub: "abc123USER" })}`,
-    });
-
-    expect(readBearerUid(request)).toBe("abc123USER");
-  });
-
-  it("returns null without an Authorization header", () => {
-    expect(readBearerUid(requestWith())).toBeNull();
-  });
-
-  it("returns null for opaque non-JWT tokens", () => {
-    const request = requestWith({ authorization: "Bearer not-a-jwt" });
-
-    expect(readBearerUid(request)).toBeNull();
-  });
-
-  it("returns null when the payload is not JSON", () => {
-    const encode = (text: string) =>
-      Buffer.from(text).toString("base64").replace(/=+$/, "");
-    const request = requestWith({
-      authorization: `Bearer ${encode("{}")}.${encode("not json")}.sig`,
-    });
-
-    expect(readBearerUid(request)).toBeNull();
-  });
-
-  it("refuses a sub that is not uid-shaped, so it can never reach a bucket", () => {
-    // A colon or slash would let the caller shape the Redis key itself.
-    const request = requestWith({
-      authorization: `Bearer ${fakeToken({ sub: "a:b/c d" })}`,
-    });
-
-    expect(readBearerUid(request)).toBeNull();
-  });
-
-  it("ignores a non-string sub", () => {
-    const request = requestWith({
-      authorization: `Bearer ${fakeToken({ sub: 12345 })}`,
-    });
-
-    expect(readBearerUid(request)).toBeNull();
-  });
 });
 
 describe("rateLimitSubject", () => {
@@ -105,21 +59,31 @@ describe("rateLimitSubject", () => {
     });
   });
 
-  it("gives each signed-in account its own bucket", () => {
+  it("gives each verified account its own bucket", async () => {
     vi.stubEnv("VERCEL", "1");
     const shared = { "x-vercel-forwarded-for": "203.0.113.9" };
+    // A token is base64url, so the sub is read the way a verifier would.
+    const verify = async (token: string) => {
+      const [, payload] = token.split(".");
+      const decoded = JSON.parse(
+        Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")
+      ) as { sub?: string };
+      return decoded.sub ?? null;
+    };
 
-    const first = rateLimitSubject(
+    const first = await resolveRateLimitSubject(
       requestWith({
         ...shared,
         authorization: `Bearer ${fakeToken({ sub: "userOne" })}`,
-      })
+      }),
+      verify
     );
-    const second = rateLimitSubject(
+    const second = await resolveRateLimitSubject(
       requestWith({
         ...shared,
         authorization: `Bearer ${fakeToken({ sub: "userTwo" })}`,
-      })
+      }),
+      verify
     );
 
     expect(first.key).toBe("u:userOne");
@@ -139,6 +103,13 @@ describe("InMemoryRateLimiter with authenticated subjects", () => {
 
   it("meters each account separately behind one shared address", async () => {
     vi.stubEnv("VERCEL", "1");
+  setBearerVerifierForTests(async (token) => {
+    const [, payload] = token.split(".");
+    const decoded = JSON.parse(
+      Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")
+    ) as { sub?: string };
+    return decoded.sub ?? null;
+  });
     const limiter = new InMemoryRateLimiter(policy(2));
     const as = (sub: string) =>
       requestWith({
@@ -155,8 +126,11 @@ describe("InMemoryRateLimiter with authenticated subjects", () => {
     expect((await limiter.record(as("userTwo"))).ok).toBe(true);
   });
 
-  it("still bounds a caller who invents a subject per request", async () => {
+  it("gives an unverifiable token the address budget, not a budget of its own", async () => {
     vi.stubEnv("VERCEL", "1");
+    // The verifier refuses every token, as Firebase would for a forged one.
+    setBearerVerifierForTests(async () => null);
+
     const limiter = new InMemoryRateLimiter(policy(1));
     const rotating = (index: number) =>
       requestWith({
@@ -164,13 +138,50 @@ describe("InMemoryRateLimiter with authenticated subjects", () => {
         authorization: `Bearer ${fakeToken({ sub: `forged${index}` })}`,
       });
 
-    const ceiling = 1 * TOKEN_IP_CEILING_MULTIPLIER;
-    for (let index = 0; index < ceiling; index += 1) {
-      expect((await limiter.record(rotating(index))).ok).toBe(true);
-    }
+    expect((await limiter.record(rotating(0))).ok).toBe(true);
 
-    const blocked = await limiter.record(rotating(ceiling));
+    // Before verification, each invented subject opened a fresh account bucket
+    // and only the 10x address ceiling bounded it. Now the first invented
+    // subject is just the address, and the second request is refused.
+    const blocked = await limiter.record(rotating(1));
     expect(blocked.ok).toBe(false);
-    expect(blocked.limit).toBe(ceiling);
+    expect(blocked.limit).toBe(1);
+  });
+
+  it("does not let a verified account reset its budget by changing address", async () => {
+    vi.stubEnv("VERCEL", "1");
+    setBearerVerifierForTests(async () => "userOne");
+
+    const limiter = new InMemoryRateLimiter(policy(2));
+    const fromAddress = (address: string) =>
+      requestWith({
+        "x-vercel-forwarded-for": address,
+        authorization: `Bearer ${fakeToken({ sub: "userOne" })}`,
+      });
+
+    // The complaint this guards: a compromised account rotating addresses. The
+    // bucket belongs to the account, so a new address is the same budget.
+    expect((await limiter.record(fromAddress("203.0.113.9"))).ok).toBe(true);
+    expect((await limiter.record(fromAddress("198.51.100.7"))).ok).toBe(true);
+    expect((await limiter.record(fromAddress("192.0.2.55"))).ok).toBe(false);
+  });
+
+  it("verifies a token once, then reuses the identity", async () => {
+    vi.stubEnv("VERCEL", "1");
+    const verify = vi.fn(async () => "userOne");
+    resetRateLimitSubjectCacheForTests();
+
+    const request = () =>
+      requestWith({
+        "x-vercel-forwarded-for": "203.0.113.9",
+        authorization: `Bearer ${fakeToken({ sub: "userOne" })}`,
+      });
+
+    await resolveRateLimitSubject(request(), verify);
+    await resolveRateLimitSubject(request(), verify);
+
+    // The proxy sees every request; a signature check per request would be cost
+    // without extra safety while the token is still valid.
+    expect(verify).toHaveBeenCalledTimes(1);
   });
 });

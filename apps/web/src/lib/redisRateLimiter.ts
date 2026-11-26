@@ -59,7 +59,7 @@ import {
 } from "@/config/env";
 import {
   TOKEN_IP_CEILING_MULTIPLIER,
-  rateLimitSubject,
+  resolveRateLimitSubject,
 } from "@/lib/rateLimitSubject";
 
 export interface RateLimitResult {
@@ -306,7 +306,7 @@ export function createSharedRateLimiter(
 
       // One derivation, shared with the in-memory limiter and the ceiling
       // below; see `rateLimitSubject.ts` for why a token buys its own bucket.
-      const subject = rateLimitSubject(request);
+      const subject = await resolveRateLimitSubject(request);
 
       const limiter = getRatelimitInstance(name, maxRequests, windowMs);
       if (!limiter) {

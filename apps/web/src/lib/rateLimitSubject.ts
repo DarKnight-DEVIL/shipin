@@ -7,14 +7,20 @@
  * exhausts it; and an authenticated account has no budget of its own at all, so
  * a signed-in user on a shared address is throttled by their neighbours.
  *
- * A request carrying a Bearer token is therefore metered per account. The token
- * is only DECODED here, never verified — verification belongs to the route
- * handler, and doing it twice would mean an extra round trip on every request.
- * That means `sub` is untrusted input: an attacker can mint tokens with made-up
- * subjects and get a fresh bucket each time. The per-address ceiling in
- * `createSharedRateLimiter` is what bounds that abuse; this module only answers
- * "which bucket does this request count against".
+ * A request carrying a verifiable Firebase ID token is therefore metered per
+ * account. Verified, not merely decoded: the earlier version read `sub` out of
+ * the JWT without checking the signature, so a caller could mint a token with an
+ * invented subject, get a fresh bucket for every request, and rotate addresses to
+ * reset the per-address ceiling that was supposed to bound it. The identity that
+ * decides a budget has to be one we actually know, so verification happens here
+ * and an unverifiable token falls back to the address bucket.
+ *
+ * Verification is cached per token for a few minutes: Firebase signs an ID token
+ * for an hour, and the proxy sees every request, so verifying each one would put
+ * a signature check on every page load for no additional security.
  */
+
+import crypto from "crypto";
 
 import { getClientIp } from "./clientIp";
 
@@ -45,52 +51,121 @@ export interface RateLimitSubject {
 const UID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
 /**
- * The `sub` claim of an unverified Bearer JWT, or null.
- *
- * Deliberately strict: a token that is not three dot-separated segments, whose
- * payload is not JSON, or whose `sub` is not uid-shaped yields null and the
- * caller falls back to the address bucket. Throwing or returning a partial
- * value here would put an attacker-chosen string into a Redis key.
- */
-export function readBearerUid(request: Request): string | null {
-  const header = request.headers.get("authorization");
-  if (!header) return null;
-
-  const token = header.replace(/^Bearer\s+/i, "").trim();
-  const segments = token.split(".");
-  if (segments.length !== 3) return null;
-
-  const payload = segments[1];
-  if (!payload) return null;
-
-  try {
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(
-      normalized.length + ((4 - (normalized.length % 4)) % 4),
-      "="
-    );
-    const decoded = JSON.parse(atob(padded)) as { sub?: unknown };
-    const sub = decoded.sub;
-    return typeof sub === "string" && UID_PATTERN.test(sub) ? sub : null;
-  } catch {
-    // A malformed token is not an error worth surfacing: the route handler
-    // rejects it with 401 far more precisely than the limiter could.
-    return null;
-  }
-}
-
-/**
  * The bucket a request counts against, plus the address used for the ceiling.
  *
  * `ip` falls back to `UNIDENTIFIED_SUBJECT` when the deployment has declared no
  * trusted proxy chain (`clientIp.ts`), which keeps anonymous traffic in one
  * shared bucket instead of letting a client mint its own.
  */
-export function rateLimitSubject(request: Request): RateLimitSubject {
-  const ip = getClientIp(request) ?? UNIDENTIFIED_SUBJECT;
-  const uid = readBearerUid(request);
+/** How long a verified token's identity is reused before verifying again. */
+const VERIFY_CACHE_MS = 5 * 60 * 1000;
+/** A failure is cached briefly: an outage must not trigger a verify per request. */
+const VERIFY_FAILURE_CACHE_MS = 30 * 1000;
+/** Bounded so a flood of distinct tokens cannot grow the map without limit. */
+const VERIFY_CACHE_LIMIT = 500;
 
-  return uid
-    ? { key: `u:${uid}`, kind: "uid", ip }
+interface CachedIdentity {
+  uid: string | null;
+  expiresAt: number;
+}
+
+const verifiedIdentities = new Map<string, CachedIdentity>();
+
+/** A stable cache key: the token itself is never held as a map key in memory. */
+function tokenFingerprint(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+const bearerTokenOf = (request: Request): string | null => {
+  const header = request.headers.get("authorization");
+  if (!header) return null;
+  const token = header.replace(/^Bearer\s+/i, "").trim();
+  return token || null;
+};
+
+/**
+ * The uid behind a token, only if Firebase's signature says it is genuine.
+ *
+ * Any failure — expired token, wrong project, unreachable keys, malformed JWT —
+ * yields null, and the caller falls back to the address bucket. That is the safe
+ * direction: the route handler still rejects the request, and no forged claim can
+ * buy a budget of its own.
+ */
+export async function verifyBearerUid(token: string): Promise<string | null> {
+  try {
+    const { ensureAdminApp } = await import("@/lib/firebaseAdmin");
+    const { getAuth } = await import("firebase-admin/auth");
+    const decoded = await getAuth(ensureAdminApp()).verifyIdToken(token);
+
+    return typeof decoded.uid === "string" && UID_PATTERN.test(decoded.uid)
+      ? decoded.uid
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The subject for a request, using a verified identity when there is one.
+ *
+ * `verifiedUid` is a parameter rather than something read inside so the cache
+ * and the verification can be tested without minting real tokens.
+ */
+export async function resolveRateLimitSubject(
+  request: Request,
+  verify: (token: string) => Promise<string | null> = bearerVerifier
+): Promise<RateLimitSubject> {
+  const token = bearerTokenOf(request);
+
+  if (!token) return rateLimitSubject(request);
+
+  const fingerprint = tokenFingerprint(token);
+  const cached = verifiedIdentities.get(fingerprint);
+  const now = Date.now();
+
+  if (cached && cached.expiresAt > now) {
+    return rateLimitSubject(request, cached.uid);
+  }
+
+  const uid = await verify(token);
+
+  if (verifiedIdentities.size >= VERIFY_CACHE_LIMIT) verifiedIdentities.clear();
+  verifiedIdentities.set(fingerprint, {
+    uid,
+    expiresAt: now + (uid ? VERIFY_CACHE_MS : VERIFY_FAILURE_CACHE_MS),
+  });
+
+  return rateLimitSubject(request, uid);
+}
+
+let bearerVerifier: (token: string) => Promise<string | null> = verifyBearerUid;
+
+/**
+ * Test hook: replace the verifier.
+ *
+ * Bucket selection depends on verification, and minting real Firebase tokens in a
+ * unit test is not possible - so the verifier is the seam. Nothing in production
+ * calls this.
+ */
+export function setBearerVerifierForTests(
+  verify: (token: string) => Promise<string | null>
+): void {
+  bearerVerifier = verify;
+  verifiedIdentities.clear();
+}
+
+/** Test hook: forget every cached identity. */
+export function resetRateLimitSubjectCacheForTests(): void {
+  verifiedIdentities.clear();
+}
+
+export function rateLimitSubject(
+  request: Request,
+  verifiedUid: string | null = null
+): RateLimitSubject {
+  const ip = getClientIp(request) ?? UNIDENTIFIED_SUBJECT;
+
+  return verifiedUid
+    ? { key: `u:${verifiedUid}`, kind: "uid", ip }
     : { key: ip, kind: "ip", ip };
 }
