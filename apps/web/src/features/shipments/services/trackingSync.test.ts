@@ -181,6 +181,68 @@ describe("resolveTracking", () => {
     expect(result?.notice).toMatch(/handed over/i);
   });
 
+  it("does not write a synthetic snapshot, and does not advance the request", async () => {
+    // The scans are invented: storing them puts fiction in the customer's
+    // timeline for good, and once CEPT credentials arrive the merge would keep
+    // them beside real scans. A synthetic status must not close the last leg
+    // either - that write moves the status machine.
+    found(
+      shipped({
+        status: "out_for_delivery",
+        tracking: {
+          internalTrackingId: "SHP-2026-000001",
+          trackingNumber: "EE123456789IN",
+          lastSyncedAt: new Date(NOW - TRACKING_CACHE_TTL_MS - 1).toISOString(),
+        },
+      })
+    );
+
+    const feed = provider({
+      fetchTracking: vi.fn().mockResolvedValue({
+        carrierStatus: "item_delivered",
+        events: [event("ITEM_DELIVERED", 1)],
+      }),
+    });
+
+    const result = await resolveTracking("SHP-2026-000001", {
+      provider: feed,
+      now,
+    });
+
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ source: "placeholder", syncPaused: false });
+    expect(result?.notice).toMatch(/not connected yet/i);
+  });
+
+  it("shows the history already recorded instead of synthetic scans", async () => {
+    found(
+      shipped({
+        tracking: {
+          internalTrackingId: "SHP-2026-000001",
+          trackingNumber: "EE123456789IN",
+          lastSyncedAt: new Date(NOW - TRACKING_CACHE_TTL_MS - 1).toISOString(),
+          events: [event("SHIPPED", 20, "Mumbai")],
+        },
+      })
+    );
+
+    const feed = provider({
+      fetchTracking: vi.fn().mockResolvedValue({
+        carrierStatus: "in_transit",
+        events: [event("SYNTHETIC_CUSTOMS", 2)],
+      }),
+    });
+
+    const result = await resolveTracking("SHP-2026-000001", {
+      provider: feed,
+      now,
+    });
+
+    expect(result?.events.map((entry) => entry.code)).toEqual(["SHIPPED"]);
+    expect(result?.notice).toMatch(/last status we recorded/i);
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
   it("syncs a stale cache and stores the merged history", async () => {
     found(
       shipped({
@@ -194,6 +256,8 @@ describe("resolveTracking", () => {
     );
 
     const feed = provider({
+      placeholder: false,
+      id: "indiapost",
       fetchTracking: vi.fn().mockResolvedValue({
         carrierStatus: "in_transit",
         events: [
@@ -217,7 +281,7 @@ describe("resolveTracking", () => {
     expect(update["tracking.estimatedDelivery"]).toBe("2026-06-08");
     expect(update["tracking.events"]).toHaveLength(2);
 
-    expect(result).toMatchObject({ source: "placeholder", syncPaused: false });
+    expect(result).toMatchObject({ source: "carrier", syncPaused: false });
     expect(result?.events[0].code).toBe("IN_TRANSIT");
   });
 
@@ -273,6 +337,8 @@ describe("resolveTracking", () => {
     );
 
     const feed = provider({
+      placeholder: false,
+      id: "indiapost",
       fetchTracking: vi.fn().mockResolvedValue({
         carrierStatus: "delivered",
         events: [event("ITEM_DELIVERED", 1)],
@@ -449,6 +515,8 @@ describe("forced refresh (admin)", () => {
     );
 
     const feed = provider({
+      placeholder: false,
+      id: "indiapost",
       fetchTracking: vi.fn().mockResolvedValue({
         carrierStatus: "in_transit",
         events: [event("IN_TRANSIT", 2)],
@@ -470,6 +538,8 @@ describe("forced refresh (admin)", () => {
     found(paused({ status: "refunded" }));
 
     const feed = provider({
+      placeholder: false,
+      id: "indiapost",
       fetchTracking: vi.fn().mockResolvedValue({
         carrierStatus: "item_delivered",
         events: [event("ITEM_DELIVERED", 24)],

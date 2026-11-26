@@ -234,6 +234,39 @@ What to expect operationally:
 Local development can exercise the UI and the server-side 401/403 paths, but a
 real end-to-end SMS sign-in has to be verified on a deployed origin.
 
+### India Post tracking (carrier feed)
+
+Customer tracking has two states and both are honest about which one is running.
+
+**Configured.** The feed is live when all three are set:
+
+| Variable | Where it comes from |
+| --- | --- |
+| `INDIA_POST_TRACKING_URL` | The CEPT tracking endpoint issued with your contract (behind the Azure proxy, not the public post office page) |
+| `INDIA_POST_CLIENT_ID` | CEPT API credential |
+| `INDIA_POST_CLIENT_SECRET` | CEPT API credential |
+
+**Not configured.** `getTrackingProvider()` falls back to a synthetic feed,
+`/api/health` reports `degraded`, and the startup log names exactly which variable is
+missing. The customer page discloses that the carrier feed is not connected and that
+the scans below it are an illustrative sample.
+
+What the fallback deliberately does **not** do:
+
+- it does not write synthetic scans into `tracking.events`, because they would
+  outlive the placeholder — once credentials arrive, the merge keeps stored history
+  and adds real scans, so invented events would sit in the customer's timeline for
+  the life of the parcel;
+- it does not advance the request. Closing the last leg and moving the status
+  machine is a real carrier's job, so a synthetic `delivered` status cannot mark a
+  parcel delivered.
+
+**Verifying the feed once credentials are set.** Open a real parcel's tracking page
+and confirm the response says `source: "carrier"` (a placeholder response says
+`placeholder` and carries the disclosure notice). If it still says placeholder, the
+credentials are incomplete — `/api/health` names the missing one under
+`trackingWarning`.
+
 ### Enabling Global Rate Limiting (Upstash Redis)
 
 1. **Create an Upstash Redis database**:

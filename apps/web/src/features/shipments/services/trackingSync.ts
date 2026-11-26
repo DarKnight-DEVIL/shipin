@@ -343,6 +343,32 @@ export async function resolveTracking(
     throw error;
   }
 
+  /*
+   * A synthetic feed is a preview, not a record.
+   *
+   * Two reasons it must never be written. The scans are invented, so storing them
+   * puts fiction in the customer's timeline permanently - and once the CEPT
+   * credentials arrive, `mergeEvents` keeps stored history and adds real scans, so
+   * the fabricated ones would sit beside them for the life of the parcel. And a
+   * synthetic status must never advance the request: this code can close the last
+   * leg and move the status machine, which belongs to a real carrier.
+   *
+   * What the page shows is the history we already hold; when there is none, the
+   * snapshot is shown as a layout preview and labelled as such.
+   */
+  if (provider.placeholder) {
+    const preview = storedEvents.length > 0 ? storedEvents : snapshot.events;
+
+    return project(id, data, preview, "placeholder", {
+      syncPaused: false,
+      syncPauseReason: null,
+      notice:
+        storedEvents.length > 0
+          ? "The carrier feed is not connected yet. Showing the last status we recorded."
+          : "The carrier feed is not connected yet. This is a preview of the tracking layout, not carrier data.",
+    });
+  }
+
   const events = mergeEvents(storedEvents, snapshot.events);
   const delivered = DELIVERED_CARRIER_STATUSES.has(snapshot.carrierStatus);
 
