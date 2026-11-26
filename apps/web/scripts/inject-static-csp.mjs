@@ -78,13 +78,22 @@ const PAYPAL_ROUTES = [
 /**
  * Maps a built HTML file to the route it serves.
  *
- * The route is whatever follows the last `server/app` segment, which is true whether
- * the file sits in `.next/server/app` or in a traced copy under
- * `.next/standalone/.../server/app`.
+ * The route is whatever follows the last directory that anchors the page tree, and
+ * there are two of them: Next writes `.next/server/app/...` locally, and Vercel's own
+ * builder writes `.next/output/...`. Reading only `app` produced
+ * `/output/wallet/topup` for the Vercel layout, so the PayPal exemption missed and
+ * that page was served the strict policy - which blocks the SDK's inline bootstrap.
+ * Both anchors are therefore tried and the deeper one wins.
  */
+const ROUTE_ANCHORS = ["app", "output"];
+
 function routeFor(file) {
   const parts = path.relative(BUILD_DIR, file).split(path.sep);
-  const index = parts.lastIndexOf("app");
+  const index = parts.reduce(
+    (deepest, part, at) =>
+      ROUTE_ANCHORS.includes(part) ? Math.max(deepest, at) : deepest,
+    -1
+  );
 
   return `/${(index === -1 ? parts : parts.slice(index + 1))
     .join("/")
