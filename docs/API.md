@@ -63,6 +63,7 @@ clients branch on it rather than on the status alone.
 | `/api/admin/compliance/retention/purge` | public |
 | `/api/admin/customers` | admin |
 | `/api/admin/payments/reconcile` | public |
+| `/api/admin/payments/sweep` | public |
 | `/api/admin/requests` | admin |
 | `/api/admin/requests/[requestId]/additional-items` | admin |
 | `/api/admin/requests/[requestId]/approve-international` | admin |

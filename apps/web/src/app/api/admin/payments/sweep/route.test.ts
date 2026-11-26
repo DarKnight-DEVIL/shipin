@@ -1,0 +1,200 @@
+// @vitest-environment node
+
+/**
+ * `POST /api/admin/payments/sweep` — settles payments PayPal captured but this
+ * deployment never recorded.
+ *
+ * The route is thin on purpose: the decisions live in `sweepPendingPayments`,
+ * covered by its own tests. What matters here is the wiring and the verdict —
+ * an unsigned caller gets nothing, a missing secret fails closed instead of
+ * looking like a bad signature, a clean sweep is a 200, and an unsettled
+ * payment is a 500 so the scheduled run goes red instead of reporting success
+ * over a charged customer.
+ */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+import crypto from "crypto";
+
+const mocks = vi.hoisted(() => {
+  const state = {
+    orders: [] as Array<{ id: string; data: Record<string, unknown> }>,
+    paypal: {} as Record<string, unknown>,
+    settleMain: vi.fn(async () => ({ ok: true as boolean, error: undefined as string | undefined })),
+    settleAdditional: vi.fn(async () => ({ ok: true as boolean })),
+    writes: [] as Array<{ id: string; value: Record<string, unknown> }>,
+  };
+
+  const snapshot = () => ({
+    docs: state.orders.map((order) => ({
+      id: order.id,
+      data: () => order.data,
+      ref: {
+        id: order.id,
+        set: async (value: Record<string, unknown>) => {
+          state.writes.push({ id: order.id, value });
+        },
+      },
+    })),
+  });
+
+  const chain = {
+    where: () => chain,
+    limit: () => chain,
+    get: async () => snapshot(),
+  };
+
+  return {
+    state,
+    db: {
+      collection: () => ({
+        ...chain,
+        doc: (id: string) => ({
+          id,
+          get: async () => ({ data: () => ({ userId: 'u1', customerName: 'C' }) }),
+        }),
+      }),
+    },
+  };
+});
+
+vi.mock("@/lib/firebaseAdmin", () => ({ adminDb: mocks.db }));
+
+vi.mock("@/lib/paypal", () => ({
+  verifyPayPalOrder: async (id: string) => mocks.state.paypal[id] ?? { status: "CREATED" },
+}));
+
+vi.mock("@/lib/paypal/settleMainPayment", () => ({
+  settleMainPayment: (...args: unknown[]) => mocks.state.settleMain(...(args as [])),
+}));
+
+vi.mock("@/lib/paypal/settleAdditionalItemPayment", () => ({
+  settleAdditionalItemPayment: (...args: unknown[]) =>
+    mocks.state.settleAdditional(...(args as [])),
+}));
+
+import { POST } from "./route";
+
+const SECRET = "test-cron-secret";
+
+function signedRequest(): NextRequest {
+  const timestamp = String(Date.now());
+  const signature = crypto
+    .createHmac("sha256", SECRET)
+    .update(`${timestamp}|`)
+    .digest("hex");
+
+  return new NextRequest("http://localhost/api/admin/payments/sweep", {
+    method: "POST",
+    headers: {
+      "x-cron-timestamp": timestamp,
+      "x-cron-signature": signature,
+    },
+  });
+}
+
+function completedOrder(captureId = "CAP-1", value = "42.00") {
+  return {
+    status: "COMPLETED",
+    purchase_units: [
+      {
+        payments: {
+          captures: [
+            { id: captureId, status: "COMPLETED", amount: { value, currency_code: "USD" } },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+beforeEach(() => {
+  vi.stubEnv("CRON_SECRET", SECRET);
+  mocks.state.orders = [];
+  mocks.state.paypal = {};
+  mocks.state.writes = [];
+  mocks.state.settleMain.mockClear();
+  mocks.state.settleAdditional.mockClear();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+describe("POST /api/admin/payments/sweep — auth", () => {
+  it("refuses an unsigned caller", async () => {
+    const response = await POST(
+      new NextRequest("http://localhost/api/admin/payments/sweep", { method: "POST" })
+    );
+
+    expect(response.status).toBe(401);
+    expect(mocks.state.settleMain).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the secret is missing", async () => {
+    vi.stubEnv("CRON_SECRET", "");
+
+    const response = await POST(signedRequest());
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({ code: "CONFIG_ERROR" });
+  });
+});
+
+describe("POST /api/admin/payments/sweep — verdict", () => {
+  it("reports a clean run when nothing is stuck", async () => {
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ success: true, scanned: 0, settled: 0 });
+  });
+
+  it("settles an order PayPal already captured", async () => {
+    mocks.state.orders = [
+      { id: "ORDER-1", data: { orderId: "ORDER-1", requestId: "req-1", paymentType: "main" } },
+    ];
+    mocks.state.paypal["ORDER-1"] = completedOrder("CAP-1", "42.00");
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.settled).toBe(1);
+    expect(mocks.state.settleMain).toHaveBeenCalledWith(
+      expect.objectContaining({ captureId: "CAP-1", capturedAmount: 42, requestId: "req-1" })
+    );
+  });
+
+  it("goes red when a captured payment could not be settled", async () => {
+    // A 500 is the point: a charged customer must turn the scheduled run red,
+    // not become a green run carrying a detail nobody opens.
+    mocks.state.orders = [
+      { id: "ORDER-2", data: { orderId: "ORDER-2", requestId: "req-2", paymentType: "main" } },
+    ];
+    mocks.state.paypal["ORDER-2"] = completedOrder();
+    mocks.state.settleMain.mockResolvedValueOnce({ ok: false, error: "Amount mismatch." });
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.success).toBe(false);
+    expect(body.failures).toEqual([{ orderId: "ORDER-2", error: "Amount mismatch." }]);
+  });
+
+  it("marks a voided order so it stops being polled", async () => {
+    mocks.state.orders = [
+      { id: "ORDER-3", data: { orderId: "ORDER-3", requestId: "req-3", paymentType: "main" } },
+    ];
+    mocks.state.paypal["ORDER-3"] = { status: "VOIDED" };
+
+    const response = await POST(signedRequest());
+
+    expect(response.status).toBe(200);
+    expect(mocks.state.writes[0]).toMatchObject({
+      id: "ORDER-3",
+      value: { status: "voided", voidedBy: "paypal-sweep" },
+    });
+  });
+});

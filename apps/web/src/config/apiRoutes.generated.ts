@@ -15,6 +15,7 @@ export const API_ROUTE_PATHS: readonly string[] = [
   "/api/admin/compliance/retention/purge",
   "/api/admin/customers",
   "/api/admin/payments/reconcile",
+  "/api/admin/payments/sweep",
   "/api/admin/requests",
   "/api/admin/requests/[requestId]/additional-items",
   "/api/admin/requests/[requestId]/approve-international",

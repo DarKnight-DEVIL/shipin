@@ -69,6 +69,11 @@ export const ROUTE_AUTH_CLASSIFICATION: Record<string, RouteAuth> = {
   // prefix the proxy would answer 401 before the signature is checked. The
   // handler still refuses an unsigned caller.
   "/api/admin/wallet/invariants": "public",
+  // Hourly PayPal settlement sweep. Same HMAC contract: it settles payments
+  // PayPal captured but the app never recorded, and GitHub Actions has no
+  // Firebase session, so the admin prefix would answer 401 before the signature
+  // was checked. The handler still refuses an unsigned caller.
+  "/api/admin/payments/sweep": "public",
 
   // --- Customer ---
   "/api/profile": "customer",

@@ -1,0 +1,135 @@
+name: PayPal Stuck Payment Sweep
+
+# Settles payments PayPal has captured but this deployment never recorded.
+#
+# The dangerous shape: the browser's capture call dies after PayPal took the
+# money (tab closed, network dropped), and the webhook that would have repaired
+# it never arrives — PayPal retries for about three days and then gives up. The
+# order stays `created`, the request stays unpaid, and the customer has been
+# charged with nothing in the app to notice.
+#
+# The payment reconciler cannot see it: it compares orders marked `completed`
+# against requests, and this order never reached `completed`. This job asks
+# PayPal what actually happened and settles what it finds.
+#
+# Runs hourly, not daily: an unpaid customer is worth fixing within the hour, and
+# the route only looks at orders older than 15 minutes, so a live checkout is
+# never raced.
+on:
+  schedule:
+    # Every hour at :20 — offset from the daily jobs so a slow reconciler never
+    # delays this one.
+    - cron: "20 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sweep-stuck-payments:
+    name: Settle Captured But Unrecorded Payments
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify required secrets
+        env:
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          missing=""
+
+          if [ -z "$PRODUCTION_URL" ]; then missing="$missing PRODUCTION_URL"; fi
+          if [ -z "$CRON_SECRET" ]; then missing="$missing CRON_SECRET"; fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. Without them a captured-but-unrecorded payment stays invisible until a customer complains."
+            exit 1
+          fi
+
+          case "$PRODUCTION_URL" in
+            https://*) ;;
+            *)
+              echo "::error::PRODUCTION_URL must be an https:// URL (got a value without that scheme)."
+              exit 1
+              ;;
+          esac
+
+      - name: Call the sweep
+        run: |
+          RESPONSE_FILE="$RUNNER_TEMP/paypal-sweep-response.json"
+          echo "SWEEP_RESPONSE_FILE=$RESPONSE_FILE" >> "$GITHUB_ENV"
+          TIMESTAMP=$(date +%s%3N)
+          PAYLOAD=""
+          SIGNATURE=$(echo -n "${TIMESTAMP}|${PAYLOAD}" | openssl dgst -sha256 -hmac "${{ secrets.CRON_SECRET }}" | sed "s/^.* //")
+          status=0
+          curl --fail-with-body -sS -X POST \
+            -H "x-cron-timestamp: $TIMESTAMP" \
+            -H "x-cron-signature: $SIGNATURE" \
+            -o "$RESPONSE_FILE" \
+            "${{ secrets.PRODUCTION_URL }}/api/admin/payments/sweep" || status=$?
+
+          if [ "$status" -ne 0 ]; then
+            echo "::error::The sweep returned an error (curl exit $status; 22 means an HTTP 4xx/5xx, and a 500 body lists the orders it could not settle)."
+            exit "$status"
+          fi
+
+      - name: Report what the sweep did
+        run: |
+          response_file="${SWEEP_RESPONSE_FILE:-}"
+
+          if [ ! -f "$response_file" ]; then
+            # Unlike the wallet invariants sweep, "no stuck orders" is a healthy
+            # result here — but a missing body still means the check never
+            # happened, and a green run would claim it did.
+            echo "::error::The sweep returned no response body, so nothing can be concluded from this run."
+            exit 1
+          fi
+
+          scanned=$(jq -r '.scanned // 0' "$response_file")
+          settled=$(jq -r '.settled // 0' "$response_file")
+          pending=$(jq -r '.pending // 0' "$response_file")
+          voided=$(jq -r '.voided // 0' "$response_file")
+
+          echo "Scanned $scanned stuck order(s): settled $settled, still pending $pending, voided $voided."
+
+          if [ "$settled" -gt 0 ] 2>/dev/null; then
+            {
+              echo "### $settled payment(s) settled by the sweep"
+              echo ""
+              echo "These were captured at PayPal but had never reached the request. The customer was charged either way, so this repays them what they paid for — check the orders below to see whether the capture path is losing responses."
+              echo ""
+              echo '```json'
+              head -c 4000 "$response_file"
+              echo ""
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Page on unsettled payments
+        if: failure()
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          response_file="${SWEEP_RESPONSE_FILE:-}"
+
+          {
+            echo "### Payment sweep needs a human"
+            echo ""
+            echo "At least one payment could not be settled by the sweep. That means PayPal took money for an order this deployment still shows as unpaid, and the automatic path did not fix it."
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "$response_file" ] && [ -f "$response_file" ]; then
+            {
+              echo '```json'
+              head -c 4000 "$response_file"
+              echo ""
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ -n "${ALERT_WEBHOOK_URL:-}" ]; then
+            summary=$(head -c 1800 "$GITHUB_STEP_SUMMARY")
+            jq -n --arg content "$summary" '{content: $content}' \
+              | curl -sS -X POST -H "Content-Type: application/json" -d @- "$ALERT_WEBHOOK_URL" || true
+          fi
