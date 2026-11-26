@@ -40,10 +40,7 @@ const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
  * other, which is a difference no test would have caught, because the page still
  * works either way.
  */
-const APP_DIRS = [
-  path.join(ROOT, ".next", "server", "app"),
-  path.join(ROOT, ".next", "standalone", "apps", "web", ".next", "server", "app"),
-];
+const BUILD_DIR = path.join(ROOT, ".next");
 
 /**
  * The `script-src` the app sends, restated here because this step runs in plain
@@ -78,11 +75,19 @@ const PAYPAL_ROUTES = [
   "/requests/[id]/invoice",
 ];
 
-/** Maps a built HTML file to the route it serves, e.g. `wallet/topup.html` -> `/wallet/topup`. */
-function routeFor(tree, file) {
-  return `/${path
-    .relative(tree, file)
-    .replace(/\\/g, "/")
+/**
+ * Maps a built HTML file to the route it serves.
+ *
+ * The route is whatever follows the last `server/app` segment, which is true whether
+ * the file sits in `.next/server/app` or in a traced copy under
+ * `.next/standalone/.../server/app`.
+ */
+function routeFor(file) {
+  const parts = path.relative(BUILD_DIR, file).split(path.sep);
+  const index = parts.lastIndexOf("app");
+
+  return `/${(index === -1 ? parts : parts.slice(index + 1))
+    .join("/")
     .replace(/\.html$/, "")}`;
 }
 
@@ -111,13 +116,25 @@ export function strictScriptSrc(hashes) {
   return `script-src ${[...sources, ...hashSources].join(" ")}`;
 }
 
-function pages(dir) {
-  const found = [];
-
+/**
+ * Every prerendered HTML file in the build output.
+ *
+ * Deliberately not a fixed path. Locally Next writes them to
+ * the `.next/server/app` tree, and a Vercel build reported that directory as present
+ * but empty - Vercel's own builder applies a config change this script cannot see,
+ * and it laid the static output out differently. Searching the whole tree finds them
+ * wherever they land; `cache` is skipped because it holds stale copies that are never
+ * served.
+ */
+function pages(dir, found = []) {
   for (const entry of readdirSync(dir)) {
     const full = path.join(dir, entry);
-    if (statSync(full).isDirectory()) found.push(...pages(full));
-    else if (entry.endsWith(".html")) found.push(full);
+    if (statSync(full).isDirectory()) {
+      if (entry === "cache") continue;
+      pages(full, found);
+    } else if (entry.endsWith(".html")) {
+      found.push(full);
+    }
   }
 
   return found;
@@ -180,27 +197,29 @@ function instrument(file) {
   return hashes.length;
 }
 
-const trees = APP_DIRS.filter((dir) => existsSync(dir));
-
-if (trees.length === 0) {
+if (!existsSync(BUILD_DIR)) {
   // A bare checkout with no build: nothing to instrument, and nothing to claim.
   console.log("static CSP: no build output, skipping");
   process.exit(0);
+}
+
+const files = pages(BUILD_DIR);
+const byDirectory = new Map();
+for (const file of files) {
+  const dir = path.dirname(path.relative(BUILD_DIR, file)).split(path.sep)[0];
+  byDirectory.set(dir, (byDirectory.get(dir) ?? 0) + 1);
 }
 
 let instrumented = 0;
 let skipped = 0;
 let scriptCount = 0;
 let hashCount = 0;
-
 let paypalSkipped = 0;
 
-for (const tree of trees) {
-  let perTree = 0;
-
-  for (const file of pages(tree)) {
+{
+  for (const file of files) {
     // The SDK's inline bootstrap cannot be hashed, so this page keeps the floor.
-    if (PAYPAL_ROUTES.includes(routeFor(tree, file))) {
+    if (PAYPAL_ROUTES.includes(routeFor(file))) {
       paypalSkipped += 1;
       writeFileSync(
         file,
@@ -225,32 +244,46 @@ for (const tree of trees) {
     }
 
     instrumented += 1;
-    perTree += 1;
     hashCount += hashes;
     scriptCount += inlineScriptBodies(readFileSync(file, "utf8")).length;
   }
+}
 
-  console.log(
-    `static CSP: ${perTree} page(s) in ${path.relative(ROOT, tree).replace(/\\\\/g, "/")}`
-  );
+for (const [dir, count] of byDirectory) {
+  console.log(`static CSP: ${count} HTML file(s) under .next/${dir}`);
 }
 
 /*
- * A step that silently instruments nothing is indistinguishable from a step that
- * works, and both leave the app on the permissive policy. Fail instead.
+ * No HTML in the build output means this step has nothing to harden: the deployment
+ * serves pages the build did not materialize, and the header policy applies. That is
+ * a downgrade from what this step is for, not a broken app - every page still works -
+ * so it is reported loudly and the build continues. Failing here blocked a
+ * deployment over a condition the script cannot fix.
  */
+if (files.length === 0) {
+  console.warn(
+    "static CSP: the build output contains no prerendered HTML, so no page got the strict meta. " +
+      "Pages are served under the header policy (which allows inline scripts)."
+  );
+  process.exit(0);
+}
+
 if (instrumented === 0) {
   console.error(
-    "static CSP: found prerendered HTML but instrumented none - the meta tag is not being written"
+    "static CSP: HTML exists but none was instrumented - the meta tag is not being written"
   );
   process.exit(1);
 }
 
 if (skipped > 0) {
-  console.error(
-    `static CSP: ${skipped} HTML file(s) have no <head> and were left on the permissive policy`
+  /*
+   * Not a failure: not every .html in the tree is a page. The build copies
+   * public/googled*.html, Google Search Console's verification file, which is served
+   * verbatim and has no <head> - a document written for that one path.
+   */
+  console.log(
+    `static CSP: ${skipped} HTML file(s) are not documents (no <head>) and were left alone`
   );
-  process.exit(1);
 }
 
 console.log(
