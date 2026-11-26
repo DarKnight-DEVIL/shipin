@@ -270,6 +270,59 @@ describe("POST /api/admin/users/[uid]/delete", () => {
     expect(await response.json()).toMatchObject({ code: "USER_NOT_FOUND" });
   });
 
+  it("refuses an empty id rather than treating it as a wildcard", async () => {
+    const response = await POST(request(), context(""));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "User ID is required.",
+    });
+    expect(mocks.getUser).not.toHaveBeenCalled();
+  });
+
+  it("removes the account's subcollections and counts them per name", async () => {
+    const nestedRef = { id: "address-1" };
+    mocks.listCollections.mockResolvedValue([
+      {
+        id: "addresses",
+        get: async () => ({ size: 1, docs: [{ ref: nestedRef }] }),
+      },
+    ]);
+
+    const response = await POST(request(), context());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    // A subcollection left behind is a profile's data without its owner.
+    expect(mocks.batchDelete).toHaveBeenCalledWith(nestedRef);
+    expect(body.removed["users/user-1/addresses"]).toBe(1);
+  });
+
+  it("rethrows a store failure it cannot explain", async () => {
+    mocks.getUser.mockRejectedValue(new Error("auth unavailable"));
+
+    const response = await POST(request(), context());
+
+    // Not swallowed into a 404: a broken store must not read as "no such account".
+    expect(response.status).toBe(500);
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("maps an auth refusal the admin guard understands", async () => {
+    mocks.getUser.mockRejectedValue(new Error("blocked"));
+    mocks.getAdminAuthError.mockReturnValue({
+      status: 401,
+      error: "App verification failed.",
+    });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      error: "App verification failed.",
+    });
+  });
+
   it("deletes the profile and the account's own documents, and reports counts", async () => {
     mocks.queryResults.set("addresses", [{ ref: { id: "a1" } }, { ref: { id: "a2" } }]);
     mocks.queryResults.set("notifications", [{ ref: { id: "n1" } }]);

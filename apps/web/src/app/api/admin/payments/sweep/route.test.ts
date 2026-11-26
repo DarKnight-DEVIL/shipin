@@ -31,6 +31,8 @@ const mocks = vi.hoisted(() => {
     settleMain: vi.fn(async () => ({ ok: true as boolean, error: undefined as string | undefined })),
     settleAdditional: vi.fn(async () => ({ ok: true as boolean })),
     writes: [] as Array<{ id: string; value: Record<string, unknown> }>,
+    /** Requests that no longer exist, so the sweep has to say so. */
+    missingRequests: [] as string[],
   };
 
   const snapshot = (orders: typeof state.orders) => ({
@@ -70,7 +72,12 @@ const mocks = vi.hoisted(() => {
         ...chainFor(name),
         doc: (id: string) => ({
           id,
-          get: async () => ({ data: () => ({ userId: 'u1', customerName: 'C' }) }),
+          get: async () => ({
+            data: () =>
+              state.missingRequests.includes(id)
+                ? undefined
+                : { userId: "u1", customerName: "C" },
+          }),
         }),
       }),
     },
@@ -146,6 +153,7 @@ beforeEach(() => {
   mocks.state.creditWallet.mockClear();
   mocks.state.paypal = {};
   mocks.state.writes = [];
+  mocks.state.missingRequests = [];
   mocks.state.settleMain.mockClear();
   mocks.state.settleAdditional.mockClear();
 });
@@ -214,6 +222,225 @@ describe("POST /api/admin/payments/sweep — verdict", () => {
 
     expect(response.status).toBe(200);
     expect(sendNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles an additional-item payment through its own settlement", async () => {
+    /*
+     * A second invoice for the same shipment settles a different request document than
+     * the main payment, so the sweep routes it to a separate callback. Nothing exercised
+     * that path before: the wiring could have been swapped with `settleMain` and every
+     * test would still have passed.
+     */
+    mocks.state.orders = [
+      {
+        id: "ORDER-5",
+        data: {
+          orderId: "ORDER-5",
+          requestId: "req-5",
+          paymentType: "additional_item",
+          additionalItemRequestId: "add-5",
+        },
+      },
+    ];
+    mocks.state.paypal["ORDER-5"] = completedOrder("CAP-5");
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.settled).toBe(1);
+    expect(mocks.state.settleMain).not.toHaveBeenCalled();
+    expect(mocks.state.settleAdditional).toHaveBeenCalledWith(
+      expect.objectContaining({
+        additionalItemRequestId: "add-5",
+        captureId: "CAP-5",
+      })
+    );
+  });
+
+  it("fails an additional-item order that has lost its request references", async () => {
+    mocks.state.orders = [
+      {
+        id: "ORDER-6",
+        data: { orderId: "ORDER-6", paymentType: "additional_item" },
+      },
+    ];
+    mocks.state.paypal["ORDER-6"] = completedOrder();
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    // PayPal took the money for an order we cannot place: that is a failure, not a pass.
+    expect(response.status).toBe(500);
+    expect(body.failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          orderId: "ORDER-6",
+          error: "Order is missing its request references.",
+        }),
+      ])
+    );
+    expect(mocks.state.settleAdditional).not.toHaveBeenCalled();
+  });
+
+  it("does not undo a settlement when the receipt email fails", async () => {
+    const { sendNotification } = await import(
+      "@/features/notifications/services/notificationService"
+    );
+    vi.mocked(sendNotification).mockRejectedValueOnce(new Error("resend down"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    mocks.state.orders = [
+      { id: "ORDER-7", data: { orderId: "ORDER-7", requestId: "req-7", paymentType: "main" } },
+    ];
+    mocks.state.paypal["ORDER-7"] = completedOrder();
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    // The money is settled; a failed receipt must not turn a settled payment into a 500
+    // that PayPal's own retry logic never reads.
+    expect(response.status).toBe(200);
+    expect(body.settled).toBe(1);
+    expect(warn).toHaveBeenCalledWith(
+      "[paypal-sweep] Payment receipt notification failed",
+      expect.objectContaining({ requestId: "req-7" })
+    );
+  });
+
+  it("names a settlement failure the handler did not describe", async () => {
+    mocks.state.orders = [
+      { id: "ORDER-8", data: { orderId: "ORDER-8", requestId: "req-8", paymentType: "main" } },
+    ];
+    mocks.state.paypal["ORDER-8"] = completedOrder();
+    mocks.state.settleMain.mockResolvedValueOnce({ ok: false, error: undefined });
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(body.failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ error: "Settlement failed." }),
+      ])
+    );
+  });
+
+  it("clears the pending flag on a top-up PayPal voided", async () => {
+    mocks.state.topups = [{ id: "TOPUP-VOID", data: { orderId: "TOPUP-VOID" } }];
+    mocks.state.paypal["TOPUP-VOID"] = { status: "VOIDED" };
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    // Nested under the top-up half of the report, not the main sweep's counts.
+    expect(body.topups.abandoned).toBe(1);
+    // Without this the order is re-examined on every run forever.
+    expect(mocks.state.writes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "TOPUP-VOID",
+          value: expect.objectContaining({ capturePending: false }),
+        }),
+      ])
+    );
+    expect(mocks.state.creditWallet).not.toHaveBeenCalled();
+  });
+
+  it("fails an additional-item order whose request no longer exists", async () => {
+    mocks.state.orders = [
+      {
+        id: "ORDER-9",
+        data: {
+          orderId: "ORDER-9",
+          requestId: "req-gone",
+          paymentType: "additional_item",
+          additionalItemRequestId: "add-9",
+        },
+      },
+    ];
+    mocks.state.paypal["ORDER-9"] = completedOrder();
+    mocks.state.missingRequests = ["req-gone"];
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(body.failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          orderId: "ORDER-9",
+          error: "Request no longer exists.",
+        }),
+      ])
+    );
+    expect(mocks.state.settleAdditional).not.toHaveBeenCalled();
+  });
+
+  it("fails an additional-item order that has only one of its references", async () => {
+    // Either half missing means the money cannot be placed on a request, so both halves
+    // are checked - not only the pair.
+    mocks.state.orders = [
+      {
+        id: "ORDER-10",
+        data: { orderId: "ORDER-10", requestId: "req-10", paymentType: "additional_item" },
+      },
+      {
+        id: "ORDER-11",
+        data: {
+          orderId: "ORDER-11",
+          paymentType: "additional_item",
+          additionalItemRequestId: "add-11",
+        },
+      },
+    ];
+    mocks.state.paypal["ORDER-10"] = completedOrder();
+    mocks.state.paypal["ORDER-11"] = completedOrder();
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(
+      body.failures.filter(
+        (failure: { error?: string }) =>
+          failure.error === "Order is missing its request references."
+      )
+    ).toHaveLength(2);
+    expect(mocks.state.settleAdditional).not.toHaveBeenCalled();
+  });
+
+  it("names an additional-item failure the handler did not describe", async () => {
+    mocks.state.orders = [
+      {
+        id: "ORDER-12",
+        data: {
+          orderId: "ORDER-12",
+          requestId: "req-12",
+          paymentType: "additional_item",
+          additionalItemRequestId: "add-12",
+        },
+      },
+    ];
+    mocks.state.paypal["ORDER-12"] = completedOrder();
+    mocks.state.settleAdditional.mockResolvedValueOnce({ ok: false });
+
+    const body = await (await POST(signedRequest())).json();
+
+    expect(body.failures).toEqual(
+      expect.arrayContaining([expect.objectContaining({ error: "Settlement failed." })])
+    );
+  });
+
+  it("logs the top-up it credited, so the repair is visible in the run", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.state.topups = [{ id: "TOPUP-OK", data: { orderId: "TOPUP-OK" } }];
+    mocks.state.paypal["TOPUP-OK"] = completedOrder("CAP-9", "25.00");
+
+    await POST(signedRequest());
+
+    expect(warn).toHaveBeenCalledWith(
+      "[paypal-sweep] Credited a wallet top-up PayPal had already captured",
+      // Keyed by the top-up document, not the PayPal order.
+      expect.objectContaining({ topupId: "TOPUP-OK" })
+    );
   });
 
   it("goes red when a captured payment could not be settled", async () => {
