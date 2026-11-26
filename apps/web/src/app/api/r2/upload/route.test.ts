@@ -160,14 +160,14 @@ describe("POST /api/r2/upload", () => {
     });
 
     const response = await POST(
-      uploadRequest({ token: "good", file, requestId: "req/1!" })
+      uploadRequest({ token: "good", file, requestId: "req-1" })
     );
     const body = await response.json();
 
     // The route takes the id from `node:crypto`, so the contract is the shape
-    // (a real UUID under the sanitised request directory), not a fixed value.
+    // (a real UUID under the request directory it was given), not a fixed value.
     const keyPattern = new RegExp(
-      `^inspection/req1/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.${extension}$`
+      `^inspection/req-1/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.${extension}$`
     );
 
     expect(body.key).toMatch(keyPattern);
@@ -176,7 +176,7 @@ describe("POST /api/r2/upload", () => {
       Key: expect.stringMatching(keyPattern),
       Body: expect.any(Buffer),
       ContentType: type,
-      Metadata: { requestid: "req1" },
+      Metadata: { requestid: "req-1" },
     });
     expect(mocks.send).toHaveBeenCalled();
     expect(body.success).toBe(true);
@@ -187,11 +187,76 @@ describe("POST /api/r2/upload", () => {
       type: "image/jpeg",
     });
 
-    await POST(uploadRequest({ token: "good", file, requestId: "req/1!" }));
+    await POST(uploadRequest({ token: "good", file, requestId: "req-1" }));
 
-    // The sanitised id is what the object key uses, so it is what must be
-    // authorized.
-    expect(mocks.authorize).toHaveBeenCalledWith("admin-1", "req1");
+    // The id that is authorised is the id the object key uses, byte for byte.
+    expect(mocks.authorize).toHaveBeenCalledWith("admin-1", "req-1");
+  });
+
+  it("refuses to rewrite a request id instead of validating it", async () => {
+    const file = new File([new Uint8Array([1])], "photo.jpg", {
+      type: "image/jpeg",
+    });
+
+    /*
+     * This used to be sanitised to `reqother`, which means the id that was authorised
+     * could differ from the id the caller asked for - and two different inputs could land
+     * in one folder. It is refused now: authorised and written are the same string.
+     */
+    const response = await POST(
+      uploadRequest({ token: "good", file, requestId: "req/../other" })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "INVALID_REQUEST_ID",
+    });
+    expect(mocks.authorize).not.toHaveBeenCalled();
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+
+  it("refuses a Firestore id that is legal there but not in an object key", async () => {
+    const file = new File([new Uint8Array([1])], "photo.jpg", {
+      type: "image/jpeg",
+    });
+
+    // A dot is allowed in a document id, and would be silently removed before. Refusing
+    // says what is wrong; rewriting would put the file somewhere else.
+    const response = await POST(
+      uploadRequest({ token: "good", file, requestId: "req.1" })
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+
+  it("refuses an id long enough to make an unusable key", async () => {
+    const file = new File([new Uint8Array([1])], "photo.jpg", {
+      type: "image/jpeg",
+    });
+
+    const response = await POST(
+      uploadRequest({ token: "good", file, requestId: "a".repeat(129) })
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+
+  it("does not normalise case or the separator", async () => {
+    const file = new File([new Uint8Array([1])], "photo.jpg", {
+      type: "image/jpeg",
+    });
+
+    const response = await POST(
+      uploadRequest({ token: "good", file, requestId: "Req_1-2" })
+    );
+    const body = await response.json();
+
+    // Firestore ids are case-sensitive, so `Req_1-2` and `req_1-2` are two requests: the
+    // key must not collapse them.
+    expect(body.key).toContain("inspection/Req_1-2/");
+    expect(mocks.authorize).toHaveBeenCalledWith("admin-1", "Req_1-2");
   });
 
   it("refuses to upload into a request the caller does not own", async () => {

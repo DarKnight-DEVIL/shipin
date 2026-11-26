@@ -16,6 +16,16 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
+/**
+ * What a request id may contain.
+ *
+ * Deliberately the shape we are willing to put in an object key, checked once and used
+ * unchanged. A Firestore id that legitimately carries something else (a dot, a space) is
+ * refused rather than rewritten - "upload failed, bad id" is debuggable, a file appearing
+ * in a folder nobody asked for is not.
+ */
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
 export const POST = withErrorHandler(async (request: Request) => {
   try {
     const authorization = request.headers.get("authorization");
@@ -107,17 +117,31 @@ export const POST = withErrorHandler(async (request: Request) => {
     }
 
     /*
-     * Remove characters that could create
-     * undesirable object paths.
+     * Validate the id, never rewrite it.
+     *
+     * The object key and the ownership check must use the same string: if the id is
+     * sanitised, a caller who sends one id can be authorised against another, and two
+     * different inputs can collapse onto one folder. Refusing an id we would have to
+     * change keeps "authorised" and "written" the same string by construction, and turns
+     * a path-traversal attempt into a visible 400 instead of a silently different folder.
      */
-    const safeRequestId = requestId.replace(/[^a-zA-Z0-9_-]/g, "");
+    if (!REQUEST_ID_PATTERN.test(requestId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "That request id is not valid.",
+          code: "INVALID_REQUEST_ID",
+        },
+        { status: 400 }
+      );
+    }
 
     /*
      * Ownership: without this, any signed-in account could write objects into
      * another customer's request folder — warehouse evidence is shown to that
      * customer and to admins.
      */
-    const denial = await authorizeInspectionAccess(uid, safeRequestId);
+    const denial = await authorizeInspectionAccess(uid, requestId);
 
     if (denial) {
       return NextResponse.json(
@@ -133,7 +157,7 @@ export const POST = withErrorHandler(async (request: Request) => {
           ? "webp"
           : "jpg";
 
-    const objectKey = `inspection/${safeRequestId}/${crypto.randomUUID()}.${extension}`;
+    const objectKey = `inspection/${requestId}/${crypto.randomUUID()}.${extension}`;
 
     const arrayBuffer = await file.arrayBuffer();
 
@@ -156,7 +180,7 @@ export const POST = withErrorHandler(async (request: Request) => {
          * publicly accessible.
          */
         Metadata: {
-          requestid: safeRequestId,
+          requestid: requestId,
         },
       })
     );
