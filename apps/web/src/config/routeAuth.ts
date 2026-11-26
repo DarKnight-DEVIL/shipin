@@ -37,6 +37,11 @@ export const ROUTE_AUTH_CLASSIFICATION: Record<string, RouteAuth> = {
   // entries here take precedence over that prefix.
   "/api/auth/login-intent": "public",
   "/api/auth/password-leak-check": "public",
+  // The permanent verification link. The caller is unverified by definition. The
+  // proxy only checks that a bearer token is *present* on customer routes, and this
+  // one is opened from an email with no session at all, so it has to be public; the
+  // handler checks the signature itself.
+  "/api/auth/verify-email-link": "public",
   // The hourly quote sweep authenticates itself: a timestamp plus an HMAC of it
   // signed with CRON_SECRET (see the route). GitHub Actions calls it with no
   // Firebase session, so under the "/api/admin" prefix the proxy answered every

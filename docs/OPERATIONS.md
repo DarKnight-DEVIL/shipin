@@ -512,6 +512,32 @@ customer out of retrying the fix for it. A `429` carries `retryAfter` in seconds
 the UI renders the wait instead of inviting another attempt. `ALREADY_VERIFIED` means
 the link was clicked elsewhere: the screen reloads the user record and moves on.
 
+### The link does not expire
+
+The mail carries `https://<APP_URL>/verify-email?token=<uid>.<signature>`, signed with
+`EMAIL_VERIFICATION_SECRET` (falling back to `MFA_SESSION_SECRET`). Firebase's own
+verification link is bounded by a project setting, and an expired link costs a resend,
+a mail and the same support question again; this one works whenever the customer gets
+to it.
+
+The trade is contained, and the invariants are worth knowing when reading an incident:
+
+- the signature covers the uid, the address and a per-account version, so a link
+  cannot be forged, retargeted at another account, or used against a new address;
+- redeeming bumps `users/{uid}.verificationTokenVersion`, which retires that link and
+  every earlier one. That is what makes it single-use: an archived or forwarded email
+  stops working once it has been used;
+- nothing token-like is stored, so a Firestore read cannot be turned into a working
+  link, and re-sending costs one mail and no writes beyond the cooldown stamp;
+- the page redeems the token with a POST after load, not on the navigation, so a mail
+  scanner or link preview cannot spend a single-use link before the customer clicks.
+
+The response names which kind of link was sent: `link: "permanent"` normally, or
+`"expiable"` when no signing secret is configured and the app fell back to Firebase's.
+A customer reporting a dead link on a `"permanent"` deployment means the link was
+already used or the address changed - ask them to request a new one rather than
+looking for an expiry setting.
+
 ### They no longer have access to that mailbox
 
 A resend cannot help, and asking them to create a new account loses their orders,

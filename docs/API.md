@@ -91,6 +91,7 @@ clients branch on it rather than on the status alone.
 | `/api/admin/wallet/invariants` | public |
 | `/api/auth/login-intent` | public |
 | `/api/auth/resend-verification` | customer |
+| `/api/auth/verify-email-link` | public |
 | `/api/auth/mfa/backup-codes/regenerate` | customer |
 | `/api/auth/mfa/session` | customer |
 | `/api/auth/mfa/status` | customer |

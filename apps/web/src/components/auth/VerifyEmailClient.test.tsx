@@ -22,6 +22,7 @@ const h = vi.hoisted(() => ({
     getIdToken: (forceRefresh?: boolean) => Promise<string>;
   },
   requestVerificationResend: vi.fn(),
+  verifyEmailLink: vi.fn(),
   reload: vi.fn(),
   replace: vi.fn(),
   refresh: vi.fn(),
@@ -67,6 +68,7 @@ vi.mock("@/lib/emailVerification", async (importOriginal) => {
     ...actual,
     requestVerificationResend: (...args: unknown[]) =>
       h.requestVerificationResend(...args),
+    verifyEmailLink: (...args: unknown[]) => h.verifyEmailLink(...args),
   };
 });
 
@@ -95,6 +97,34 @@ vi.mock("framer-motion", () => ({
 
 import VerifyEmailClient from "./VerifyEmailClient";
 
+/**
+ * Pretend the page was opened from the email's link.
+ *
+ * The component reads `window.location.search` and then rewrites the address bar, so
+ * the test needs both: a query to redeem, and a spy to prove the token was stripped
+ * (a refresh must not replay a spent token, and it should not sit in history).
+ */
+let realReplaceState: History["replaceState"] | null = null;
+let originalReplaceState: History["replaceState"] | null = null;
+
+function withQuery(search: string) {
+  /*
+   * The URL is set with the real implementation before the spy goes in. Spying first
+   * leaves the page at its previous address, which is how the "no token" case
+   * silently inherited the previous test's query.
+   */
+  if (!realReplaceState) {
+    realReplaceState = window.history.replaceState.bind(window.history);
+    originalReplaceState = realReplaceState;
+  }
+
+  realReplaceState({}, "", `/verify-email${search}`);
+
+  const spy = vi.fn();
+  window.history.replaceState = spy as unknown as History["replaceState"];
+  return spy;
+}
+
 function user(emailVerified: boolean, email = "ada@example.com") {
   const profile = {
     email,
@@ -110,6 +140,7 @@ beforeEach(() => {
   h.requestVerificationResend
     .mockReset()
     .mockResolvedValue({ status: "sent" as const });
+  h.verifyEmailLink.mockReset().mockResolvedValue({ status: "verified" as const });
   h.reload.mockReset().mockResolvedValue(undefined);
   h.replace.mockReset();
   h.refresh.mockReset();
@@ -119,6 +150,12 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+
+  // Put the real method back, or the next test's URL change lands on a spy.
+  if (originalReplaceState) {
+    window.history.replaceState = originalReplaceState;
+    originalReplaceState = null;
+  }
 });
 
 describe("VerifyEmailClient: resend", () => {
@@ -454,5 +491,50 @@ describe("VerifyEmailClient: Continue guard", () => {
 
     // No session means the screen redirects to /login before any button exists.
     await waitFor(() => expect(h.replace).toHaveBeenCalledWith("/login"));
+  });
+});
+
+describe("VerifyEmailClient: permanent link", () => {
+  it("redeems ?token= on load and strips it from the address bar", async () => {
+    user(false);
+    const replaceState = withQuery("?token=uid-abc.SIGNATURE_from_the_email");
+
+    render(<VerifyEmailClient />);
+
+    await waitFor(() =>
+      expect(h.verifyEmailLink).toHaveBeenCalledWith(
+        "uid-abc.SIGNATURE_from_the_email"
+      )
+    );
+
+    // Spent links must not be replayable by a refresh, nor left in shared history.
+    await waitFor(() => expect(replaceState).toHaveBeenCalled());
+    expect(String(replaceState.mock.calls[0][2])).toBe("/verify-email");
+  });
+
+  it("does nothing when the page was opened without a token", async () => {
+    user(false);
+    withQuery("");
+
+    render(<VerifyEmailClient />);
+
+    await waitFor(() => expect(screen.getByText(/ada@example.com/)).toBeTruthy());
+    expect(h.verifyEmailLink).not.toHaveBeenCalled();
+  });
+
+  it("shows the reason a used link was refused instead of a dead screen", async () => {
+    user(false);
+    h.verifyEmailLink.mockResolvedValue({
+      status: "failed" as const,
+      message:
+        "This verification link has already been used or is no longer valid. Ask for a new one.",
+    });
+    withQuery("?token=uid-abc.spent");
+
+    render(<VerifyEmailClient />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "already been used or is no longer valid"
+    );
   });
 });

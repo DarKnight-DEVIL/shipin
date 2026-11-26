@@ -22,6 +22,7 @@ import {
   refreshVerifiedToken,
   requestVerificationResend,
   resendVerificationErrorMessage,
+  verifyEmailLink,
 } from "@/lib/emailVerification";
 import "@/styles/verify-email.css";
 
@@ -44,6 +45,9 @@ export default function VerifyEmailClient() {
   const [verified, setVerified] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  // Set when a permanent link was opened but could not be redeemed (already used,
+  // address changed, or the deployment has no signing secret).
+  const [linkError, setLinkError] = useState<string | null>(null);
   const [polling, setPolling] = useState(true);
   // Set only after Firebase rate-limits a resend. Clicking again immediately
   // just fails again, so the button is held shut for a minute and says why.
@@ -115,6 +119,50 @@ export default function VerifyEmailClient() {
       unsubscribe();
     };
   }, [router, stopPolling]);
+
+  useEffect(() => {
+    /*
+     * The permanent link carries `?token=`. Redeemed here, in the browser, rather than
+     * by the navigation itself, so a mail scanner that prefetches the URL cannot spend
+     * a single-use link. The token is stripped from the address bar afterwards: a
+     * refresh must not replay a spent token, and it should not sit in a shared history.
+     */
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+
+    if (!token) return;
+
+    params.delete("token");
+    const cleanUrl = `${window.location.pathname}${
+      params.toString() ? `?${params.toString()}` : ""
+    }`;
+    window.history.replaceState({}, "", cleanUrl);
+
+    let mounted = true;
+
+    void verifyEmailLink(token).then(async (result) => {
+      if (!mounted) return;
+
+      if (result.status === "failed") {
+        setLinkError(result.message);
+        return;
+      }
+
+      setLinkError(null);
+
+      // The cached ID token still says email_verified:false until it refreshes.
+      const currentUser = auth.currentUser;
+      if (currentUser) await refreshVerifiedToken(currentUser);
+      if (!mounted) return;
+
+      setVerified(true);
+      stopPolling();
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [stopPolling]);
 
   useEffect(() => {
     if (cooldownUntil === null) return;
@@ -270,6 +318,12 @@ export default function VerifyEmailClient() {
                 <p className="verify__poll">
                   <Loader2 className="verify__spin" />
                   Waiting for verification...
+                </p>
+              )}
+
+              {linkError && (
+                <p className="verify__alert" role="alert" aria-live="assertive">
+                  {linkError}
                 </p>
               )}
 

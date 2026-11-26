@@ -103,6 +103,52 @@ export async function requestVerificationResend(
   };
 }
 
+export type VerifyLinkResult =
+  | { status: "verified" }
+  | { status: "already-verified" }
+  | { status: "failed"; message: string };
+
+/**
+ * Redeem the permanent link from the email.
+ *
+ * POST, not the navigation itself: mail scanners and link previews fetch a URL the
+ * moment it arrives, and a single-use link would then be spent before the customer
+ * saw it. The page sends the token from its query string once a real browser runs.
+ */
+export async function verifyEmailLink(token: string): Promise<VerifyLinkResult> {
+  let response: Response;
+
+  try {
+    response = await fetch("/api/auth/verify-email-link", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+  } catch {
+    return {
+      status: "failed",
+      message: "Could not reach the server. Check your connection and try again.",
+    };
+  }
+
+  const body = (await response.json().catch(() => null)) as
+    | { success?: boolean; alreadyVerified?: boolean; error?: string; code?: string }
+    | null;
+
+  if (response.ok && body?.success) {
+    return {
+      status: body.alreadyVerified ? "already-verified" : "verified",
+    };
+  }
+
+  return {
+    status: "failed",
+    message:
+      body?.error ??
+      "This verification link could not be used. Ask for a new one.",
+  };
+}
+
 /**
  * How long a rate-limited user must wait before resending.
  *

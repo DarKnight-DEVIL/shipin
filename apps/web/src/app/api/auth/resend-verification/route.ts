@@ -4,6 +4,13 @@ import { Timestamp } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { sendMail } from "@/lib/mailer";
 import { escapeHtml } from "@/lib/emailTemplates";
+import {
+  issueVerificationToken,
+  verificationLink,
+  verificationSecret,
+  verificationVersion,
+  VERIFICATION_VERSION_FIELD,
+} from "@/lib/emailVerificationTokens";
 import { serverEnv } from "@/config/env";
 import { withErrorHandler } from "@/utils/errors";
 
@@ -117,34 +124,60 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   }
 
   /*
-   * Firebase mints the link; we send it. Sending through the app's own mailer keeps
-   * the message consistent with every other email and removes the dependency on
-   * Firebase's mailer for the one message a stuck user needs.
+   * Our link, not Firebase's.
+   *
+   * Firebase's verification link expires on a project-wide timer, and an expired link
+   * costs a resend, a mail and another round of the same support question. This one is
+   * signed rather than stored: it is recomputed from the account, the address and a
+   * version, so re-sending it writes nothing and the link works indefinitely until it
+   * is used (which bumps the version and retires it). See
+   * `src/lib/emailVerificationTokens.ts` for the trade and what contains it.
    */
   const appUrl = serverEnv.APP_URL?.replace(/\/+$/, "");
+  const secret = verificationSecret();
 
-  // Firebase requires an absolute http(s) continue URL on ActionCodeSettings;
-  // passing a relative one fails the whole call. Undefined lets it use its own
-  // default handler, which is better than a broken link.
+  const permanentLink =
+    appUrl && /^https?:\/\//i.test(appUrl) && secret
+      ? verificationLink(
+          appUrl,
+          issueVerificationToken({
+            uid: decoded.uid,
+            email,
+            version: verificationVersion(profile.get(VERIFICATION_VERSION_FIELD)),
+            secret,
+          })
+        )
+      : null;
+
+  /*
+   * Fallback for a deployment with no usable secret: Firebase's own link. It expires,
+   * but a signup that cannot be completed at all would be worse, and `/api/health`
+   * already reports which optional variables are missing.
+   */
   const actionCodeSettings =
     appUrl && /^https?:\/\//i.test(appUrl)
       ? { url: `${appUrl}/verify-email` }
       : undefined;
 
-  const link = await adminAuth.generateEmailVerificationLink(
-    email,
-    actionCodeSettings
-  );
+  const link =
+    permanentLink ??
+    (await adminAuth.generateEmailVerificationLink(email, actionCodeSettings));
 
   const safeLink = escapeHtml(link);
+
+  // Says nothing about expiry when the fallback was used, because that would be a lie.
+  const expiryNote = permanentLink
+    ? "This link does not expire, so you can open it whenever suits you. It stops working once you have used it."
+    : "Open it soon: this link expires. Ask for a new one if it has.";
 
   await sendMail({
     to: email,
     subject: "Verify your ShipIN email address",
-    text: `Confirm your email address to finish setting up your ShipIN account:\n\n${link}\n\nIf you did not create a ShipIN account, ignore this message.`,
+    text: `Confirm your email address to finish setting up your ShipIN account:\n\n${link}\n\n${expiryNote}\n\nIf you did not create a ShipIN account, ignore this message.`,
     html: `<p>Confirm your email address to finish setting up your ShipIN account.</p>
 <p><a href="${safeLink}">Verify my email address</a></p>
 <p>If the link does not work, paste this into your browser:<br>${safeLink}</p>
+<p>${escapeHtml(expiryNote)}</p>
 <p>If you did not create a ShipIN account, ignore this message.</p>`,
   });
 
@@ -156,7 +189,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   );
 
   return NextResponse.json(
-    { success: true, sentTo: email, cooldownSeconds: RESEND_COOLDOWN_SECONDS },
+    {
+      success: true,
+      sentTo: email,
+      cooldownSeconds: RESEND_COOLDOWN_SECONDS,
+      // Named so support can tell a permanent link from the fallback without opening
+      // the mail: only one of them survives the customer waiting until tomorrow.
+      link: permanentLink ? "permanent" : "expiable",
+    },
     { status: 200, headers: NO_STORE }
   );
 });

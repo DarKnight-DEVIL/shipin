@@ -625,6 +625,20 @@ export const adminDeleteUserBodySchema = z.object({
     .max(320, "That is longer than any email address."),
 });
 
+/**
+ * POST /api/auth/verify-email-link - the token from the permanent link.
+ *
+ * Shape-checked here so a malformed value never reaches Firestore or Auth; whether it
+ * is the account's current token is decided by the signature, not by this schema.
+ */
+export const emailVerificationTokenBodySchema = z.object({
+  token: z
+    .string()
+    .trim()
+    .min(20, "That verification link is not valid.")
+    .max(300, "That verification link is not valid."),
+});
+
 /** POST /api/user/age-verification — parental-consent actions. */
 export const ageVerificationBodySchema = z.discriminatedUnion("action", [
   z.object({

@@ -92,17 +92,42 @@ describe("POST /api/auth/resend-verification", () => {
 
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
+    expect(body.link).toBe("permanent");
+    // Our own signed link, not Firebase's: the whole point is that it does not expire,
+    // and Firebase's would have to be asked for here.
+    expect(mocks.generateEmailVerificationLink).not.toHaveBeenCalled();
     expect(mocks.sendMail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "customer@example.com",
         subject: expect.stringContaining("Verify"),
-        text: expect.stringContaining("https://shipin.example/verify?code=abc"),
+        text: expect.stringMatching(/\/verify-email\?token=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/),
       })
     );
     expect(mocks.profileSet).toHaveBeenCalledWith(
       { verificationEmailSentAt: expect.anything() },
       { merge: true }
     );
+  });
+
+  it("falls back to Firebase's link when no signing secret is configured", async () => {
+    vi.stubEnv("EMAIL_VERIFICATION_SECRET", "");
+    vi.stubEnv("MFA_SESSION_SECRET", "");
+
+    const response = await POST(request("token"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    // Named in the response and in the mail, because a link that expires is a
+    // different promise from the one the rest of this endpoint makes.
+    expect(body.link).toBe("expiable");
+    expect(mocks.generateEmailVerificationLink).toHaveBeenCalled();
+    expect(mocks.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("https://shipin.example/verify?code=abc"),
+      })
+    );
+
+    vi.unstubAllEnvs();
   });
 
   it("refuses an address that is already verified", async () => {
