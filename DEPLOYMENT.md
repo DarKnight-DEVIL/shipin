@@ -29,6 +29,7 @@ Set these in your Vercel project settings → Environment Variables:
 | `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | Optional | WhatsApp Business API |
 | `MFA_SESSION_SECRET` | **Yes** | Signs admin MFA session cookies (min 32 chars). Production boot fails without it |
 | `BREACH_ALERT_WEBHOOK_URL` | Optional | Slack/incident webhook pinged for a critical data breach |
+| Alert webhook (any of `APP_CHECK_ALERT_WEBHOOK_URL`, `ERROR_ALERT_WEBHOOK_URL`, `ALERT_WEBHOOK_URL`, `BREACH_ALERT_WEBHOOK_URL`) | **Yes, at least one** | Operator channel for App Check outage, payment drift, MFA revocation-store failure and cron failure. **Production boot fails without one** |
 | `UPSTASH_REDIS_REST_URL` | **Yes** | **Global rate limiting. The server refuses to start without it** |
 | `UPSTASH_REDIS_REST_TOKEN` | **Yes** | **Global rate limiting. The server refuses to start without it** |
 
@@ -72,7 +73,8 @@ does not hold. Run them before promoting a deploy.
    `FIREBASE_ADMIN_PRIVATE_KEY` and confirm the canonical host appears. The
    script mints a Google access token from that service account, which is why it
    is a pre-deploy step rather than a workflow.
-3. **Cron alerting.** `ALERT_WEBHOOK_URL` is optional, but without it a failed
+3. **Cron alerting.** Once an alert webhook is configured (now required, see
+   the env table), a failed
    hourly quote-expiry run only writes a job summary. The workflow now also
    emits an `::error::` annotation in that case, so configure the repository
    secret if anyone is expected to react to a missed sweep.

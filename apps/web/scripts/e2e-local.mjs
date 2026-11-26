@@ -137,6 +137,9 @@ const env = {
   UPSTASH_REDIS_REST_URL: "",
   UPSTASH_REDIS_REST_TOKEN: "",
   RATE_LIMIT_STORE_OPTIONAL: "1",
+  // The suite has no Discord channel to page, and the startup check now refuses a
+  // production boot without one. Waived for this run only, like the store above.
+  ALERT_WEBHOOK_OPTIONAL: "1",
   // Blanking the store still left the in-memory limiter, which is what kept
   // answering 429: 100 page requests per IP per minute is less than one suite.
   // This switches the limiter off for this run only (honoured because the

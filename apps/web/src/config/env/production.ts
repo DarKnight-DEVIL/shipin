@@ -114,6 +114,37 @@ export function isAppUrlE2eOptional(): boolean {
   return process.env[APP_URL_E2E_OPTIONAL_ENV] === "1";
 }
 
+/**
+ * Webhooks that can page a human, in the order one is preferred.
+ *
+ * At least one must be set in production. Without one an outage is silent: an
+ * exhausted reCAPTCHA quota rejects every API call while /api/health still answers
+ * 200 with `degraded` buried in the body, and payment drift or a failed MFA
+ * revocation store reach nobody at all. A deployment that cannot tell anyone it is
+ * broken needs a monitor watching a JSON field nobody reads.
+ */
+export const ALERT_WEBHOOK_SERVER_ENV = [
+  "APP_CHECK_ALERT_WEBHOOK_URL",
+  "ERROR_ALERT_WEBHOOK_URL",
+  "ALERT_WEBHOOK_URL",
+  "BREACH_ALERT_WEBHOOK_URL",
+] as const;
+
+/** Set to exactly "1" to allow production boot with no alert webhook (E2E only). */
+export const ALERT_WEBHOOK_OPTIONAL_ENV = "ALERT_WEBHOOK_OPTIONAL";
+
+/** Returns true when the alert-webhook requirement is waived (E2E only). */
+export function isAlertWebhookOptional(): boolean {
+  return process.env[ALERT_WEBHOOK_OPTIONAL_ENV] === "1";
+}
+
+/** True when at least one operator channel is configured. */
+export function hasAlertWebhook(): boolean {
+  return (ALERT_WEBHOOK_SERVER_ENV as readonly string[]).some((key) =>
+    Boolean(process.env[key]?.trim())
+  );
+}
+
 /** 
  * The two origins this deployment declares for itself, and they get the same
  * rule. APP_URL drives WebAuthn's relying-party origin; NEXT_PUBLIC_APP_URL is
@@ -320,6 +351,20 @@ export function validateProductionRequiredEnv(): void {
 
   if (!isRateLimitStoreOptional()) {
     required.push(...RATE_LIMIT_STORE_SERVER_ENV);
+  }
+
+  /*
+   * An alert channel is required, but it is a group rather than a list: any one
+   * of four variables satisfies it, so it cannot join `required` above.
+   */
+  if (!isAlertWebhookOptional() && !hasAlertWebhook()) {
+    throw new Error(
+      `[ShipIN] FATAL: No alert webhook is configured. Set one of ${ALERT_WEBHOOK_SERVER_ENV.join(
+        ", "
+      )}. Without it an App Check quota outage, payment drift or a failed MFA revocation store is silent: ` +
+        "/api/health reports `degraded` in a body no monitor reads. " +
+        `Set ${ALERT_WEBHOOK_OPTIONAL_ENV}=1 only for the E2E suite.`
+    );
   }
 
   const missing = required.filter((key) => !process.env[key]);

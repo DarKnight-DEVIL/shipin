@@ -64,6 +64,7 @@ async function loadEnvModule() {
  */
 function setEverythingButStore() {
   vi.stubEnv("NODE_ENV", "production");
+  setAlertWebhookConfigured();
   vi.stubEnv("PAYPAL_WEBHOOK_ID", "WH-1");
   vi.stubEnv("MFA_SESSION_SECRET", "test-mfa-session-secret-0123456789abcdef");
   vi.stubEnv("FIREBASE_ADMIN_PROJECT_ID", "test-project");
@@ -84,13 +85,21 @@ function setEverythingButStore() {
   vi.stubEnv("APP_URL", "https://example.com");
 }
 
+/** Any one of the four satisfies the alert-channel requirement. */
+const ALERT_WEBHOOK = "APP_CHECK_ALERT_WEBHOOK_URL";
+const ALERT_OPT_OUT = "ALERT_WEBHOOK_OPTIONAL";
+
+function setAlertWebhookConfigured() {
+  vi.stubEnv(ALERT_WEBHOOK, "https://discord.test/webhook");
+}
+
 function setStoreConfigured() {
   vi.stubEnv(STORE_URL, "https://example.upstash.io");
   vi.stubEnv(STORE_TOKEN, "token");
 }
 
 beforeEach(() => {
-  for (const key of [...SERVER_ENV_KEYS, "PAYPAL_WEBHOOK_ID", OPT_OUT])
+  for (const key of [...SERVER_ENV_KEYS, "PAYPAL_WEBHOOK_ID", OPT_OUT, ALERT_OPT_OUT])
     vi.stubEnv(key, "");
   // The store pair has to be cleared explicitly: a developer shell or CI job
   // that exports real Upstash credentials would otherwise make every
@@ -182,6 +191,85 @@ describe("validateProductionRequiredEnv", () => {
     expect(() => validateProductionRequiredEnv()).toThrow(
       new RegExp(STORE_URL)
     );
+  });
+
+  it("throws in production when no alert webhook is configured", async () => {
+    // Silence is the failure mode: with nobody to page, an App Check quota outage
+    // rejects every API call while /api/health merely says `degraded`.
+    setEverythingButStore();
+    setStoreConfigured();
+    vi.stubEnv(ALERT_WEBHOOK, "");
+    const { validateProductionRequiredEnv } = await loadEnvModule();
+
+    expect(() => validateProductionRequiredEnv()).toThrow(/No alert webhook/);
+  });
+
+  it("names every webhook that would satisfy it", async () => {
+    setEverythingButStore();
+    setStoreConfigured();
+    vi.stubEnv(ALERT_WEBHOOK, "");
+    const { validateProductionRequiredEnv } = await loadEnvModule();
+
+    let message = "";
+    try {
+      validateProductionRequiredEnv();
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    for (const key of [
+      "APP_CHECK_ALERT_WEBHOOK_URL",
+      "ERROR_ALERT_WEBHOOK_URL",
+      "ALERT_WEBHOOK_URL",
+      "BREACH_ALERT_WEBHOOK_URL",
+    ]) {
+      expect(message).toContain(key);
+    }
+    expect(message).toContain(ALERT_OPT_OUT);
+  });
+
+  it("accepts any one of the four webhooks", async () => {
+    for (const key of [
+      "APP_CHECK_ALERT_WEBHOOK_URL",
+      "ERROR_ALERT_WEBHOOK_URL",
+      "ALERT_WEBHOOK_URL",
+      "BREACH_ALERT_WEBHOOK_URL",
+    ]) {
+      setEverythingButStore();
+      setStoreConfigured();
+      for (const other of [
+        "APP_CHECK_ALERT_WEBHOOK_URL",
+        "ERROR_ALERT_WEBHOOK_URL",
+        "ALERT_WEBHOOK_URL",
+        "BREACH_ALERT_WEBHOOK_URL",
+      ]) {
+        vi.stubEnv(other, "");
+      }
+      vi.stubEnv(key, "https://hooks.test/one");
+
+      const { validateProductionRequiredEnv } = await loadEnvModule();
+      expect(validateProductionRequiredEnv).not.toThrow();
+    }
+  });
+
+  it("allows a missing webhook only with the E2E opt-out exactly 1", async () => {
+    setEverythingButStore();
+    setStoreConfigured();
+    vi.stubEnv(ALERT_WEBHOOK, "");
+    vi.stubEnv(ALERT_OPT_OUT, "1");
+
+    const { validateProductionRequiredEnv } = await loadEnvModule();
+    expect(() => validateProductionRequiredEnv()).not.toThrow();
+  });
+
+  it("keeps the requirement for other opt-out values, so a typo cannot disable it", async () => {
+    setEverythingButStore();
+    setStoreConfigured();
+    vi.stubEnv(ALERT_WEBHOOK, "");
+    vi.stubEnv(ALERT_OPT_OUT, "true");
+
+    const { validateProductionRequiredEnv } = await loadEnvModule();
+    expect(() => validateProductionRequiredEnv()).toThrow(/No alert webhook/);
   });
 
   it("does not let the opt-out hide a different missing production variable", async () => {

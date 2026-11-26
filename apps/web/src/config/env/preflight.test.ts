@@ -31,6 +31,7 @@ const COMPLETE_ENV: Record<string, string> = {
   R2_SECRET_ACCESS_KEY: "test-secret",
   R2_BUCKET_NAME: "test-bucket",
   APP_URL: "https://example.com",
+  APP_CHECK_ALERT_WEBHOOK_URL: "https://discord.test/webhook",
   // The script imports the env module, which validates these at import time —
   // the same order a boot follows.
   NEXT_PUBLIC_PAYPAL_CLIENT_ID: "test",
@@ -41,6 +42,15 @@ const COMPLETE_ENV: Record<string, string> = {
   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "123456",
   NEXT_PUBLIC_FIREBASE_APP_ID: "1:123456:web:abcdef",
 };
+
+/** The operator channels; every case starts with none inherited from the shell. */
+const ALERT_KEYS = [
+  "APP_CHECK_ALERT_WEBHOOK_URL",
+  "ERROR_ALERT_WEBHOOK_URL",
+  "ALERT_WEBHOOK_URL",
+  "BREACH_ALERT_WEBHOOK_URL",
+  "ALERT_WEBHOOK_OPTIONAL",
+] as const;
 
 /** Variables a case is allowed to be missing or to vary. */
 const STORE_KEYS = [
@@ -55,6 +65,7 @@ function run(overrides: Record<string, string | undefined>) {
   // The developer's shell (or a loaded .env) may carry real Upstash values;
   // a preflight test that inherited them would pass while asserting nothing.
   for (const key of STORE_KEYS) delete env[key];
+  for (const key of ALERT_KEYS) delete env[key];
   Object.assign(env, COMPLETE_ENV);
 
   for (const [key, value] of Object.entries(overrides)) {
@@ -100,6 +111,43 @@ describe("check:production-env", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("Production environment OK");
+  });
+
+  it("fails when no alert webhook is configured", () => {
+    // Without a channel, an exhausted reCAPTCHA quota rejects every API call while
+    // the health probe merely says `degraded` - nobody is told.
+    const result = run({
+      UPSTASH_REDIS_REST_URL: "https://example.upstash.io",
+      UPSTASH_REDIS_REST_TOKEN: "token",
+      APP_CHECK_ALERT_WEBHOOK_URL: undefined,
+    });
+
+    expect(result.status).toBe(1);
+    for (const key of [
+      "APP_CHECK_ALERT_WEBHOOK_URL",
+      "ERROR_ALERT_WEBHOOK_URL",
+      "ALERT_WEBHOOK_URL",
+      "BREACH_ALERT_WEBHOOK_URL",
+    ]) {
+      expect(result.stderr).toContain(key);
+    }
+  });
+
+  it("accepts any single operator channel", () => {
+    for (const key of [
+      "ERROR_ALERT_WEBHOOK_URL",
+      "ALERT_WEBHOOK_URL",
+      "BREACH_ALERT_WEBHOOK_URL",
+    ]) {
+      const result = run({
+        UPSTASH_REDIS_REST_URL: "https://example.upstash.io",
+        UPSTASH_REDIS_REST_TOKEN: "token",
+        APP_CHECK_ALERT_WEBHOOK_URL: undefined,
+        [key]: "https://hooks.test/one",
+      });
+
+      expect(result.status, key).toBe(0);
+    }
   });
 
   it("refuses to run a check it would skip outside production", () => {
