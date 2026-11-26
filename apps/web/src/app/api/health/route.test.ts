@@ -162,6 +162,23 @@ beforeEach(() => {
 });
 
 describe("GET /api/health", () => {
+  it("reports the MFA revocation list, so a bypass is never silent", async () => {
+    const response = await GET();
+    const body = await response.json();
+
+    /*
+     * `degraded: true` here would mean elevation sessions are being accepted without a
+     * revocation check, which is the one state where a revoked admin keeps working. It
+     * has to be readable from a probe, not only from a log line.
+     */
+    expect(body.mfaDenylist).toMatchObject({
+      mode: "closed",
+      degraded: false,
+      consecutiveFailures: 0,
+    });
+    expect(body.mfaDenylist.degradedAccepts).toEqual(expect.any(Number));
+  });
+
   it("reports healthy with the in-memory fallback in development", async () => {
     const response = await GET();
     const body = await response.json();

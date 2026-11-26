@@ -41,6 +41,7 @@ import { NextResponse } from "next/server";
 import { isProduction } from "@/config/env";
 import { getAppCheckStatus } from "@/lib/appCheck";
 import { readErrorCounts, resolveErrorAlertWebhook } from "@/lib/errorTracking";
+import { mfaDenylistStatus } from "@/lib/mfaDenylist";
 import {
   apiRateLimiter,
   loginRateLimiter,
@@ -150,12 +151,22 @@ export async function GET() {
   );
 
   const hasRecentErrors = redisErrors.some((e) => e.recentErrors > 0);
+
+  /*
+   * The MFA revocation list, as this instance currently sees it. `degraded: true` means
+   * elevation sessions are being accepted without a revocation check - the one state in
+   * which a revoked admin could still be working - so it has to be visible here rather
+   * than only in the logs.
+   */
+  const mfaDenylist = mfaDenylistStatus();
+
   const degraded =
     missingSharedStore ||
     hasRecentErrors ||
     appCheckBroken ||
     trackingPlaceholder ||
-    appCheckSpike;
+    appCheckSpike ||
+    mfaDenylist.degraded;
   const status = degraded ? "degraded" : "healthy";
 
   return NextResponse.json(
@@ -199,8 +210,7 @@ export async function GET() {
       },
       ...(alerted ? { appCheckSpikeAlerted: true } : {}),
       alerting: {
-        webhook: alertTarget.source,
-        ...(isProduction && !alertTarget.configured
+        webhook: alertTarget.source,        ...(isProduction && !alertTarget.configured
           ? {
               warning:
                 "No alert webhook is configured (APP_CHECK_ALERT_WEBHOOK_URL), so an App Check quota outage would be reported only by this probe. Set it to a Discord webhook URL or alert on status != healthy.",
@@ -221,6 +231,7 @@ export async function GET() {
             }
           : {}),
       },
+      mfaDenylist,
       tracking: {
         configured: indiaPostConfigured,
         status: indiaPostConfigured

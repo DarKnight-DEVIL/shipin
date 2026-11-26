@@ -83,6 +83,13 @@ interface ServerEnv {
    * Off by default so local development and CI need no Firebase project.
    */
   APP_CHECK_ENFORCEMENT?: string;
+  /**
+   * `'open'` lets MFA session checks fail open for a bounded window when the revocation
+   * store is unreachable. Anything else, including absent, stays fail-closed.
+   */
+  MFA_DENYLIST_DEGRADED_MODE?: string;
+  /** How long an opened breaker stays open. Clamped to 30..3600 seconds. */
+  MFA_DENYLIST_DEGRADED_SECONDS?: string;
 }
 
 interface ClientEnv {

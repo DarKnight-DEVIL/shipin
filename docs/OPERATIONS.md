@@ -446,6 +446,37 @@ gcloud firestore databases describe --database="(default)"   # PITR state
 ```
 
 Escalation path: payment failures → PayPal status page → Upstash status page
+
+### Upstash outage vs the admin denylist
+
+Admin requests verify the MFA session against a Redis denylist, and that check fails
+**closed**: if Upstash is unreachable, the answer to "is this session revoked?" is
+unknown, so the session is refused. During a full outage that means every admin is
+locked out, including one who signed in a minute ago. `/api/health` names it:
+
+```bash
+curl -s https://shipin-psi.vercel.app/api/health | jq .mfaDenylist
+# { "mode": "closed", "configured": true, "degraded": false, ... }
+```
+
+Two ways through, in order of preference:
+
+1. **Wait it out.** Upstash outages are usually minutes. Elevated sessions are valid for
+   12h absolute, so nothing is lost but time.
+2. **Open the breaker, deliberately.** With
+   `MFA_DENYLIST_DEGRADED_MODE=open` set on the deployment, three consecutive read
+   failures open a bounded window (`MFA_DENYLIST_DEGRADED_SECONDS`, default 300s, clamp
+   30..3600) in which verifications are allowed without a revocation check. One
+   critical alert (`MFA_DENYLIST_DEGRADED_OPEN`) fires when the window opens, a warning
+   is logged at most once a minute per accepted session, and `/api/health` reports
+   `degraded: true` with `degradedAccepts`. A successful read closes it immediately, and
+   when the window expires without one, enforcement resumes and the failure count
+   restarts - a duty cycle rather than a switch that stays open.
+
+   **What you are accepting while it is open:** a session revoked *during* the outage
+   still works. Sessions revoked before it are unaffected - their entries are in Redis
+   already, not in this breaker. Review `degradedAccepts` afterwards and revoke again
+   anything that was terminated in the window.
 → Vercel status page. Record every production incident in the incident log
 with the timeline, the rollback decision, and the follow-up test that prevents
 recurrence.

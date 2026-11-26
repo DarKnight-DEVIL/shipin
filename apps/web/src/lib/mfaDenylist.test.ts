@@ -9,8 +9,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   set: vi.fn(),
   exists: vi.fn(),
+  captureServerError: vi.fn(),
   env: { url: "https://redis.example.upstash.io", token: "token" },
   isProduction: false,
+  degradedMode: "",
+  degradedSeconds: "",
+}));
+
+vi.mock("@/lib/errorTracking", () => ({
+  captureServerError: (...args: unknown[]) => h.captureServerError(...args),
 }));
 
 vi.mock("@upstash/redis", () => ({
@@ -26,6 +33,8 @@ vi.mock("@/config/env", () => ({
     return {
       UPSTASH_REDIS_REST_URL: h.env.url,
       UPSTASH_REDIS_REST_TOKEN: h.env.token,
+      MFA_DENYLIST_DEGRADED_MODE: h.degradedMode,
+      MFA_DENYLIST_DEGRADED_SECONDS: h.degradedSeconds,
     };
   },
   get isProduction() {
@@ -45,12 +54,23 @@ async function load() {
   return import("./mfaDenylist");
 }
 
+/** Every alert this module raised with the given code. */
+function alertsWith(code: string): number {
+  return h.captureServerError.mock.calls.filter(
+    ([, options]) => (options as { code?: string } | undefined)?.code === code
+  ).length;
+}
+
 beforeEach(() => {
   h.set.mockReset().mockResolvedValue("OK");
   h.exists.mockReset().mockResolvedValue(1);
   h.env = { url: "https://redis.example.upstash.io", token: "token" };
   h.isProduction = false;
+  h.degradedMode = "";
+  h.degradedSeconds = "";
+  h.captureServerError.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
 describe("denyMfaSession", () => {
@@ -83,7 +103,7 @@ describe("denyMfaSession", () => {
     await expect(
       denyMfaSession("jti-1", Date.now() / 1000 + 600)
     ).resolves.toBeUndefined();
-    expect(console.error).toHaveBeenCalled();
+    expect(alertsWith("MFA_DENYLIST_WRITE_FAILED")).toBe(1);
   });
 });
 
@@ -108,7 +128,7 @@ describe("isMfaSessionDenied", () => {
 
     // Unknown revocation status must not grant admin access.
     await expect(isMfaSessionDenied("jti-1")).resolves.toBe(true);
-    expect(console.error).toHaveBeenCalled();
+    expect(alertsWith("MFA_DENYLIST_READ_FAILED")).toBe(1);
   });
 
   it("fails closed in production when no store is configured", async () => {
@@ -117,7 +137,7 @@ describe("isMfaSessionDenied", () => {
     const { isMfaSessionDenied } = await load();
 
     await expect(isMfaSessionDenied("jti-1")).resolves.toBe(true);
-    expect(console.error).toHaveBeenCalled();
+    expect(alertsWith("MFA_DENYLIST_UNCONFIGURED")).toBe(1);
   });
 
   it("allows sessions in development without a store", async () => {
