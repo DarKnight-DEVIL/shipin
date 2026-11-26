@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/prepare-standalone.mjs",
+    "build": "next build && node scripts/generate-dynamic-routes.mjs && node scripts/prepare-standalone.mjs",
     "migrate": "node --env-file-if-exists=.env.local scripts/migrations/migration-runner.ts",
     "prestart": "node scripts/prepare-standalone.mjs",
     "start": "node --experimental-strip-types --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/start-preflight.ts && node --env-file-if-exists=.env --env-file-if-exists=.env.local .next/standalone/apps/web/server.js",
@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit && npm run typecheck:preflight",
     "typecheck:preflight": "tsc --noEmit -p tsconfig.scripts.json",
     "gen:api-routes": "node scripts/generate-api-route-manifest.mjs",
+    "gen:dynamic-routes": "node scripts/generate-dynamic-routes.mjs",
     "gen:api-docs": "node scripts/gen-api-docs.mjs",
     "test": "vitest run",
     "test:watch": "vitest",

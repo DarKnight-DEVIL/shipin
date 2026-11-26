@@ -23,6 +23,12 @@ import {
   getProductionCSP,
   getDevCSP,
 } from "@/lib/securityHeaders";
+import {
+  applyNonceToCsp,
+  createCspNonce,
+  isDynamicallyRendered,
+} from "@/lib/cspNonce";
+import { SHARED_INLINE_SCRIPT_HASHES } from "@/config/dynamicRoutes.generated";
 import { getCorsHeaders, isAllowedOrigin } from "@/lib/cors";
 import { classifyRoute } from "@/config/routeAuth";
 import { isIndexableRoute } from "@/config/seo";
@@ -215,16 +221,42 @@ export default async function proxy(request: NextRequest) {
   // The proxied Firebase auth helper is embedded in the app's own pages, so
   // it must be frameable same-origin (see getAuthHelperCSP).
   const isAuthHelper = pathname.startsWith("/__/auth/");
-  const csp = isAuthHelper
+
+  /*
+   * A nonce is minted only for routes the build renders on demand.
+   *
+   * Every other page here is prerendered, and its inline bootstrap is already
+   * baked into the file this response serves: a nonce created now could never
+   * match those tags, so attaching one would block the scripts that hydrate the
+   * page. `dynamicRoutes.generated.ts` is written from the build's own prerender
+   * manifest, so the answer follows the build instead of being assumed.
+   */
+  const usesNonce =
+    !isAuthHelper &&
+    !isDev &&
+    pathname.startsWith("/") &&
+    isDynamicallyRendered(pathname);
+  const nonce = usesNonce ? createCspNonce() : null;
+
+  const baseCsp = isAuthHelper
     ? getAuthHelperCSP()
     : isDev
       ? getDevCSP()
       : getProductionCSP();
+  const csp = nonce
+    ? applyNonceToCsp(baseCsp, nonce, SHARED_INLINE_SCRIPT_HASHES)
+    : baseCsp;
 
-  // No nonce is generated or forwarded: every page is statically prerendered,
-  // so its inline bootstrap is already in the HTML before this runs and a
-  // per-request nonce could never match it (see getProductionCSP).
-  const response = NextResponse.next();
+  /*
+   * Next reads the nonce from the request headers and stamps its own script tags
+   * with it, which is what makes the policy satisfiable for a page it renders per
+   * request.
+   */
+  const response = nonce
+    ? NextResponse.next({
+        request: { headers: withNonceHeader(request.headers, nonce) },
+      })
+    : NextResponse.next();
 
   addRateLimitHeaders(response.headers, limitResult);
   response.headers.set("Content-Security-Policy", csp);
@@ -269,6 +301,19 @@ export default async function proxy(request: NextRequest) {
   response.headers.set("X-Request-Id", requestId);
 
   return response;
+}
+
+/**
+ * The request headers, plus `x-nonce` for the render pass.
+ *
+ * Copied rather than mutated: the original Headers object belongs to the incoming
+ * request, and Next reads the reply's headers to decide what to render with.
+ */
+function withNonceHeader(headers: Headers, nonce: string): Headers {
+  const next = new Headers(headers);
+  next.set("x-nonce", nonce);
+
+  return next;
 }
 
 export const config = {

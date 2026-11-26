@@ -251,27 +251,26 @@ export const SECURITY_HEADERS: Record<string, string> = {
 };
 
 /**
- * Content Security Policy for the production build.
+ * Content Security Policy for the production build: the policy for PRERENDERED
+ * pages, which is most of them.
  *
- * This policy intentionally carries NO nonce and NO `'strict-dynamic'`.
+ * It carries no nonce, and must not. A prerendered page has Next's hydration
+ * bootstrap written into its HTML at BUILD time, so a nonce generated when that
+ * file is served could never match those tags: attaching one was measured to
+ * leave the page static and unhydrated. `'strict-dynamic'` is out for the same
+ * reason - it discards the host allowlist, so the `/_next/static` chunks were
+ * refused too.
  *
- * Every route in this app is statically prerendered (see
- * `.next/prerender-manifest.json`), so Next.js writes its hydration bootstrap
- * — `self.__next_f.push(...)` and the framework runtime — into the HTML at
- * BUILD time. A per-request nonce generated in the proxy does not exist yet at
- * that point, so it is never attached to those tags. Under `'strict-dynamic'`
- * host allowlisting is ignored as well, so the browser refused both the inline
- * bootstrap and every `/_next/static` chunk: the pages rendered as static HTML
- * and never hydrated, which was verified in a production build (no
- * `__reactFiber$` on any node, no `window.__next_f`).
+ * Pages the build renders on demand are the exception, and they are where the
+ * nonce comes from: `proxy.ts` replaces `script-src` with a nonce-bearing version
+ * (see `applyNonceToCsp`) for exactly the routes in `dynamicRoutes.generated.ts`,
+ * which the generator derives from this build's own manifest. `'unsafe-inline'` is
+ * dropped there, with a `'sha256-...'` allowance for the one inline script Next
+ * does not stamp (the next-themes pre-paint bootstrap).
  *
- * `'unsafe-inline'` for scripts is therefore required for the app to function.
- * The directives that do not depend on a nonce are kept: no plugins
- * (`object-src 'none'`), no base-href hijacking, no cross-origin framing, no
- * form posts off-origin, and an explicit allowlist for the third-party SDKs we
- * actually load. If this app later moves to dynamic rendering, or serves HTML
- * through an edge that can rewrite a nonce into it, restore the nonce policy —
- * `getCSPWithNonce` is in the git history for that day.
+ * The directives that never depend on a nonce apply everywhere: no plugins
+ * (`object-src 'none'`), no base-href hijacking, no cross-origin framing, no form
+ * posts off-origin, and an explicit allowlist for the third-party SDKs we load.
  */
 export function getProductionCSP(): string {
   const scriptSrc = `script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.paypal.com https://www.paypal.com https://www.sandbox.paypal.com https://unpkg.com https://apis.google.com https://accounts.google.com https://va.vercel-scripts.com https://www.google.com/recaptcha/; script-src-attr 'none'; `;

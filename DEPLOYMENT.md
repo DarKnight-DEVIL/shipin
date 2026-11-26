@@ -234,6 +234,36 @@ What to expect operationally:
 Local development can exercise the UI and the server-side 401/403 paths, but a
 real end-to-end SMS sign-in has to be verified on a deployed origin.
 
+### CSP: which pages get a nonce, and which must not
+
+There are two script policies, because there are two kinds of page.
+
+**Prerendered pages (36 of them, including the whole admin dashboard).** Their HTML
+is written at build time with Next's hydration bootstrap inline, so a nonce created
+when the file is served could never match those tags. These keep
+`script-src 'self' 'unsafe-inline' ...`. Measured: forcing a nonce here leaves the
+page as static HTML that never hydrates.
+
+**Pages rendered on demand (`/track/[trackingId]`, `/requests/[id]`,
+`/payment/[id]`, `/shipment/[id]`, `/requests/[id]/invoice`,
+`/admin/requests/[requestId]`).** `proxy.ts` mints a nonce per request and Next
+stamps its own scripts with it. `'unsafe-inline'` is dropped there. One inline
+script is not Next's to stamp - the next-themes pre-paint bootstrap - so the build
+computes its `'sha256-...'` hash and the policy allows exactly that content; without
+it, dark-mode users get a light flash on those pages.
+
+Which page is which is not written by hand. `npm run build` runs
+`scripts/generate-dynamic-routes.mjs`, which reads the build's own
+`app-path-routes-manifest.json` and `prerender-manifest.json` and writes
+`src/config/dynamicRoutes.generated.ts` (dynamic patterns, exact prerendered routes,
+shared inline-script hashes).
+
+**The build fails when that file changes.** The failure is deliberate: the proxy
+compiled in that same build used the previous list, so a route that just became
+prerendered would still be treated as dynamic and get a nonce - blocking the scripts
+baked into its HTML. Commit the regenerated file and build again, when source and
+list agree.
+
 ### India Post tracking (carrier feed)
 
 Customer tracking has two states and both are honest about which one is running.
