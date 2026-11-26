@@ -30,7 +30,10 @@ describe("getMfaConfigStatus", () => {
       backupCodes: 7,
       webauthn: {
         enabled: true,
-        credentials: [{ id: "cred-1", name: "YubiKey", createdAt: 1700 }],
+        rpID: "shipin.test",
+        credentials: [
+          { id: "cred-1", name: "YubiKey", createdAt: 1700, rpID: "shipin.test" },
+        ],
       },
     });
 
@@ -40,7 +43,10 @@ describe("getMfaConfigStatus", () => {
       backupCodes: 7,
       webauthn: {
         enabled: true,
-        credentials: [{ id: "cred-1", name: "YubiKey", createdAt: 1700 }],
+        rpID: "shipin.test",
+        credentials: [
+          { id: "cred-1", name: "YubiKey", createdAt: 1700, rpID: "shipin.test" },
+        ],
       },
     });
     expect(mocks.mfaApi).toHaveBeenCalledWith("/api/auth/mfa/status", {
@@ -55,7 +61,7 @@ describe("getMfaConfigStatus", () => {
       totp: { enabled: false, pending: false },
       sms: { enabled: false, phoneNumber: null },
       backupCodes: 0,
-      webauthn: { enabled: false, credentials: [] },
+      webauthn: { enabled: false, rpID: null, credentials: [] },
     });
   });
 
@@ -74,8 +80,8 @@ describe("getMfaConfigStatus", () => {
     const status = await getMfaConfigStatus("token");
 
     expect(status.webauthn.credentials).toEqual([
-      { id: "good", name: "Security key", createdAt: 0 },
-      { id: "also-good", name: "Security key", createdAt: 0 },
+      { id: "good", name: "Security key", createdAt: 0, rpID: null },
+      { id: "also-good", name: "Security key", createdAt: 0, rpID: null },
     ]);
   });
 

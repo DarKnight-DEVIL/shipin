@@ -40,6 +40,14 @@ vi.mock("@/lib/webauthn", () => ({
   isChallengeExpired: mocks.isChallengeExpired,
   readStoredCredentials: mocks.readStoredCredentials,
   verifyAssertion: mocks.verifyAssertion,
+  // Mirrors the real rule for a credential with no tag: usable here.
+  credentialUsableHere: (credential: { rpID?: string }, rpID: string) =>
+    !credential.rpID || credential.rpID === rpID,
+  getWebAuthnConfig: () => ({
+    origin: "https://shipin.test",
+    rpID: "shipin.test",
+    rpName: "ShipIN",
+  }),
 }));
 vi.mock("@/lib/mfaSession", () => ({
   MFA_SESSION_TTL_MS: 900_000,
@@ -397,10 +405,40 @@ describe("POST /api/auth/mfa/session", () => {
       "mfa_session=elevated"
     );
     expect(mocks.update).toHaveBeenCalledWith({
-      "mfa.webauthn.credentials": [{ credentialID: "cred-1", counter: 2 }],
+      // rpID is stamped on use: a credential enrolled before the tag existed is
+      // labelled from its first successful verification instead of staying ambiguous.
+      "mfa.webauthn.credentials": [
+        { credentialID: "cred-1", counter: 2, rpID: "shipin.test" },
+      ],
       "mfa.webauthn.pendingChallenge": null,
       "mfa.webauthn.pendingExpires": null,
     });
+  });
+
+  it("refuses a key enrolled for a domain this site no longer uses", async () => {
+    /*
+     * A credential's RP ID is fixed at enrolment. After a move to another domain the key
+     * is still on file and still listed; without this check the library would answer
+     * "could not be verified" and the customer would keep retrying a key that can never
+     * work here.
+     */
+    mocks.readStoredCredentials.mockReturnValue([
+      { credentialID: "cred-1", counter: 1, rpID: "old.example" },
+    ]);
+
+    const response = await POST(
+      authRequest({ method: "webauthn", credential: validAssertion() })
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ code: "WEBAUTHN_RP_MISMATCH" })
+    );
+    expect(mocks.verifyAssertion).not.toHaveBeenCalled();
+    // The challenge is single-use no matter how the attempt ended.
+    expect(mocks.update).toHaveBeenCalledWith(
+      expect.objectContaining({ "mfa.webauthn.pendingChallenge": null })
+    );
   });
 
   it("requires a verification code", async () => {

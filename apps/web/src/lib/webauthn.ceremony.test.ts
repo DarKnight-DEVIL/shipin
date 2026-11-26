@@ -136,6 +136,8 @@ describe("verifyRegistration", () => {
         createdAt: expect.any(Number),
         deviceType: "multiDevice",
         backedUp: true,
+        // Stamped at enrolment: the one thing a credential cannot change later.
+        rpID: "localhost",
       },
     });
   });

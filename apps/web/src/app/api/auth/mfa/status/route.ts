@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { requireAuthWithProfile } from "@/lib/auth";
-import { readStoredCredentials, type WebAuthnRecord } from "@/lib/webauthn";
+import {
+  getWebAuthnConfig,
+  readStoredCredentials,
+  type WebAuthnRecord,
+} from "@/lib/webauthn";
 import { withErrorHandler } from "@/utils/errors";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
@@ -58,6 +62,16 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   const totp = mfa.totp;
   const credentials = readStoredCredentials(mfa.webauthn);
 
+  // A misconfigured APP_URL must not turn the whole status endpoint into a 500: the
+  // passkey card can still show what is enrolled, and /api/health reports the config.
+  let currentRpID: string | null = null;
+
+  try {
+    currentRpID = getWebAuthnConfig().rpID;
+  } catch {
+    currentRpID = null;
+  }
+
   // SMS is a Firebase Identity Platform factor, not a Firestore record:
   // Google sends and verifies the code, so the enrolled phone lives on the
   // Auth user. A failed lookup must not hide the Firestore-backed factors.
@@ -93,11 +107,15 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         : 0,
       webauthn: {
         enabled: credentials.length > 0,
+        // The RP ID this deployment uses now, so the console can mark a key that was
+        // enrolled for a previous domain instead of offering one that cannot work.
+        rpID: currentRpID,
         // Names and dates only; public keys stay server-side.
         credentials: credentials.map((credential) => ({
           id: credential.credentialID,
           name: credential.name,
           createdAt: credential.createdAt,
+          rpID: credential.rpID ?? null,
         })),
       },
     },

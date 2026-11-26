@@ -28,6 +28,7 @@ Set these in your Vercel project settings → Environment Variables:
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Yes | Cloudflare R2 uploads |
 | `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | Optional | WhatsApp Business API |
 | `MFA_SESSION_SECRET` | **Yes** | Signs admin MFA session cookies (min 32 chars). Production boot fails without it |
+| `WEBAUTHN_RP_ID` | Optional | Relying-party ID for passkeys, defaulting to `APP_URL`'s hostname. Set it to a parent domain you own (e.g. `shipin.com` while `APP_URL` is `app.shipin.com`) so passkeys survive a move to another subdomain — an RP ID cannot change after enrolment. Must be a bare hostname, a parent of `APP_URL`'s host, and not a shared hosting domain, public suffix or IP. See `docs/OPERATIONS.md` §4a |
 | `BREACH_ALERT_WEBHOOK_URL` | Optional | Slack/incident webhook pinged for a critical data breach |
 | Alert webhook (any of `APP_CHECK_ALERT_WEBHOOK_URL`, `ERROR_ALERT_WEBHOOK_URL`, `ALERT_WEBHOOK_URL`, `BREACH_ALERT_WEBHOOK_URL`) | **Yes, at least one** | Operator channel for App Check outage, payment drift, MFA revocation-store failure and cron failure. **Production boot fails without one** |
 | `UPSTASH_REDIS_REST_URL` | **Yes** | **Global rate limiting. The server refuses to start without it** |

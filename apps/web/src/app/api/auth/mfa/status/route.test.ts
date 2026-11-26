@@ -19,6 +19,9 @@ vi.mock("@/lib/firebaseAdmin", () => ({
 }));
 vi.mock("@/lib/webauthn", () => ({
   readStoredCredentials: mocks.readStoredCredentials,
+  // The route publishes the RP ID this deployment uses now, so the console can mark a
+  // key enrolled for a previous domain.
+  getWebAuthnConfig: () => ({ origin: "https://shipin.app", rpID: "shipin.app" }),
 }));
 
 import { GET } from "./route";
@@ -119,11 +122,14 @@ describe("GET /api/auth/mfa/status", () => {
       backupCodes: 3,
       webauthn: {
         enabled: true,
+        rpID: "shipin.app",
         credentials: [
           {
             id: "cred-1",
             name: "YubiKey",
             createdAt: "2026-01-01T00:00:00.000Z",
+            // Nothing tagged it: enrolled before the field existed.
+            rpID: null,
           },
         ],
       },
@@ -178,7 +184,7 @@ describe("GET /api/auth/mfa/status", () => {
       totp: { enabled: false, pending: false },
       sms: { enabled: false, phoneNumber: null },
       backupCodes: 0,
-      webauthn: { enabled: false, credentials: [] },
+      webauthn: { enabled: false, rpID: "shipin.app", credentials: [] },
     });
   });
 });

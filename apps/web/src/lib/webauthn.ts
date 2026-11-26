@@ -129,6 +129,16 @@ export interface StoredWebAuthnCredential {
   createdAt: number;
   deviceType?: "singleDevice" | "multiDevice";
   backedUp?: boolean;
+  /**
+   * RP ID this credential was enrolled for.
+   *
+   * Absent on credentials written before the field existed, which are treated as
+   * "whatever this deployment uses now". Once a deployment moves to another
+   * domain, a credential is usable only where this matches the current RP ID -
+   * so the admin UI can say which keys are dead instead of offering a key that
+   * silently fails.
+   */
+  rpID?: string;
 }
 
 /**
@@ -201,6 +211,70 @@ export function isBareSharedHostingDomain(hostname: string): boolean {
 }
 
 /**
+ * Resolve the relying-party ID, honouring an explicit `WEBAUTHN_RP_ID`.
+ *
+ * An RP ID may be a *parent* of the origin: a passkey registered for
+ * `shipin.com` works on `app.shipin.com`, `track.shipin.com`, or anything else
+ * beneath it. That is the difference between moving a deployment to a new
+ * subdomain for free and asking every user to re-enrol, so a deployment that
+ * expects to move keeps its RP ID one level up.
+ *
+ * Anything that would widen the scope beyond a domain this deployment owns is
+ * refused rather than clamped: an RP ID of `com` or `vercel.app` would let other
+ * tenants (or the public suffix itself) claim the same credentials.
+ */
+export function resolveRpID(origin: string, configured?: string): string {
+  const originHost = new URL(origin).hostname.toLowerCase();
+  const candidate = configured?.trim().toLowerCase();
+
+  if (!candidate) return originHost;
+
+  if (
+    candidate.includes("://") ||
+    candidate.includes("/") ||
+    candidate.includes(":")
+  ) {
+    throw new Error(
+      `WEBAUTHN_RP_ID must be a bare hostname such as "shipin.com", not "${configured}".`
+    );
+  }
+
+  // `app.shipin.com` under `shipin.com`: compared by labels, so `notshipin.com`
+  // does not qualify as a suffix of `shipin.com`.
+  const isParent =
+    originHost === candidate || originHost.endsWith(`.${candidate}`);
+
+  if (!isParent) {
+    throw new Error(
+      `WEBAUTHN_RP_ID "${candidate}" is not a parent domain of APP_URL's host "${originHost}". A passkey can only be used on the RP ID it was registered for, so an unrelated value would make every ceremony fail.`
+    );
+  }
+
+  if (isBareSharedHostingDomain(candidate)) {
+    throw new Error(
+      `WEBAUTHN_RP_ID "${candidate}" is a shared hosting domain: WebAuthn would register passkeys for every project on that host.`
+    );
+  }
+
+  if (!candidate.includes(".") && candidate !== "localhost") {
+    throw new Error(
+      `WEBAUTHN_RP_ID "${candidate}" is a public suffix, not a domain this deployment owns.`
+    );
+  }
+
+  // A literal address cannot be an RP ID: browsers refuse to register a passkey
+  // at an IP origin, so accepting one here would promise credentials that can
+  // never be created.
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(candidate) || candidate.startsWith("[")) {
+    throw new Error(
+      `WEBAUTHN_RP_ID "${candidate}" is an IP address; browsers only issue passkeys for domain names.`
+    );
+  }
+
+  return candidate;
+}
+
+/**
  * The origin and RP ID this deployment answers the ceremony for.
  *
  * In production both come from APP_URL, never the request, so a forged Host
@@ -239,7 +313,11 @@ export function getWebAuthnConfig(requestOrigin?: string): {
     );
   }
 
-  return { origin, rpID, rpName: WEBAUTHN_RP_NAME };
+  return {
+    origin,
+    rpID: resolveRpID(origin, serverEnv.WEBAUTHN_RP_ID),
+    rpName: WEBAUTHN_RP_NAME,
+  };
 }
 
 function expectedOrigins(requestOrigin?: string): string[] {
@@ -362,8 +440,25 @@ export async function verifyRegistration(params: {
       createdAt: Date.now(),
       deviceType: credentialDeviceType,
       backedUp: credentialBackedUp,
+      rpID,
     },
   };
+}
+
+/**
+ * Can this credential be used against `rpID`?
+ *
+ * A credential carries the RP ID it was enrolled for. Absent means it predates the
+ * field, so it belongs to whatever this deployment uses - the ceremonial origin is
+ * the only thing that changes between deployments, not before.
+ */
+export function credentialUsableHere(
+  credential: StoredWebAuthnCredential,
+  rpID: string
+): boolean {
+  const enrolledFor = credential.rpID?.trim().toLowerCase();
+
+  return !enrolledFor || enrolledFor === rpID.toLowerCase();
 }
 
 export async function buildAuthenticationOptions(params: {

@@ -21,12 +21,13 @@ const calls = vi.hoisted(() => ({
 async function loadWebAuthn(options: {
   production: boolean;
   appUrl?: string;
+  rpId?: string;
 }) {
   vi.resetModules();
 
   vi.doMock("@/config/env", () => ({
     isProduction: options.production,
-    serverEnv: { APP_URL: options.appUrl },
+    serverEnv: { APP_URL: options.appUrl, WEBAUTHN_RP_ID: options.rpId },
   }));
 
   vi.doMock("@simplewebauthn/server", () => ({
@@ -118,6 +119,50 @@ describe("production WebAuthn origin", () => {
       expect.objectContaining({
         expectedOrigin: ["https://shipin.app"],
         expectedRPID: "shipin.app",
+      })
+    );
+  });
+
+  it("uses a configured parent RP ID, so subdomains can move without re-enrolling", async () => {
+    /*
+     * The one way a domain change is free: keep the RP ID one level up. Asserted at the
+     * ceremony, because that is where the value is spent - the config object alone
+     * would not prove the library sees it.
+     */
+    calls.verifyAuthenticationResponse.mockResolvedValue({
+      verified: true,
+      authenticationInfo: { newCounter: 2 },
+    });
+
+    const { getWebAuthnConfig, verifyAssertion } = await loadWebAuthn({
+      production: true,
+      appUrl: "https://app.shipin.com",
+      rpId: "shipin.com",
+    });
+
+    expect(getWebAuthnConfig()).toMatchObject({
+      origin: "https://app.shipin.com",
+      rpID: "shipin.com",
+    });
+
+    await verifyAssertion({
+      response: { id: "cred-1" } as never,
+      expectedChallenge: "challenge-1",
+      credential: {
+        credentialID: "cred-1",
+        publicKey: "pk-1",
+        counter: 1,
+        transports: ["usb"],
+        name: "YubiKey",
+        createdAt: 1_700_000_000_000,
+      },
+    });
+
+    expect(calls.verifyAuthenticationResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // The origin is still the page's; only the RP ID is the parent.
+        expectedOrigin: ["https://app.shipin.com"],
+        expectedRPID: "shipin.com",
       })
     );
   });

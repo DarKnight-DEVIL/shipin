@@ -25,7 +25,7 @@ const STATUS: MfaConfigStatus = {
   totp: { enabled: true, pending: false },
   sms: { enabled: false, phoneNumber: null },
   backupCodes: 10,
-  webauthn: { enabled: false, credentials: [] },
+  webauthn: { enabled: false, rpID: null, credentials: [] },
 };
 
 function renderCard(onChanged = vi.fn()) {

@@ -462,6 +462,43 @@ These are the gaps that the Discord alert alone will not catch. Add in this orde
 
 ---
 
+## 4a. Moving to another domain
+
+Passkeys are the one credential a domain change destroys, so decide the RP ID
+*before* the move:
+
+- **Same domain, new subdomain** (`app.shipin.com` → `track.shipin.com`): set
+  `WEBAUTHN_RP_ID=shipin.com` and redeploy *before* switching. An RP ID may be a
+  parent of `APP_URL`'s host, so every existing passkey keeps working on the new
+  subdomain and nobody re-enrols. The value is validated: it must be a bare
+  hostname, a parent of `APP_URL`'s host, a domain ShipIN owns (not `vercel.app`,
+  not a public suffix, not an IP), so a typo fails at the ceremony rather than
+  silently issuing credentials that can never be used.
+- **Different domain** (`shipin-psi.vercel.app` → `shipin.app`): nothing carries
+  over. Every passkey is re-enrolled, and users see the old key flagged in
+  Admin → Security as "registered for <old rpID>".
+
+Checklist, in order:
+
+1. `WEBAUTHN_RP_ID` set (only if staying under one domain you own).
+2. `APP_URL` and `NEXT_PUBLIC_APP_URL` point at the new host, then redeploy.
+3. Firebase console → Authentication → **Authorized domains**: add the new host,
+   or Google sign-in fails with `auth/unauthorized-domain`.
+4. Google Cloud console → the reCAPTCHA Enterprise key behind App Check: add the
+   new host to its domain allowlist, or App Check rejects every request.
+5. `/api/health` → `webauthn.matches` must be `true` (see §4). A `false` there is
+   the two-URL-copy mistake: everything works except security keys.
+6. Keep the old host answering with a 301 for a release: in-flight PayPal orders
+   and already-sent email links point at it.
+7. Tell admins with a passkey-only second factor to add TOTP or backup codes
+   **before** the move; a key enrolled for the old domain cannot elevate after it.
+   `scripts/break-glass/mfa-reset.ts` is the recovery if someone is locked out.
+
+TOTP, backup codes, and SMS are unaffected: the shared secret has no origin in it,
+so authenticator codes generated today still verify after any move.
+
+---
+
 ## 5. Rate limiting in production
 
 Two guards, and they behave differently on purpose:

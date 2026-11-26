@@ -23,13 +23,19 @@ const {
 } = await import("@/lib/webauthnClient");
 
 function statusWith(
-  credentials: { id: string; name: string; createdAt: number }[]
+  credentials: {
+    id: string;
+    name: string;
+    createdAt: number;
+    rpID: string | null;
+  }[],
+  rpID = "shipin.test"
 ): MfaConfigStatus {
   return {
     totp: { enabled: true, pending: false },
     sms: { enabled: false, phoneNumber: null },
     backupCodes: 10,
-    webauthn: { enabled: credentials.length > 0, credentials },
+    webauthn: { enabled: credentials.length > 0, rpID, credentials },
   };
 }
 
@@ -81,11 +87,12 @@ describe("WebAuthnCard", () => {
   it("lists registered keys with their name and date", () => {
     renderCard(
       statusWith([
-        { id: "cred-1", name: "YubiKey 5C", createdAt: 1_700_000_000_000 },
+        { id: "cred-1", name: "YubiKey 5C", createdAt: 1_700_000_000_000, rpID: "shipin.test" },
         {
           id: "cred-2",
           name: "MacBook Touch ID",
           createdAt: 1_710_000_000_000,
+          rpID: "shipin.test",
         },
       ])
     );
@@ -95,13 +102,44 @@ describe("WebAuthnCard", () => {
     expect(screen.getByText("2 registered")).toBeInTheDocument();
   });
 
+  it("marks a key registered for a domain this site no longer uses", () => {
+    /*
+     * After a move the key is still on file and the browser will refuse it. Saying so
+     * is the difference between "my key stopped working" and "remove it and add it
+     * again".
+     */
+    renderCard(
+      statusWith(
+        [
+          {
+            id: "cred-old",
+            name: "Old YubiKey",
+            createdAt: 1_700_000_000_000,
+            rpID: "old.example",
+          },
+          {
+            id: "cred-new",
+            name: "Current key",
+            createdAt: 1_710_000_000_000,
+            rpID: "shipin.test",
+          },
+        ],
+        "shipin.test"
+      )
+    );
+
+    expect(screen.getByText(/Registered for old\.example/)).toBeInTheDocument();
+    // The usable key gets no warning: a banner on every row would be noise.
+    expect(screen.queryByText(/Registered for shipin\.test/)).toBeNull();
+  });
+
   it("asks for confirmation before removing a key", async () => {
     vi.mocked(removeSecurityKey).mockResolvedValue(0);
 
     const onChanged = vi.fn();
     renderCard(
       statusWith([
-        { id: "cred-1", name: "YubiKey", createdAt: 1_700_000_000_000 },
+        { id: "cred-1", name: "YubiKey", createdAt: 1_700_000_000_000, rpID: "shipin.test" },
       ]),
       onChanged
     );
@@ -133,7 +171,7 @@ describe("WebAuthnCard", () => {
 
     renderCard(
       statusWith([
-        { id: "cred-1", name: "YubiKey", createdAt: 1_700_000_000_000 },
+        { id: "cred-1", name: "YubiKey", createdAt: 1_700_000_000_000, rpID: "shipin.test" },
       ])
     );
 

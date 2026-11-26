@@ -7,6 +7,8 @@ import {
   type MfaMethod,
 } from "@/lib/mfaProof";
 import {
+  credentialUsableHere,
+  getWebAuthnConfig,
   isChallengeExpired,
   readStoredCredentials,
   verifyAssertion,
@@ -320,6 +322,27 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       );
     }
 
+    /*
+     * A credential is bound to the RP ID it was enrolled for. After a move to another
+     * domain the stored key is still listed but can never verify here, and the library
+     * would answer only "could not be verified" - true and useless. The tag makes it a
+     * sentence the customer can act on.
+     */
+    const { rpID } = getWebAuthnConfig(request.nextUrl.origin);
+
+    if (!credentialUsableHere(stored, rpID)) {
+      await clearChallenge();
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: `This key was registered for ${stored.rpID}, which this site no longer uses. Register it again to use it here.`,
+          code: "WEBAUTHN_RP_MISMATCH",
+        },
+        { status: 401, headers: NO_STORE }
+      );
+    }
+
     const result = await verifyAssertion({
       response: assertion,
       expectedChallenge: record.pendingChallenge,
@@ -345,7 +368,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     await userRef.update({
       "mfa.webauthn.credentials": credentials.map((credential) =>
         credential.credentialID === stored.credentialID
-          ? { ...credential, counter: result.newCounter }
+          ? // Re-stamped on use, so a credential enrolled before the tag existed is
+            // labelled from the first successful sign-in instead of staying ambiguous.
+            { ...credential, counter: result.newCounter, rpID }
           : credential
       ),
       "mfa.webauthn.pendingChallenge": null,

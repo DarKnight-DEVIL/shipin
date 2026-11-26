@@ -132,6 +132,20 @@ export default function WebAuthnCard({
                   <p className="text-xs text-slate-500">
                     Added {formatDate(key.createdAt)}
                   </p>
+                  {key.rpID &&
+                  status.webauthn.rpID &&
+                  key.rpID !== status.webauthn.rpID ? (
+                    /*
+                     * A key enrolled for another domain cannot be used here, and the
+                     * browser will not offer it: saying so beats letting someone press
+                     * "sign in with security key" and watch it fail for no stated reason.
+                     */
+                    <p className="mt-1 text-xs text-amber-300">
+                      Registered for {key.rpID} — this site now uses 
+                      {status.webauthn.rpID}. Remove and add it again to use it
+                      here.
+                    </p>
+                  ) : null}
                 </div>
 
                 {pendingRemoval === key.id ? (
