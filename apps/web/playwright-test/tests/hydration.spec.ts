@@ -59,7 +59,10 @@ const PLATFORM_ROUTES = [
 // One representative is enough: which routes qualify is gated by unit tests on the
 // generated list. /shipment/[id] hangs when the id does not exist, and
 // /admin/requests/[requestId] navigates to /login signed out.
-const DYNAMIC_ROUTES = ["/track/SHIPIN-CSP-PROBE"];
+const DYNAMIC_ROUTES = [
+  "/track/SHIPIN-CSP-PROBE",
+  "/shipment/csp-probe",
+];
 
 /**
  * Dynamic routes that must NOT get a nonce.
@@ -157,8 +160,49 @@ async function expectHydrated(page: Page, route: string) {
     consoleErrors.push(text.split("\n")[0]);
   });
 
-  const response = await page.goto(route, { waitUntil: "networkidle" });
-  await page.waitForTimeout(500);
+  /*
+   * Not `networkidle`. The app keeps a Firestore Listen channel open for its
+   * app-level subscriptions, so "no network activity for 500ms" never happens and
+   * `goto` sat there until the test timed out. That looked exactly like a page that
+   * hangs - it was reported as one, and it was wrong: /shipment/<unknown> renders
+   * "Shipment not found" in under two seconds.
+   *
+   * Hydration is the condition this test actually needs, so it waits for that
+   * instead of for silence on the wire.
+   */
+  const response = await page.goto(route, { waitUntil: "domcontentloaded" });
+
+  await page
+    .waitForFunction(
+      () =>
+        typeof (window as unknown as { __next_f?: unknown }).__next_f !==
+        "undefined",
+      undefined,
+      { timeout: 20_000 }
+    )
+    // A page whose bootstrap never ran is asserted below with a better message.
+    .catch(() => {});
+
+  // Wait for React to actually attach rather than for a fixed delay: a set duration
+  // is either too short on a slow page or wasted on a fast one, and the condition
+  // below is the thing this test asserts anyway.
+  await page
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll("*")].some((node) =>
+          Object.keys(node).some((key) => key.startsWith("__reactFiber$"))
+        ),
+      undefined,
+      { timeout: 20_000 }
+    )
+    .catch(() => {});
+
+  // A refused or throttled response has no bootstrap either, and reporting that as
+  // "the CSP is blocking it" sends the reader to the wrong file.
+  expect(
+    response?.status(),
+    `${route}: the response was not 200, so nothing below was measured`
+  ).toBe(200);
 
   const bodyText = await page.evaluate(() => document.body.innerText);
   const state = await hydrationState(page);
@@ -431,7 +475,8 @@ test.describe("Production hydration", () => {
   test("landing page routes client-side, not by full page load", async ({
     page,
   }) => {
-    await page.goto("/", { waitUntil: "networkidle" });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(500);
     await page.waitForFunction(
       () => (window as { __next_f?: unknown }).__next_f !== undefined
     );
