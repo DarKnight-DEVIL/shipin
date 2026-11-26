@@ -130,7 +130,7 @@ describe("POST /api/r2/view", () => {
     expect(mocks.getSignedUrl).not.toHaveBeenCalled();
   });
 
-  it("returns a short-lived signed url", async () => {
+  it("signs an inspection photo for the review window, not 15 minutes", async () => {
     const response = await POST(request({ token: "good" }));
 
     // The key's request id is what authorization is keyed on.
@@ -143,7 +143,9 @@ describe("POST /api/r2/view", () => {
       { client: true },
       expect.anything(),
       {
-        expiresIn: 900,
+        // 60 minutes: a warehouse reviewer works through a gallery, and 15 minutes
+        // could expire under them. See `r2UrlPolicy`.
+        expiresIn: 3600,
       }
     );
     expect(response.status).toBe(200);
@@ -151,5 +153,27 @@ describe("POST /api/r2/view", () => {
       success: true,
       url: "https://r2.example/signed",
     });
+  });
+
+  it("takes the lifetime from the environment for this purpose", async () => {
+    vi.stubEnv("R2_INSPECTION_URL_TTL_SECONDS", "7200");
+
+    await POST(request({ token: "good" }));
+
+    expect(mocks.getSignedUrl).toHaveBeenCalledWith(
+      { client: true },
+      expect.anything(),
+      { expiresIn: 7200 }
+    );
+  });
+
+  it("refuses a label key, which nothing serves yet", async () => {
+    // `purposeForKey` knows the shipping-label purpose so the TTL knob exists, but no
+    // authorizer covers that prefix: accepting it would let any signed-in user read
+    // any key under `labels/`.
+    const response = await POST(request({ token: "good", body: { key: "labels/req-1/x.pdf" } }));
+
+    expect(response.status).toBe(400);
+    expect(mocks.getSignedUrl).not.toHaveBeenCalled();
   });
 });

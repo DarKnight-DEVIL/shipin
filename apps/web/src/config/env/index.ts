@@ -49,6 +49,12 @@ interface ServerEnv {
   R2_BUCKET_NAME: string;
   /** S3-compatible region; defaults to `auto` (Cloudflare R2). */
   R2_REGION?: string;
+  /**
+   * Presigned-URL lifetime per purpose, in seconds. See `src/lib/r2UrlPolicy.ts`:
+   * values outside what SigV4 allows are ignored in favour of the default.
+   */
+  R2_INSPECTION_URL_TTL_SECONDS?: string;
+  R2_LABEL_URL_TTL_SECONDS?: string;
   /** Overrides the Cloudflare account endpoint, e.g. for AWS S3 or MinIO. */
   R2_ENDPOINT?: string;
   APP_URL: string;
