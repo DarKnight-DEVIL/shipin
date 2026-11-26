@@ -261,6 +261,19 @@ export const SECURITY_HEADERS: Record<string, string> = {
  * reason - it discards the host allowlist, so the `/_next/static` chunks were
  * refused too.
  *
+ * Rendered-on-demand pages are stricter still: `proxy.ts` mints a nonce per
+ * request for those, so `'unsafe-inline'` is dropped in the header itself.
+ *
+ * Prerendered pages get the same treatment WITHOUT giving up static rendering:
+ * `scripts/inject-static-csp.mjs` writes a `<meta http-equiv="Content-Security-Policy">`
+ * into each built page containing `'sha256-...'` hashes of that page's own inline
+ * scripts. Browsers intersect header and meta policies, so what follows is only the
+ * floor - no page is actually allowed `'unsafe-inline'` once its meta is in place.
+ * The floor stays permissive so a page that somehow misses the step degrades to
+ * today's policy instead of a blank page.
+ *
+ * The paragraphs below describe that floor.
+ *
  * Pages the build renders on demand are the exception, and they are where the
  * nonce comes from: `proxy.ts` replaces `script-src` with a nonce-bearing version
  * (see `applyNonceToCsp`) for exactly the routes in `dynamicRoutes.generated.ts`,

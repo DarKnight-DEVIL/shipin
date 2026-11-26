@@ -61,8 +61,20 @@ describe("standalone start contract", () => {
     // whose `/_next/static` chunks 404. Preparing at build time makes the
     // artefact serveable however it is started; `prestart` stays as the
     // idempotent second pass.
-    expect(scripts.build.endsWith("node scripts/prepare-standalone.mjs")).toBe(
+    expect(scripts.build).toContain("node scripts/prepare-standalone.mjs");
+
+    /*
+     * The CSP injector must run AFTER prepare-standalone, and that ordering is not
+     * cosmetic: prepare copies the traced tree whose HTML was snapshotted by
+     * next build, so instrumenting only .next/server/app leaves the Docker and
+     * npm start path on the permissive policy. Measured, not assumed - the meta
+     * was present in one copy and missing in the other.
+     */
+    expect(scripts.build.endsWith("node scripts/inject-static-csp.mjs")).toBe(
       true
+    );
+    expect(scripts.build.indexOf("inject-static-csp")).toBeGreaterThan(
+      scripts.build.indexOf("prepare-standalone")
     );
   });
 

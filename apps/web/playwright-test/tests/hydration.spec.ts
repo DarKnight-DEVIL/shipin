@@ -252,10 +252,27 @@ test.describe("Production hydration", () => {
       scriptSrc,
       "/: a prerendered page was given a nonce policy"
     ).not.toContain("'nonce-");
+    // The header is the floor and keeps 'unsafe-inline' so a page that misses the
+    // build step degrades to the old policy instead of a blank page.
     expect(
       scriptSrc,
-      "/: a prerendered page needs 'unsafe-inline' to hydrate"
+      "/: the header floor changed; every prerendered page now relies on the meta"
     ).toContain("'unsafe-inline'");
+
+    // The ceiling is the page's own meta: hashes of its inline scripts and no
+    // 'unsafe-inline'. Browsers intersect the two, so this pair is what makes the
+    // prerendered policy strict without giving up static rendering.
+    const meta = await page.evaluate(() =>
+      document
+        .querySelector('meta[http-equiv="Content-Security-Policy"]')
+        ?.getAttribute("content")
+    );
+
+    expect(meta, "/: no strict meta policy in the document").toBeTruthy();
+    expect(meta, "/: the meta still allows inline scripts").not.toContain(
+      "'unsafe-inline'"
+    );
+    expect(meta, "/: the meta has no hash allowance").toContain("'sha256-");
   });
 
   // Policy only for the admin dashboard: signed out it renders the dashboard's HTML

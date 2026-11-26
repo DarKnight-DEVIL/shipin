@@ -234,35 +234,43 @@ What to expect operationally:
 Local development can exercise the UI and the server-side 401/403 paths, but a
 real end-to-end SMS sign-in has to be verified on a deployed origin.
 
-### CSP: which pages get a nonce, and which must not
+### CSP: how each page gets a strict script policy without slowing down
 
-There are two script policies, because there are two kinds of page.
+No page runs inline scripts. Two mechanisms get there, and neither costs a
+per-request render.
 
-**Prerendered pages (36 of them, including the whole admin dashboard).** Their HTML
-is written at build time with Next's hydration bootstrap inline, so a nonce created
-when the file is served could never match those tags. These keep
-`script-src 'self' 'unsafe-inline' ...`. Measured: forcing a nonce here leaves the
-page as static HTML that never hydrates.
+**Prerendered pages (32 with HTML).** Their bootstrap is written into the HTML at
+build time, so a per-request nonce can never match it. `npm run build` instead runs
+`scripts/inject-static-csp.mjs`, which hashes that page's own inline scripts and
+writes a `<meta http-equiv="Content-Security-Policy">` containing the hashes and no
+`'unsafe-inline'`. Browsers intersect header and meta policies, so the header stays
+as a permissive floor and the page narrows itself.
 
-**Pages rendered on demand (`/track/[trackingId]`, `/requests/[id]`,
+The floor is left permissive on purpose: if the step ever fails to run, pages fall
+back to the old policy rather than to a blank page. The step fails the build when it
+instruments nothing, when a page has no `<head>`, or when a page's own inline script
+is not covered by a hash — that last one is checked by re-reading the file, because a
+gap there shows up as one blocked script on one page in one browser and nowhere else.
+
+Both copies of the HTML are instrumented: `.next/server/app` (what Vercel serves) and
+the traced standalone tree (what `npm start` and the Docker image serve). Measured:
+instrumenting only the first left the Docker path on the permissive policy.
+
+**Rendered-on-demand pages** (`/track/[trackingId]`, `/requests/[id]`,
 `/payment/[id]`, `/shipment/[id]`, `/requests/[id]/invoice`,
-`/admin/requests/[requestId]`).** `proxy.ts` mints a nonce per request and Next
-stamps its own scripts with it. `'unsafe-inline'` is dropped there. One inline
-script is not Next's to stamp - the next-themes pre-paint bootstrap - so the build
-computes its `'sha256-...'` hash and the policy allows exactly that content; without
-it, dark-mode users get a light flash on those pages.
+`/admin/requests/[requestId]`). `proxy.ts` mints a nonce per request and Next stamps
+its own scripts with it, so the header itself has no `'unsafe-inline'`.
 
-Which page is which is not written by hand. `npm run build` runs
-`scripts/generate-dynamic-routes.mjs`, which reads the build's own
+Which page is which is not written by hand. The generator reads the build's own
 `app-path-routes-manifest.json` and `prerender-manifest.json` and writes
-`src/config/dynamicRoutes.generated.ts` (dynamic patterns, exact prerendered routes,
-shared inline-script hashes).
+`src/config/dynamicRoutes.generated.ts`. **The build fails when that file changes**,
+because the proxy in that same build compiled against the previous list — a route
+that just became prerendered would still get a nonce and lose the scripts baked into
+its HTML. Commit the regenerated file and build again.
 
-**The build fails when that file changes.** The failure is deliberate: the proxy
-compiled in that same build used the previous list, so a route that just became
-prerendered would still be treated as dynamic and get a nonce - blocking the scripts
-baked into its HTML. Commit the regenerated file and build again, when source and
-list agree.
+Verified in a browser against a production build: prerendered pages hydrate with the
+strict meta in place (500+ React fibers on the landing page), the theme bootstrap
+runs, and no script is refused.
 
 ### India Post tracking (carrier feed)
 
