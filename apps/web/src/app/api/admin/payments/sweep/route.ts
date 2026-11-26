@@ -29,6 +29,8 @@ import { settleMainPayment } from "@/lib/paypal/settleMainPayment";
 import { settleAdditionalItemPayment } from "@/lib/paypal/settleAdditionalItemPayment";
 import type { StuckPaymentOrder } from "@/lib/paypal/sweepPendingPayments";
 import { sweepPendingPayments } from "@/lib/paypal/sweepPendingPayments";
+import { settleWalletTopup } from "@/lib/wallet/settleWalletTopup";
+import { sweepPendingTopups } from "@/lib/wallet/sweepPendingTopups";
 import { withErrorHandler } from "@/utils/errors";
 import { sendNotification } from "@/features/notifications/services/notificationService";
 import { buildPaymentReceivedNotification } from "@/lib/paypal/paymentReceivedNotification";
@@ -197,11 +199,67 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     },
   });
 
+  /*
+   * Wallet top-ups fail the same way and are recovered the same way: the capture
+   * route writes `capturePending: true` before calling PayPal, and a crash
+   * between the capture and the ledger write leaves a charged customer with no
+   * credit. That flag is the only trace, so it is what this sweep looks for.
+   */
+  const topups = await sweepPendingTopups({
+    listPendingTopups: async () => {
+      const snapshot = await adminDb
+        .collection("walletTopupOrders")
+        .where("capturePending", "==", true)
+        .limit(SWEEP_LIMIT)
+        .get();
+
+      return snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ref: doc.ref as DocumentReference,
+        data: doc.data(),
+      }));
+    },
+
+    fetchOrder: (orderId) => verifyPayPalOrder(orderId),
+
+    credit: async (topupOrder, capture) => {
+      const settlement = await settleWalletTopup({
+        topupOrderRef: topupOrder.ref,
+        topupOrder: topupOrder.data,
+        capture,
+      });
+
+      return settlement.ok
+        ? { ok: true, alreadyProcessed: settlement.alreadyProcessed }
+        : { ok: false, error: settlement.error };
+    },
+
+    markAbandoned: async (topupOrder) => {
+      // PayPal never captured this order, so nothing is owed and the flag must
+      // stop being re-examined.
+      await topupOrder.ref.set(
+        { capturePending: false, abandonedAt: new Date(), abandonedBy: "paypal-sweep" },
+        { merge: true }
+      );
+    },
+
+    log: (message, detail) => {
+      console.warn(`[paypal-sweep] ${message}`, detail ?? {});
+    },
+  });
+
+  const failures = [...result.failures, ...topups.failures];
+
   // Failures are a 500 on purpose: a settlement that could not complete is a
   // charged customer, and the workflow must go red rather than report a green
   // run carrying a detail nobody opens.
   return NextResponse.json(
-    { success: result.failures.length === 0, ...result },
-    { status: result.failures.length === 0 ? 200 : 500, headers: NO_STORE }
+    {
+      success: failures.length === 0,
+      ...result,
+      failures,
+      topups,
+    },
+    { status: failures.length === 0 ? 200 : 500, headers: NO_STORE }
   );
 });

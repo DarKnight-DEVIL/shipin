@@ -90,7 +90,21 @@ jobs:
           pending=$(jq -r '.pending // 0' "$response_file")
           voided=$(jq -r '.voided // 0' "$response_file")
 
+          topup_credited=$(jq -r '.topups.credited // 0' "$response_file")
+          topup_already=$(jq -r '.topups.alreadyCredited // 0' "$response_file")
+          topup_pending=$(jq -r '.topups.pending // 0' "$response_file")
+
           echo "Scanned $scanned stuck order(s): settled $settled, still pending $pending, voided $voided."
+          echo "Wallet top-ups: credited $topup_credited, already credited $topup_already, still pending $topup_pending."
+
+          if [ "$topup_credited" -gt 0 ] 2>/dev/null; then
+            {
+              echo "### $topup_credited wallet top-up(s) credited by the sweep"
+              echo ""
+              echo "These were captured at PayPal but never reached the wallet, so the customer had paid for a balance that never appeared."
+              echo ""
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
           if [ "$settled" -gt 0 ] 2>/dev/null; then
             {

@@ -19,14 +19,22 @@ import crypto from "crypto";
 const mocks = vi.hoisted(() => {
   const state = {
     orders: [] as Array<{ id: string; data: Record<string, unknown> }>,
+    topups: [] as Array<{ id: string; data: Record<string, unknown> }>,
+    creditWallet: vi.fn(async () => ({
+      ok: true as boolean,
+      alreadyProcessed: false,
+      balance: 40,
+      status: 200,
+      error: undefined as string | undefined,
+    })),
     paypal: {} as Record<string, unknown>,
     settleMain: vi.fn(async () => ({ ok: true as boolean, error: undefined as string | undefined })),
     settleAdditional: vi.fn(async () => ({ ok: true as boolean })),
     writes: [] as Array<{ id: string; value: Record<string, unknown> }>,
   };
 
-  const snapshot = () => ({
-    docs: state.orders.map((order) => ({
+  const snapshot = (orders: typeof state.orders) => ({
+    docs: orders.map((order) => ({
       id: order.id,
       data: () => order.data,
       ref: {
@@ -38,17 +46,28 @@ const mocks = vi.hoisted(() => {
     })),
   });
 
-  const chain = {
-    where: () => chain,
-    limit: () => chain,
-    get: async () => snapshot(),
+  // Only the payment-order collection has candidates here; a top-up query must
+  // find nothing, or the two sweeps read each other's documents.
+  const chainFor = (name: string) => {
+    const docs =
+      name === "paypalPaymentOrders"
+        ? state.orders
+        : name === "walletTopupOrders"
+          ? state.topups
+          : [];
+    const chain = {
+      where: () => chain,
+      limit: () => chain,
+      get: async () => snapshot(docs),
+    };
+    return chain;
   };
 
   return {
     state,
     db: {
-      collection: () => ({
-        ...chain,
+      collection: (name: string) => ({
+        ...chainFor(name),
         doc: (id: string) => ({
           id,
           get: async () => ({ data: () => ({ userId: 'u1', customerName: 'C' }) }),
@@ -70,6 +89,10 @@ vi.mock("@/lib/paypal/paymentReceivedNotification", () => ({
 
 vi.mock("@/lib/paypal", () => ({
   verifyPayPalOrder: async (id: string) => mocks.state.paypal[id] ?? { status: "CREATED" },
+}));
+
+vi.mock("@/lib/wallet/settleWalletTopup", () => ({
+  settleWalletTopup: (...args: unknown[]) => mocks.state.creditWallet(...(args as [])),
 }));
 
 vi.mock("@/lib/paypal/settleMainPayment", () => ({
@@ -119,6 +142,8 @@ function completedOrder(captureId = "CAP-1", value = "42.00") {
 beforeEach(() => {
   vi.stubEnv("CRON_SECRET", SECRET);
   mocks.state.orders = [];
+  mocks.state.topups = [];
+  mocks.state.creditWallet.mockClear();
   mocks.state.paypal = {};
   mocks.state.writes = [];
   mocks.state.settleMain.mockClear();
@@ -206,6 +231,47 @@ describe("POST /api/admin/payments/sweep — verdict", () => {
     expect(response.status).toBe(500);
     expect(body.success).toBe(false);
     expect(body.failures).toEqual([{ orderId: "ORDER-2", error: "Amount mismatch." }]);
+  });
+
+  it("credits a top-up PayPal captured but nobody credited", async () => {
+    // The same failure as a stuck payment:  was the only trace
+    // of the charge, and the customer paid without the balance moving.
+    mocks.state.topups = [
+      { id: "t1", data: { orderId: "PP-1", userId: "user-1", amount: 40 } },
+    ];
+    mocks.state.paypal["PP-1"] = completedOrder("CAP-T1", "40.00");
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.topups).toMatchObject({ scanned: 1, credited: 1 });
+    expect(mocks.state.creditWallet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topupOrder: expect.objectContaining({ userId: "user-1" }),
+        capture: { captureId: "CAP-T1", amount: 40, currency: "USD" },
+      })
+    );
+  });
+
+  it("goes red when a captured top-up cannot be credited", async () => {
+    mocks.state.topups = [
+      { id: "t2", data: { orderId: "PP-2", userId: "user-1", amount: 40 } },
+    ];
+    mocks.state.paypal["PP-2"] = completedOrder("CAP-T2", "40.00");
+    mocks.state.creditWallet.mockResolvedValueOnce({
+      ok: false,
+      alreadyProcessed: false,
+      balance: 0,
+      error: "Unexpected PayPal payment currency.",
+      status: 400,
+    });
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.failures[0]).toMatchObject({ topupId: "t2" });
   });
 
   it("marks a voided order so it stops being polled", async () => {

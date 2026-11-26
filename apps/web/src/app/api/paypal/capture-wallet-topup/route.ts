@@ -10,8 +10,7 @@ import { getPayPalAccessToken } from "@/lib/paypal";
 import { fetchWithTimeout } from "@/lib/http";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { withErrorHandler } from "@/utils/errors";
-import { minorFromStored, storedMinor, toDecimal } from "@/lib/money";
-import { balanceFields, isMinorOnlyMode, ledgerFields } from "@/lib/moneyMode";
+import { settleWalletTopup } from "@/lib/wallet/settleWalletTopup";
 import { serverEnv } from "@/config/env";
 import { captureTopupBodySchema, readAndValidateBody } from "@/lib/validation";
 
@@ -273,162 +272,34 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
      * ========================================
      */
 
-    if (!Number.isFinite(capturedAmount) || capturedAmount <= 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Invalid PayPal capture amount.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (capturedCurrency !== "USD") {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Unexpected PayPal payment currency.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (Math.abs(capturedAmount - storedAmount) > 0.01) {
-      console.error("Wallet top-up amount mismatch:", {
-        storedAmount,
-        capturedAmount,
-        orderID,
-      });
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Captured payment amount does not match the wallet top-up.",
-        },
-        { status: 400 }
-      );
-    }
-
     /*
      * ========================================
-     * ATOMIC WALLET CREDIT
+     * CREDIT THE WALLET
      * ========================================
+     *
+     * One implementation, shared with the recovery sweep: two copies of a money
+     * write drift, and this one has to be exactly refusable and exactly
+     * idempotent. It verifies the capture against the stored order itself
+     * (amount, currency, ledger keyed on captureId) inside the same transaction.
      */
-
-    const walletRef = adminDb.collection("wallets").doc(authenticatedUserId);
-
-    const transactionRef = adminDb
-      .collection("walletTransactions")
-      .doc(captureId);
-
-    const result = await adminDb.runTransaction(async (transaction) => {
-      const walletSnapshot = await transaction.get(walletRef);
-
-      const transactionSnapshot = await transaction.get(transactionRef);
-
-      /*
-       * Already credited.
-       */
-      if (transactionSnapshot.exists) {
-        const existing = transactionSnapshot.data();
-
-        return {
-          alreadyProcessed: true,
-
-          balance: toDecimal(storedMinor(existing, "balanceAfter")),
-        };
-      }
-
-      /*
-       * ADR-0008 phase 3. The minor balance is written as an absolute value
-       * rather than an increment: `FieldValue.increment` on a field that a
-       * legacy wallet does not have starts from zero, which would credit a
-       * migrated amount against a balance of nothing. The read above is inside
-       * this transaction, so an absolute write is just as atomic as the
-       * increment it sits next to.
-       */
-      const newBalanceMinor =
-        storedMinor(walletSnapshot.data(), "balance") +
-        minorFromStored(capturedAmount);
-      const newBalance = toDecimal(newBalanceMinor);
-
-      /*
-       * Update/create wallet.
-       */
-      if (walletSnapshot.exists) {
-        transaction.update(walletRef, {
-          // The decimal is an increment, so it cannot come from `balanceFields`;
-          // the minor balance is absolute because incrementing a field a legacy
-          // wallet does not have would start from zero.
-          ...(isMinorOnlyMode()
-            ? {}
-            : { balance: FieldValue.increment(capturedAmount) }),
-
-          balanceMinor: newBalanceMinor,
-
-          currency: "USD",
-
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      } else {
-        transaction.set(walletRef, {
-          ...balanceFields(newBalanceMinor),
-
-          currency: "USD",
-
-          createdAt: FieldValue.serverTimestamp(),
-
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      }
-
-      /*
-       * Create transaction record.
-       */
-      transaction.set(transactionRef, {
-        userId: authenticatedUserId,
-
-        type: "deposit",
-
-        ...ledgerFields(minorFromStored(capturedAmount), newBalanceMinor),
-
-        description: "PayPal Wallet Top Up",
-
-        provider: "paypal",
-
-        orderId: orderID,
-
+    const settlement = await settleWalletTopup({
+      topupOrderRef,
+      topupOrder,
+      capture: {
         captureId,
-
+        amount: capturedAmount,
         currency: capturedCurrency,
-
-        createdAt: FieldValue.serverTimestamp(),
-      });
-
-      /*
-       * Mark our top-up order as
-       * completed.
-       */
-      transaction.update(topupOrderRef, {
-        status: "completed",
-
-        captureId,
-
-        capturedAmount,
-
-        // The capture is no longer outstanding: the credit is committed
-        // in this same transaction.
-        capturePending: false,
-
-        completedAt: FieldValue.serverTimestamp(),
-      });
-
-      return {
-        alreadyProcessed: false,
-
-        balance: newBalance,
-      };
+      },
     });
+
+    if (!settlement.ok) {
+      return NextResponse.json(
+        { success: false, error: settlement.error },
+        { status: settlement.status }
+      );
+    }
+
+    const result = settlement;
 
     return NextResponse.json({
       success: true,
