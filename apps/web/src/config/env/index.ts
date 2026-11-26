@@ -156,9 +156,8 @@ const REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
  * Server-only vars that are REQUIRED in production but optional in dev/test.
  * In production, missing these will throw at startup.
  */
-const PRODUCTION_REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
-  "PAYPAL_WEBHOOK_ID",
-]);
+/** Exported for the turbo.json gate: Turbo strips anything it does not know. */
+
 
 /*
  * The rate-limit store credentials live in `./production.ts`
@@ -167,6 +166,13 @@ const PRODUCTION_REQUIRED_SERVER_ENV: ReadonlySet<string> = new Set([
  * duplicated here — a second list is how the two drifted apart before. Only the
  * local/CI E2E suite may opt out, via {@link RATE_LIMIT_STORE_OPTIONAL_ENV}.
  */
+
+import {
+  OPTIONAL_SERVER_ENV,
+  PRODUCTION_REQUIRED_SERVER_ENV,
+} from "./serverEnvKeys";
+
+export { OPTIONAL_SERVER_ENV, PRODUCTION_REQUIRED_SERVER_ENV };
 
 /** Set to exactly "1" to allow booting production with no rate-limit store (E2E only). */
 export const RATE_LIMIT_STORE_OPTIONAL_ENV = "RATE_LIMIT_STORE_OPTIONAL";
@@ -193,30 +199,8 @@ const DEFAULT_SERVER_ENV: Record<string, string> = {
 };
 
 /** Server-only vars that are optional (no default, no throw). */
-const OPTIONAL_SERVER_ENV: ReadonlySet<string> = new Set([
-  "PAYPAL_API_URL",
-  // PAYPAL_WEBHOOK_ID is listed in PRODUCTION_REQUIRED_SERVER_ENV instead:
-  // it may be absent in dev/test, but must be set in production.
-  // UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are not optional in
-  // production: see RATE_LIMIT_STORE_SERVER_ENV in ./production.ts. When absent
-  // with the E2E opt-out set, startup warns and /api/health reports degraded.
-  "WHATSAPP_ACCESS_TOKEN",
-  "WHATSAPP_PHONE_NUMBER_ID",
-  // MFA_SESSION_SECRET is NOT optional: it lives in PRODUCTION_REQUIRED_SERVER_ENV.
-  "APP_CHECK_ENFORCEMENT",
-  "R2_REGION",
-  "R2_ENDPOINT",
-  "SMTP_HOST",
-  "SMTP_PORT",
-  "SMTP_SECURE",
-  "SMTP_SERVICE",
-  "INDIA_POST_TRACKING_URL",
-  "INDIA_POST_CLIENT_ID",
-  "INDIA_POST_CLIENT_SECRET",
-  "CRON_SECRET",
-  "BREACH_ALERT_WEBHOOK_URL",
-  "APP_CHECK_ALERT_WEBHOOK_URL",
-]);
+/** Exported for the turbo.json gate (see turboEnv.test.ts). */
+
 
 // NOTE: the rate-limit store assertion lives in @/lib/redisRateLimiter so
 // that the startup check and the runtime check share one implementation

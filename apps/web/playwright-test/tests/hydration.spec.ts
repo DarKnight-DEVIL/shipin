@@ -56,7 +56,23 @@ const PLATFORM_ROUTES = [
  * inline scripts are the same for any id. What matters is the policy attached to
  * the response.
  */
-const DYNAMIC_ROUTES = ["/track/SHIPIN-CSP-PROBE", "/requests/csp-probe"];
+// One representative is enough: which routes qualify is gated by unit tests on the
+// generated list. /shipment/[id] hangs when the id does not exist, and
+// /admin/requests/[requestId] navigates to /login signed out.
+const DYNAMIC_ROUTES = ["/track/SHIPIN-CSP-PROBE"];
+
+/**
+ * Dynamic routes that must NOT get a nonce.
+ *
+ * The PayPal SDK injects an inline bootstrap at runtime, after CSP is evaluated, and
+ * its content depends on the SDK version - so it cannot be hashed, and a page that
+ * loads it keeps 'unsafe-inline' for scripts. That is a real weakening, stated in
+ * `src/config/paypalScriptRoutes.ts`, and this test is what keeps it from spreading:
+ * a route here that stops loading the SDK should move back to DYNAMIC_ROUTES.
+ */
+// /payment/[id] reads a payment document and fails signed out, so it is covered by
+// the unit-level gate instead of a browser probe.
+const PAYPAL_ROUTES = ["/requests/csp-probe"];
 
 const CSP_VIOLATION_PATTERNS = [
   /violates the following Content Security Policy/i,
@@ -274,6 +290,28 @@ test.describe("Production hydration", () => {
     );
     expect(meta, "/: the meta has no hash allowance").toContain("'sha256-");
   });
+
+  for (const route of PAYPAL_ROUTES) {
+    test(`${route} keeps the permissive policy the PayPal SDK needs`, async ({
+      page,
+    }) => {
+      const state = await expectHydrated(page, route);
+
+      const scriptSrc = state.csp.match(/script-src [^;]+/)?.[0] ?? "";
+
+      // No nonce AND no null check: the point is that this route is on the
+      // permissive branch, so 'unsafe-inline' must still be there for the SDK's
+      // injected script to run at all.
+      expect(
+        scriptSrc,
+        `${route}: this route lost the 'unsafe-inline' the PayPal SDK needs`
+      ).toContain("'unsafe-inline'");
+      expect(
+        scriptSrc,
+        `${route}: a nonce here means the route stopped being PayPal-exempt`
+      ).not.toContain("'nonce-");
+    });
+  }
 
   // Policy only for the admin dashboard: signed out it renders the dashboard's HTML
   // and then the guard navigates to /login, so a hydration assertion here would be

@@ -65,6 +65,27 @@ const SCRIPT_SOURCES = [
 
 const MARKER = 'http-equiv="Content-Security-Policy"';
 
+/**
+ * Pages that keep the permissive policy because the PayPal SDK injects an inline
+ * bootstrap at runtime. Restated here because this step runs in plain Node; the
+ * drift gate in `injectStaticCsp.test.ts` compares it against
+ * `src/config/paypalScriptRoutes.ts`.
+ */
+const PAYPAL_ROUTES = [
+  "/wallet/topup",
+  "/payment/[id]",
+  "/requests/[id]",
+  "/requests/[id]/invoice",
+];
+
+/** Maps a built HTML file to the route it serves, e.g. `wallet/topup.html` -> `/wallet/topup`. */
+function routeFor(tree, file) {
+  return `/${path
+    .relative(tree, file)
+    .replace(/\\/g, "/")
+    .replace(/\.html$/, "")}`;
+}
+
 /** Inline executable scripts: no `src`, and not a data block such as JSON-LD. */
 function inlineScriptBodies(html) {
   const bodies = [];
@@ -172,10 +193,25 @@ let skipped = 0;
 let scriptCount = 0;
 let hashCount = 0;
 
+let paypalSkipped = 0;
+
 for (const tree of trees) {
   let perTree = 0;
 
   for (const file of pages(tree)) {
+    // The SDK's inline bootstrap cannot be hashed, so this page keeps the floor.
+    if (PAYPAL_ROUTES.includes(routeFor(tree, file))) {
+      paypalSkipped += 1;
+      writeFileSync(
+        file,
+        readFileSync(file, "utf8").replace(
+          new RegExp(`<meta ${MARKER} content="[^"]*">`, "g"),
+          ""
+        )
+      );
+      continue;
+    }
+
     const hashes = instrument(file);
     if (hashes === null) {
       skipped += 1;
@@ -220,3 +256,10 @@ if (skipped > 0) {
 console.log(
   `static CSP: ${instrumented} prerendered page(s) strict (${scriptCount} inline scripts, ${hashCount} hashes)`
 );
+
+if (paypalSkipped > 0) {
+  // Stated, not silent: these pages keep 'unsafe-inline' for scripts.
+  console.log(
+    `static CSP: ${paypalSkipped} page(s) kept the permissive policy for the PayPal SDK inline bootstrap`
+  );
+}

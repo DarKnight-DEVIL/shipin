@@ -27,8 +27,10 @@ import {
   applyNonceToCsp,
   createCspNonce,
   isDynamicallyRendered,
+  matchesRoutePattern,
 } from "@/lib/cspNonce";
 import { SHARED_INLINE_SCRIPT_HASHES } from "@/config/dynamicRoutes.generated";
+import { PAYPAL_SCRIPT_ROUTES } from "@/config/paypalScriptRoutes";
 import { getCorsHeaders, isAllowedOrigin } from "@/lib/cors";
 import { classifyRoute } from "@/config/routeAuth";
 import { isIndexableRoute } from "@/config/seo";
@@ -231,9 +233,20 @@ export default async function proxy(request: NextRequest) {
    * page. `dynamicRoutes.generated.ts` is written from the build's own prerender
    * manifest, so the answer follows the build instead of being assumed.
    */
+  /*
+   * The PayPal SDK injects an inline bootstrap at runtime, after CSP is evaluated.
+   * It cannot be hashed (its content depends on the SDK version) and a static page
+   * cannot carry a per-request nonce, so those routes keep the permissive policy -
+   * see `paypalScriptRoutes.ts` for what that costs and why it is bounded.
+   */
+  const isPayPalPage = PAYPAL_SCRIPT_ROUTES.some((route) =>
+    matchesRoutePattern(route, pathname)
+  );
+
   const usesNonce =
     !isAuthHelper &&
     !isDev &&
+    !isPayPalPage &&
     pathname.startsWith("/") &&
     isDynamicallyRendered(pathname);
   const nonce = usesNonce ? createCspNonce() : null;

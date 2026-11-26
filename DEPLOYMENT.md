@@ -256,6 +256,21 @@ Both copies of the HTML are instrumented: `.next/server/app` (what Vercel serves
 the traced standalone tree (what `npm start` and the Docker image serve). Measured:
 instrumenting only the first left the Docker path on the permissive policy.
 
+**Pages that load the PayPal SDK are the exception, and it is a real weakening.**
+`/wallet/topup`, `/payment/[id]`, `/requests/[id]` and `/requests/[id]/invoice`
+keep `'unsafe-inline'` for scripts. The SDK injects its own inline bootstrap at
+runtime, after CSP is evaluated; its content depends on the SDK version, so it cannot
+be hashed the way the theme bootstrap is, and a static page cannot carry a per-request
+nonce. Measured: with the strict policy in place the browser refuses it on
+`/wallet/topup` ("Executing inline script violates the following Content Security
+Policy directive").
+
+What bounds it: `script-src-attr 'none'` still blocks event-handler attributes, and
+those pages render no user-controlled HTML. What it means: on those four routes an
+injected inline script would run. `src/config/paypalScriptRoutes.ts` is the single
+list, and `injectStaticCsp.test.ts` fails if a page that imports the PayPal provider
+is missing from it.
+
 **Rendered-on-demand pages** (`/track/[trackingId]`, `/requests/[id]`,
 `/payment/[id]`, `/shipment/[id]`, `/requests/[id]/invoice`,
 `/admin/requests/[requestId]`). `proxy.ts` mints a nonce per request and Next stamps
