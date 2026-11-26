@@ -169,25 +169,49 @@ export const PRERENDERED_APP_ROUTES: readonly string[] = ${JSON.stringify(preren
 export const SHARED_INLINE_SCRIPT_HASHES: readonly string[] = ${JSON.stringify(sharedInlineScriptHashes, null, 2)};
 `;
 
+/** Reads one `export const NAME` array back out of the previously written file. */
+function readArray(source, name) {
+  const match = source?.match(
+    new RegExp(`export const ${name}: readonly string\\[\\] = (\\[[\\s\\S]*?\\]);`)
+  );
+  if (!match) return null;
+
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
+
 const previous = existsSync(OUTPUT) ? readFileSync(OUTPUT, "utf8") : null;
 writeFileSync(OUTPUT, file);
 
 const summary = `${routes.length} route(s)${routes.length ? ` (${routes.join(", ")})` : ""}`;
-const drift = previous !== null && previous !== file;
 
-if (drift && !process.env.DYNAMIC_ROUTES_ACCEPT_DRIFT) {
-  /*
-   * The proxy was compiled with the PREVIOUS list, so a build that changes it
-   * cannot be trusted: a route that just became prerendered is still listed as
-   * dynamic here, and giving it a per-request nonce would block the inline scripts
-   * baked into its HTML. That is the one direction of drift that breaks pages, so
-   * the build stops instead of shipping the stale decision.
-   *
-   * Committing the regenerated file and building again is the fix; the source has
-   * not changed rendering mode in between, so the second build agrees with itself.
-   */
+/*
+ * Only ONE of the three arrays is a decision this file can gate on.
+ *
+ * `DYNAMIC_APP_ROUTES` is semantic: it says which routes are rendered on demand, it
+ * comes from the source tree, and it is identical on every machine. If it changed,
+ * the proxy in this build compiled against the previous answer - a route that just
+ * became prerendered would still get a per-request nonce and lose the scripts baked
+ * into its HTML. That is the dangerous direction, so the build stops.
+ *
+ * The other two are facts about THIS machine's build output. `PRERENDERED_APP_ROUTES`
+ * follows whatever Next decided to prerender here, and the hashes are of bytes this
+ * build emitted. CI and a laptop legitimately disagree, and failing on that - which
+ * is what this gate did on the first Vercel deploy - blocks every deploy for a
+ * difference that does not change behaviour.
+ */
+const previousRoutes = readArray(previous, "DYNAMIC_APP_ROUTES");
+const routeDrift =
+  previousRoutes !== null &&
+  JSON.stringify(previousRoutes) !== JSON.stringify(routes);
+const otherDrift = previous !== null && previous !== file && !routeDrift;
+
+if (routeDrift && !process.env.DYNAMIC_ROUTES_ACCEPT_DRIFT) {
   console.error(
-    `dynamic route manifest changed: ${summary}.\n` +
+    `dynamic routes changed: ${summary}.\n` +
       `src/config/dynamicRoutes.generated.ts was rewritten - commit it and rebuild.\n` +
       `A build compiled with the previous list would apply a CSP nonce to a route ` +
       `that no longer qualifies, blocking that page's own scripts.`
@@ -195,6 +219,15 @@ if (drift && !process.env.DYNAMIC_ROUTES_ACCEPT_DRIFT) {
   process.exit(1);
 }
 
-console.log(
-  `${drift ? "dynamic route manifest updated" : "dynamic route manifest"}: ${summary}`
-);
+if (otherDrift) {
+  // Expected on a different machine. The file is rewritten so the injector, which
+  // runs after this, works from this build's own output.
+  console.log(
+    `dynamic routes unchanged (${summary}); this build's prerender set and inline-script ` +
+      `hashes were refreshed - they describe build output, not source, so they differ ` +
+      `between machines.`
+  );
+  process.exit(0);
+}
+
+console.log(`dynamic route manifest: ${summary}`);
