@@ -40,6 +40,7 @@ import { NextResponse } from "next/server";
 
 import { isProduction } from "@/config/env";
 import { getAppCheckStatus } from "@/lib/appCheck";
+import { readErrorCounts, resolveErrorAlertWebhook } from "@/lib/errorTracking";
 import {
   apiRateLimiter,
   loginRateLimiter,
@@ -91,6 +92,14 @@ export async function GET() {
   // alert per outage window.
   const appCheckRejections = await readAppCheckRejections();
   const appCheckSpike = appCheckRejections.spike;
+
+  /*
+   * Tracked failures, by category, over the last ten minutes. This is what makes
+   * the alerting legible to a monitor: a payment-drift or mfa-store event turns
+   * up here even when no webhook is configured, which is the one state where an
+   * operator channel cannot be relied on.
+   */
+  const errorCounts = await readErrorCounts();
   const alerted = reportAppCheckSpike(appCheckRejections);
 
   // Whether an outage could page anyone at all. This does not affect `status`
@@ -160,6 +169,12 @@ export async function GET() {
           : isProduction
             ? "missing"
             : "fallback (in-memory, development only)",
+      },
+      errors: {
+        trackedLast10Min: errorCounts.recent,
+        byCategory: errorCounts.byCategory,
+        bySeverity: errorCounts.bySeverity,
+        alertWebhookConfigured: Boolean(resolveErrorAlertWebhook()),
       },
       appCheck: {
         configured: appCheckConfigured,

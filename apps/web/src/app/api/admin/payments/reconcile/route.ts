@@ -55,6 +55,7 @@ import type { DocumentSnapshot, Query } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { verifyCronRequest } from "@/lib/cronAuth";
+import { captureServerError } from "@/lib/errorTracking";
 import { withErrorHandler } from "@/utils/errors";
 
 /**
@@ -669,8 +670,30 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     truncated,
   });
 
-  for (const entry of driftNow) {
-    console.error("[paypal-reconcile] payment drift:", entry);
+  if (driftNow.length > 0) {
+    // Drift means money and state disagree: the customer was charged for
+    // something the app does not show. One structured event per run, carrying the
+    // counts and the first entries, so the operator channel has the shape of the
+    // problem without a log viewer.
+    await captureServerError(
+      new Error(
+        `${driftNow.length} payment(s) disagree between PayPal and Firestore in the last ${days} day(s).`
+      ),
+      {
+        category: "payment-drift",
+        severity: "critical",
+        code: "PAYMENT_DRIFT",
+        // The counts identify the incident; the entries vary per run, and using
+        // them in the fingerprint would page once per distinct order.
+        fingerprint: "payment-drift:reconcile",
+        context: {
+          driftCount: driftNow.length,
+          carriedForward,
+          windowDays: days,
+          firstCases: driftNow.slice(0, 5).map((entry) => entry.kind),
+        },
+      }
+    );
   }
 
   const body = {

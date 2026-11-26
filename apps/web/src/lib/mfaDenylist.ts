@@ -19,6 +19,7 @@ import "server-only";
 import { Redis } from "@upstash/redis";
 
 import { isProduction, serverEnv } from "@/config/env";
+import { captureServerError } from "@/lib/errorTracking";
 
 const KEY_PREFIX = "shipin:mfa:denied:";
 
@@ -68,9 +69,17 @@ export async function denyMfaSession(
 
   if (!redis) {
     if (isProduction) {
-      console.error(
-        "[mfa] No revocation store configured, so this session cannot be " +
-          "revoked server-side. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN."
+      // A revocation that cannot be recorded is a security event, not a log
+      // line: the session an operator just killed stays usable.
+      void captureServerError(
+        new Error(
+          "No revocation store configured, so this session cannot be revoked server-side."
+        ),
+        {
+          category: "mfa-store",
+          severity: "critical",
+          code: "MFA_DENYLIST_UNCONFIGURED",
+        }
       );
     }
     return;
@@ -79,7 +88,12 @@ export async function denyMfaSession(
   try {
     await redis.set(mfaDenylistKey(jti), "1", { ex: ttlSeconds });
   } catch (error) {
-    console.error("[mfa] Could not record the session revocation:", error);
+    void captureServerError(error, {
+      category: "mfa-store",
+      severity: "critical",
+      code: "MFA_DENYLIST_WRITE_FAILED",
+      context: { jti },
+    });
   }
 }
 
@@ -92,8 +106,15 @@ export async function isMfaSessionDenied(jti: string): Promise<boolean> {
     // closed — except for the E2E opt-out (never set on a deployment), where
     // failing closed would reject every elevation the run just created.
     if (isProduction && process.env["MFA_DENYLIST_OPTIONAL"] !== "1") {
-      console.error(
-        "[mfa] No revocation store configured; rejecting the elevation session."
+      void captureServerError(
+        new Error(
+          "No revocation store configured; every elevation session is being rejected."
+        ),
+        {
+          category: "mfa-store",
+          severity: "critical",
+          code: "MFA_DENYLIST_UNCONFIGURED",
+        }
       );
       return true;
     }
@@ -105,7 +126,12 @@ export async function isMfaSessionDenied(jti: string): Promise<boolean> {
   try {
     return (await redis.exists(mfaDenylistKey(jti))) === 1;
   } catch (error) {
-    console.error("[mfa] Could not check the revocation list:", error);
+    void captureServerError(error, {
+      category: "mfa-store",
+      severity: "critical",
+      code: "MFA_DENYLIST_READ_FAILED",
+      context: { jti },
+    });
     return true;
   }
 }

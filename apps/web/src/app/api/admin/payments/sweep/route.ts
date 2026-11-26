@@ -32,6 +32,7 @@ import { sweepPendingPayments } from "@/lib/paypal/sweepPendingPayments";
 import { settleWalletTopup } from "@/lib/wallet/settleWalletTopup";
 import { sweepPendingTopups } from "@/lib/wallet/sweepPendingTopups";
 import { withErrorHandler } from "@/utils/errors";
+import { captureServerError } from "@/lib/errorTracking";
 import { sendNotification } from "@/features/notifications/services/notificationService";
 import { buildPaymentReceivedNotification } from "@/lib/paypal/paymentReceivedNotification";
 
@@ -249,6 +250,26 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   });
 
   const failures = [...result.failures, ...topups.failures];
+
+  if (failures.length > 0) {
+    // The scheduled run also goes red, but the run's console output is not where
+    // an operator is looking: this puts the failure in the alert channel.
+    await captureServerError(
+      new Error(`${failures.length} captured payment(s) could not be settled.`),
+      {
+        category: "payment-settlement",
+        severity: "critical",
+        code: "SETTLEMENT_FAILED",
+        fingerprint: "payment-settlement:sweep",
+        context: {
+          failedCount: failures.length,
+          firstOrderIds: failures
+            .slice(0, 5)
+            .map((failure) => ("orderId" in failure ? failure.orderId : failure.topupId)),
+        },
+      }
+    );
+  }
 
   // Failures are a 500 on purpose: a settlement that could not complete is a
   // charged customer, and the workflow must go red rather than report a green

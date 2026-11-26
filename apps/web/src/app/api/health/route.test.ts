@@ -127,6 +127,8 @@ vi.mock("@/lib/rateLimiter", () => {
 });
 
 vi.mock("@/lib/redisRateLimiter", () => ({
+  // errorTracking reads the shared store for error counts; no store in these tests.
+  getSharedRedisClient: () => null,
   RATE_LIMIT_ERROR_WINDOW_MS: 5 * 60 * 1000,
   /**
    * Mirrors the real helper: a store is usable only when the URL parses as
