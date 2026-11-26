@@ -287,6 +287,52 @@ Verified in a browser against a production build: prerendered pages hydrate with
 strict meta in place (500+ React fibers on the landing page), the theme bootstrap
 runs, and no script is refused.
 
+### Log aggregation (Loki, Grafana Cloud or ELK)
+
+The app writes one JSON line per entry to stdout, and `warn`/`error` to stderr
+(`apps/web/src/lib/logger.ts`). Nothing is required for the app to run: this is the
+pipeline that makes those lines queryable.
+
+```bash
+docker compose --profile observability up    # app + emulators + Loki + Vector
+```
+
+Two containers, opt-in by profile, because the default stack is what the test suite
+runs:
+
+| Service | Job |
+| --- | --- |
+| `loki` | stores the logs (port 3100) |
+| `vector` | reads container logs, parses the app's JSON, pushes to Loki |
+
+Vector mounts `/var/run/docker.sock` **read-only** - it reads log files, it never
+controls Docker - and keeps a disk buffer at `/var/lib/vector`, so logs written
+while Loki is down are delivered after it returns instead of being lost in the
+incident.
+
+**Grafana Cloud.** The push API is the same one Loki speaks, so only the destination
+changes:
+
+```
+LOKI_URL=https://logs-prod-<region>.grafana.net/loki/api/v1/push
+LOKI_USERNAME=<grafana instance id>
+LOKI_PASSWORD=<access-policy token with logs:write>
+```
+
+Then query in Grafana with the labels the pipeline sets: `service`, `level`,
+`container`. Message text and ids deliberately stay in the record rather than in a
+label - an unbounded label is what makes a Loki install fall over.
+
+**ELK instead.** Replace the `[sinks.loki]` block in
+`docker/vector/vector.toml` with Vector's `elasticsearch` sink pointed at your
+cluster, and add Elasticsearch + Kibana to the same profile. The source, the filter
+and the parse transform are unchanged; the cost is roughly 1-2 GB of RAM for
+Elasticsearch alone.
+
+**What this does not cover: Vercel.** These containers only see logs from processes
+running in Docker. Production on Vercel needs a Vercel **log drain** pointed at the
+same destination; the shipper here cannot reach function logs.
+
 ### India Post tracking (carrier feed)
 
 Customer tracking has two states and both are honest about which one is running.

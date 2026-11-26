@@ -1,0 +1,85 @@
+# Vector — ships the app's log lines to Loki.
+#
+# The app writes one JSON object per line (see apps/web/src/lib/logger.ts), so the
+# pipeline's job is to turn a line into a record with queryable fields, label it, and
+# get it out without losing anything when Loki is unavailable.
+#
+# Destination is configuration, not code: LOKI_URL points at a local Loki in this
+# compose file or at Grafana Cloud (same push API), and LOKI_USERNAME /
+# LOKI_PASSWORD carry the basic-auth pair when it needs one.
+
+data_dir = "/var/lib/vector"
+
+[sources.app_containers]
+type = "docker_logs"
+# Every container's stdout is a candidate; the filter below keeps the app's own.
+# Reading Docker's log files is why the container needs /var/run/docker.sock.
+
+[transforms.app_only]
+type = "filter"
+inputs = ["app_containers"]
+# The compose service is `app`, so its container is `<project>-app-<n>`. Matching the
+# name keeps the Firestore emulator's debug chatter out of the log store, which would
+# otherwise be most of the volume.
+condition = 'match(to_string(.container_name) ?? "", r"(-app-|^app$)")'
+
+[transforms.parse_entry]
+type = "remap"
+inputs = ["app_only"]
+source = '''
+# The line the app wrote. `message` is Vector's field for it; the app's record has its
+# own `message`, so the original is kept as `log.raw` before parsing replaces the
+# fields.
+.raw_line = .message
+parsed, err = parse_json(.message)
+
+if err == null && is_object(parsed) {
+  # The app's schema: { timestamp, level, message, context? }.
+  .app_timestamp = parsed.timestamp
+  .level = to_string(parsed.level) ?? "unknown"
+  .app_message = to_string(parsed.message) ?? ""
+  ctx = parsed.context
+  if is_object(ctx) {
+    .context = ctx
+    # Promoted so it can be a label: "which subsystem" is the most common first
+    # question, and a label makes it cheap to filter by.
+    .service = to_string(ctx.service) ?? "app"
+    del(.context.service)
+  } else {
+    .service = "app"
+  }
+  del(.message)
+  .message = .app_message
+} else {
+  # Not JSON: a crash trace, a dependency's own output, or the startup banner. Kept
+  # verbatim rather than dropped, and labelled so it is obvious it was not parsed.
+  .level = "unknown"
+  .service = "unparsed"
+  .message = .raw_line
+}
+'''
+
+[sinks.loki]
+type = "loki"
+inputs = ["parse_entry"]
+endpoint = "${LOKI_URL:-http://loki:3100/loki/api/v1/push}"
+encoding.codec = "json"
+
+# Basic auth is only present for hosted Loki (Grafana Cloud). Empty values mean the
+# local, unauthenticated Loki in this compose file.
+auth.strategy = "basic"
+auth.user = "${LOKI_USERNAME:-}"
+auth.password = "${LOKI_PASSWORD:-}"
+
+# Only low-cardinality fields become labels. The message, ids and timestamps stay in
+# the record: a label with unbounded values is what makes a Loki install fall over.
+labels.service = "{{ service }}"
+labels.level = "{{ level }}"
+labels.container = "{{ container_name }}"
+
+# Do not drop logs when Loki is down or slow. The disk buffer survives a Vector
+# restart; the alternative is losing exactly the records from the incident.
+buffer.type = "disk"
+buffer.max_size = 268435488
+buffer.when_full = "block"
+healthcheck.enabled = false

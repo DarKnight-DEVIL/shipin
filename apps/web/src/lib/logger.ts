@@ -1,37 +1,45 @@
 /**
  * Structured logger for ShipIN.
  *
- * Replaces ad-hoc console.* calls with a single, consistent interface.
- * All logs are emitted as JSON so they can be ingested by log aggregators
- * (CloudWatch, Datadog, etc.).
+ * Every entry is ONE line of JSON on stdout (or stderr, for warn/error), which is
+ * what a log shipper needs: a field to filter on and no multi-line record to stitch
+ * back together.
+ *
+ * This used to emit a text prefix (`[timestamp] [LEVEL] message`) with the context
+ * appended as JSON, while this comment claimed the output was JSON. Anything
+ * shipping those logs would have had to parse a custom format with a regex, and
+ * every message containing a bracket would have broken it.
+ *
+ * The context stays nested rather than flattened into the top level, so a caller's
+ * field can never overwrite `level`, `message` or `timestamp`. The shipper promotes
+ * `context.service` to a label (see docker/vector/vector.toml).
  *
  * Usage:
  *   logger.info("Payment captured", { requestId, amount });
  *   logger.error("PayPal API failed", { requestId, status });
- *   logger.warn("Rate limit approaching", { ip, remaining });
  */
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 
 interface LogEntry {
+  timestamp: string;
   level: LogLevel;
   message: string;
   context?: Record<string, unknown>;
-  timestamp: string;
 }
 
-function formatEntry(entry: LogEntry): string {
-  const { level, message, context, timestamp } = entry;
-  const base = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
-  if (context && Object.keys(context).length > 0) {
-    try {
-      return `${base} ${JSON.stringify(context)}`;
-    } catch {
-      // Circular references in context — fall back to a safe string.
-      return `${base} [unserializable context]`;
-    }
+/** JSON that cannot fail: a circular context still produces one valid line. */
+function serialize(entry: LogEntry): string {
+  try {
+    return JSON.stringify(entry);
+  } catch {
+    return JSON.stringify({
+      timestamp: entry.timestamp,
+      level: entry.level,
+      message: entry.message,
+      context: { serializeError: "context was not serialisable" },
+    });
   }
-  return base;
 }
 
 function emit(
@@ -39,34 +47,36 @@ function emit(
   message: string,
   context?: Record<string, unknown>
 ): void {
+  const hasContext = context !== undefined && Object.keys(context).length > 0;
+
   const entry: LogEntry = {
+    timestamp: new Date().toISOString(),
     level,
     message,
-    context,
-    timestamp: new Date().toISOString(),
+    ...(hasContext ? { context } : {}),
   };
 
-  const formatted = formatEntry(entry);
+  const line = serialize(entry);
 
-  // error and warn go to stderr where container runtimes and log shippers
-  // collect them; info and debug stay on stdout so severity filters can tell
-  // them apart. This file switches the no-console rule off.
+  // error and warn go to stderr where container runtimes and log shippers collect
+  // them; info and debug stay on stdout so severity filters can tell them apart.
+  // This file switches the no-console rule off.
   if (level === "error") {
-    console.error(formatted);
+    console.error(line);
     return;
   }
   if (level === "warn") {
-    console.warn(formatted);
+    console.warn(line);
     return;
   }
   if (level === "debug") {
     // Debug is suppressed in production.
     if (process.env.NODE_ENV !== "production") {
-      console.log(formatted);
+      console.log(line);
     }
     return;
   }
-  console.log(formatted);
+  console.log(line);
 }
 
 export const logger = {
@@ -94,8 +104,11 @@ export const logger = {
 /**
  * Create a child logger with a fixed context prefix.
  *
+ * The prefix is merged into every entry's context, so `service` survives as
+ * `context.service` in the shipped record and can become a queryable label.
+ *
  * @example
- * const paypalLogger = logger.child({ service: "paypal" });
+ * const paypalLogger = childLogger({ service: "paypal" });
  * paypalLogger.error("API call failed", { status: 500 });
  */
 export function childLogger(baseContext: Record<string, unknown>) {

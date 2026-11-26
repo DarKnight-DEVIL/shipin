@@ -132,5 +132,46 @@ services:
       emulators:
         condition: service_healthy
 
+  # ---------------------------------------------------------------------------
+  # Log aggregation. Opt-in: `docker compose --profile observability up`.
+  #
+  # The default stack stays as it was, because two more containers (and a disk
+  # buffer) are not what someone running the test suite wants. Nothing here is
+  # required for the app to work: the app logs one JSON line per entry to stdout,
+  # and this pipeline is what turns those lines into something queryable.
+  #
+  # LOKI_URL / LOKI_USERNAME / LOKI_PASSWORD come from the environment (or
+  # .env.local). Unset, Vector pushes to the local Loki below. Point them at
+  # Grafana Cloud and the same pipeline ships there - it is the same push API.
+  # ---------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:2.9.8
+    profiles: ["observability"]
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+
+  vector:
+    image: timberio/vector:0.44.0-debian
+    profiles: ["observability"]
+    volumes:
+      # Read-only: the shipper reads container log files, it never controls Docker.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/vector/vector.toml:/etc/vector/vector.toml:ro
+      # Survives a Vector restart, so a Loki outage does not lose the records from
+      # the incident that caused it.
+      - vector-data:/var/lib/vector
+    environment:
+      LOKI_URL: ${LOKI_URL:-http://loki:3100/loki/api/v1/push}
+      LOKI_USERNAME: ${LOKI_USERNAME:-}
+      LOKI_PASSWORD: ${LOKI_PASSWORD:-}
+      VECTOR_LOG: info
+    depends_on:
+      - loki
+
 volumes:
   emulator-cache:
+  loki-data:
+  vector-data:
