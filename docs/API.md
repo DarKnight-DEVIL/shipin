@@ -84,10 +84,12 @@ clients branch on it rather than on the status alone.
 | `/api/admin/shipments/[shipmentId]` | admin |
 | `/api/admin/users` | admin |
 | `/api/admin/users/[uid]/mfa/reset` | admin |
+| `/api/admin/users/[uid]/verify-email` | admin |
 | `/api/admin/wallet/balance` | admin |
 | `/api/admin/wallet/credit` | admin |
 | `/api/admin/wallet/invariants` | public |
 | `/api/auth/login-intent` | public |
+| `/api/auth/resend-verification` | customer |
 | `/api/auth/mfa/backup-codes/regenerate` | customer |
 | `/api/auth/mfa/session` | customer |
 | `/api/auth/mfa/status` | customer |

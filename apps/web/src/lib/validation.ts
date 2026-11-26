@@ -596,6 +596,15 @@ export const r2ViewBodySchema = z.object({
   key: z.string().trim().min(1, "R2 object key is required.").max(1024),
 });
 
+/** POST /api/admin/users/[uid]/verify-email - the reason is the audit trail. */
+export const adminEmailVerifyBodySchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(3, "Give a reason of at least 3 characters.")
+    .max(200, "Keep the reason under 200 characters."),
+});
+
 /** POST /api/user/age-verification — parental-consent actions. */
 export const ageVerificationBodySchema = z.discriminatedUnion("action", [
   z.object({

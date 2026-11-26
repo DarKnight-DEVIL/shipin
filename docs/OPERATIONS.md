@@ -495,7 +495,56 @@ address keeps its role. Existing ID tokens stay valid for up to an hour; refresh
 tokens are revoked, which stops silent renewal. If nobody expects the reset, treat
 it as a breach and follow section 8: rotate the service-account key.
 
-## 8. Personal data breach response
+## 8. A customer cannot verify their email
+
+`requireAuth` rejects `email_verified !== true` on every authenticated API route, so
+an unverified customer can reach nothing but `/verify-email`. Two exits exist, and
+they cover different failures.
+
+### The mail never arrived, or they cannot find it
+
+The verify screen's resend button calls `POST /api/auth/resend-verification`. It
+sends through the app's own mailer rather than Firebase's, and enforces a per-account
+cooldown (`RESEND_COOLDOWN_SECONDS`, 60s) stored on `users/{uid}`.
+
+A failed send does **not** start the cooldown, so a delivery failure cannot lock the
+customer out of retrying the fix for it. A `429` carries `retryAfter` in seconds and
+the UI renders the wait instead of inviting another attempt. `ALREADY_VERIFIED` means
+the link was clicked elsewhere: the screen reloads the user record and moves on.
+
+### They no longer have access to that mailbox
+
+A resend cannot help, and asking them to create a new account loses their orders,
+their wallet balance and their history. An admin can verify the address directly:
+
+```bash
+curl -X POST "$PRODUCTION_URL/api/admin/users/<uid>/verify-email" \
+  -H "Authorization: Bearer <admin id token>" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"customer lost mailbox access, verified by phone 2026-03-04"}'
+```
+
+This bypasses a security control, so it is guarded rather than convenient:
+
+- the caller must be an admin **and** have passed the MFA gate (`requireAdmin`);
+- `reason` is required (3-200 characters) and is written to `adminAuditLog` with the
+  actor uid under the action `user.email.verify_override`;
+- an account that is already verified answers `409 ALREADY_VERIFIED` - a repeat is a
+  mistake worth surfacing, not a silent no-op;
+- the address itself is never changed. Verification says "we accept this address", it
+  does not swap it for another.
+
+The response sets `tokenRefreshRequired: true`, because the customer's cached ID token
+keeps `email_verified: false` until it refreshes (up to an hour). Tell them to sign out
+and back in if they do not want to wait.
+
+### Afterwards
+
+Check `adminAuditLog` for the override. If the same `uid` appears twice, the mailbox
+really is gone and the address on the account should be changed deliberately rather
+than bypassed again.
+
+## 9. Personal data breach response
 
 The regulator clock starts when a ShipIN person becomes aware of an incident, not
 when the post-mortem starts. GDPR allows 72 hours to notify the competent
@@ -528,7 +577,7 @@ and to affected Data Principals.
 Never state in public copy that a breach did not happen, or that data "may have"
 been accessed, before step 3 is complete.
 
-## 9. Retention purge (Privacy Policy §8)
+## 10. Retention purge (Privacy Policy §8)
 
 `POST /api/admin/compliance/retention/purge` enforces the retention table on the
 privacy page. Before this existed the periods were published but nothing applied

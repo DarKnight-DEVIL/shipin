@@ -20,7 +20,9 @@ export type AdminAuditAction =
   | "wallet.credit"
   | "wallet.refund"
   | "wallet.balance_read"
-  | "mfa.reset";
+  | "mfa.reset"
+  // Bypasses a security control, so the reason is mandatory and stored in detail.
+  | "user.email.verify_override";
 
 export interface AdminAuditEvent {
   actorUid: string;

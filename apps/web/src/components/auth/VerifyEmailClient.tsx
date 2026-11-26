@@ -3,11 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  onAuthStateChanged,
-  sendEmailVerification,
-  reload,
-} from "firebase/auth";
+import { onAuthStateChanged, reload } from "firebase/auth";
 import { useEffect } from "react";
 import { motion } from "framer-motion";
 import {
@@ -24,8 +20,8 @@ import {
   RESEND_COOLDOWN_MS,
   isRateLimitedResend,
   refreshVerifiedToken,
+  requestVerificationResend,
   resendVerificationErrorMessage,
-  verificationEmailOptions,
 } from "@/lib/emailVerification";
 import "@/styles/verify-email.css";
 
@@ -148,11 +144,34 @@ export default function VerifyEmailClient() {
     setSending(true);
     setSendError(null);
     try {
-      // Only pass a continue URL when it is an absolute http(s) URL: Firebase
-      // rejects a relative one with auth/invalid-continue-uri and sends no
-      // email at all.
-      await sendEmailVerification(user, verificationEmailOptions());
-      toast.success("Verification email sent. Please check your inbox.");
+      /*
+       * The server sends it, not the Firebase SDK: the same mailer every other email
+       * uses, and a per-account cooldown the client cannot skip. The endpoint
+       * verifies the token itself, so the "must be verified" guard that put the user
+       * on this screen does not apply to it.
+       */
+      const result = await requestVerificationResend(await user.getIdToken());
+
+      if (result.status === "sent") {
+        toast.success("Verification email sent. Please check your inbox.");
+        return;
+      }
+
+      if (result.status === "already-verified") {
+        // Verified elsewhere - another tab, another device, or support.
+        await reload(user);
+        toast.success("This email address is already verified.");
+        return;
+      }
+
+      if (result.status === "too-soon") {
+        setNow(Date.now());
+        setCooldownUntil(Date.now() + result.retryAfter * 1000);
+        setSendError(result.message);
+        return;
+      }
+
+      setSendError(result.message);
     } catch (error) {
       // The console entry is for diagnosis; the message below is what the user
       // sees. A toast alone was too easy to miss next to the "Check your email"

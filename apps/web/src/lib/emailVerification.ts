@@ -49,6 +49,60 @@ export function verificationEmailOptions(
   return url ? { url } : undefined;
 }
 
+/** What `/api/auth/resend-verification` means for the caller. */
+export type ResendVerificationResult =
+  | { status: "sent" }
+  | { status: "already-verified" }
+  | { status: "too-soon"; retryAfter: number; message: string }
+  | { status: "failed"; message: string };
+
+/**
+ * Ask the server to send the verification email again.
+ *
+ * Server-side rather than the Firebase client SDK, so the message goes out through
+ * the app's own mailer and the per-account cooldown is enforced where it cannot be
+ * skipped. The endpoint verifies the token itself and deliberately does not apply
+ * the "must be verified" guard - that guard is why the user is on this screen.
+ */
+export async function requestVerificationResend(
+  idToken: string
+): Promise<ResendVerificationResult> {
+  let response: Response;
+
+  try {
+    response = await fetch("/api/auth/resend-verification", {
+      method: "POST",
+      headers: { authorization: `Bearer ${idToken}` },
+    });
+  } catch {
+    return {
+      status: "failed",
+      message: "Could not reach the server. Check your connection and try again.",
+    };
+  }
+
+  if (response.ok) return { status: "sent" };
+
+  const body = (await response.json().catch(() => null)) as
+    | { code?: string; error?: string; retryAfter?: number }
+    | null;
+
+  if (body?.code === "ALREADY_VERIFIED") return { status: "already-verified" };
+
+  if (body?.code === "RESEND_TOO_SOON") {
+    return {
+      status: "too-soon",
+      retryAfter: body.retryAfter ?? 60,
+      message: body.error ?? "Wait a moment before requesting another email.",
+    };
+  }
+
+  return {
+    status: "failed",
+    message: body?.error ?? "The verification email could not be sent.",
+  };
+}
+
 /**
  * How long a rate-limited user must wait before resending.
  *

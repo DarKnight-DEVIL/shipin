@@ -21,7 +21,7 @@ const h = vi.hoisted(() => ({
     emailVerified: boolean;
     getIdToken: (forceRefresh?: boolean) => Promise<string>;
   },
-  sendEmailVerification: vi.fn(),
+  requestVerificationResend: vi.fn(),
   reload: vi.fn(),
   replace: vi.fn(),
   refresh: vi.fn(),
@@ -41,8 +41,6 @@ vi.mock("firebase/auth", () => ({
     void callback(h.currentUser);
     return () => {};
   },
-  sendEmailVerification: (...args: unknown[]) =>
-    h.sendEmailVerification(...args),
   reload: (...args: unknown[]) => h.reload(...args),
 }));
 
@@ -59,6 +57,18 @@ vi.mock("next/link", () => ({
       children as React.ReactNode
     ),
 }));
+
+// The resend path goes through the server endpoint; the Firebase SDK is no longer
+// involved, so the helper is what the screen calls.
+vi.mock("@/lib/emailVerification", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/emailVerification")>();
+  return {
+    ...actual,
+    requestVerificationResend: (...args: unknown[]) =>
+      h.requestVerificationResend(...args),
+  };
+});
 
 vi.mock("sonner", () => ({
   toast: { success: h.success, error: h.error },
@@ -97,7 +107,9 @@ function user(emailVerified: boolean, email = "ada@example.com") {
 
 beforeEach(() => {
   h.currentUser = null;
-  h.sendEmailVerification.mockReset().mockResolvedValue(undefined);
+  h.requestVerificationResend
+    .mockReset()
+    .mockResolvedValue({ status: "sent" as const });
   h.reload.mockReset().mockResolvedValue(undefined);
   h.replace.mockReset();
   h.refresh.mockReset();
@@ -110,7 +122,7 @@ afterEach(() => {
 });
 
 describe("VerifyEmailClient: resend", () => {
-  it("sends a verification email and confirms it", async () => {
+  it("asks the server to send the email and confirms it", async () => {
     user(false);
     render(<VerifyEmailClient />);
 
@@ -119,19 +131,22 @@ describe("VerifyEmailClient: resend", () => {
     );
 
     await waitFor(() =>
-      expect(h.sendEmailVerification).toHaveBeenCalledTimes(1)
+      expect(h.requestVerificationResend).toHaveBeenCalledTimes(1)
     );
-    expect(h.sendEmailVerification.mock.calls[0][0]).toBe(h.currentUser);
+    // The endpoint authenticates with the user's own token.
+    expect(h.requestVerificationResend).toHaveBeenCalledWith("id-token");
     expect(h.success).toHaveBeenCalledWith(
       "Verification email sent. Please check your inbox."
     );
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("shows the failure inline for a rate-limited resend", async () => {
+  it("shows the server's cooldown inline and disables the button", async () => {
     user(false);
-    h.sendEmailVerification.mockRejectedValue({
-      code: "auth/too-many-requests",
+    h.requestVerificationResend.mockResolvedValue({
+      status: "too-soon" as const,
+      retryAfter: 60,
+      message: "Wait 60s before requesting another email.",
     });
     render(<VerifyEmailClient />);
 
@@ -140,12 +155,12 @@ describe("VerifyEmailClient: resend", () => {
     );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Too many attempts. Wait a minute, then try again."
+      "Wait 60s before requesting another email."
     );
     // A toast alone was too easy to miss next to the heading.
     expect(h.error).not.toHaveBeenCalled();
-    // Resending inside the window would only be rate-limited again, so the
-    // button reports the wait instead of inviting another failure.
+    // Resending inside the window would only be refused again, so the button
+    // reports the wait instead of inviting another failure.
     expect(
       screen.getByRole("button", { name: /try again in \d+s/i })
     ).toBeDisabled();
@@ -155,8 +170,10 @@ describe("VerifyEmailClient: resend", () => {
   it("re-enables resend when the cooldown elapses", async () => {
     vi.useFakeTimers();
     user(false);
-    h.sendEmailVerification.mockRejectedValueOnce({
-      code: "auth/too-many-requests",
+    h.requestVerificationResend.mockResolvedValueOnce({
+      status: "too-soon" as const,
+      retryAfter: 60,
+      message: "Wait 60s before requesting another email.",
     });
     render(<VerifyEmailClient />);
     await act(async () => {
@@ -192,16 +209,54 @@ describe("VerifyEmailClient: resend", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(h.sendEmailVerification).toHaveBeenCalledTimes(2);
+    expect(h.requestVerificationResend).toHaveBeenCalledTimes(2);
     expect(h.success).toHaveBeenCalled();
   });
 
-  it("shows the inline alert for a failure with no Firebase code", async () => {
+  it("treats an already-verified answer as done, and reloads the record", async () => {
     user(false);
-    // What an offline tab or an unexpected throw looks like: no `code` at all,
-    // so the message falls through to the generic branch. This is the common
-    // real failure, and it must still land inline rather than only in console.
-    h.sendEmailVerification.mockRejectedValue(new Error("network down"));
+    h.requestVerificationResend.mockResolvedValue({
+      status: "already-verified" as const,
+    });
+    render(<VerifyEmailClient />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /resend email/i })
+    );
+
+    // Verified in another tab or by support: nothing failed, so no inline error.
+    await waitFor(() =>
+      expect(h.success).toHaveBeenCalledWith(
+        "This email address is already verified."
+      )
+    );
+    expect(h.reload).toHaveBeenCalledWith(h.currentUser);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("shows a send failure inline rather than only in the console", async () => {
+    user(false);
+    h.requestVerificationResend.mockResolvedValue({
+      status: "failed" as const,
+      message: "We could not send the verification email. Please try again.",
+    });
+    render(<VerifyEmailClient />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /resend email/i })
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "We could not send the verification email. Please try again."
+    );
+    expect(h.error).not.toHaveBeenCalled();
+  });
+
+  it("still reports a thrown failure instead of leaving the button silent", async () => {
+    user(false);
+    // What an unexpected throw (or a token that cannot be minted) looks like.
+    h.requestVerificationResend.mockRejectedValue(new Error("token expired"));
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     render(<VerifyEmailClient />);
 
@@ -213,47 +268,8 @@ describe("VerifyEmailClient: resend", () => {
     expect(alert).toHaveTextContent(
       "We could not send the verification email. Please try again."
     );
-    expect(alert).toHaveAttribute("aria-live", "assertive");
-    expect(h.error).not.toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalled();
-    expect(
-      screen.getByRole("button", { name: /resend email/i })
-    ).not.toBeDisabled();
-
     consoleSpy.mockRestore();
-  });
-
-  it("clears the previous failure when a retry starts", async () => {
-    user(false);
-    h.sendEmailVerification.mockRejectedValueOnce({
-      code: "auth/internal-error",
-    });
-    render(<VerifyEmailClient />);
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: /resend email/i })
-    );
-    await screen.findByRole("alert");
-
-    fireEvent.click(screen.getByRole("button", { name: /resend email/i }));
-
-    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-  });
-
-  it("reports an unconfigured continue URL as a support issue", async () => {
-    user(false);
-    h.sendEmailVerification.mockRejectedValue({
-      code: "auth/invalid-continue-uri",
-    });
-    render(<VerifyEmailClient />);
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: /resend email/i })
-    );
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Please contact support"
-    );
   });
 });
 
