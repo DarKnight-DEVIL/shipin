@@ -929,7 +929,14 @@ describe("POST /api/paypal/capture-order", () => {
     expect(response.status).toBe(403);
   });
 
-  it("reports an unexpected failure as a server error", async () => {
+  it("reports an unexpected failure as a server error and hands back the claim", async () => {
+    /*
+     * The chaos case: PayPal times out mid-capture (connection reset, the shape of a
+     * dropped TLS session). The money answer is not the 500 - it is that the order is
+     * left retryable (the claim is released in `finally`) and that nothing settlement-shaped
+     * was written, because nobody knows whether PayPal captured. A stuck claim here would
+     * lock a paying customer out for the lease; a settlement write here could double-credit.
+     */
     mocks.fetch.mockRejectedValue(new Error("connection reset"));
 
     const response = await POST(request(body));
@@ -939,5 +946,8 @@ describe("POST /api/paypal/capture-order", () => {
       success: false,
       error: "Internal server error",
     });
+    // One transaction claims the capture, the second hands it back.
+    expect(mocks.runTransaction).toHaveBeenCalledTimes(2);
+    expect(mocks.orderUpdate).not.toHaveBeenCalled();
   });
 });
