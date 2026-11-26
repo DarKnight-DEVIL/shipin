@@ -10,9 +10,11 @@ import { describe, it, expect } from "vitest";
 
 import {
   blankComments,
+  compositeFieldCount,
   indexCovers,
   readQueries,
   requirementsFor,
+  singleFieldIndexEntries,
 } from "./firestore-indexes.mjs";
 
 const requirements = (source: string) =>
@@ -278,5 +280,130 @@ describe("indexCovers", () => {
         ])
       )
     ).toBe(false);
+  });
+});
+
+describe("single-field queries", () => {
+  // `firebase deploy --only firestore:indexes` answers HTTP 400 for a one-field
+  // entry ("this index is not necessary, configure using single field index
+  // controls"), and Firestore serves these queries from the automatic
+  // single-field indexes. Demanding one broke the deploy, so they must never
+  // reach firestore.indexes.json.
+
+  it("requires nothing for an order alone", () => {
+    const source = `
+      adminDb.collection("requests").orderBy("deliveredAt", "asc").limit(20).get()
+    `;
+
+    expect(requirements(source)).toEqual([]);
+  });
+
+  it("requires nothing for a range filter with no ordering", () => {
+    const source = `
+      adminDb
+        .collection("supportTickets")
+        .where("resolvedAt", ">=", cutoff)
+        .get()
+    `;
+
+    expect(requirements(source)).toEqual([]);
+  });
+
+  it("requires nothing when the filter and the order are the same field", () => {
+    // The shape that slips through: it reads as "a filter and an order" but
+    // collapses to one field, which is still a single-field query.
+    const source = `
+      adminDb
+        .collection("walletTopupOrders")
+        .where("completedAt", ">=", since)
+        .orderBy("completedAt", "asc")
+        .get()
+    `;
+
+    expect(requirements(source)).toEqual([]);
+  });
+
+  it("requires nothing for array-contains ordered by the same field", () => {
+    const source = `
+      adminDb
+        .collection("requests")
+        .where("payment.paidAt", "!=", null)
+        .orderBy("payment.paidAt", "asc")
+        .get()
+    `;
+
+    expect(requirements(source)).toEqual([]);
+  });
+
+  it("still requires an index across two distinct fields", () => {
+    const source = `
+      adminDb
+        .collection("requests")
+        .where("userId", "==", uid)
+        .orderBy("deliveredAt", "desc")
+        .get()
+    `;
+
+    const needed = requirements(source);
+
+    expect(needed).toHaveLength(1);
+    expect(compositeFieldCount(needed[0])).toBe(2);
+  });
+
+  it("never reports a requirement a composite index cannot express", () => {
+    // Guards the whole class, not one shape: every requirement this gate emits
+    // must span at least two fields.
+    const source = `
+      adminDb.collection("requests").orderBy("deliveredAt", "asc").get();
+      adminDb.collection("requests").where("status", "==", "paid").get();
+      adminDb.collection("requests").where("status", "==", "paid").orderBy("status", "asc").get();
+      adminDb.collection("requests").where("userId", "==", uid).orderBy("createdAt", "desc").get();
+    `;
+
+    for (const requirement of requirements(source)) {
+      expect(compositeFieldCount(requirement)).toBeGreaterThanOrEqual(2);
+    }
+  });
+});
+
+describe("singleFieldIndexEntries", () => {
+  const entry = (collectionGroup: string, fields: Array<[string, string?]>) => ({
+    collectionGroup,
+    queryScope: "COLLECTION",
+    fields: fields.map(([fieldPath, order]) => ({
+      fieldPath,
+      ...(order ? { order } : {}),
+    })),
+  });
+
+  it("flags a one-field entry, which the deploy refuses", () => {
+    const offenders = singleFieldIndexEntries([
+      entry("requests", [["deliveredAt", "ASCENDING"]]),
+    ]);
+
+    expect(offenders).toHaveLength(1);
+  });
+
+  it("flags a single field propped up by __name__", () => {
+    // __name__ is the key every composite index carries; it is not a second
+    // field, so this is still a single-field index.
+    const offenders = singleFieldIndexEntries([
+      entry("requests", [["deliveredAt", "ASCENDING"], ["__name__", "ASCENDING"]]),
+    ]);
+
+    expect(offenders).toHaveLength(1);
+  });
+
+  it("accepts two-field and three-field entries", () => {
+    const offenders = singleFieldIndexEntries([
+      entry("paypalPaymentOrders", [["status", "ASCENDING"], ["createdAt", "ASCENDING"]]),
+      entry("requests", [
+        ["userId", "ASCENDING"],
+        ["createdAt", "DESCENDING"],
+        ["__name__", "DESCENDING"],
+      ]),
+    ]);
+
+    expect(offenders).toEqual([]);
   });
 });

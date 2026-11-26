@@ -45,6 +45,7 @@ import {
   indexCovers,
   readQueries,
   requirementsFor,
+  singleFieldIndexEntries,
 } from "./lib/firestore-indexes.mjs";
 
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -79,6 +80,37 @@ const indexDocument = JSON.parse(readFileSync(INDEX_FILE, "utf8"));
 const indexes = Array.isArray(indexDocument.indexes)
   ? indexDocument.indexes
   : [];
+
+/*
+ * A one-field entry is not merely redundant: `firebase deploy --only
+ * firestore:indexes` answers HTTP 400 "this index is not necessary, configure
+ * using single field index controls" and refuses the whole deploy. Firestore
+ * creates those indexes itself, so the file must not list them - and finding out
+ * at deploy time is far too late.
+ */
+const singleFieldEntries = singleFieldIndexEntries(indexes);
+
+if (singleFieldEntries.length > 0) {
+  console.error("");
+  console.error(
+    "check-firestore-indexes: firestore.indexes.json declares indexes Firestore will refuse to deploy:"
+  );
+  console.error("");
+  for (const index of singleFieldEntries) {
+    const fields = (index.fields ?? [])
+      .map((field) => `${field.fieldPath} ${(field.order ?? "ASCENDING").toLowerCase()}`)
+      .join(", ");
+    console.error(`  - ${index.collectionGroup ?? "(no collection)"}: ${fields}`);
+  }
+  console.error("");
+  console.error(
+    "A single-field index is created automatically; listing it makes the deploy fail with HTTP 400."
+  );
+  console.error(
+    "Remove those entries. To pick a sort order for one, use the single-field index controls in the console."
+  );
+  process.exit(1);
+}
 
 const allSources = SOURCE_ROOTS.flatMap((root) => {
   const dir = path.join(ROOT, root);

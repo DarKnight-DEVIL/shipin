@@ -325,6 +325,42 @@ function callArgs(text, pos) {
  * automatic single-field indexes.
  */
 export function requirementsFor(site) {
+  return requirementsForSite(site).filter(
+    (requirement) => compositeFieldCount(requirement) >= 2
+  );
+}
+
+/**
+ * How many distinct fields an index for this requirement would declare.
+ *
+ * Firestore refuses a composite index over one field - `firebase deploy` answers
+ * "this index is not necessary, configure using single field index controls" -
+ * and serves such queries from the automatic single-field indexes anyway. An
+ * equality filter plus an order on the *same* field is the shape that slips
+ * through: it looks like "a filter and an order", and collapses to one field.
+ */
+export function compositeFieldCount(requirement) {
+  return new Set([...requirement.equals, requirement.order.field]).size;
+}
+
+/**
+ * A declared index Firestore will refuse to deploy.
+ *
+ * A one-field entry in `firestore.indexes.json` fails the deploy with HTTP 400
+ * rather than being ignored, so the file must not carry one. `__name__` does not
+ * count as a second field: it is the implicit key every composite index carries,
+ * and a single field plus `__name__` is still a single-field index.
+ */
+export function singleFieldIndexEntries(indexes) {
+  return (indexes ?? []).filter((index) => {
+    const fields = (index.fields ?? []).filter(
+      (field) => field.fieldPath !== "__name__"
+    );
+    return fields.length < 2;
+  });
+}
+
+function requirementsForSite(site) {
   const range = [...site.ranges][0] ?? null;
 
   if (site.orders.size === 0) {
