@@ -43,6 +43,21 @@ const PLATFORM_ROUTES = [
   "/wallet",
 ];
 
+/**
+ * Routes the build renders ON DEMAND, so they carry a per-request CSP nonce and no
+ * `'unsafe-inline'` (see `src/lib/cspNonce.ts`). They are a separate group because
+ * they fail differently from the prerendered ones: a nonce policy is only
+ * satisfiable when every inline script is either stamped by Next or covered by a
+ * build hash, and the one script Next does not stamp is next-themes' pre-paint
+ * toolbox - if its hash goes missing, the page still loads and only the theme
+ * flashes, which nothing else here would catch.
+ *
+ * The ids do not need to exist: both pages are client shells, so the markup and the
+ * inline scripts are the same for any id. What matters is the policy attached to
+ * the response.
+ */
+const DYNAMIC_ROUTES = ["/track/SHIPIN-CSP-PROBE", "/requests/csp-probe"];
+
 const CSP_VIOLATION_PATTERNS = [
   /violates the following Content Security Policy/i,
   /Refused to execute inline script/i,
@@ -120,10 +135,13 @@ async function expectHydrated(page: Page, route: string) {
     //                         browser request - see OPERATIONS.md.
     if (text.includes("requestStorageAccess: Permission denied")) return;
     if (/\[app-check\].*AppCheck: 403/.test(text)) return;
+    // Same cause, different wording: minting a token fails locally with
+    // appCheck/recaptcha-error because the Enterprise key does not allow localhost.
+    if (/\[app-check\].*appCheck\/recaptcha-error/.test(text)) return;
     consoleErrors.push(text.split("\n")[0]);
   });
 
-  await page.goto(route, { waitUntil: "networkidle" });
+  const response = await page.goto(route, { waitUntil: "networkidle" });
   await page.waitForTimeout(500);
 
   const bodyText = await page.evaluate(() => document.body.innerText);
@@ -150,7 +168,13 @@ async function expectHydrated(page: Page, route: string) {
     `${route}: the error boundary replaced the page`
   ).not.toContain("Something went wrong");
 
-  return state;
+  return {
+    ...state,
+    // Returned so a caller can assert WHICH policy it measured. A test that only
+    // checks "no violations" passes just as happily against a page whose policy
+    // never applied, which is how a nonce silently stops being delivered.
+    csp: response?.headers()["content-security-policy"] ?? "",
+  };
 }
 
 test.describe("Production hydration", () => {
@@ -165,6 +189,99 @@ test.describe("Production hydration", () => {
       await expectHydrated(page, route);
     });
   }
+
+  for (const route of DYNAMIC_ROUTES) {
+    test(`${route} serves the nonce policy and runs every inline script`, async ({
+      page,
+    }) => {
+      const state = await expectHydrated(page, route);
+
+      const scriptSrc = state.csp.match(/script-src [^;]+/)?.[0] ?? "";
+
+      expect(
+        scriptSrc,
+        `${route}: no script-src in the served policy`
+      ).not.toBe("");
+
+      // If this fails, the route stopped being rendered on demand (or the proxy
+      // stopped recognising it) and the rest of this test would be asserting
+      // nothing: a prerendered page hydrates fine under `'unsafe-inline'`.
+      expect(
+        scriptSrc,
+        `${route}: expected a nonce policy, so this route is no longer dynamic`
+      ).toContain("'nonce-");
+
+      expect(
+        scriptSrc,
+        `${route}: 'unsafe-inline' is still allowed, so the nonce buys nothing`
+      ).not.toContain("'unsafe-inline'");
+
+      // Every inline script Next does not stamp must be allowed by a hash. A
+      // missing hash is logged as "Refused to execute inline script", which
+      // expectHydrated already fails on - assert the allowance is present too, so
+      // a hash that silently stops being generated is visible as its own failure.
+      expect(
+        scriptSrc,
+        `${route}: no 'sha256-' allowance for the theme bootstrap`
+      ).toContain("'sha256-");
+
+      // The theme bootstrap sets the class before paint. Checked explicitly
+      // because a blocked copy leaves the page working but repaints it.
+      const themeClass = await page.evaluate(
+        () => document.documentElement.className
+      );
+      expect(
+        themeClass,
+        `${route}: the theme bootstrap did not run, so the page repaints`
+      ).toMatch(/\b(light|dark)\b/);
+    });
+  }
+
+  // The other half of the contract: a prerendered page must NOT get a nonce. Next
+  // writes its bootstrap into the HTML at build time, so a nonce attached here
+  // would block it and leave the page unhydrated - the exact regression this spec
+  // was written for.
+  test("/ stays on the nonce-free policy and still hydrates", async ({
+    page,
+  }) => {
+    const state = await expectHydrated(page, "/");
+
+    const scriptSrc = state.csp.match(/script-src [^;]+/)?.[0] ?? "";
+
+    expect(
+      scriptSrc,
+      "/: a prerendered page was given a nonce policy"
+    ).not.toContain("'nonce-");
+    expect(
+      scriptSrc,
+      "/: a prerendered page needs 'unsafe-inline' to hydrate"
+    ).toContain("'unsafe-inline'");
+  });
+
+  // Policy only for the admin dashboard: signed out it renders the dashboard's HTML
+  // and then the guard navigates to /login, so a hydration assertion here would be
+  // measuring the login page. The header is still the dashboard's own policy, and
+  // the dashboard is the page most likely to be confused for a dynamic route.
+  test("/admin/dashboard is served the nonce-free policy", async ({ page }) => {
+    const response = await page.goto("/admin/dashboard", {
+      waitUntil: "domcontentloaded",
+    });
+
+    const csp = response?.headers()["content-security-policy"] ?? "";
+    const scriptSrc = csp.match(/script-src [^;]+/)?.[0] ?? "";
+
+    expect(scriptSrc, "/admin/dashboard: no script-src in the policy").not.toBe(
+      ""
+    );
+    expect(
+      scriptSrc,
+      "/admin/dashboard: a prerendered page was given a nonce policy"
+    ).not.toContain("'nonce-");
+    expect(
+      scriptSrc,
+      "/admin/dashboard: a prerendered page needs 'unsafe-inline' to hydrate"
+    ).toContain("'unsafe-inline'");
+  });
 
   // Guards the third-party allowlists in the policy. The PayPal SDK frames from
   // www.paypal.com live and www.sandbox.paypal.com in sandbox mode; when the
