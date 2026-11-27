@@ -59,4 +59,17 @@ describe("Playwright suite wiring", () => {
       expect(specs).toContain(file);
     }
   });
+
+  it("aborts the signed-in run when a seed fails, instead of skipping the specs", () => {
+    // The Auth emulator failing to start must be a red run, never a green one
+    // with the money paths silently missing: the seeds are chained with `&&`
+    // ahead of Playwright, and `seed-auth-user.mjs` exits 1 the moment it
+    // cannot reach the emulator. A pre-startup port probe used to sit here and
+    // warn about a skip that never happened; if this chain is ever relaxed to
+    // `;` or `||`, that silent-skip failure mode is back.
+    expect(runner).toContain('"node scripts/e2e/seed-auth-user.mjs && " +');
+    expect(runner).toContain(
+      "`node scripts/e2e/seed-refund-fixture.mjs && ${playwright}`"
+    );
+  });
 });

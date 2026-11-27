@@ -246,38 +246,18 @@ if (signedIn) {
   });
 }
 
-// Check if the Auth emulator is reachable.
-// On GitHub Actions ubuntu-latest runners, the Firebase Auth emulator
-// (Java process) may fail to start due to network restrictions.
-// If the emulator is not reachable, we skip the signed-in specs and
-// run only the read-only E2E suite, which still covers the critical
-// contracts (smoke, hydration, sitemap, checkout, wallet).
-var authEmulatorRunning = false;
-try {
-  // Use curl to check if the Auth emulator port is listening.
-  // curl is available on GitHub Actions runners.
-  const curlCheck = spawnSync(
-    "curl",
-    [
-      "--output",
-      "/dev/null",
-      "--silent",
-      "--head",
-      "--fail",
-      "http://127.0.0.1:9099",
-    ],
-    { stdio: "ignore" }
-  );
-  authEmulatorRunning = curlCheck.status === 0;
-} catch {
-  // curl not available or other error - fall back to false
-}
-if (!authEmulatorRunning) {
-  console.warn(
-    "::warning:: Firebase Auth emulator could not start (network restrictions on this runner). " +
-      "Skipping signed-in specs (signed-in-smoke.spec.ts, admin-refund.spec.ts) and running read-only E2E suite instead."
-  );
-}
+// No pre-startup probe of the Auth emulator here, on purpose. An earlier
+// revision probed port 9099 before `emulators:exec` had started anything — so
+// the probe could only ever report "down" (or pick up a stale emulator from a
+// previous run) — and then printed a warning claiming the signed-in specs were
+// being skipped, which this script never actually did: the spec list below is
+// built from `--signed-in` alone, and each spec skips itself.
+//
+// The seeds are the real probe. Inside `emulators:exec`,
+// `seed-auth-user.mjs` exits 1 the moment it cannot reach the Auth emulator,
+// the `&&` chain stops before Playwright runs, and `emulators:exec` propagates
+// the exit code — so a failed emulator is a red run with the seeder's exact
+// diagnosis, never a green run with the money paths silently missing.
 
 // Paths include `tests/`: Playwright treats each positional argument as a
 // regex over the file path, and a bare `smoke.spec.ts` also matches
