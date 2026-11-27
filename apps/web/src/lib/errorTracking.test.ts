@@ -39,6 +39,7 @@ import {
   fingerprintFor,
   normaliseMessage,
   readErrorCounts,
+  redactMessageForAlert,
   resetErrorTrackingForTests,
   resolveErrorAlertWebhook,
   setErrorAlertSenderForTests,
@@ -232,6 +233,35 @@ describe("alerting", () => {
     );
 
     expect(critical.embeds[0].color).not.toBe(warning.embeds[0].color);
+  });
+
+  it("redacts PII and tokens from the alert description but keeps ids readable", () => {
+    const payload = buildErrorAlertPayload(
+      buildErrorEvent(
+        new Error(
+          " Firestore doc users/jane.dev@gmail.com not found; contact +919876543210, " +
+            "order SHP-2026-0042, amount 4200, auth Bearer eyJhbGciOi.eyJzdWIiOi.J9sig"
+        ),
+        { category: "unhandled" }
+      )
+    );
+
+    const description = payload.embeds[0].description;
+    expect(description).not.toContain("jane.dev@gmail.com");
+    expect(description).toContain("[email]");
+    expect(description).not.toContain("+919876543210");
+    expect(description).toContain("[phone]");
+    expect(description).not.toContain("eyJ");
+    expect(description).toContain("[token]");
+    // Diagnostic values survive: order ids, amounts and counts stay readable.
+    expect(description).toContain("SHP-2026-0042");
+    expect(description).toContain("4200");
+  });
+
+  it("leaves messages without PII untouched by redaction", () => {
+    expect(redactMessageForAlert("Sweep failed for order SHP-2026-0042: 1 item")).toBe(
+      "Sweep failed for order SHP-2026-0042: 1 item"
+    );
   });
 });
 

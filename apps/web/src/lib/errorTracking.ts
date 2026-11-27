@@ -239,6 +239,30 @@ const CATEGORY_TITLE: Record<ErrorCategory, string> = {
   unhandled: "Unhandled server error",
 };
 
+/**
+ * Redact person-identifying and credential-shaped substrings from a message
+ * before it leaves the process for the operator's Discord webhook.
+ *
+ * Unlike `normaliseMessage` — which erases every id and number so that
+ * fingerprints stay stable — this keeps numbers and order ids readable (a
+ * human is diagnosing from this text) and removes only what identifies a
+ * person or authenticates something: email addresses, phone numbers and
+ * bearer/JWT-shaped tokens. Raw error text can quote user input (a Firestore
+ * or fetch error echoing an email, a URL carrying a token), and Discord is a
+ * third party.
+ */
+export function redactMessageForAlert(message: string): string {
+  return message
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]")
+    // E.164 (+countrycode…) or the grouped local shape 123-456-7890 /
+    // 123 456 7890. Plain digit runs (timestamps, amounts, order numbers) are
+    // left alone: they are diagnostic, not identifying.
+    .replace(/\+\d{7,15}/g, "[phone]")
+    .replace(/\b\d{3}[-. ]\d{3}[-. ]\d{4}\b/g, "[phone]")
+    .replace(/\b(?:Bearer\s+)?[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, "[token]")
+    .replace(/\bBearer\s+\S+/gi, "Bearer [token]");
+}
+
 /** The Discord message for one event. */
 export function buildErrorAlertPayload(event: TrackedErrorEvent): ErrorAlertPayload {
   const fields: ErrorAlertPayload["embeds"][number]["fields"] = [
@@ -260,7 +284,7 @@ export function buildErrorAlertPayload(event: TrackedErrorEvent): ErrorAlertPayl
     embeds: [
       {
         title: CATEGORY_TITLE[event.category],
-        description: event.message.slice(0, 1500),
+        description: redactMessageForAlert(event.message).slice(0, 1500),
         color: SEVERITY_COLOR[event.severity],
         fields,
         timestamp: event.occurredAt,
