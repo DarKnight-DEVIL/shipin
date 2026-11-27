@@ -371,6 +371,18 @@ trust: `x-forwarded-for` is read only when `VERCEL=1` (the platform overwrites
 it) or `TRUST_PROXY=1` (your reverse proxy is the only path in and sanitises the
 chain). See `apps/web/src/lib/clientIp.ts`.
 
+What `TRUST_PROXY=1` reads, in order: `x-real-ip` (first address), then the
+**last** hop of `x-forwarded-for`. The last hop is the correct choice for a
+single proxy: the leftmost value is whatever the client claimed, and each proxy
+appends the address it saw, so the rightmost entry is the one your own proxy
+vouches for — a client cannot forge it short of compromising the proxy. With a
+chain of two or more proxies (say Cloudflare in front of nginx) the last hop is
+the nearest proxy's upstream instead: still unspoofable, but every client
+arrives as one of a few edge addresses and shares its rate-limit bucket. If you
+need per-client keys behind a chain, set `x-real-ip` on the outermost proxy (it
+is read first) or have the inner proxy overwrite `x-forwarded-for` rather than
+append to it.
+
 **That has one failure mode worth knowing before it bites.** A self-hosted
 deployment with neither variable set cannot identify callers, so every visitor
 shares one bucket — 30 API requests a minute for the whole site. The app boots
