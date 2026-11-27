@@ -5,6 +5,11 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { createRequestBodySchema, readAndValidateBody } from "@/lib/validation";
 import { enforceAgeGate } from "@/lib/compliance/ageOps";
+import {
+  readIdempotencyKey,
+  readIdempotentResponse,
+  rememberIdempotentResponse,
+} from "@/lib/idempotency";
 import { withErrorHandler } from "@/utils/errors";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
@@ -73,6 +78,22 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const { items, addressId, serviceSelections, notes } = parsed.data;
 
+  // Idempotency: a double-submit or a retried POST (the client retries
+  // idempotent writes once on a dropped connection) must not create two
+  // requests in the queue. The key identifies one user intent — the client
+  // mints it per submit call and its retry path reuses it — and the first
+  // success is replayed instead of acting again.
+  const idempotencyKey = readIdempotencyKey(request);
+  const replayScope = {
+    uid: auth.profile.uid,
+    scope: "request.create",
+    key: idempotencyKey ?? "",
+  };
+  if (idempotencyKey) {
+    const prior = await readIdempotentResponse(replayScope);
+    if (prior) return NextResponse.json(prior.body, { status: prior.status, headers: NO_STORE });
+  }
+
   const addressSnapshot = await adminDb
     .collection("addresses")
     .doc(addressId)
@@ -126,8 +147,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  return NextResponse.json(
-    { success: true, requestId: docRef.id },
-    { status: 201, headers: NO_STORE }
-  );
+  const body = { success: true, requestId: docRef.id };
+
+  if (idempotencyKey) {
+    await rememberIdempotentResponse(replayScope, { status: 201, body });
+  }
+
+  return NextResponse.json(body, {
+    status: 201,
+    headers: NO_STORE,
+  });
 });

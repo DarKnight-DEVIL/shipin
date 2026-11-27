@@ -102,10 +102,15 @@ describe("address mutations", () => {
     await expect(
       addAddress("user-1", { line1: "1 Main St", isDefault: true } as never)
     ).resolves.toBe("addr-9");
-    expect(mocks.customerApi).toHaveBeenCalledWith("/api/addresses", {
-      method: "POST",
-      body: { line1: "1 Main St", isDefault: true },
-    });
+    expect(mocks.customerApi).toHaveBeenCalledWith(
+      "/api/addresses",
+      expect.objectContaining({
+        method: "POST",
+        body: { line1: "1 Main St", isDefault: true },
+        // The key is minted per call; its presence is the contract, not its value.
+        idempotencyKey: expect.any(String),
+      })
+    );
   });
 
   it("updates an address", async () => {

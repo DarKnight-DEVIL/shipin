@@ -6,6 +6,15 @@ const mocks = vi.hoisted(() => ({
   addressGet: vi.fn(),
   profileGet: vi.fn(),
   add: vi.fn(),
+  readIdempotentResponse: vi.fn(),
+  rememberIdempotentResponse: vi.fn(),
+}));
+
+vi.mock("@/lib/idempotency", () => ({
+  readIdempotencyKey: (request: Request) =>
+    request.headers.get("idempotency-key"),
+  readIdempotentResponse: mocks.readIdempotentResponse,
+  rememberIdempotentResponse: mocks.rememberIdempotentResponse,
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -63,9 +72,13 @@ const body = {
   notes: "handle with care",
 };
 
-const post = (payload: unknown = body) =>
+const post = (
+  payload: unknown = body,
+  headers: Record<string, string> = {}
+) =>
   new NextRequest("http://localhost/api/requests", {
     method: "POST",
+    headers,
     body: JSON.stringify(payload),
   });
 
@@ -84,6 +97,8 @@ beforeEach(() => {
   mocks.addressGet.mockReset();
   mocks.profileGet.mockReset();
   mocks.add.mockReset().mockResolvedValue({ id: "req-new" });
+  mocks.readIdempotentResponse.mockReset().mockResolvedValue(null);
+  mocks.rememberIdempotentResponse.mockReset().mockResolvedValue(undefined);
   addresses(address);
   users({
     displayName: "Test User",
@@ -125,6 +140,46 @@ describe("POST /api/requests", () => {
     });
     // The address is snapshotted from the caller's own address book.
     expect(created.shippingAddress).toMatchObject({ line1: "1 Road" });
+  });
+
+  it("replays the first success when the same idempotency key is retried", async () => {
+    mocks.readIdempotentResponse.mockResolvedValue({
+      status: 201,
+      body: { success: true, requestId: "req-original" },
+    });
+
+    const response = await POST(
+      post(undefined, { "idempotency-key": "intent-key-1" })
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      requestId: "req-original",
+    });
+    // The replay must not create anything.
+    expect(mocks.add).not.toHaveBeenCalled();
+  });
+
+  it("remembers the created request under the caller's key", async () => {
+    const response = await POST(
+      post(undefined, { "idempotency-key": "intent-key-2" })
+    );
+
+    expect(response.status).toBe(201);
+    expect(mocks.rememberIdempotentResponse).toHaveBeenCalledWith(
+      { uid: "user-1", scope: "request.create", key: "intent-key-2" },
+      { status: 201, body: { success: true, requestId: "req-new" } }
+    );
+  });
+
+  it("creates normally when no idempotency key is sent", async () => {
+    const response = await POST(post());
+
+    expect(response.status).toBe(201);
+    expect(mocks.readIdempotentResponse).not.toHaveBeenCalled();
+    expect(mocks.rememberIdempotentResponse).not.toHaveBeenCalled();
+    expect(mocks.add).toHaveBeenCalledTimes(1);
   });
 
   it("rejects unauthenticated callers", async () => {

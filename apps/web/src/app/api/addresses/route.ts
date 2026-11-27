@@ -4,6 +4,11 @@ import { z } from "zod";
 
 import { requireAuthWithProfile } from "@/lib/auth";
 import { adminDb } from "@/lib/firebaseAdmin";
+import {
+  readIdempotencyKey,
+  readIdempotentResponse,
+  rememberIdempotentResponse,
+} from "@/lib/idempotency";
 import { ValidationError, withErrorHandler } from "@/utils/errors";
 
 const addressSchema = z.object({
@@ -38,6 +43,24 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
+  // Idempotency: a double-submit must not file the same address twice. Same
+  // contract as request creation — the client mints the key per submit and its
+  // retry path reuses it; the first success is replayed.
+  const idempotencyKey = readIdempotencyKey(request);
+  const replayScope = {
+    uid: auth.profile.uid,
+    scope: "address.create",
+    key: idempotencyKey ?? "",
+  };
+  if (idempotencyKey) {
+    const prior = await readIdempotentResponse(replayScope);
+    if (prior)
+      return NextResponse.json(prior.body, {
+        status: prior.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+  }
+
   let body: unknown;
 
   try {
@@ -65,8 +88,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-  return NextResponse.json(
-    { success: true, addressId: docRef.id },
-    { status: 201, headers: { "Cache-Control": "no-store" } }
-  );
+  const responseBody = { success: true, addressId: docRef.id };
+
+  if (idempotencyKey) {
+    await rememberIdempotentResponse(replayScope, { status: 201, body: responseBody });
+  }
+
+  return NextResponse.json(responseBody, {
+    status: 201,
+    headers: { "Cache-Control": "no-store" },
+  });
 });

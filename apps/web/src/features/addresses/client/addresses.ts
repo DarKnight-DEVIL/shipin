@@ -2,6 +2,7 @@ import { collection, getDocs, query, orderBy } from "firebase/firestore";
 
 import { db } from "@/lib/firebaseDb";
 import { customerApi } from "@/lib/customerApiClient";
+import { newIdempotencyKey } from "@/lib/idempotencyKey";
 import type { Address } from "@/types/address";
 import { toShipINError } from "@/utils/errors";
 
@@ -33,6 +34,9 @@ export async function addAddress(
     const result = await customerApi<{ addressId: string }>("/api/addresses", {
       method: "POST",
       body: address,
+      // One key per call: the client's retry path reuses it, so a retried
+      // create replays instead of filing the address twice.
+      idempotencyKey: newIdempotencyKey(),
     });
 
     return result.addressId;

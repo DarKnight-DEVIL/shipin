@@ -21,6 +21,7 @@ import Modal from "@/components/ui/Modal";
 import PageHeader from "@/components/ui/PageHeader";
 import { auth } from "@/lib/firebase";
 import { CustomerApiError, customerApi } from "@/lib/customerApiClient";
+import { newIdempotencyKey } from "@/lib/idempotencyKey";
 import {
   getAddresses,
   addAddress,
@@ -147,6 +148,10 @@ export default function NewRequestPage() {
     try {
       await customerApi<{ requestId: string }>('/api/requests', {
         method: "POST",
+        // One key per submit call: the client's retry path reuses the same
+        // options, so a dropped-connection retry replays instead of queueing
+        // the request twice.
+        idempotencyKey: newIdempotencyKey(),
         body: {
           items: items.map((i) => ({
             name: i.name.trim(),

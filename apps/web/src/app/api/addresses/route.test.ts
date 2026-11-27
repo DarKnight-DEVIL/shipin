@@ -4,6 +4,14 @@ import { NextRequest, NextResponse } from "next/server";
 const mocks = vi.hoisted(() => ({
   requireAuthWithProfile: vi.fn(),
   add: vi.fn(),
+  readIdempotentResponse: vi.fn(),
+  rememberIdempotentResponse: vi.fn(),
+}));
+
+vi.mock("@/lib/idempotency", () => ({
+  readIdempotencyKey: (req: Request) => req.headers.get("idempotency-key"),
+  readIdempotentResponse: mocks.readIdempotentResponse,
+  rememberIdempotentResponse: mocks.rememberIdempotentResponse,
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -32,9 +40,10 @@ const valid = {
   addressLine1: "1 Main Street",
 };
 
-const request = (body: unknown) =>
+const request = (body: unknown, headers: Record<string, string> = {}) =>
   new NextRequest("http://localhost/api/addresses", {
     method: "POST",
+    headers,
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 
@@ -43,6 +52,8 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ profile: { uid: "user-1" } });
   mocks.add.mockReset().mockResolvedValue({ id: "addr-1" });
+  mocks.readIdempotentResponse.mockReset().mockResolvedValue(null);
+  mocks.rememberIdempotentResponse.mockReset().mockResolvedValue(undefined);
 });
 
 describe("POST /api/addresses", () => {
@@ -95,5 +106,43 @@ describe("POST /api/addresses", () => {
       label: "Home",
       isDefault: true,
     });
+  });
+});
+
+describe("idempotency on POST /api/addresses", () => {
+  const valid = {
+    recipientName: "Ada Lovelace",
+    phone: "+44 20 7946 0000",
+    country: "United Kingdom",
+    state: "Greater London",
+    city: "London",
+    postalCode: "SW1A 1AA",
+    addressLine1: "1 Main Street",
+  };
+
+  it("replays the first success when the same key is retried", async () => {
+    mocks.readIdempotentResponse.mockResolvedValue({
+      status: 201,
+      body: { success: true, addressId: "addr-original" },
+    });
+
+    const response = await POST(request(valid, { "idempotency-key": "addr-key-1" }));
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      addressId: "addr-original",
+    });
+    expect(mocks.add).not.toHaveBeenCalled();
+  });
+
+  it("remembers the created address under the caller's key", async () => {
+    const response = await POST(request(valid, { "idempotency-key": "addr-key-2" }));
+
+    expect(response.status).toBe(201);
+    expect(mocks.rememberIdempotentResponse).toHaveBeenCalledWith(
+      { uid: "user-1", scope: "address.create", key: "addr-key-2" },
+      { status: 201, body: { success: true, addressId: "addr-1" } }
+    );
   });
 });
