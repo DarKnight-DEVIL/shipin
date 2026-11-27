@@ -8,7 +8,7 @@ import { auth } from "@/lib/firebase";
 import {
   getWallet,
   getWalletTransactions,
-} from "@/features/wallet/services/wallet";
+} from "@/features/wallet/client/wallet";
 import EmptyState from "@/components/ui/EmptyState";
 import PageHeader from "@/components/ui/PageHeader";
 

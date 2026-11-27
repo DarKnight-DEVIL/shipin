@@ -8,7 +8,7 @@ import {
   subscribeToSupportMessages,
   subscribeToSupportTickets,
   markSupportTicketRead,
-} from "@/features/support/services";
+} from "@/features/support/client";
 
 import { SupportMessage, SupportTicket } from "@/types/support";
 

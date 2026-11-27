@@ -14,4 +14,4 @@ export {
   subscribeToNotifications,
   getNotificationPreferences,
   saveNotificationPreferences,
-} from "./services/index";
+} from "./client/index";

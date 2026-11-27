@@ -16,7 +16,7 @@ import {
   deleteNotification,
   markAllNotificationsRead,
   clearReadNotifications,
-} from "@/features/notifications/services";
+} from "@/features/notifications/client";
 
 type Filter = "all" | "unread" | "orders" | "payments" | "shipping" | "support";
 

@@ -20,7 +20,7 @@ import {
   subscribeToRequest,
   markSupportTicketRead,
   resolveSupportTicket,
-} from "@/features/support/services";
+} from "@/features/support/client";
 
 interface SupportTicket {
   id: string;

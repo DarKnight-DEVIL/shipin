@@ -5,7 +5,7 @@ import { MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { auth } from "@/lib/firebase";
-import { getRequestById } from "@/features/requests/services/requests";
+import { getRequestById } from "@/features/requests/client/requests";
 import useSupport from "@/hooks/useSupport";
 import type { SupportTicket } from "@/types/support";
 

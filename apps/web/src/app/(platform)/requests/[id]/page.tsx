@@ -36,7 +36,7 @@ import PageSkeleton from "@/components/ui/PageSkeleton";
 import QuoteCountdown from "@/components/request/QuoteCountdown";
 
 import { isQuoteExpired } from "@/features/requests/services/quoteExpiry";
-import { subscribeToRequest } from "@/features/requests/services/requests";
+import { subscribeToRequest } from "@/features/requests/client/requests";
 import type { Request } from "@/types/request";
 
 export default function RequestDetailsPage() {

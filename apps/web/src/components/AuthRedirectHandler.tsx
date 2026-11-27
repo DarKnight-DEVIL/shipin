@@ -98,7 +98,7 @@ export default function AuthRedirectHandler() {
         // import would ship ~160 KB (gzip) of Firestore to every public page
         // for a lookup that only matters when returning from a redirect sign-in.
         const { ensureUserProfile } =
-          await import("@/features/users/services/userProfile");
+          await import("@/features/users/client/userProfile");
         // Redirect sign-in bypasses registration just like the popup flow,
         // so repair a missing profile before navigating.
         const profile = await ensureUserProfile({

@@ -10,7 +10,7 @@
 import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
 import type { Notification } from "@/features/notifications/types";
-import { subscribeToNotifications } from "@/features/notifications/services";
+import { subscribeToNotifications } from "@/features/notifications/client";
 
 export function useUnreadNotifications() {
   const [unreadCount, setUnreadCount] = useState(0);

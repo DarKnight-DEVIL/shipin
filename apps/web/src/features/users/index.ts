@@ -2,13 +2,13 @@
  * @fileoverview Users feature – barrel export.
  */
 
-export type { UserProfile } from "./services/userProfile";
+export type { UserProfile } from "./client/userProfile";
 
 export {
   getUserProfile,
   createUserProfile,
   updateUserProfile,
-} from "./services/userProfile";
+} from "./client/userProfile";
 
 export {
   dashboardMetrics,
@@ -26,9 +26,9 @@ export type {
 export {
   getUserPreferences,
   saveDashboardMetrics,
-} from "./services/userPreferences";
+} from "./client/userPreferences";
 
-export type { UserPreferences } from "./services/userPreferences";
+export type { UserPreferences } from "./client/userPreferences";
 
 export { useDashboardMetricSettings } from "./hooks/useDashboardMetricSettings";
 export { useDashboardOverview } from "./hooks/useDashboardOverview";

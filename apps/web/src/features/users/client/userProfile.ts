@@ -4,11 +4,9 @@ import { toShipINError } from "@/utils/errors";
 
 export type { UserProfile } from "@/lib/userProfile";
 
-export async function getUserProfile(
-  userId: string
-): Promise<UserProfile | null> {
-  void userId;
-
+export async function getUserProfile(): Promise<UserProfile | null> {
+  // The API authenticates as the signed-in browser user; there is no
+  // "other user" variant, so this takes no user id.
   try {
     const result = await customerApi<{ profile: UserProfile | null }>(
       "/api/profile"
@@ -19,9 +17,7 @@ export async function getUserProfile(
   }
 }
 
-export async function createUserProfile(
-  userId: string,
-  profile: {
+export async function createUserProfile(profile: {
     displayName: string;
 
     email: string;
@@ -32,8 +28,6 @@ export async function createUserProfile(
   }
 ) {
   try {
-    void userId;
-
     await customerApi<{ success: boolean }>("/api/profile", {
       method: "POST",
       body: {
@@ -120,7 +114,7 @@ async function loadOrRepairProfile(user: {
   email?: string | null;
   photoURL?: string | null;
 }): Promise<UserProfile | null> {
-  const existing = await getUserProfile(user.uid);
+  const existing = await getUserProfile();
   if (existing) return existing;
 
   const displayName =
@@ -129,7 +123,7 @@ async function loadOrRepairProfile(user: {
   const photoURL = user.photoURL ?? "";
 
   try {
-    await createUserProfile(user.uid, { displayName, email, photoURL });
+    await createUserProfile({ displayName, email, photoURL });
   } catch (error) {
     console.error("[profile] Could not create the profile document:", error);
     return null;
@@ -138,9 +132,7 @@ async function loadOrRepairProfile(user: {
   return { displayName, email, phone: "", photoURL };
 }
 
-export async function updateUserProfile(
-  userId: string,
-  updates: {
+export async function updateUserProfile(updates: {
     displayName?: string;
 
     email?: string;
@@ -153,15 +145,15 @@ export async function updateUserProfile(
   }
 ) {
   try {
-    void userId;
-
     await customerApi<{ success: boolean }>("/api/profile", {
       method: "PATCH",
       body: updates,
     });
 
-    // The stored document no longer matches the cached repair result.
-    clearUserProfileCache(userId);
+    // The stored document no longer matches the cached repair result. The
+    // edit always concerns the signed-in account, so dropping every cached
+    // entry in this tab is correct and keeps the signature honest.
+    clearUserProfileCache();
   } catch (error) {
     throw toShipINError(error);
   }

@@ -10,9 +10,9 @@ import {
   DEFAULT_DASHBOARD_METRICS,
   MIN_DASHBOARD_METRICS,
   dashboardMetrics,
-} from "./dashboardMetrics";
+} from "../services/dashboardMetrics";
 import { getUserPreferences, saveDashboardMetrics } from "./userPreferences";
-import type { DashboardMetricId } from "./dashboardMetrics";
+import type { DashboardMetricId } from "../services/dashboardMetrics";
 
 beforeEach(() => {
   mocks.customerApi.mockReset();

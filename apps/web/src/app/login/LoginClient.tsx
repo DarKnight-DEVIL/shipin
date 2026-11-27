@@ -151,7 +151,7 @@ export default function LoginClient() {
 
     try {
       const { ensureUserProfile } =
-        await import("@/features/users/services/userProfile");
+        await import("@/features/users/client/userProfile");
       const profile = await ensureUserProfile({
         uid: user.uid,
         displayName: user.displayName,
@@ -511,8 +511,8 @@ export default function LoginClient() {
         user = result.user;
         // Create the ShipIN profile for the new user.
         const { createUserProfile } =
-          await import("@/features/users/services/userProfile");
-        await createUserProfile(user.uid, {
+          await import("@/features/users/client/userProfile");
+        await createUserProfile({
           displayName: email.trim().split("@")[0],
           email: email.trim(),
         });

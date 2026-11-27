@@ -6,7 +6,7 @@ import {
   createShipment,
   addRequestToShipment,
   getAllUserShipments,
-} from "@/features/shipments/services/shipments";
+} from "@/features/shipments/client/shipments";
 
 import type { Request } from "@/types/request";
 import type { Shipment } from "@/types/shipment";

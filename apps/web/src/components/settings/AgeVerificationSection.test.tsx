@@ -24,7 +24,7 @@ vi.mock("@/lib/firebase", () => ({
   auth: { currentUser: { uid: "user-1" } },
 }));
 
-vi.mock("@/features/users/services/userProfile", () => ({
+vi.mock("@/features/users/client/userProfile", () => ({
   getUserProfile: (...args: unknown[]) => getUserProfileMock(...args),
   updateUserProfile: (...args: unknown[]) => updateUserProfileMock(...args),
 }));
@@ -57,7 +57,7 @@ describe("AgeVerificationSection", () => {
       });
     });
 
-    expect(getUserProfileMock).toHaveBeenCalledWith("user-1");
+    expect(getUserProfileMock).toHaveBeenCalledWith();
     expect(
       (screen.getByLabelText(/date of birth/i) as HTMLInputElement).value
     ).toBe("2010-03-15");
@@ -89,7 +89,7 @@ describe("AgeVerificationSection", () => {
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => {
-      expect(updateUserProfileMock).toHaveBeenCalledWith("user-1", {
+      expect(updateUserProfileMock).toHaveBeenCalledWith( {
         dateOfBirth: "2012-01-01",
       });
     });

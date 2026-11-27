@@ -92,7 +92,7 @@ import {
   type RecentActivityEntry,
   type OperationsOverview as OperationsOverviewData,
   type FinancialOverview as FinancialOverviewData,
-} from "@/features/admin/services/analytics";
+} from "@/features/admin/client/analytics";
 
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);

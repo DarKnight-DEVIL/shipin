@@ -15,4 +15,4 @@ export {
   deleteAddress,
   setDefaultAddress,
   getDefaultAddress,
-} from "./services/addresses";
+} from "./client/addresses";

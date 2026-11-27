@@ -13,8 +13,8 @@ import type { Request } from "@/types/request";
 import {
   type AdminCustomer,
   getCustomersWithWallets,
-} from "@/features/admin/services/customersClient";
-import { getAllRequests } from "@/features/admin/services/requestQueueClient";
+} from "@/features/admin/client/customersClient";
+import { getAllRequests } from "@/features/admin/client/requestQueueClient";
 
 export interface AdminAuditState {
   customers: AdminCustomer[];

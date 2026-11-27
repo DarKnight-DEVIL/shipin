@@ -8,7 +8,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 
-export { WHATSAPP_COUNTRIES } from "./whatsappCountries";
+export { WHATSAPP_COUNTRIES } from "../services/whatsappCountries";
 
 import { db } from "@/lib/firebaseDb";
 import { customerApi } from "@/lib/customerApiClient";

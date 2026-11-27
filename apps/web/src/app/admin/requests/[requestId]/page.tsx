@@ -16,7 +16,7 @@ import SupportPanel from "@/components/admin/request/panels/SupportPanel";
 import TimelinePanel from "@/components/admin/request/panels/TimelinePanel";
 import TrackingPanel from "@/components/admin/request/panels/TrackingPanel";
 import EmptyState from "@/components/ui/EmptyState";
-import { subscribeToRequest } from "@/features/requests/services/requests";
+import { subscribeToRequest } from "@/features/requests/client/requests";
 import type { Request } from "@/types/request";
 
 /**

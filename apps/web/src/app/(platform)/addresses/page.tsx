@@ -10,7 +10,7 @@ import {
   addAddress,
   getAddresses,
   updateAddress,
-} from "@/features/addresses/services/addresses";
+} from "@/features/addresses/client/addresses";
 
 import AddressCard from "@/components/address/AddressCard";
 import Modal from "@/components/ui/Modal";

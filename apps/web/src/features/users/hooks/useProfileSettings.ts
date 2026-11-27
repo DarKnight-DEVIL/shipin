@@ -9,7 +9,7 @@ import {
   createUserProfile,
   getUserProfile,
   updateUserProfile,
-} from "@/features/users/services/userProfile";
+} from "@/features/users/client/userProfile";
 
 export interface ProfileForm {
   displayName: string;
@@ -43,21 +43,21 @@ export function useProfileSettings() {
       setHasGoogleProvider(providers.includes("google.com"));
 
       try {
-        let savedProfile = await getUserProfile(user.uid);
+        let savedProfile = await getUserProfile();
 
         if (!savedProfile || !savedProfile.email || !savedProfile.photoURL) {
-          await createUserProfile(user.uid, {
+          await createUserProfile({
             displayName: savedProfile?.displayName || user.displayName || "",
             email: user.email || savedProfile?.email || "",
             phone: savedProfile?.phone || user.phoneNumber || "",
             photoURL: savedProfile?.photoURL || user.photoURL || "",
           });
-          savedProfile = await getUserProfile(user.uid);
+          savedProfile = await getUserProfile();
         }
 
         if (user.photoURL && savedProfile?.photoURL !== user.photoURL) {
-          await updateUserProfile(user.uid, { photoURL: user.photoURL });
-          savedProfile = await getUserProfile(user.uid);
+          await updateUserProfile({ photoURL: user.photoURL });
+          savedProfile = await getUserProfile();
         }
 
         setProfile({
@@ -96,7 +96,7 @@ export function useProfileSettings() {
 
     try {
       setSaving(true);
-      await updateUserProfile(user.uid, { displayName, phone });
+      await updateUserProfile({ displayName, phone });
       await updateProfile(user, { displayName });
       setProfile((current) => ({ ...current, displayName, phone }));
       setEditing(false);

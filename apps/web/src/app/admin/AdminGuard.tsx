@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
-import { getUserProfile } from "@/features/users/services/userProfile";
+import { getUserProfile } from "@/features/users/client/userProfile";
 
 export default function AdminGuard({
   children,
@@ -32,7 +32,7 @@ export default function AdminGuard({
         /*
          * Get ShipIN profile
          */
-        const profile = await getUserProfile(user.uid);
+        const profile = await getUserProfile();
 
         /*
          * User is authenticated but

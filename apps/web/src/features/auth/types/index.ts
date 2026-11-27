@@ -1,4 +1,4 @@
-import type { UserProfile } from "@/features/users/services/userProfile";
+import type { UserProfile } from "@/features/users/client/userProfile";
 
 export type { UserProfile };
 

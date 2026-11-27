@@ -25,10 +25,10 @@ vi.mock("firebase/firestore", () => ({
   arrayRemove: mocks.arrayRemove,
 }));
 vi.mock("@/lib/firebaseDb", () => ({ db: {} }));
-vi.mock("@/features/notifications/services", () => ({
+vi.mock("@/features/notifications/client", () => ({
   createNotification: mocks.createNotification,
 }));
-vi.mock("@/features/admin/services/requestQueueClient", () => ({
+vi.mock("@/features/admin/client/requestQueueClient", () => ({
   getAdminRequestPage: mocks.getAdminRequestPage,
 }));
 

@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("firebase/auth", () => ({ updateProfile: mocks.updateAuthProfile }));
 vi.mock("@/lib/firebase", () => ({ auth: mocks.auth }));
-vi.mock("@/features/users/services/userProfile", () => ({
+vi.mock("@/features/users/client/userProfile", () => ({
   getUserProfile: mocks.getUserProfile,
   createUserProfile: mocks.createUserProfile,
   updateUserProfile: mocks.updateUserProfile,
@@ -95,7 +95,7 @@ describe("useProfileSettings — loading", () => {
 
     const { result } = await mount();
 
-    expect(mocks.createUserProfile).toHaveBeenCalledWith("user-1", {
+    expect(mocks.createUserProfile).toHaveBeenCalledWith({
       displayName: "Ada Lovelace",
       email: "ada@example.com",
       phone: "",
@@ -114,7 +114,7 @@ describe("useProfileSettings — loading", () => {
 
     await mount();
 
-    expect(mocks.updateUserProfile).toHaveBeenCalledWith("user-1", {
+    expect(mocks.updateUserProfile).toHaveBeenCalledWith({
       photoURL: "https://img/ada.png",
     });
   });
@@ -206,7 +206,7 @@ describe("useProfileSettings — saving", () => {
       await result.current.save();
     });
 
-    expect(mocks.updateUserProfile).toHaveBeenCalledWith("user-1", {
+    expect(mocks.updateUserProfile).toHaveBeenCalledWith({
       displayName: "Ada L",
       phone: "+44 1",
     });

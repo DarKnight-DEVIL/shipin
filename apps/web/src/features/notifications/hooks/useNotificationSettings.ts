@@ -7,7 +7,7 @@ import { auth } from "@/lib/firebase";
 import {
   getNotificationPreferences,
   saveNotificationPreferences,
-} from "@/features/notifications/services";
+} from "@/features/notifications/client";
 import { WHATSAPP_COUNTRIES } from "@/features/notifications/services/whatsappCountries";
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,

@@ -16,7 +16,7 @@ import {
   getCustomersWithWallets,
   getRefundRequestDetails,
   type AdminCustomer,
-} from "@/features/admin/services/customersClient";
+} from "@/features/admin/client/customersClient";
 
 export interface AdminWalletState {
   customers: AdminCustomer[];

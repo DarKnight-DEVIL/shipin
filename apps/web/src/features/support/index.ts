@@ -16,6 +16,6 @@ export {
   subscribeToSupportTickets,
   subscribeToCustomerSupportTickets,
   subscribeToAllSupportTickets,
-} from "./services/index";
+} from "./client/index";
 
 export { canCreateSupportTicket } from "./services/supportRules";

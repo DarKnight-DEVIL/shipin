@@ -24,7 +24,7 @@ import { CustomerApiError, customerApi } from "@/lib/customerApiClient";
 import {
   getAddresses,
   addAddress,
-} from "@/features/addresses/services/addresses";
+} from "@/features/addresses/client/addresses";
 import type { Address } from "@/types/address";
 
 // The address form carries the country/flag dataset and the phone-input stack

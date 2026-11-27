@@ -8,11 +8,11 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebaseDb";
 import { toShipINError } from "@/utils/errors";
-import { createNotification } from "@/features/notifications/services";
-import { getAdminRequestPage } from "@/features/admin/services/requestQueueClient";
-import { REQUEST_STATUS } from "./requestStatus";
+import { createNotification } from "@/features/notifications/client";
+import { getAdminRequestPage } from "@/features/admin/client/requestQueueClient";
+import { REQUEST_STATUS } from "../services/requestStatus";
 import type { Request } from "@/types/request";
-import { getStorageParams } from "./warehousePolicy";
+import { getStorageParams } from "../services/warehousePolicy";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

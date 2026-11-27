@@ -31,26 +31,26 @@ describe("getUserProfile", () => {
   it("reads the safe projection from the API", async () => {
     mocks.customerApi.mockResolvedValue({ profile: profile() });
 
-    await expect(getUserProfile("user-1")).resolves.toEqual(profile());
+    await expect(getUserProfile()).resolves.toEqual(profile());
     expect(mocks.customerApi).toHaveBeenCalledWith("/api/profile");
   });
 
   it("returns null when no profile exists", async () => {
     mocks.customerApi.mockResolvedValue({ profile: null });
 
-    await expect(getUserProfile("missing")).resolves.toBeNull();
+    await expect(getUserProfile()).resolves.toBeNull();
   });
 
   it("wraps API failures", async () => {
     mocks.customerApi.mockRejectedValue(new Error("offline"));
 
-    await expect(getUserProfile("user-1")).rejects.toBeInstanceOf(Error);
+    await expect(getUserProfile()).rejects.toBeInstanceOf(Error);
   });
 });
 
 describe("createUserProfile", () => {
   it("creates the profile through the customer API", async () => {
-    await createUserProfile("user-1", {
+    await createUserProfile({
       displayName: "Ada",
       email: "ada@example.com",
       phone: "+44",
@@ -69,7 +69,7 @@ describe("createUserProfile", () => {
   });
 
   it("sends empty strings for optional fields", async () => {
-    await createUserProfile("user-1", {
+    await createUserProfile({
       displayName: "Ada",
       email: "ada@example.com",
     });
@@ -91,7 +91,7 @@ describe("createUserProfile", () => {
     mocks.customerApi.mockRejectedValue(new Error("permission-denied"));
 
     await expect(
-      createUserProfile("user-1", { displayName: "A", email: "a@b.c" })
+      createUserProfile({ displayName: "A", email: "a@b.c" })
     ).rejects.toMatchObject({ name: "AuthorizationError" });
   });
 });
@@ -253,14 +253,14 @@ describe("updateUserProfile", () => {
     mocks.customerApi.mockResolvedValue({ profile: profile() });
 
     await ensureUserProfile({ uid: "user-7", email: "ada@example.com" });
-    await updateUserProfile("user-7", { displayName: "Ada Lovelace" });
+    await updateUserProfile({ displayName: "Ada Lovelace" });
     await ensureUserProfile({ uid: "user-7", email: "ada@example.com" });
 
     expect(mocks.customerApi).toHaveBeenCalledTimes(3);
   });
 
   it("patches only the supplied fields", async () => {
-    await updateUserProfile("user-1", { displayName: "Ada Lovelace" });
+    await updateUserProfile({ displayName: "Ada Lovelace" });
 
     expect(mocks.customerApi).toHaveBeenCalledWith("/api/profile", {
       method: "PATCH",
@@ -272,7 +272,7 @@ describe("updateUserProfile", () => {
     mocks.customerApi.mockRejectedValue(new Error("boom"));
 
     await expect(
-      updateUserProfile("user-1", { phone: "+1" })
+      updateUserProfile({ phone: "+1" })
     ).rejects.toBeInstanceOf(Error);
   });
 });

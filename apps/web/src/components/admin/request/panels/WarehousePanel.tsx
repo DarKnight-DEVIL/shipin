@@ -16,7 +16,7 @@ import {
   saveWarehouseInspection,
   updateWarehouseChecklist,
   startStorageTimer,
-} from "@/features/requests/services/warehouse";
+} from "@/features/requests/client/warehouse";
 
 interface Props {
   request: Request;

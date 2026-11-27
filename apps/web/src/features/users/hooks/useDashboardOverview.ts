@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { auth } from "@/lib/firebase";
-import { getRequests } from "@/features/requests/services/requests";
+import { getRequests } from "@/features/requests/client/requests";
 import type { Request } from "@/types/request";
 
 import {
@@ -13,7 +13,7 @@ import {
   dashboardMetrics,
   type DashboardMetricId,
 } from "@/features/users/services/dashboardMetrics";
-import { getUserPreferences } from "@/features/users/services/userPreferences";
+import { getUserPreferences } from "@/features/users/client/userPreferences";
 
 export interface DashboardOverview {
   requests: Request[];

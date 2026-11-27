@@ -36,7 +36,7 @@ vi.mock("@/lib/firebase", () => ({
   },
 }));
 
-vi.mock("@/features/requests/services/requests", () => ({
+vi.mock("@/features/requests/client/requests", () => ({
   REQUEST_SUBSCRIPTION_LIMIT: 200,
   subscribeToRequests: (_userId: string, callback: Subscription) => {
     state.subscription = callback;

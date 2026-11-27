@@ -13,4 +13,4 @@ export {
   removeRequestFromShipment,
   saveConsolidatedPackage,
   finalizeShipment,
-} from "./services/shipments";
+} from "./client/shipments";

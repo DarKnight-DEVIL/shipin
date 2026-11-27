@@ -21,7 +21,7 @@ import { buildPurchaseHistoryCsv } from "@/utils/csv";
 import {
   getAllRequests,
   getAdminRequestQueue,
-} from "@/features/admin/services/requestQueueClient";
+} from "@/features/admin/client/requestQueueClient";
 import type { Request } from "@/types/request";
 
 /**

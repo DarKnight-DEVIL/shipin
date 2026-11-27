@@ -19,7 +19,7 @@ import type {
 } from "@/types/request";
 import type { RequestStatus } from "@/features/requests/services/requestStatus";
 import { toShipINError } from "@/utils/errors";
-import { quoteExpiresAt } from "./quoteTtl";
+import { quoteExpiresAt } from "../services/quoteTtl";
 
 /** Default shape used when snapshot.data() is missing (e.g. edge-case fallback). */
 const EMPTY_REQUEST = {

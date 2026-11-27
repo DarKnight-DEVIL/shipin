@@ -222,4 +222,4 @@ export function subscribeToAllSupportTickets(
 export {
   subscribeToRequest,
   subscribeToRequests,
-} from "@/features/requests/services/requests";
+} from "@/features/requests/client/requests";

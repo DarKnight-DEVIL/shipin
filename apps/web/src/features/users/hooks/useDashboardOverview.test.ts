@@ -11,10 +11,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/firebase", () => ({ auth: mocks.auth }));
-vi.mock("@/features/requests/services/requests", () => ({
+vi.mock("@/features/requests/client/requests", () => ({
   getRequests: mocks.getRequests,
 }));
-vi.mock("@/features/users/services/userPreferences", () => ({
+vi.mock("@/features/users/client/userPreferences", () => ({
   getUserPreferences: mocks.getUserPreferences,
 }));
 

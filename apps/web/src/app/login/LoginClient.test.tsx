@@ -110,7 +110,7 @@ vi.mock("sonner", () => ({
 }));
 
 // Imported dynamically by the component, so this also has to be a module mock.
-vi.mock("@/features/users/services/userProfile", () => ({
+vi.mock("@/features/users/client/userProfile", () => ({
   ensureUserProfile: (...args: unknown[]) => h.ensureUserProfile(...args),
   createUserProfile: (...args: unknown[]) => h.createUserProfile(...args),
 }));
@@ -384,7 +384,6 @@ describe("LoginClient: registration checks", () => {
       )
     );
     expect(h.createUserProfile).toHaveBeenCalledWith(
-      "user-1",
       expect.objectContaining({ email: "new@example.com" })
     );
     // New accounts are unverified, so they land on the verify screen.

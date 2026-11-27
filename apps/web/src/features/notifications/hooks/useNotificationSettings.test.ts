@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/firebase", () => ({ auth: mocks.auth }));
-vi.mock("@/features/notifications/services", () => ({
+vi.mock("@/features/notifications/client", () => ({
   getNotificationPreferences: mocks.getNotificationPreferences,
   saveNotificationPreferences: mocks.saveNotificationPreferences,
 }));

@@ -63,7 +63,7 @@ vi.mock("sonner", () => ({
   toast: { success: h.success, error: h.error },
 }));
 
-vi.mock("@/features/users/services/userProfile", () => ({
+vi.mock("@/features/users/client/userProfile", () => ({
   ensureUserProfile: (...args: unknown[]) => h.ensureUserProfile(...args),
 }));
 

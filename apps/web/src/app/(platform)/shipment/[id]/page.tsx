@@ -8,7 +8,7 @@ import { ChevronRight } from "lucide-react";
 import {
   getShipment,
   getShipmentRequests,
-} from "@/features/shipments/services/shipments";
+} from "@/features/shipments/client/shipments";
 import PageHeader from "@/components/ui/PageHeader";
 
 import type { Shipment } from "@/types/shipment";

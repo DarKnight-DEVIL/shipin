@@ -12,7 +12,7 @@ import {
 import {
   getUserPreferences,
   saveDashboardMetrics,
-} from "@/features/users/services/userPreferences";
+} from "@/features/users/client/userPreferences";
 
 export function useDashboardMetricSettings() {
   const [selectedMetrics, setSelectedMetrics] = useState<DashboardMetricId[]>(

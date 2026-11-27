@@ -8,7 +8,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import {
   getAdminRequestQueue,
   type AdminRequestFilter,
-} from "@/features/admin/services/requestQueueClient";
+} from "@/features/admin/client/requestQueueClient";
 import type { Request } from "@/types/request";
 
 /**

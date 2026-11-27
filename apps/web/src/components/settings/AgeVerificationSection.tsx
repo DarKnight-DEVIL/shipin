@@ -7,7 +7,7 @@ import { auth } from "@/lib/firebase";
 import {
   getUserProfile,
   updateUserProfile,
-} from "@/features/users/services/userProfile";
+} from "@/features/users/client/userProfile";
 import { calculateAge } from "@/lib/compliance/ageVerification";
 
 import SettingsSection from "./SettingsSection";
@@ -73,7 +73,7 @@ export default function AgeVerificationSection() {
       try {
         const uid = auth.currentUser?.uid;
         const [profile] = await Promise.all([
-          uid ? getUserProfile(uid) : Promise.resolve(null),
+          uid ? getUserProfile() : Promise.resolve(null),
           refreshStatus(),
         ]);
 
@@ -123,7 +123,7 @@ export default function AgeVerificationSection() {
         return;
       }
 
-      await updateUserProfile(auth.currentUser.uid, { dateOfBirth });
+      await updateUserProfile({ dateOfBirth });
       await refreshStatus();
       setMessage("Date of birth saved.");
     } catch (saveError) {

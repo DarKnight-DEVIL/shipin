@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PackageSearch } from "lucide-react";
 import EmptyState from "@/components/ui/EmptyState";
-import { getWarehouseInventory } from "@/features/requests/services/warehouse";
+import { getWarehouseInventory } from "@/features/requests/client/warehouse";
 import type { Request } from "@/types/request";
 
 export default function WarehouseInventoryPage() {
