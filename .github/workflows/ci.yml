@@ -493,6 +493,19 @@ jobs:
           E2E_FIREBASE_PROJECT_ID: ${{ secrets.E2E_FIREBASE_ADMIN_PROJECT_ID }}
           E2E_FIREBASE_APP_ID: ${{ secrets.E2E_FIREBASE_APP_ID }}
 
+      # The local E2E suite disables the controls that need real infrastructure
+      # (App Check attestation, the shared rate-limit store, the MFA denylist
+      # store), so only a deployed target can prove they are on. This step
+      # reads the public /api/health probe and asserts the posture: App Check
+      # not disabled, the store configured, the denylist fail-closed. Needs no
+      # credentials — only the staging URL — so it runs whenever staging does.
+      - name: Assert staging security posture
+        if: env.E2E_STAGING_URL != ''
+        run: npx playwright test --config=apps/web/playwright.config.ts apps/web/playwright-test/tests/staging-posture.spec.ts
+        env:
+          BASE_URL: ${{ env.E2E_STAGING_URL }}
+          PLAYWRIGHT_MANAGE_WEBSERVER: "0"
+
       # Sweeps fixtures left by this and earlier runs. `always()` so a failed
       # smoke run does not litter staging, and `--apply` because the script is
       # read-only by default (a human running it by hand only sees the plan).
