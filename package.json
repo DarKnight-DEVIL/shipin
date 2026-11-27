@@ -29,6 +29,7 @@
     "test:e2e:local": "npm run test:e2e:local --workspace=@shipin/web --",
     "test:e2e:signed-in": "npm run test:e2e:signed-in --workspace=@shipin/web --",
     "migrate": "npm run migrate --workspace=@shipin/web --",
+    "migrate:dry-run": "npm run migrate:dry-run --workspace=@shipin/web",
     "analyze": "npm run analyze --workspace=@shipin/web",
     "check:bundle-budget": "npm run check:bundle-budget --workspace=@shipin/web",
     "check:coverage-globs": "npm run check:coverage-globs --workspace=@shipin/web",

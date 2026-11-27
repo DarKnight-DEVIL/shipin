@@ -536,3 +536,46 @@ jobs:
       - name: Run admin route contract tests
         run: npm run test:admin
 
+  # ─── Migration dry-run ──────────────────────────────────────────────────
+  # Every migration must still run. A migration that stopped compiling, imports
+  # something that moved, or queries a shape needing a composite index fails
+  # the same against an empty emulator as against production data — and it
+  # fails here, in the PR, instead of during a deploy. The per-migration unit
+  # tests cover the data logic; this proves the code still executes end to end
+  # (the runner needs no credentials against the emulator, so no secrets here).
+  migrations-dry-run:
+    name: Migration Dry-Run
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      # The Firestore emulator is a Java process; firebase-tools 15 refuses
+      # runtimes below Java 21.
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # One emulator session around the whole loop: six cold starts would be
+      # minutes, one is seconds. The emulator host is set for the inner command
+      # explicitly, the same way the E2E job does it.
+      - name: Dry-run every migration against the Firestore emulator
+        env:
+          FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080"
+        run: >-
+          npx --yes firebase-tools@15.36.0 --config firebase.json
+          emulators:exec --only firestore --project demo-shipin
+          "npm run migrate:dry-run"
+

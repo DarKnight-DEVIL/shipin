@@ -59,6 +59,16 @@ function getAdminApp(): App {
   const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
   const rawPrivateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
 
+  /*
+   * The emulator never checks a credential, so a dry run against it — which
+   * is what CI does — needs no service-account material and must not require
+   * it: cert() parses the private key at init, so dummy values fail harder
+   * than missing ones. The emulator host alone selects this path.
+   */
+  if (process.env.FIRESTORE_EMULATOR_HOST) {
+    return initializeApp({ projectId: projectId || "demo-shipin" });
+  }
+
   if (!projectId || !clientEmail || !rawPrivateKey) {
     throw new Error("Missing Firebase Admin environment variables");
   }
