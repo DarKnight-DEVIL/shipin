@@ -1,3 +1,5 @@
+import { customerApi } from "@/lib/customerApiClient";
+
 export interface CreateOrderResponse {
   id: string;
 }
@@ -16,42 +18,32 @@ class PaymentService {
     requestId: string,
     amount: number,
     paymentType: "main" | "additional_item" = "main",
-    additionalItemRequestId?: string,
-    authToken?: string
+    additionalItemRequestId?: string
   ) {
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new Error("Invalid PayPal payment amount.");
     }
 
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (authToken) {
-      headers["Authorization"] = `Bearer ${authToken}`;
-    }
+    let data: { orderId?: string };
 
-    const response = await fetch("/api/paypal/create-order", {
-      method: "POST",
-
-      headers,
-
-      body: JSON.stringify({
-        requestId,
-        amount,
-        paymentType,
-        additionalItemRequestId,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-
-      console.error("PayPal create order error:", errorText);
+    try {
+      data = await customerApi<{ orderId?: string }>(
+        "/api/paypal/create-order",
+        {
+          method: "POST",
+          body: {
+            requestId,
+            amount,
+            paymentType,
+            additionalItemRequestId,
+          },
+        }
+      );
+    } catch (error) {
+      console.error("PayPal create order error:", error);
 
       throw new Error("Unable to create PayPal order.");
     }
-
-    const data = await response.json();
 
     if (!data?.orderId) {
       throw new Error("PayPal order ID was not returned.");
@@ -67,53 +59,35 @@ class PaymentService {
     orderID: string,
     amount: number,
     paymentType: "main" | "additional_item" = "main",
-    additionalItemRequestId?: string,
-    authToken?: string
+    additionalItemRequestId?: string
   ) {
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new Error("Invalid PayPal payment amount.");
     }
 
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (authToken) {
-      headers["Authorization"] = `Bearer ${authToken}`;
-    }
-
-    const response = await fetch("/api/paypal/capture-order", {
-      method: "POST",
-
-      headers,
-
-      body: JSON.stringify({
-        requestId,
-        orderID,
-        amount,
-        paymentType,
-        additionalItemRequestId,
-      }),
-    });
-
-    if (!response.ok) {
-      let errorMessage = "Unable to capture PayPal payment.";
-
-      try {
-        const data = await response.json();
-
-        console.error("PayPal capture error:", data);
-
-        if (data?.error) {
-          errorMessage = data.error;
+    try {
+      return await customerApi<CaptureOrderResponse>(
+        "/api/paypal/capture-order",
+        {
+          method: "POST",
+          body: {
+            requestId,
+            orderID,
+            amount,
+            paymentType,
+            additionalItemRequestId,
+          },
         }
-      } catch {
-        console.error("Unable to parse PayPal capture error.");
-      }
+      );
+    } catch (error) {
+      console.error("PayPal capture error:", error);
 
-      throw new Error(errorMessage);
+      throw new Error(
+        error instanceof Error && error.message
+          ? error.message
+          : "Unable to capture PayPal payment."
+      );
     }
-
-    return await response.json();
   }
 }
 

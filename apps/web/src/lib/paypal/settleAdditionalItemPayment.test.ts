@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { DocumentReference } from "firebase-admin/firestore";
 
 vi.mock("firebase-admin/firestore", () => ({
   FieldValue: {
@@ -9,9 +10,6 @@ vi.mock("firebase-admin/firestore", () => ({
 
 import { settleAdditionalItemPayment } from "./settleAdditionalItemPayment";
 
-const requestRef = { id: "req-1", update: vi.fn() };
-const paymentOrderRef = { id: "order-1", update: vi.fn() };
-
 const awaitingItem = {
   id: "item-1",
   status: "awaiting_payment",
@@ -21,11 +19,43 @@ const awaitingItem = {
   item: { name: "Phone case", quantity: 1, url: "https://cdn.test/case.png" },
 };
 
+const snap = (data: Record<string, unknown>) => ({
+  exists: true,
+  data: () => data,
+});
+
+const requestGet = vi.fn();
+const requestUpdate = vi.fn();
+const paymentOrderGet = vi.fn();
+const paymentOrderUpdate = vi.fn();
+
+const firestore = {
+  runTransaction: async (fn: (tx: unknown) => unknown) =>
+    fn({
+      get: (ref: { id: string }) =>
+        ref.id === "req-1" ? requestGet() : paymentOrderGet(),
+      update: (ref: { id: string }, data: unknown) =>
+        ref.id === "req-1" ? requestUpdate(data) : paymentOrderUpdate(data),
+    }),
+};
+
+const requestRef = {
+  id: "req-1",
+  get: requestGet,
+  update: requestUpdate,
+  firestore,
+} as unknown as DocumentReference;
+
+const paymentOrderRef = {
+  id: "order-1",
+  get: paymentOrderGet,
+  update: paymentOrderUpdate,
+  firestore,
+} as unknown as DocumentReference;
+
 const input = (overrides: Record<string, unknown> = {}) => ({
-  requestRef: requestRef as never,
-  paymentOrderRef: paymentOrderRef as never,
-  requestData: { additionalItemRequests: [awaitingItem] },
-  paymentOrder: { baseAmount: 20 },
+  requestRef,
+  paymentOrderRef,
   additionalItemRequestId: "item-1",
   orderID: "order-1",
   captureId: "capture-1",
@@ -34,11 +64,21 @@ const input = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const requestSnapshot = (data: Record<string, unknown>) =>
+  requestGet.mockResolvedValue(snap(data));
+
+const orderSnapshot = (data: Record<string, unknown>) =>
+  paymentOrderGet.mockResolvedValue(snap(data));
+
 let consoleError: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  requestRef.update.mockReset().mockResolvedValue(undefined);
-  paymentOrderRef.update.mockReset().mockResolvedValue(undefined);
+  requestUpdate.mockReset().mockResolvedValue(undefined);
+  paymentOrderUpdate.mockReset().mockResolvedValue(undefined);
+  requestGet
+    .mockReset()
+    .mockResolvedValue(snap({ additionalItemRequests: [awaitingItem] }));
+  paymentOrderGet.mockReset().mockResolvedValue(snap({ baseAmount: 20 }));
   consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -52,8 +92,8 @@ describe("settleAdditionalItemPayment", () => {
       ok: true,
     });
 
-    const [requestUpdate] = requestRef.update.mock.calls[0];
-    const paidItem = requestUpdate.additionalItemRequests[0];
+    const [requestWrite] = requestUpdate.mock.calls[0];
+    const paidItem = requestWrite.additionalItemRequests[0];
 
     expect(paidItem).toMatchObject({
       id: "item-1",
@@ -61,7 +101,7 @@ describe("settleAdditionalItemPayment", () => {
       amountPaid: 20,
     });
     expect(paidItem.paidAt).toBeInstanceOf(Date);
-    expect(requestUpdate.items).toEqual({
+    expect(requestWrite.items).toEqual({
       __UNION: {
         name: "Phone case",
         url: "https://cdn.test/case.png",
@@ -70,7 +110,7 @@ describe("settleAdditionalItemPayment", () => {
         subtotal: 20,
       },
     });
-    expect(requestUpdate.additionalPayments.__UNION).toMatchObject({
+    expect(requestWrite.additionalPayments.__UNION).toMatchObject({
       id: "capture-1",
       additionalItemRequestId: "item-1",
       provider: "paypal",
@@ -81,9 +121,9 @@ describe("settleAdditionalItemPayment", () => {
       currency: "USD",
       status: "completed",
     });
-    expect(requestUpdate.updatedAt).toBe("__SERVER_TS__");
+    expect(requestWrite.updatedAt).toBe("__SERVER_TS__");
 
-    expect(paymentOrderRef.update).toHaveBeenCalledWith({
+    expect(paymentOrderUpdate).toHaveBeenCalledWith({
       status: "completed",
       captureId: "capture-1",
       capturedAmount: 20,
@@ -94,29 +134,26 @@ describe("settleAdditionalItemPayment", () => {
 
   it("leaves the other add-ons untouched", async () => {
     const other = { id: "item-2", status: "awaiting_payment", totalDue: 5 };
+    requestSnapshot({ additionalItemRequests: [awaitingItem, other] });
 
-    await settleAdditionalItemPayment(
-      input({ requestData: { additionalItemRequests: [awaitingItem, other] } })
-    );
+    await settleAdditionalItemPayment(input());
 
-    const [requestUpdate] = requestRef.update.mock.calls[0];
+    const [requestWrite] = requestUpdate.mock.calls[0];
 
-    expect(requestUpdate.additionalItemRequests).toHaveLength(2);
-    expect(requestUpdate.additionalItemRequests[1]).toEqual(other);
+    expect(requestWrite.additionalItemRequests).toHaveLength(2);
+    expect(requestWrite.additionalItemRequests[1]).toEqual(other);
   });
 
   it("defaults a missing url to an empty string", async () => {
-    await settleAdditionalItemPayment(
-      input({
-        requestData: {
-          additionalItemRequests: [
-            { ...awaitingItem, item: { name: "Sticker", quantity: 2 } },
-          ],
-        },
-      })
-    );
+    requestSnapshot({
+      additionalItemRequests: [
+        { ...awaitingItem, item: { name: "Sticker", quantity: 2 } },
+      ],
+    });
 
-    expect(requestRef.update.mock.calls[0][0].items.__UNION.url).toBe("");
+    await settleAdditionalItemPayment(input());
+
+    expect(requestUpdate.mock.calls[0][0].items.__UNION.url).toBe("");
   });
 
   it("fails for an unknown add-on", async () => {
@@ -127,28 +164,24 @@ describe("settleAdditionalItemPayment", () => {
       status: 404,
       error: "Additional item request could not be found.",
     });
-    expect(requestRef.update).not.toHaveBeenCalled();
+    expect(requestUpdate).not.toHaveBeenCalled();
   });
 
   it("fails for an add-on that is not awaiting payment", async () => {
-    await expect(
-      settleAdditionalItemPayment(
-        input({
-          requestData: {
-            additionalItemRequests: [{ ...awaitingItem, status: "paid" }],
-          },
-        })
-      )
-    ).resolves.toMatchObject({
+    requestSnapshot({
+      additionalItemRequests: [{ ...awaitingItem, status: "paid" }],
+    });
+
+    await expect(settleAdditionalItemPayment(input())).resolves.toMatchObject({
       status: 400,
       error: "This additional item is not awaiting payment.",
     });
   });
 
   it("fails when the stored amount and the add-on disagree", async () => {
-    await expect(
-      settleAdditionalItemPayment(input({ paymentOrder: { baseAmount: 19.5 } }))
-    ).resolves.toMatchObject({
+    orderSnapshot({ baseAmount: 19.5 });
+
+    await expect(settleAdditionalItemPayment(input())).resolves.toMatchObject({
       status: 400,
       error: "The additional item payment amount could not be verified.",
     });
@@ -156,15 +189,26 @@ describe("settleAdditionalItemPayment", () => {
       "Additional item base amount mismatch:",
       { storedBaseAmount: 19.5, additionalItemTotal: 20, orderID: "order-1" }
     );
-    expect(paymentOrderRef.update).not.toHaveBeenCalled();
+    expect(paymentOrderUpdate).not.toHaveBeenCalled();
   });
 
   it("handles a request with no add-on array", async () => {
-    await expect(
-      settleAdditionalItemPayment(input({ requestData: {} }))
-    ).resolves.toMatchObject({
+    requestSnapshot({});
+
+    await expect(settleAdditionalItemPayment(input())).resolves.toMatchObject({
       status: 404,
       error: "Additional item request could not be found.",
     });
+  });
+
+  it("writes nothing when the payment order is missing", async () => {
+    paymentOrderGet.mockResolvedValue({ exists: false, data: () => undefined });
+
+    await expect(settleAdditionalItemPayment(input())).resolves.toMatchObject({
+      status: 404,
+      error: "Payment order could not be found.",
+    });
+    expect(requestUpdate).not.toHaveBeenCalled();
+    expect(paymentOrderUpdate).not.toHaveBeenCalled();
   });
 });

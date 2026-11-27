@@ -125,6 +125,9 @@ export const POST = withErrorHandler(
      */
     await adminDb.collection("supportMessages").add({
       ticketId,
+      // Denormalised for the read rule: a thread then costs one read per
+      // message instead of an extra get() of the parent ticket per message.
+      customerId: ticketData.customerId ?? null,
       sender,
       message: rawMessage,
 

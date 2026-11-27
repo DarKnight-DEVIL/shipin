@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { parseTrackingLookup } from "@/lib/trackingInput";
+
 export default function TrackShell() {
   const router = useRouter();
 
@@ -11,13 +13,21 @@ export default function TrackShell() {
   function handleTrack(e: React.FormEvent) {
     e.preventDefault();
 
-    const id = trackingId.trim();
+    const lookup = parseTrackingLookup(trackingId);
 
-    if (!id) {
+    if (!lookup) {
       return;
     }
 
-    router.push(`/track/${encodeURIComponent(id)}`);
+    // A pasted tracking link carries the signed token a legacy id needs; keep
+    // it on the result page so the API lookup can verify it.
+    const query = lookup.token
+      ? `?token=${encodeURIComponent(lookup.token)}`
+      : "";
+
+    router.push(
+      `/track/${encodeURIComponent(lookup.trackingId)}${query}`
+    );
   }
 
   return (
@@ -46,7 +56,7 @@ export default function TrackShell() {
             autoComplete="off"
             value={trackingId}
             onChange={(e) => setTrackingId(e.target.value)}
-            placeholder="SHIPIN-XXXXXXXX"
+            placeholder="SHP-XXXXXXXXXXXXXXXX"
             className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-4 font-mono text-white outline-none focus:border-purple-500"
           />
 

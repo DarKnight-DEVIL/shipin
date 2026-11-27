@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   requireAuthWithProfile: vi.fn(),
   update: vi.fn(),
   remove: vi.fn(),
+  getDocuments: vi.fn(),
+  batchUpdate: vi.fn(),
+  batchCommit: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -15,9 +18,17 @@ vi.mock("@/lib/firebaseAdmin", () => ({
     collection: vi.fn(() => ({
       doc: vi.fn(() => ({
         collection: vi.fn(() => ({
-          doc: vi.fn(() => ({ update: mocks.update, delete: mocks.remove })),
+          doc: vi.fn(() => ({
+            update: mocks.update,
+            delete: mocks.remove,
+            parent: { get: mocks.getDocuments },
+          })),
         })),
       })),
+    })),
+    batch: vi.fn(() => ({
+      update: mocks.batchUpdate,
+      commit: mocks.batchCommit,
     })),
   },
 }));
@@ -43,6 +54,9 @@ beforeEach(() => {
     .mockResolvedValue({ profile: { uid: "user-1" } });
   mocks.update.mockReset().mockResolvedValue(undefined);
   mocks.remove.mockReset().mockResolvedValue(undefined);
+  mocks.getDocuments.mockReset().mockResolvedValue({ docs: [] });
+  mocks.batchUpdate.mockReset();
+  mocks.batchCommit.mockReset().mockResolvedValue(undefined);
 });
 
 describe("PATCH /api/addresses/[addressId]", () => {
@@ -78,18 +92,52 @@ describe("PATCH /api/addresses/[addressId]", () => {
   });
 
   it("applies the change", async () => {
+    const response = await PATCH(request({ city: "Paris" }), context);
+
+    expect(mocks.batchUpdate.mock.calls[0][1]).toEqual({
+      city: "Paris",
+      updatedAt: "__SERVER_TS__",
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ success: true });
+  });
+
+  it("clears the previous default in the same batch", async () => {
+    mocks.getDocuments.mockResolvedValue({
+      docs: [
+        { id: "addr-1", ref: "ref-1" },
+        { id: "addr-2", ref: "ref-2" },
+      ],
+    });
+
     const response = await PATCH(
       request({ city: "Paris", isDefault: true }),
       context
     );
 
-    expect(mocks.update).toHaveBeenCalledWith({
+    expect(mocks.batchUpdate).toHaveBeenCalledWith("ref-1", {
       city: "Paris",
       isDefault: true,
       updatedAt: "__SERVER_TS__",
     });
+    expect(mocks.batchUpdate).toHaveBeenCalledWith("ref-2", {
+      isDefault: false,
+      updatedAt: "__SERVER_TS__",
+    });
+    expect(mocks.batchCommit).toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ success: true });
+  });
+
+  it("404s when promoting an address that is not in the book", async () => {
+    mocks.getDocuments.mockResolvedValue({
+      docs: [{ id: "other", ref: "ref-other" }],
+    });
+
+    const response = await PATCH(request({ isDefault: true }), context);
+
+    expect(response.status).toBe(404);
+    expect(mocks.batchCommit).not.toHaveBeenCalled();
   });
 });
 

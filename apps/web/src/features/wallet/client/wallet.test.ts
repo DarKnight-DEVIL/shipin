@@ -59,6 +59,7 @@ const mocks = vi.hoisted(() => {
     query: vi.fn((...args: unknown[]) => ({ args })),
     where: vi.fn((...args: unknown[]) => ({ args })),
     orderBy: vi.fn((...args: unknown[]) => ({ args })),
+    limit: vi.fn((...args: unknown[]) => ({ args })),
     getDocs: vi.fn(),
   };
 });
@@ -75,12 +76,17 @@ vi.mock("firebase/firestore", () => ({
   query: mocks.query,
   where: mocks.where,
   orderBy: mocks.orderBy,
+  limit: mocks.limit,
   getDocs: mocks.getDocs,
 }));
 
 vi.mock("@/lib/firebaseDb", () => ({ db: {} }));
 
-import { getWallet, getWalletTransactions } from "./wallet";
+import {
+  getWallet,
+  getWalletTransactions,
+  WALLET_TRANSACTION_LIMIT,
+} from "./wallet";
 
 const USER = "user-1";
 
@@ -122,6 +128,23 @@ describe("getWallet", () => {
     );
   });
 
+  it("re-reads the wallet a racing tab created instead of failing", async () => {
+    mocks.getDoc.mockResolvedValueOnce({
+      exists: () => false,
+      data: () => undefined,
+    });
+    mocks.setDoc.mockRejectedValueOnce(new Error("permission-denied"));
+    mocks.getDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ balance: 0, currency: "USD" }),
+    });
+
+    await expect(getWallet(USER)).resolves.toEqual({
+      balance: 0,
+      currency: "USD",
+    });
+  });
+
   it("maps a Firestore permission error to an authorization error", async () => {
     mocks.getDoc.mockRejectedValueOnce(new Error("permission-denied"));
 
@@ -146,5 +169,6 @@ describe("getWalletTransactions", () => {
     ]);
     expect(mocks.where).toHaveBeenCalledWith("userId", "==", USER);
     expect(mocks.orderBy).toHaveBeenCalledWith("createdAt", "desc");
+    expect(mocks.limit).toHaveBeenCalledWith(WALLET_TRANSACTION_LIMIT);
   });
 });

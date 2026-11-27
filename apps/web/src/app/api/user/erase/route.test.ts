@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   collection: vi.fn(),
   batch: vi.fn(),
   deleteUser: vi.fn(),
+  deleteR2Objects: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ requireAuthWithProfile: mocks.auth }));
@@ -34,6 +35,9 @@ vi.mock("firebase-admin/firestore", () => ({
     serverTimestamp: () => "__TS__",
     delete: () => "__DELETE__",
   },
+}));
+vi.mock("@/lib/r2Delete", () => ({
+  deleteR2Objects: mocks.deleteR2Objects,
 }));
 
 import { GET, POST } from "./route";
@@ -100,6 +104,10 @@ beforeEach(() => {
   mocks.getUserRightsRequests.mockReset().mockResolvedValue([]);
   mocks.collection.mockReset().mockImplementation(() => makeQuery());
   mocks.deleteUser.mockReset().mockResolvedValue(undefined);
+  mocks.deleteR2Objects.mockReset().mockResolvedValue({
+    deleted: 0,
+    failed: 0,
+  });
   batch = {
     delete: vi.fn(),
     update: vi.fn(),
@@ -257,6 +265,57 @@ describe("POST /api/user/erase", () => {
         erasedAt: "__TS__",
       })
     );
+  });
+
+  it("deletes inspection photos from R2 before anonymising the request", async () => {
+    const requests = firestoreStub([
+      {
+        id: "req-1",
+        data: () => ({
+          warehouse: { inspectionPhotos: ["inspection/req-1/a.jpg"] },
+        }),
+      },
+    ]);
+    mocks.collection.mockImplementation((name: string) =>
+      name === "requests" ? requests : firestoreStub()
+    );
+    mocks.deleteR2Objects.mockResolvedValue({ deleted: 1, failed: 0 });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.deleteR2Objects).toHaveBeenCalledWith([
+      "inspection/req-1/a.jpg",
+    ]);
+    expect(batch.update).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "req-1" }),
+      expect.objectContaining({
+        "warehouse.inspectionPhotos": [],
+        "warehouse.photos": [],
+        "warehouse.shippingLabel": null,
+      })
+    );
+  });
+
+  it("fails the erasure when R2 refuses a photo delete", async () => {
+    const requests = firestoreStub([
+      {
+        id: "req-1",
+        data: () => ({
+          warehouse: { inspectionPhotos: ["inspection/req-1/a.jpg"] },
+        }),
+      },
+    ]);
+    mocks.collection.mockImplementation((name: string) =>
+      name === "requests" ? requests : firestoreStub()
+    );
+    mocks.deleteR2Objects.mockResolvedValue({ deleted: 0, failed: 1 });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(500);
+    expect(batch.commit).not.toHaveBeenCalled();
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
   });
 
   it("deletes the Firebase Auth user so the account cannot sign in again", async () => {

@@ -4,7 +4,11 @@ import { z } from "zod";
 
 import { requireAuthWithProfile } from "@/lib/auth";
 import { adminDb } from "@/lib/firebaseAdmin";
-import { ValidationError, withErrorHandler } from "@/utils/errors";
+import {
+  NotFoundError,
+  ValidationError,
+  withErrorHandler,
+} from "@/utils/errors";
 
 const addressUpdateSchema = z.object({
   label: z.string().trim().max(60).optional(),
@@ -86,10 +90,34 @@ export const PATCH = withErrorHandler(
       throw new ValidationError("No address changes were provided.");
     }
 
-    await addressRef.update({
-      ...validated.data,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    const { isDefault, ...changes } = validated.data;
+    const batch = adminDb.batch();
+
+    if (isDefault === true) {
+      // "Default" is one address per customer: promoting this one has to clear
+      // every sibling in the same atomic write, exactly like /default does.
+      const snapshot = await addressRef.parent.get();
+
+      if (!snapshot.docs.some((doc) => doc.id === addressId)) {
+        throw new NotFoundError("Address");
+      }
+
+      for (const doc of snapshot.docs) {
+        batch.update(doc.ref, {
+          ...(doc.id === addressId ? changes : {}),
+          isDefault: doc.id === addressId,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+    } else {
+      batch.update(addressRef, {
+        ...changes,
+        ...(isDefault === false ? { isDefault: false } : {}),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
 
     return NextResponse.json(
       { success: true },

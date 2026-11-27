@@ -251,8 +251,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       const settlement = await settleAdditionalItemPayment({
         requestRef,
         paymentOrderRef,
-        requestData,
-        paymentOrder,
         additionalItemRequestId: additionalItemRequestId as string,
         orderID,
         captureId,

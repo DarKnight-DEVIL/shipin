@@ -6,6 +6,7 @@ import { MessageCircle, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import useCustomerSupport from "@/hooks/useCustomerSupport";
+import { CustomerApiError, customerApi } from "@/lib/customerApiClient";
 
 interface Props {
   customerId: string;
@@ -77,23 +78,18 @@ export default function CustomerSupportCenter({ customerId }: Props) {
 
     try {
       setRefundSubmitting(true);
-      const response = await fetch(`/api/requests/${requestId}/refund`, {
+      await customerApi(`/api/requests/${requestId}/refund`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: {
           preference: refundPreference,
           initiatedBy: "customer",
-        }),
+        },
       });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Unable to submit refund request.");
-      }
       toast.success("Refund request submitted.");
     } catch (error) {
       console.error(error);
       toast.error(
-        error instanceof Error
+        error instanceof CustomerApiError
           ? error.message
           : "Unable to submit refund request."
       );

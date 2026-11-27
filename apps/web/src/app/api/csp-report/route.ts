@@ -4,6 +4,17 @@ import { childLogger } from "@/lib/logger";
 
 const cspLogger = childLogger({ service: "csp-report" });
 
+/** A CSP report is untrusted input; cap and flatten what reaches the log. */
+const MAX_LOG_VALUE_CHARS = 200;
+
+function loggableField(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+
+  return value
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .slice(0, MAX_LOG_VALUE_CHARS);
+}
+
 /**
  * POST /api/csp-report
  *
@@ -56,8 +67,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       : undefined;
 
   cspLogger.warn("CSP violation reported", {
-    violatedDirective,
-    blockedUri,
+    violatedDirective: loggableField(violatedDirective),
+    blockedUri: loggableField(blockedUri),
   });
 
   return NextResponse.json({ received: true });

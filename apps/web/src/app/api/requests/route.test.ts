@@ -6,14 +6,14 @@ const mocks = vi.hoisted(() => ({
   addressGet: vi.fn(),
   profileGet: vi.fn(),
   add: vi.fn(),
-  readIdempotentResponse: vi.fn(),
+  claimIdempotentRequest: vi.fn(),
   rememberIdempotentResponse: vi.fn(),
 }));
 
 vi.mock("@/lib/idempotency", () => ({
   readIdempotencyKey: (request: Request) =>
     request.headers.get("idempotency-key"),
-  readIdempotentResponse: mocks.readIdempotentResponse,
+  claimIdempotentRequest: mocks.claimIdempotentRequest,
   rememberIdempotentResponse: mocks.rememberIdempotentResponse,
 }));
 
@@ -37,24 +37,23 @@ vi.mock("firebase-admin/firestore", () => ({
 
 import { POST } from "./route";
 
-const addresses = (data: Record<string, unknown> | undefined) => {
-  collections["addresses"] = {
-    doc: () => ({
-      get: mocks.addressGet.mockResolvedValue({
-        exists: data !== undefined,
-        data: () => data,
-      }),
-    }),
-    add: mocks.add,
-  };
-};
-
-const users = (data: Record<string, unknown> | undefined) => {
+const users = (
+  data: Record<string, unknown> | undefined,
+  addressData: Record<string, unknown> | null = address
+) => {
   collections["users"] = {
     doc: () => ({
       get: mocks.profileGet.mockResolvedValue({
         exists: data !== undefined,
         data: () => data,
+      }),
+      collection: () => ({
+        doc: () => ({
+          get: mocks.addressGet.mockResolvedValue({
+            exists: addressData !== null,
+            data: () => addressData ?? undefined,
+          }),
+        }),
       }),
     }),
     add: mocks.add,
@@ -83,7 +82,6 @@ const post = (
   });
 
 const address = {
-  userId: "user-1",
   recipientName: "Test User",
   line1: "1 Road",
   city: "Mumbai",
@@ -97,9 +95,10 @@ beforeEach(() => {
   mocks.addressGet.mockReset();
   mocks.profileGet.mockReset();
   mocks.add.mockReset().mockResolvedValue({ id: "req-new" });
-  mocks.readIdempotentResponse.mockReset().mockResolvedValue(null);
+  mocks.claimIdempotentRequest
+    .mockReset()
+    .mockResolvedValue({ kind: "claimed" });
   mocks.rememberIdempotentResponse.mockReset().mockResolvedValue(undefined);
-  addresses(address);
   users({
     displayName: "Test User",
     email: "profile@example.com",
@@ -143,9 +142,12 @@ describe("POST /api/requests", () => {
   });
 
   it("replays the first success when the same idempotency key is retried", async () => {
-    mocks.readIdempotentResponse.mockResolvedValue({
-      status: 201,
-      body: { success: true, requestId: "req-original" },
+    mocks.claimIdempotentRequest.mockResolvedValue({
+      kind: "replay",
+      response: {
+        status: 201,
+        body: { success: true, requestId: "req-original" },
+      },
     });
 
     const response = await POST(
@@ -158,6 +160,20 @@ describe("POST /api/requests", () => {
       requestId: "req-original",
     });
     // The replay must not create anything.
+    expect(mocks.add).not.toHaveBeenCalled();
+  });
+
+  it("refuses a concurrent duplicate while the first is still writing", async () => {
+    mocks.claimIdempotentRequest.mockResolvedValue({ kind: "in_progress" });
+
+    const response = await POST(
+      post(undefined, { "idempotency-key": "intent-key-race" })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "IDEMPOTENCY_IN_PROGRESS",
+    });
     expect(mocks.add).not.toHaveBeenCalled();
   });
 
@@ -177,7 +193,7 @@ describe("POST /api/requests", () => {
     const response = await POST(post());
 
     expect(response.status).toBe(201);
-    expect(mocks.readIdempotentResponse).not.toHaveBeenCalled();
+    expect(mocks.claimIdempotentRequest).not.toHaveBeenCalled();
     expect(mocks.rememberIdempotentResponse).not.toHaveBeenCalled();
     expect(mocks.add).toHaveBeenCalledTimes(1);
   });
@@ -251,7 +267,7 @@ describe("POST /api/requests", () => {
   });
 
   it("answers 404 for a missing address", async () => {
-    addresses(undefined);
+    users({ displayName: "Test User", dateOfBirth: "1990-01-01" }, null);
 
     const response = await POST(post());
 
@@ -262,12 +278,15 @@ describe("POST /api/requests", () => {
     expect(mocks.add).not.toHaveBeenCalled();
   });
 
-  it("answers 404 for another customer's address", async () => {
-    addresses({ ...address, userId: "user-2" });
+  it("reads the address from the caller's own address book", async () => {
+    users({ displayName: "Test User", dateOfBirth: "1990-01-01" }, null);
 
     const response = await POST(post());
 
+    // An address id from another customer's book does not resolve under this
+    // uid, so the route cannot be used to read somebody else's address.
     expect(response.status).toBe(404);
+    expect(mocks.addressGet).toHaveBeenCalled();
     expect(mocks.add).not.toHaveBeenCalled();
   });
 

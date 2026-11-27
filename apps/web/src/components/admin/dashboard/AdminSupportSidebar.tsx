@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { adminApi } from "@/lib/adminApiClient";
+
 import {
   subscribeToAllSupportTickets,
   subscribeToSupportMessages,
@@ -174,25 +176,13 @@ export default function AdminSupportSidebar() {
     try {
       setSending(true);
 
-      const response = await fetch(
-        `/api/support/${selectedTicket.id}/message`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            sender: "admin",
-            message: trimmed,
-          }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Unable to send support reply.");
-      }
+      await adminApi(`/api/support/${selectedTicket.id}/message`, {
+        method: "POST",
+        body: {
+          sender: "admin",
+          message: trimmed,
+        },
+      });
 
       setMessage("");
       toast.success("Reply sent.");
@@ -281,27 +271,16 @@ export default function AdminSupportSidebar() {
     try {
       setPartialRefundProcessing(true);
 
-      const response = await fetch(
+      await adminApi(
         `/api/admin/requests/${selectedRequest.id}/partial-refund`,
         {
           method: "POST",
-
-          headers: {
-            "Content-Type": "application/json",
-          },
-
-          body: JSON.stringify({
+          body: {
             amount,
             reason,
-          }),
+          },
         }
       );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to offer partial refund.");
-      }
 
       toast.success(
         `$${amount.toFixed(2)} partial refund offered to the customer.`

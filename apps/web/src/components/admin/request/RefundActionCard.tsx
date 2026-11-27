@@ -12,7 +12,7 @@ interface Props {
   request: Request;
 }
 
-type RefundPreference = "wallet" | "original_payment";
+type RefundPreference = "wallet" | "original_payment" | "original_sources";
 
 export default function RequestDetailsView({ request }: Props) {
   return (
@@ -56,25 +56,13 @@ function RefundActionCard({ request }: Props) {
     try {
       setProcessing(true);
 
-      const response = await fetch(
-        `/api/admin/requests/${request.id}/partial-refund`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            amount,
-            reason,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to offer partial refund.");
-      }
+      await adminApi(`/api/admin/requests/${request.id}/partial-refund`, {
+        method: "POST",
+        body: {
+          amount,
+          reason,
+        },
+      });
 
       toast.success(
         `$${amount.toFixed(2)} partial refund offered to the customer.`
@@ -130,6 +118,19 @@ function RefundActionCard({ request }: Props) {
   const originalPaypalAmount = Number(payment?.paypalAmount ?? 0);
 
   /*
+   * The refund request stores what is actually still owed and how that maps
+   * onto the payment sources. Older records predate the split, so fall back to
+   * the payment breakdown for them.
+   */
+  const refundAmount = Number(refundRequest.amount ?? totalPaid);
+  const walletPortion = Number(
+    refundRequest.walletAmount ?? originalWalletAmount
+  );
+  const paypalPortion = Number(
+    refundRequest.paypalAmount ?? originalPaypalAmount
+  );
+
+  /*
    * ========================================
    * REFUND AMOUNTS
    * ========================================
@@ -141,27 +142,33 @@ function RefundActionCard({ request }: Props) {
   if (preference === "wallet") {
     /*
      * Customer wants the ENTIRE refund
-     * in their ShipIN Wallet.
+     * in their ShipIN Wallet: the
+     * remainder after any partial refunds,
+     * not the original payment total.
      */
-    walletRefund = totalPaid;
+    walletRefund = refundAmount;
   }
 
-  if (preference === "original_payment") {
+  if (
+    preference === "original_payment" ||
+    preference === "original_sources"
+  ) {
     /*
      * Customer wants the refund sent back
-     * to the original payment method.
+     * to where the money came from.
      *
-     * If PayPal was used, the PayPal amount
-     * must be manually refunded through
-     * PayPal support.
+     * The wallet share returns to the
+     * wallet; the PayPal share must be
+     * manually refunded through PayPal
+     * support. Without this branch an
+     * "original_sources" request showed
+     * $0 in both portions, so the Complete
+     * button appeared to have nothing left
+     * to do.
      */
-    paypalRefund = originalPaypalAmount;
+    paypalRefund = paypalPortion;
 
-    /*
-     * Wallet-only original payments can
-     * simply return to the wallet.
-     */
-    walletRefund = originalWalletAmount;
+    walletRefund = walletPortion;
   }
 
   /*
@@ -373,7 +380,10 @@ function RefundActionCard({ request }: Props) {
         "
       >
         <RefundDetail label="Refund Preference" value={preferenceLabel} />
-        <RefundDetail label="Total Refund" value={`$${totalPaid.toFixed(2)}`} />
+        <RefundDetail
+          label="Total Refund"
+          value={`$${refundAmount.toFixed(2)}`}
+        />
         <RefundDetail label="Currency" value={payment?.currency || "USD"} />
       </div>
 

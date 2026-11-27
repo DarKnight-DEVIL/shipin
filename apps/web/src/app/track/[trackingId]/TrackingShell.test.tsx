@@ -17,11 +17,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   fetch: vi.fn(),
   push: vi.fn(),
+  searchParams: new URLSearchParams(),
 }));
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ trackingId: "SHIPIN-123" }),
   useRouter: () => ({ push: h.push }),
+  useSearchParams: () => h.searchParams,
 }));
 
 import TrackingShell from "./TrackingShell";
@@ -48,6 +50,7 @@ function respondWith(shipmentBody: unknown) {
 beforeEach(() => {
   h.fetch.mockReset();
   h.push.mockReset();
+  h.searchParams = new URLSearchParams();
   vi.stubGlobal("fetch", h.fetch);
 });
 
@@ -72,6 +75,19 @@ describe("TrackingShell: what the customer is told", () => {
     // No scans is the honest state: the empty "Carrier Updates" block is not rendered at
     // all, rather than shown as a blank card.
     expect(screen.queryByText("Carrier Updates")).toBeNull();
+  });
+
+  it("forwards the signed token from a shared tracking link", async () => {
+    h.searchParams = new URLSearchParams("token=abc123");
+    respondWith(shipment());
+
+    render(<TrackingShell />);
+
+    await waitFor(() =>
+      expect(h.fetch).toHaveBeenCalledWith(
+        "/api/tracking/SHIPIN-123?token=abc123"
+      )
+    );
   });
 
   it("stays quiet when the shipment has nothing to explain", async () => {

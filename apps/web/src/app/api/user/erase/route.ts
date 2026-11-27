@@ -11,6 +11,8 @@ import {
 } from "@/lib/firestoreBatch";
 import { storedMinor } from "@/lib/money";
 import { userSecretsRef } from "@/lib/mfaSecrets";
+import { deleteR2Objects } from "@/lib/r2Delete";
+import { collectPhotoKeys } from "@/lib/compliance/retention";
 
 /** Values written in place of the erased PII. */
 const ERASED_NAME = "Deleted User";
@@ -192,7 +194,28 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       .collection("requests")
       .where("userId", "==", uid)
       .get();
-    requestsSnap.docs.forEach((doc) =>
+
+    for (const doc of requestsSnap.docs) {
+      /*
+       * Inspection photos live in R2, keyed `inspection/<requestId>/…`, and
+       * nothing else removed them on erasure: the 24-month retention purge
+       * was the only caller of deleteR2Objects. Delete them before the
+       * Firestore cascade, so a storage failure aborts the erasure (which can
+       * be retried) instead of reporting success while personal photos stay
+       * in the bucket.
+       */
+      const keys = collectPhotoKeys(
+        (doc.data() as { warehouse?: unknown }).warehouse
+      );
+
+      if (keys.length > 0) {
+        const outcome = await deleteR2Objects(keys);
+
+        if (outcome.failed > 0) {
+          throw new Error("INSPECTION_PHOTO_DELETE_FAILED");
+        }
+      }
+
       operations.push({
         type: "update",
         ref: doc.ref,
@@ -205,11 +228,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
           internalNotes: FieldValue.delete(),
           customerNotes: FieldValue.delete(),
           additionalNotes: FieldValue.delete(),
+          // Pointers are cleared only after R2 confirmed every delete.
+          "warehouse.inspectionPhotos": [],
+          "warehouse.photos": [],
+          "warehouse.shippingLabel": null,
           erasureRequestId: requestId,
           erasedAt: FieldValue.serverTimestamp(),
         },
-      })
-    );
+      });
+    }
 
     await commitInChunks(adminDb, operations);
 

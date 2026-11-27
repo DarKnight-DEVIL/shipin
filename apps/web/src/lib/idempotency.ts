@@ -138,6 +138,60 @@ export async function readIdempotentResponse({
   return null;
 }
 
+/** How long one in-flight attempt owns the key before a retry may proceed. */
+const CLAIM_TTL_SECONDS = 60;
+
+export type IdempotencyClaim =
+  | { kind: "replay"; response: IdempotentResponse }
+  | { kind: "claimed" }
+  | { kind: "in_progress" };
+
+/**
+ * Claim the key before writing, so two concurrent duplicates cannot both miss
+ * the record and both create.
+ *
+ * A read followed by a write is not atomic: both requests can see no record,
+ * then both write. The claim is a `SET NX` on a short-lived lock key, so exactly
+ * one caller proceeds. The loser re-reads once (the winner may have finished
+ * already) and otherwise reports `in_progress` for the client to retry.
+ *
+ * A missing or unreachable store leaves the write to its own transaction, the
+ * same fail-open policy as the rest of this module.
+ */
+export async function claimIdempotentRequest({
+  uid,
+  scope,
+  key,
+}: {
+  uid: string;
+  scope: string;
+  key: string;
+}): Promise<IdempotencyClaim> {
+  const prior = await readIdempotentResponse({ uid, scope, key });
+  if (prior) return { kind: "replay", response: prior };
+
+  const redis = getRedis();
+  if (!redis) return { kind: "claimed" };
+
+  try {
+    const acquired = await redis.set(
+      `${redisKey(uid, scope, key)}:claim`,
+      "1",
+      { nx: true, ex: CLAIM_TTL_SECONDS }
+    );
+
+    if (acquired) return { kind: "claimed" };
+
+    const raced = await readIdempotentResponse({ uid, scope, key });
+    if (raced) return { kind: "replay", response: raced };
+
+    return { kind: "in_progress" };
+  } catch (error) {
+    console.error("[idempotency] Could not claim the shared key:", error);
+    return { kind: "claimed" };
+  }
+}
+
 /**
  * Record a completed response for replay. Best-effort: a failure is logged and
  * the caller still returns its response, because the write already happened.

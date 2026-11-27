@@ -52,7 +52,7 @@ clients branch on it rather than on the status alone.
 
 ## Routes
 
-79 route handlers:
+80 route handlers:
 
 | Route | Auth |
 | --- | --- |
@@ -90,14 +90,14 @@ clients branch on it rather than on the status alone.
 | `/api/admin/wallet/credit` | admin |
 | `/api/admin/wallet/invariants` | public |
 | `/api/auth/login-intent` | public |
-| `/api/auth/resend-verification` | customer |
-| `/api/auth/verify-email-link` | public |
 | `/api/auth/mfa/backup-codes/regenerate` | customer |
 | `/api/auth/mfa/session` | customer |
 | `/api/auth/mfa/status` | customer |
 | `/api/auth/mfa/totp/setup` | customer |
 | `/api/auth/mfa/totp/verify` | customer |
 | `/api/auth/password-leak-check` | public |
+| `/api/auth/resend-verification` | customer |
+| `/api/auth/verify-email-link` | public |
 | `/api/compliance/breach` | admin |
 | `/api/compliance/dashboard` | admin |
 | `/api/csp-report` | public |
@@ -118,7 +118,9 @@ clients branch on it rather than on the status alone.
 | `/api/requests` | customer |
 | `/api/requests/[requestId]/additional-items` | customer |
 | `/api/requests/[requestId]/approve-quote` | customer |
+| `/api/requests/[requestId]/partial-refund` | customer |
 | `/api/requests/[requestId]/quote` | customer |
+| `/api/requests/[requestId]/refund` | customer |
 | `/api/requests/[requestId]/request-new-quote` | customer |
 | `/api/requests/[requestId]/shipment-status` | customer |
 | `/api/requests/[requestId]/status` | customer |

@@ -49,21 +49,28 @@ export async function createNotification(
 
 export async function getNotifications(
   userId: string,
-  limit?: number
+  max?: number
 ): Promise<Notification[]> {
   try {
+    // The cap belongs in the query: slicing after getDocs still downloaded the
+    // customer's whole history. A caller may ask for fewer than the feed limit,
+    // never more.
+    const pageSize =
+      max && max > 0
+        ? Math.min(max, NOTIFICATION_FEED_LIMIT)
+        : NOTIFICATION_FEED_LIMIT;
     const q = query(
       collection(db, "notifications"),
       where("userId", "==", userId),
-      orderBy("createdAt", "desc")
+      orderBy("createdAt", "desc"),
+      // firestore-list: internal — the notifications page shows the newest window.
+      limit(pageSize)
     );
     const snapshot = await getDocs(q);
-    let results = snapshot.docs.map((doc) => ({
+    return snapshot.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Omit<Notification, "id">),
     }));
-    if (limit) results = results.slice(0, limit);
-    return results;
   } catch (error) {
     throw toShipINError(error);
   }

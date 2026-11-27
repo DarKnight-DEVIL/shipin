@@ -118,6 +118,9 @@ export const COVERAGE_GLOB_THRESHOLDS = {
   "src/app/api/payment/**": PAYMENT_COVERAGE,
   "src/app/api/admin/wallet/**": PAYMENT_COVERAGE,
   "src/app/api/admin/requests/*/*refund*/**": PAYMENT_COVERAGE,
+  // Customer-facing refund paths — requesting a refund and accepting an
+  // offer — move the same money as the admin routes and get the same floor.
+  "src/app/api/requests/*/*refund*/**": PAYMENT_COVERAGE,
   "src/lib/paypal.ts": PAYMENT_COVERAGE,
   // The one module that converts between decimals and minor units, and the only
   // place money arithmetic is allowed to round (ADR-0008). Measured 99% lines,

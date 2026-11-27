@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import crypto from "crypto";
+
 import { FieldValue } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/firebaseAdmin";
@@ -16,6 +18,16 @@ import {
 import { isMinor, minorFromStored, storedMinor, toDecimal } from "@/lib/money";
 import { balanceFields, ledgerFields } from "@/lib/moneyMode";
 import { walletCreditMax } from "@/config/walletCreditLimit";
+
+interface CreditResponse {
+  success: true;
+  customerId: string;
+  previousBalance: number;
+  creditAdded: number;
+  newBalance: number;
+  transactionId: string;
+  type: "refund" | "admin_credit";
+}
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
   try {
@@ -120,7 +132,23 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
     const walletRef = adminDb.collection("wallets").doc(customerId);
 
-    const transactionRef = adminDb.collection("walletTransactions").doc();
+    /*
+     * With an idempotency key the ledger id is derived from admin + key, so
+     * two concurrent identical submissions write the same document. Firestore
+     * serialises them: the loser retries, sees the first ledger row inside
+     * its transaction and replays that response instead of crediting again.
+     * The Redis check above cannot provide that exclusivity on its own.
+     */
+    const transactionRef = idempotencyKey
+      ? adminDb
+          .collection("walletTransactions")
+          .doc(
+            crypto
+              .createHash("sha256")
+              .update(`${admin.uid}:${idempotencyKey}`, "utf8")
+              .digest("hex")
+          )
+      : adminDb.collection("walletTransactions").doc();
 
     /*
      * ========================================
@@ -156,6 +184,25 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       const requestSnapshot = requestRef
         ? await transaction.get(requestRef)
         : null;
+
+      /*
+       * The real idempotency guard. It has to run inside the transaction,
+       * because the Redis replay read before it is not atomic and two
+       * simultaneous submissions both miss it.
+       */
+      if (idempotencyKey) {
+        const priorLedger = await transaction.get(transactionRef);
+
+        if (priorLedger.exists) {
+          const replay = priorLedger.data()?.replayResponse as
+            | CreditResponse
+            | undefined;
+
+          if (replay) {
+            return { replayed: true as const, response: replay };
+          }
+        }
+      }
 
       /*
        * CUSTOMER
@@ -285,6 +332,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
        * ====================================
        */
 
+      const response: CreditResponse = {
+        success: true,
+        customerId,
+        previousBalance: toDecimal(currentBalanceMinor),
+        creditAdded: creditAmount,
+        newBalance,
+        transactionId: transactionRef.id,
+        type: isRefund ? "refund" : "admin_credit",
+      };
+
       transaction.set(transactionRef, {
         userId: customerId,
 
@@ -301,6 +358,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         createdBy: admin.uid,
 
         createdByEmail: admin.email || null,
+
+        ...(idempotencyKey ? { replayResponse: response } : {}),
       });
 
       /*
@@ -360,14 +419,17 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         });
       }
 
-      return {
-        previousBalance: toDecimal(currentBalanceMinor),
-
-        creditAdded: creditAmount,
-
-        newBalance,
-      };
+      return { replayed: false as const, response };
     });
+
+    /*
+     * A concurrent duplicate that lost the ledger race has already been
+     * answered from the winner's record; it must not write an audit row or
+     * touch the idempotency store again.
+     */
+    if (result.replayed) {
+      return NextResponse.json(result.response);
+    }
 
     /*
      * ========================================
@@ -388,21 +450,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       },
     });
 
-    const responseBody = {
-      success: true,
-
-      customerId,
-
-      previousBalance: result.previousBalance,
-
-      creditAdded: result.creditAdded,
-
-      newBalance: result.newBalance,
-
-      transactionId: transactionRef.id,
-
-      type: isRefund ? "refund" : "admin_credit",
-    };
+    const responseBody = result.response;
 
     if (idempotencyKey) {
       await rememberIdempotentResponse(replayScope, {

@@ -468,8 +468,8 @@ describe("user addresses", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("requests", () => {
-  it("lets a customer file their own unpriced request", async () => {
-    await expectAllowed(
+  it("blocks a customer filing a request directly in the browser", async () => {
+    await expectDenied(
       create(customer(), "requests/req-new", {
         userId: CUSTOMER,
         status: "submitted",
@@ -961,6 +961,56 @@ describe("support", () => {
     );
   });
 
+  it("lets the client's firstMessage ride along on the create", async () => {
+    await expectAllowed(
+      create(
+        customer(),
+        "supportTickets/ticket-11",
+        newTicket({ firstMessage: "Hi, my parcel is late." })
+      )
+    );
+  });
+
+  /*
+   * subject and firstMessage are the only client-writable strings on the
+   * ticket document itself. Without a bound in the rule, a scripted customer
+   * could file a ticket carrying close to the 1 MiB document limit — which
+   * every admin opening the support console would then download. The bounds
+   * mirror the message thread's own 5000-character rule.
+   */
+  it("blocks an oversized subject", async () => {
+    await expectDenied(
+      create(
+        customer(),
+        "supportTickets/ticket-12",
+        newTicket({ subject: "x".repeat(201) })
+      )
+    );
+  });
+
+  it("blocks an oversized firstMessage", async () => {
+    await expectDenied(
+      create(
+        customer(),
+        "supportTickets/ticket-13",
+        newTicket({ firstMessage: "x".repeat(5001) })
+      )
+    );
+  });
+
+  it("still allows a subject and firstMessage at the bounds", async () => {
+    await expectAllowed(
+      create(
+        customer(),
+        "supportTickets/ticket-14",
+        newTicket({
+          subject: "x".repeat(200),
+          firstMessage: "x".repeat(5000),
+        })
+      )
+    );
+  });
+
   it("blocks opening a ticket in someone else name", async () => {
     await expectDenied(
       create(
@@ -1101,14 +1151,15 @@ describe("support", () => {
   });
 
   /*
-   * Messages carry no customerId (see the create rule above), so a read is
-   * authorised through the parent ticket. A read rule that reaches into
+   * New messages carry customerId so a thread read authorises each document
+   * without an extra get() of the parent ticket. A read rule that reaches into
    * `request.resource` instead of `resource` looks plausible and denies every
    * customer, because a read has no proposed document — which is what the
    * support thread silently turning up empty was.
    */
   const message = (overrides: Record<string, unknown> = {}) => ({
     ticketId: "ticket-11",
+    customerId: CUSTOMER,
     sender: "customer",
     message: "Where is my parcel?",
     createdAt: 1,
@@ -1120,6 +1171,26 @@ describe("support", () => {
     await seed("supportMessages/message-1", message());
 
     await expectAllowed(read(customer(), "supportMessages/message-1"));
+  });
+
+  it("lets the owner read a backfilled message without its parent ticket", async () => {
+    // 007 copies the owner onto the message. Seeding no ticket at all proves
+    // the read is authorised by customerId, not by the parent get() fallback:
+    // that fallback would find nothing and deny.
+    await seed("supportMessages/message-backfilled", {
+      ticketId: "ticket-removed",
+      customerId: CUSTOMER,
+      sender: "customer",
+      message: "Backfilled owner",
+      createdAt: 1,
+    });
+
+    await expectAllowed(
+      read(customer(), "supportMessages/message-backfilled")
+    );
+    await expectDenied(
+      read({ uid: OTHER_CUSTOMER }, "supportMessages/message-backfilled")
+    );
   });
 
   it("blocks reading another customer's thread", async () => {
@@ -1158,6 +1229,7 @@ describe("support", () => {
     await expectAllowed(
       create(customer(), "supportMessages/message-5", {
         ticketId: "ticket-12",
+        customerId: CUSTOMER,
         sender: "customer",
         message: "Where is my parcel?",
         createdAt: SERVER_TIMESTAMP,
@@ -1174,6 +1246,7 @@ describe("support", () => {
     await expectDenied(
       create(customer(), "supportMessages/message-6", {
         ticketId: "ticket-13",
+        customerId: CUSTOMER,
         sender: "customer",
         message: "I am not the owner of this ticket",
         createdAt: SERVER_TIMESTAMP,
@@ -1187,6 +1260,7 @@ describe("support", () => {
     await expectDenied(
       create(customer(), "supportMessages/message-7", {
         ticketId: "ticket-14",
+        customerId: CUSTOMER,
         sender: "admin",
         message: "Approved, refunding in full.",
         createdAt: SERVER_TIMESTAMP,
@@ -1199,6 +1273,7 @@ describe("support", () => {
 
     const body = (text: string) => ({
       ticketId: "ticket-15",
+      customerId: CUSTOMER,
       sender: "customer",
       message: text,
       createdAt: SERVER_TIMESTAMP,
@@ -1221,6 +1296,7 @@ describe("support", () => {
     await expectDenied(
       create(customer(), "supportMessages/message-11", {
         ticketId: "ticket-16",
+        customerId: CUSTOMER,
         sender: "customer",
         message: "Backdated so it sorts above the admin reply",
         createdAt: "2020-01-01T00:00:00.000Z",
@@ -1234,6 +1310,7 @@ describe("support", () => {
     await expectDenied(
       create(customer(), "supportMessages/message-12", {
         ticketId: "ticket-17",
+        customerId: CUSTOMER,
         sender: "customer",
         message: "Hello",
         createdAt: SERVER_TIMESTAMP,
@@ -1255,6 +1332,20 @@ describe("support", () => {
       })
     );
     await expectDenied(remove(customer(), "supportMessages/message-13"));
+  });
+
+  it("blocks a customer claiming another customer as the message owner", async () => {
+    await seed("supportTickets/ticket-20", ticket());
+
+    await expectDenied(
+      create(customer(), "supportMessages/message-14", {
+        ticketId: "ticket-20",
+        customerId: OTHER_CUSTOMER,
+        sender: "customer",
+        message: "Forged owner",
+        createdAt: SERVER_TIMESTAMP,
+      })
+    );
   });
 
   it("blocks a customer deleting their own ticket", async () => {

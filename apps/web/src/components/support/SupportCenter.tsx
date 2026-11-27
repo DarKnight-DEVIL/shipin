@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 
-import { auth } from "@/lib/firebase";
+import { CustomerApiError, customerApi } from "@/lib/customerApiClient";
 import { getRequestById } from "@/features/requests/client/requests";
 import useSupport from "@/hooks/useSupport";
 import type { SupportTicket } from "@/types/support";
@@ -125,35 +125,20 @@ export default function SupportCenter({
     try {
       setPartialRefundSubmitting(true);
 
-      const user = auth.currentUser;
-
-      if (!user) {
-        throw new Error(
-          "Your session has expired. Please refresh the page and try again."
-        );
-      }
-
-      const idToken = await user.getIdToken(true);
-
-      const response = await fetch(
-        `/api/requests/${requestId}/partial-refund`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${idToken}`,
-          },
-          body: JSON.stringify({
-            preference: partialRefundPreference,
-          }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Unable to accept partial refund.");
-      }
+      const result = await customerApi<{
+        offer?: {
+          id: string;
+          amount: number;
+          reason: string;
+          status: PartialRefundOffer["status"];
+          selectedMethod?: "wallet" | "original_payment";
+        };
+      }>(`/api/requests/${requestId}/partial-refund`, {
+        method: "POST",
+        body: {
+          preference: partialRefundPreference,
+        },
+      });
 
       if (result.offer) {
         setPartialRefundOffer({
@@ -334,33 +319,19 @@ export default function SupportCenter({
                   try {
                     setRefundSubmitting(true);
 
-                    const response = await fetch(
-                      `/api/requests/${requestId}/refund`,
-                      {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({
-                          preference: refundPreference,
-                        }),
-                      }
-                    );
-
-                    const result = await response.json();
-
-                    if (!response.ok || !result.success) {
-                      throw new Error(
-                        result.error || "Unable to submit refund request."
-                      );
-                    }
+                    await customerApi(`/api/requests/${requestId}/refund`, {
+                      method: "POST",
+                      body: {
+                        preference: refundPreference,
+                      },
+                    });
 
                     setRefundOffer(false);
 
                     toast.success("Refund request submitted successfully.");
                   } catch (error) {
                     toast.error(
-                      error instanceof Error
+                      error instanceof CustomerApiError
                         ? error.message
                         : "Unable to submit refund request."
                     );

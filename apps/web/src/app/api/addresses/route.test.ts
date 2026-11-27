@@ -4,13 +4,16 @@ import { NextRequest, NextResponse } from "next/server";
 const mocks = vi.hoisted(() => ({
   requireAuthWithProfile: vi.fn(),
   add: vi.fn(),
-  readIdempotentResponse: vi.fn(),
+  get: vi.fn(),
+  batchUpdate: vi.fn(),
+  batchCommit: vi.fn(),
+  claimIdempotentRequest: vi.fn(),
   rememberIdempotentResponse: vi.fn(),
 }));
 
 vi.mock("@/lib/idempotency", () => ({
   readIdempotencyKey: (req: Request) => req.headers.get("idempotency-key"),
-  readIdempotentResponse: mocks.readIdempotentResponse,
+  claimIdempotentRequest: mocks.claimIdempotentRequest,
   rememberIdempotentResponse: mocks.rememberIdempotentResponse,
 }));
 
@@ -20,7 +23,13 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
     collection: vi.fn(() => ({
-      doc: vi.fn(() => ({ collection: vi.fn(() => ({ add: mocks.add })) })),
+      doc: vi.fn(() => ({
+        collection: vi.fn(() => ({ add: mocks.add, get: mocks.get })),
+      })),
+    })),
+    batch: vi.fn(() => ({
+      update: mocks.batchUpdate,
+      commit: mocks.batchCommit,
     })),
   },
 }));
@@ -52,7 +61,12 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ profile: { uid: "user-1" } });
   mocks.add.mockReset().mockResolvedValue({ id: "addr-1" });
-  mocks.readIdempotentResponse.mockReset().mockResolvedValue(null);
+  mocks.get.mockReset().mockResolvedValue({ docs: [] });
+  mocks.batchUpdate.mockReset();
+  mocks.batchCommit.mockReset().mockResolvedValue(undefined);
+  mocks.claimIdempotentRequest
+    .mockReset()
+    .mockResolvedValue({ kind: "claimed" });
   mocks.rememberIdempotentResponse.mockReset().mockResolvedValue(undefined);
 });
 
@@ -107,6 +121,27 @@ describe("POST /api/addresses", () => {
       isDefault: true,
     });
   });
+
+  it("clears the previous default when the new address is default", async () => {
+    mocks.get.mockResolvedValue({
+      docs: [
+        { id: "addr-1", ref: "ref-new" },
+        { id: "addr-2", ref: "ref-old" },
+      ],
+    });
+
+    await POST(request({ ...valid, isDefault: true }));
+
+    expect(mocks.batchUpdate).toHaveBeenCalledWith(
+      "ref-old",
+      expect.objectContaining({ isDefault: false })
+    );
+    expect(mocks.batchUpdate).not.toHaveBeenCalledWith(
+      "ref-new",
+      expect.anything()
+    );
+    expect(mocks.batchCommit).toHaveBeenCalled();
+  });
 });
 
 describe("idempotency on POST /api/addresses", () => {
@@ -121,9 +156,12 @@ describe("idempotency on POST /api/addresses", () => {
   };
 
   it("replays the first success when the same key is retried", async () => {
-    mocks.readIdempotentResponse.mockResolvedValue({
-      status: 201,
-      body: { success: true, addressId: "addr-original" },
+    mocks.claimIdempotentRequest.mockResolvedValue({
+      kind: "replay",
+      response: {
+        status: 201,
+        body: { success: true, addressId: "addr-original" },
+      },
     });
 
     const response = await POST(request(valid, { "idempotency-key": "addr-key-1" }));
@@ -132,6 +170,20 @@ describe("idempotency on POST /api/addresses", () => {
     await expect(response.json()).resolves.toEqual({
       success: true,
       addressId: "addr-original",
+    });
+    expect(mocks.add).not.toHaveBeenCalled();
+  });
+
+  it("refuses a concurrent duplicate while the first is still writing", async () => {
+    mocks.claimIdempotentRequest.mockResolvedValue({ kind: "in_progress" });
+
+    const response = await POST(
+      request(valid, { "idempotency-key": "addr-key-race" })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "IDEMPOTENCY_IN_PROGRESS",
     });
     expect(mocks.add).not.toHaveBeenCalled();
   });

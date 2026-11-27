@@ -182,6 +182,83 @@ describe("readIdempotentResponse", () => {
   });
 });
 
+describe("claimIdempotentRequest", () => {
+  const scope = { uid: "user-1", scope: "request.create", key: "key-1" };
+
+  it("claims the key with SET NX before the write", async () => {
+    const { claimIdempotentRequest } = await importWithRedis();
+
+    await expect(claimIdempotentRequest(scope)).resolves.toEqual({
+      kind: "claimed",
+    });
+    expect(mocks.redisSet).toHaveBeenCalledWith(
+      expect.stringContaining(":claim"),
+      "1",
+      { nx: true, ex: 60 }
+    );
+  });
+
+  it("replays a completed response without taking the claim", async () => {
+    const response = { status: 201, body: { success: true }, expiresAt: Date.now() + 60_000 };
+    mocks.redisGet.mockResolvedValue(response);
+
+    const { claimIdempotentRequest } = await importWithRedis();
+
+    await expect(claimIdempotentRequest(scope)).resolves.toEqual({
+      kind: "replay",
+      response: { status: 201, body: { success: true } },
+    });
+    expect(mocks.redisSet).not.toHaveBeenCalled();
+  });
+
+  it("reports in_progress when another attempt holds the key", async () => {
+    mocks.redisSet.mockResolvedValue(null);
+
+    const { claimIdempotentRequest } = await importWithRedis();
+
+    await expect(claimIdempotentRequest(scope)).resolves.toEqual({
+      kind: "in_progress",
+    });
+  });
+
+  it("replays if the winner finished between the claim and the re-read", async () => {
+    mocks.redisGet
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        status: 201,
+        body: { success: true },
+        expiresAt: Date.now() + 60_000,
+      });
+    mocks.redisSet.mockResolvedValue(null);
+
+    const { claimIdempotentRequest } = await importWithRedis();
+
+    await expect(claimIdempotentRequest(scope)).resolves.toEqual({
+      kind: "replay",
+      response: { status: 201, body: { success: true } },
+    });
+  });
+
+  it("fails open when the store cannot claim", async () => {
+    mocks.redisSet.mockRejectedValue(new Error("redis down"));
+
+    const { claimIdempotentRequest } = await importWithRedis();
+
+    await expect(claimIdempotentRequest(scope)).resolves.toEqual({
+      kind: "claimed",
+    });
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  it("claims without a store so the write is not blocked", async () => {
+    const { claimIdempotentRequest } = await import("./idempotency");
+
+    await expect(claimIdempotentRequest(scope)).resolves.toEqual({
+      kind: "claimed",
+    });
+  });
+});
+
 describe("rememberIdempotentResponse", () => {
   it("stores the response in Redis with a bounded lifetime", async () => {
     const { IDEMPOTENCY_TTL_MS, rememberIdempotentResponse } =

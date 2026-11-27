@@ -9,10 +9,17 @@ import {
   serverTimestamp,
   orderBy,
   onSnapshot,
+  limit,
 } from "firebase/firestore";
 import { db } from "@/lib/firebaseDb";
 import type { SupportTicket, SupportMessage } from "@/types/support";
 import { toShipINError } from "@/utils/errors";
+
+/** Newest tickets loaded for a request/customer/admin queue. */
+export const SUPPORT_TICKET_LIMIT = 100;
+
+/** Newest messages held for an open thread. */
+export const SUPPORT_MESSAGE_LIMIT = 200;
 
 export async function createSupportTicket(
   data: Omit<
@@ -35,6 +42,9 @@ export async function createSupportTicket(
     if (data.firstMessage) {
       await addDoc(collection(db, "supportMessages"), {
         ticketId: docRef.id,
+        // Denormalised so the read rule can authorise a message without a
+        // get() of its parent ticket on every document in the thread.
+        customerId: data.customerId ?? null,
         sender: data.customerId ? "customer" : "admin",
         message: data.firstMessage,
         createdAt: serverTimestamp(),
@@ -49,12 +59,17 @@ export async function createSupportTicket(
 
 export async function addSupportMessage(
   ticketId: string,
-  message: Omit<SupportMessage, "id" | "createdAt">
+  message: Omit<SupportMessage, "id" | "createdAt">,
+  // Required: the create rule only accepts a customer message that names its
+  // owner, and the read rule trusts that field. An optional id would let a
+  // caller compile and then have every customer write denied.
+  customerId: string
 ): Promise<string> {
   try {
     const docRef = await addDoc(collection(db, "supportMessages"), {
       ...message,
       ticketId,
+      customerId,
       createdAt: serverTimestamp(),
     });
     return docRef.id;
@@ -96,7 +111,9 @@ export async function getSupportTicketsByRequest(
   try {
     const q = query(
       collection(db, "supportTickets"),
-      where("requestId", "==", requestId)
+      where("requestId", "==", requestId),
+      // firestore-list: internal — a request has only a handful of tickets.
+      limit(SUPPORT_TICKET_LIMIT)
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map((doc) => ({
@@ -114,7 +131,9 @@ export async function getSupportTicketsByCustomer(
   try {
     const q = query(
       collection(db, "supportTickets"),
-      where("customerId", "==", customerId)
+      where("customerId", "==", customerId),
+      // firestore-list: internal — newest window of the customer's tickets.
+      limit(SUPPORT_TICKET_LIMIT)
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map((doc) => ({
@@ -130,16 +149,22 @@ export async function getSupportMessages(
   ticketId: string
 ): Promise<SupportMessage[]> {
   try {
+    // Newest first so the cap keeps the recent conversation, then restore the
+    // oldest-to-newest order the thread renders in.
     const q = query(
       collection(db, "supportMessages"),
       where("ticketId", "==", ticketId),
-      orderBy("createdAt", "asc")
+      orderBy("createdAt", "desc"),
+      // firestore-list: internal — an open thread holds at most this window.
+      limit(SUPPORT_MESSAGE_LIMIT)
     );
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as Omit<SupportMessage, "id">),
-    }));
+    return snapshot.docs
+      .map((doc) => ({
+        id: doc.id,
+        ...(doc.data() as Omit<SupportMessage, "id">),
+      }))
+      .reverse();
   } catch (error) {
     throw toShipINError(error);
   }
@@ -152,14 +177,18 @@ export function subscribeToSupportMessages(
   const q = query(
     collection(db, "supportMessages"),
     where("ticketId", "==", ticketId),
-    orderBy("createdAt", "asc")
+    orderBy("createdAt", "desc"),
+    // firestore-list: internal — the thread shows the newest window.
+    limit(SUPPORT_MESSAGE_LIMIT)
   );
   return onSnapshot(q, (snapshot) => {
     callback(
-      snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<SupportMessage, "id">),
-      }))
+      snapshot.docs
+        .map((doc) => ({
+          id: doc.id,
+          ...(doc.data() as Omit<SupportMessage, "id">),
+        }))
+        .reverse()
     );
   });
 }
@@ -170,7 +199,9 @@ export function subscribeToSupportTickets(
 ): () => void {
   const q = query(
     collection(db, "supportTickets"),
-    where("requestId", "==", requestId)
+    where("requestId", "==", requestId),
+    // firestore-list: internal — a request has only a handful of tickets.
+    limit(SUPPORT_TICKET_LIMIT)
   );
   return onSnapshot(q, (snapshot) => {
     callback(
@@ -188,7 +219,9 @@ export function subscribeToCustomerSupportTickets(
 ): () => void {
   const q = query(
     collection(db, "supportTickets"),
-    where("customerId", "==", customerId)
+    where("customerId", "==", customerId),
+    // firestore-list: internal — newest window of the customer's tickets.
+    limit(SUPPORT_TICKET_LIMIT)
   );
   return onSnapshot(q, (snapshot) => {
     const tickets = snapshot.docs.map((doc) => ({
@@ -204,7 +237,9 @@ export function subscribeToAllSupportTickets(
 ): () => void {
   const q = query(
     collection(db, "supportTickets"),
-    orderBy("createdAt", "desc")
+    orderBy("createdAt", "desc"),
+    // firestore-list: internal — the admin sidebar shows the newest queue.
+    limit(SUPPORT_TICKET_LIMIT)
   );
   return onSnapshot(q, (snapshot) => {
     callback(

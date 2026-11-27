@@ -5,8 +5,8 @@ import { z } from "zod";
 import { requireAuthWithProfile } from "@/lib/auth";
 import { adminDb } from "@/lib/firebaseAdmin";
 import {
+  claimIdempotentRequest,
   readIdempotencyKey,
-  readIdempotentResponse,
   rememberIdempotentResponse,
 } from "@/lib/idempotency";
 import { ValidationError, withErrorHandler } from "@/utils/errors";
@@ -43,23 +43,12 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);
   if (auth instanceof NextResponse) return auth;
 
-  // Idempotency: a double-submit must not file the same address twice. Same
-  // contract as request creation — the client mints the key per submit and its
-  // retry path reuses it; the first success is replayed.
   const idempotencyKey = readIdempotencyKey(request);
   const replayScope = {
     uid: auth.profile.uid,
     scope: "address.create",
     key: idempotencyKey ?? "",
   };
-  if (idempotencyKey) {
-    const prior = await readIdempotentResponse(replayScope);
-    if (prior)
-      return NextResponse.json(prior.body, {
-        status: prior.status,
-        headers: { "Cache-Control": "no-store" },
-      });
-  }
 
   let body: unknown;
 
@@ -78,15 +67,55 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  const docRef = await adminDb
+  // Claim after validation: a rejected body should not hold the key for a
+  // minute, and two concurrent duplicates must not both reach the write.
+  if (idempotencyKey) {
+    const claim = await claimIdempotentRequest(replayScope);
+    if (claim.kind === "replay") {
+      return NextResponse.json(claim.response.body, {
+        status: claim.response.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (claim.kind === "in_progress") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "This address is already being saved. Retry shortly.",
+          code: "IDEMPOTENCY_IN_PROGRESS",
+        },
+        { status: 409, headers: { "Cache-Control": "no-store", "Retry-After": "1" } }
+      );
+    }
+  }
+
+  const addressesRef = adminDb
     .collection("users")
     .doc(auth.profile.uid)
-    .collection("addresses")
-    .add({
+    .collection("addresses");
+
+  const docRef = await addressesRef.add({
       ...validated.data,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+  if (validated.data.isDefault) {
+    // A newly saved default must not leave the previous one flagged too.
+    const snapshot = await addressesRef.get();
+    const batch = adminDb.batch();
+
+    snapshot.docs
+      .filter((doc) => doc.id !== docRef.id)
+      .forEach((doc) => {
+        batch.update(doc.ref, {
+          isDefault: false,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      });
+
+    await batch.commit();
+  }
 
   const responseBody = { success: true, addressId: docRef.id };
 

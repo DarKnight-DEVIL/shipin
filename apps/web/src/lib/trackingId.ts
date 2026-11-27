@@ -10,8 +10,9 @@
  * A random id removes the walk: 16 characters from Crockford's base32 alphabet
  * is 80 bits, so guessing a live id costs ~2^80 attempts. The alphabet omits I,
  * L, O and U, keeping a number read off a label or dictated over the phone
- * unambiguous. Ids already issued in the old format keep working — lookup is by
- * the stored value, not by parsing it.
+ * unambiguous. Ids already issued in the old format are not enumerable either:
+ * the public route serves them only with a signed lookup token (see
+ * `trackingToken.ts`), because lookup is by the stored value, not by parsing it.
  */
 import { randomBytes } from "node:crypto";
 

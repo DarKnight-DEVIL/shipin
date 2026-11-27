@@ -56,6 +56,26 @@ describe("POST /api/csp-report", () => {
     await expect(response.json()).resolves.toEqual({ received: true });
   });
 
+  it("flattens control characters so a report cannot forge a log line", async () => {
+    const response = await POST(
+      reportRequest({
+        "csp-report": {
+          "violated-directive": "script-src-elem",
+          "blocked-uri": "https://evil.example/x.js\n{\"level\":\"info\"}",
+        },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const logged = (console.warn as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls[0][0] as string;
+
+    expect(logged).toContain(
+      "https://evil.example/x.js {\\\"level\\\":\\\"info\\\"}"
+    );
+    expect(logged).not.toContain("x.js\\n");
+  });
+
   it("accepts a report with an unexpected shape", async () => {
     const response = await POST(
       reportRequest({ "csp-report": "not-an-object" })

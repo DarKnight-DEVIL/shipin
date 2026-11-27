@@ -4,26 +4,52 @@ import {
   passwordLeakCheckBodySchema,
   readAndValidateBody,
 } from "@/lib/validation";
+import {
+  addRateLimitHeaders,
+  apiRateLimiter,
+  isRateLimited,
+} from "@/lib/rateLimiter";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
+
+/** HIBP is a third party; a hung connection must not hold a route open. */
+const HIBP_TIMEOUT_MS = 5_000;
 
 /**
  * POST /api/auth/password-leak-check
  *
  * Checks a password against the Have I Been Pwned (HIBP) breach database
- * using the k-anonymity search approach:
+ * using the k-anonymity range API:
  *
  * 1. Client computes SHA-1(password).toUpperCase()
- * 2. Client sends only the first 5 hex chars (the "prefix")
- * 3. Server queries HIBP with the prefix
- * 4. Server returns the matching suffixes (or none)
+ * 2. Client sends the 5-char prefix and its own 35-char suffix
+ * 3. Server queries HIBP with the prefix only
+ * 4. Server compares the suffix locally and answers `{ leaked }`
  *
- * The server never sees the full password hash — only a 5-char prefix
- * that is useless without the remaining 35 chars.
+ * Only the 5-char prefix ever reaches HIBP. The suffix stays between the
+ * browser and this server, and the response is a single boolean rather than
+ * the ~20–40 KB range body — so the endpoint cannot be used as a free,
+ * amplifying HIBP proxy.
  *
- * Rate-limited to prevent scraping.
+ * Public by necessity (it runs before an account exists) and rate-limited per
+ * client so one caller cannot spend the upstream budget on everybody's behalf.
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
+  const rateLimit = await apiRateLimiter.record(request);
+
+  if (isRateLimited(rateLimit)) {
+    const response = NextResponse.json(
+      {
+        success: false,
+        error: "Too many requests, please try again later.",
+        code: "RATE_LIMITED",
+      },
+      { status: 429, headers: NO_STORE }
+    );
+    addRateLimitHeaders(response.headers, rateLimit);
+    return response;
+  }
+
   const parsed = await readAndValidateBody(
     request,
     passwordLeakCheckBodySchema
@@ -40,7 +66,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  const { prefix } = parsed.data;
+  const { prefix, suffix } = parsed.data;
 
   try {
     const response = await fetch(
@@ -50,6 +76,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
           "User-Agent": "ShipIN Security Check",
           "Add-Padding": "true", // HIBP recommends adding padding to obscure request size
         },
+        signal: AbortSignal.timeout(HIBP_TIMEOUT_MS),
       }
     );
 
@@ -63,13 +90,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     }
 
     const text = await response.text();
-    const suffixes = text
-      .split("\n")
-      .map((line) => line.trim().toUpperCase())
-      .filter(Boolean);
+
+    const leaked = text.split(/\r?\n/).some((line) => {
+      const [candidate] = line.split(":");
+      return candidate?.trim().toUpperCase() === suffix;
+    });
 
     return NextResponse.json(
-      { success: true, suffixes },
+      { success: true, leaked },
       { status: 200, headers: NO_STORE }
     );
   } catch (error) {

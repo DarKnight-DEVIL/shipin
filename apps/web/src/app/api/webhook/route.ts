@@ -487,8 +487,6 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
     const settlement = await settleAdditionalItemPayment({
       requestRef,
       paymentOrderRef,
-      requestData,
-      paymentOrder,
       additionalItemRequestId,
       orderID: orderId,
       captureId: captureId ?? "",

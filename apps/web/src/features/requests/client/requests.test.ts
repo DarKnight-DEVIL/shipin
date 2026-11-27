@@ -35,13 +35,10 @@ vi.mock("firebase/firestore", () => ({
 vi.mock("@/lib/firebaseDb", () => ({ db: {} }));
 
 import {
-  approveAdditionalItem,
   getRequestById,
   getRequests,
-  rejectAdditionalItem,
   subscribeToRequest,
   subscribeToRequests,
-  updateAdditionalItemStatus,
 } from "./requests";
 
 const docSnapshot = (data?: Record<string, unknown>, id = "req-1") => ({
@@ -212,71 +209,3 @@ describe("subscriptions", () => {
   });
 });
 
-describe("additional item decisions", () => {
-  const existing = {
-    additionalItemRequests: [
-      { id: "item-1", status: "pending" },
-      { id: "item-2", status: "pending" },
-    ],
-  };
-
-  it("approves an item with its quote", async () => {
-    mocks.getDoc.mockResolvedValue(docSnapshot(existing));
-
-    await approveAdditionalItem("req-1", "item-1", 40);
-
-    const [approved, untouched] =
-      mocks.updateDoc.mock.calls[0][1].additionalItemRequests;
-    expect(approved).toMatchObject({
-      id: "item-1",
-      status: "awaiting_payment",
-      unitPrice: 40,
-      totalDue: 40,
-    });
-    expect(approved.quote).toMatchObject({ unitPrice: 40, totalDue: 40 });
-    expect(untouched).toEqual({ id: "item-2", status: "pending" });
-  });
-
-  it("rejects an item", async () => {
-    mocks.getDoc.mockResolvedValue(docSnapshot(existing));
-
-    await rejectAdditionalItem("req-1", "item-2");
-
-    expect(mocks.updateDoc.mock.calls[0][1].additionalItemRequests).toEqual([
-      { id: "item-1", status: "pending" },
-      { id: "item-2", status: "rejected" },
-    ]);
-  });
-
-  it("advances an item status", async () => {
-    mocks.getDoc.mockResolvedValue(docSnapshot(existing));
-
-    await updateAdditionalItemStatus("req-1", "item-1", "paid");
-
-    expect(
-      mocks.updateDoc.mock.calls[0][1].additionalItemRequests[0].status
-    ).toBe("paid");
-  });
-
-  it("handles a missing request document", async () => {
-    mocks.getDoc.mockResolvedValue(docSnapshot(undefined));
-
-    await approveAdditionalItem("req-1", "item-1", 10);
-
-    expect(mocks.updateDoc.mock.calls[0][1].additionalItemRequests).toEqual([]);
-  });
-
-  it("wraps failures", async () => {
-    mocks.updateDoc.mockRejectedValue(new Error("offline"));
-
-    await expect(
-      approveAdditionalItem("req-1", "item-1", 10)
-    ).rejects.toBeInstanceOf(Error);
-    await expect(
-      rejectAdditionalItem("req-1", "item-1")
-    ).rejects.toBeInstanceOf(Error);
-    await expect(
-      updateAdditionalItemStatus("req-1", "item-1", "paid")
-    ).rejects.toBeInstanceOf(Error);
-  });
-});

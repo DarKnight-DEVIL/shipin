@@ -201,29 +201,20 @@ export default function ShipmentPanel({ request }: Props) {
        */
       const createdAt = request.tracking?.createdAt ?? Timestamp.now();
 
-      const response = await fetch(
+      const data = await adminApi<{ trackingId?: string }>(
         `/api/admin/requests/${request.id}/shipment`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
+          body: {
             internalTrackingId,
             carrier,
             trackingNumber: trackingNumber.trim(),
             estimatedDelivery,
             trackingUrl: "",
             createdAt,
-          }),
+          },
         }
       );
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "Failed to save shipment.");
-      }
 
       const savedTrackingId: string | undefined =
         data.trackingId ?? internalTrackingId;

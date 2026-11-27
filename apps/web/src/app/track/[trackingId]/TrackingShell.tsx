@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Info, Truck } from "lucide-react";
 
 import EmptyState from "@/components/ui/EmptyState";
@@ -47,7 +47,14 @@ function formatDate(value: string) {
 export default function TrackingShell() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const trackingId = params.trackingId as string;
+  /*
+   * Legacy sequential ids are only readable with the signed token from their
+   * tracking link. Modern random ids work without one; passing the token when
+   * present keeps a shared link working for either.
+   */
+  const token = searchParams.get("token");
 
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,8 +65,9 @@ export default function TrackingShell() {
       try {
         setLoading(true);
 
+        const query = token ? `?token=${encodeURIComponent(token)}` : "";
         const response = await fetch(
-          `/api/tracking/${encodeURIComponent(trackingId)}`
+          `/api/tracking/${encodeURIComponent(trackingId)}${query}`
         );
         const data = await response.json();
 
@@ -83,7 +91,7 @@ export default function TrackingShell() {
     if (trackingId) {
       void loadTracking();
     }
-  }, [trackingId]);
+  }, [trackingId, token]);
 
   if (loading) {
     return (

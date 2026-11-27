@@ -4,36 +4,14 @@ import {
   getDoc,
   query,
   where,
-  serverTimestamp,
-  updateDoc,
   doc,
   onSnapshot,
   orderBy,
   limit,
 } from "firebase/firestore";
 import { db } from "@/lib/firebaseDb";
-import type {
-  Request,
-  AdditionalItemRequest,
-  AdditionalItemRequestStatus,
-} from "@/types/request";
-import type { RequestStatus } from "@/features/requests/services/requestStatus";
+import type { Request } from "@/types/request";
 import { toShipINError } from "@/utils/errors";
-import { quoteExpiresAt } from "../services/quoteTtl";
-
-/** Default shape used when snapshot.data() is missing (e.g. edge-case fallback). */
-const EMPTY_REQUEST = {
-  userId: "",
-  email: "",
-  status: "submitted" as RequestStatus,
-  items: [] as Request["items"],
-  warehouseOptions: {
-    inspection: "standard" as const,
-    shippingPreference: "approval" as const,
-  },
-  additionalItemRequests: [] as Request["additionalItemRequests"],
-};
-
 
 /**
  * Sortable columns.
@@ -216,112 +194,10 @@ export function subscribeToRequest(
   );
 }
 
-export async function approveAdditionalItem(
-  requestId: string,
-  additionalItemId: string,
-  price: number
-): Promise<void> {
-  try {
-    const requestRef = doc(db, "requests", requestId);
-    const snapshot = await getDoc(requestRef);
-    const latestRequest = snapshot.exists()
-      ? (snapshot.data() as Request)
-      : ({ ...EMPTY_REQUEST, id: "" } as Request);
-
-    const updatedAdditionalRequests = (
-      latestRequest.additionalItemRequests || []
-    ).map((item: AdditionalItemRequest) => {
-      if (item.id === additionalItemId) {
-        return {
-          ...item,
-          status: "awaiting_payment" as const,
-          unitPrice: price,
-          subtotal: price,
-          serviceFee: 0,
-          repackingFee: 0,
-          storageFee: 0,
-          totalDue: price,
-          quote: {
-            unitPrice: price,
-            subtotal: price,
-            serviceFee: 0,
-            repackingFee: 0,
-            storageFee: 0,
-            totalDue: price,
-            createdAt: new Date(),
-            expiresAt: quoteExpiresAt(),
-            reviewedAt: new Date(),
-            approvedAt: new Date(),
-          },
-        };
-      }
-      return item;
-    });
-
-    await updateDoc(requestRef, {
-      additionalItemRequests: updatedAdditionalRequests,
-      updatedAt: serverTimestamp(),
-    });
-  } catch (error) {
-    throw toShipINError(error);
-  }
-}
-
-export async function rejectAdditionalItem(
-  requestId: string,
-  additionalItemId: string
-): Promise<void> {
-  try {
-    const requestRef = doc(db, "requests", requestId);
-    const snapshot = await getDoc(requestRef);
-    const latestRequest = snapshot.exists()
-      ? (snapshot.data() as Request)
-      : ({ ...EMPTY_REQUEST, id: "" } as Request);
-
-    const updatedAdditionalRequests = (
-      latestRequest.additionalItemRequests || []
-    ).map((item: AdditionalItemRequest) => {
-      if (item.id === additionalItemId) {
-        return { ...item, status: "rejected" as const };
-      }
-      return item;
-    });
-
-    await updateDoc(requestRef, {
-      additionalItemRequests: updatedAdditionalRequests,
-      updatedAt: serverTimestamp(),
-    });
-  } catch (error) {
-    throw toShipINError(error);
-  }
-}
-
-export async function updateAdditionalItemStatus(
-  requestId: string,
-  additionalItemId: string,
-  status: AdditionalItemRequestStatus
-): Promise<void> {
-  try {
-    const requestRef = doc(db, "requests", requestId);
-    const snapshot = await getDoc(requestRef);
-    const latestRequest = snapshot.exists()
-      ? (snapshot.data() as Request)
-      : ({ ...EMPTY_REQUEST, id: "" } as Request);
-
-    const updatedAdditionalRequests = (
-      latestRequest.additionalItemRequests || []
-    ).map((item: AdditionalItemRequest) => {
-      if (item.id === additionalItemId) {
-        return { ...item, status };
-      }
-      return item;
-    });
-
-    await updateDoc(requestRef, {
-      additionalItemRequests: updatedAdditionalRequests,
-      updatedAt: serverTimestamp(),
-    });
-  } catch (error) {
-    throw toShipINError(error);
-  }
-}
+/*
+ * Additional-item decisions are not a browser write. The rules deny updates to
+ * `requests` from the client, and the quoted amounts are money: the decision is
+ * made by the admin quote route, which owns the transaction. The three client
+ * helpers that used to live here had no caller and would have failed silently
+ * the first time somebody wired one up.
+ */

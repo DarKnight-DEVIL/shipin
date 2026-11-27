@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { auth } from "@/lib/firebase";
+import { adminApi } from "@/lib/adminApiClient";
 import { toast } from "sonner";
 import {
   MessageCircle,
@@ -123,33 +123,12 @@ export default function SupportPanel({ request }: Props) {
     try {
       setStartingRefund(true);
 
-      const currentUser = auth.currentUser;
-
-      if (!currentUser) {
-        throw new Error("Authentication required.");
-      }
-
-      const idToken = await currentUser.getIdToken();
-
-      const response = await fetch(
-        `/api/admin/requests/${request.id}/refund-offer`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${idToken}`,
-          },
-          body: JSON.stringify({
-            reason,
-          }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Unable to offer refund.");
-      }
+      await adminApi(`/api/admin/requests/${request.id}/refund-offer`, {
+        method: "POST",
+        body: {
+          reason,
+        },
+      });
 
       toast.success("Refund option offered to customer.");
 
@@ -202,34 +181,13 @@ export default function SupportPanel({ request }: Props) {
         );
       }
 
-      const currentUser = auth.currentUser;
-
-      if (!currentUser) {
-        throw new Error("Authentication required.");
-      }
-
-      const idToken = await currentUser.getIdToken();
-
-      const response = await fetch(
-        `/api/admin/requests/${request.id}/partial-refund`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${idToken}`,
-          },
-          body: JSON.stringify({
-            amount,
-            reason: partialRefundReason.trim(),
-          }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Unable to offer partial refund.");
-      }
+      await adminApi(`/api/admin/requests/${request.id}/partial-refund`, {
+        method: "POST",
+        body: {
+          amount,
+          reason: partialRefundReason.trim(),
+        },
+      });
 
       toast.success(
         `$${amount.toFixed(2)} partial refund offered to customer.`
@@ -264,14 +222,6 @@ export default function SupportPanel({ request }: Props) {
     try {
       setPartialRefundCompleting(true);
 
-      const currentUser = auth.currentUser;
-
-      if (!currentUser) {
-        throw new Error("Authentication required.");
-      }
-
-      const idToken = await currentUser.getIdToken();
-
       const offerAmount = Number(request.partialRefundOffer.amount ?? 0);
 
       const walletAmount = Number(request.payment?.walletAmount ?? 0);
@@ -286,25 +236,16 @@ export default function SupportPanel({ request }: Props) {
         return;
       }
 
-      const response = await fetch(
+      await adminApi(
         `/api/admin/requests/${request.id}/partial-refund/complete`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${idToken}`,
+          body: {
+            paypalRefundTransactionId:
+              partialRefundPaypalTransactionId.trim(),
           },
-          body: JSON.stringify({
-            paypalRefundTransactionId: partialRefundPaypalTransactionId.trim(),
-          }),
         }
       );
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Unable to complete partial refund.");
-      }
 
       toast.success(`$${offerAmount.toFixed(2)} partial refund completed.`);
 

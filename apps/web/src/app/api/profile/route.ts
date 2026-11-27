@@ -8,22 +8,20 @@ import {
   requireAuthWithProfile,
   verifyIdToken,
 } from "@/lib/auth";
+import { verifyAppCheckRequest } from "@/lib/appCheck";
+import { recordAppCheckRejection } from "@/lib/appCheckMetrics";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { projectUserProfile } from "@/lib/userProfile";
 import { ValidationError, withErrorHandler } from "@/utils/errors";
 
-const profileEmailSchema = z
-  .string()
-  .trim()
-  .max(255)
-  .refine(
-    (value) => value === "" || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value),
-    "Invalid email address."
-  );
-
+/*
+ * `email` is deliberately not an input on either schema. The verified Auth
+ * token is the identity of record, and firestore.rules deny the owner the
+ * field for the same reason: a client-supplied copy could drift from the
+ * address Firebase verified, and admin lists and notifications trust it.
+ */
 const createProfileSchema = z.object({
   displayName: z.string().trim().min(1, "Display name is required.").max(100),
-  email: profileEmailSchema.optional().default(""),
   phone: z.string().trim().max(30).optional().default(""),
   photoURL: z.string().trim().max(2048).optional().default(""),
 });
@@ -35,7 +33,6 @@ const updateProfileSchema = z.object({
     .min(1, "Display name is required.")
     .max(100)
     .optional(),
-  email: profileEmailSchema.optional(),
   phone: z.string().trim().max(30).optional(),
   photoURL: z.string().trim().max(2048).optional(),
   // Stored as an ISO date (YYYY-MM-DD): the age gate parses it with
@@ -74,6 +71,14 @@ function badRequest(message: string) {
   );
 }
 
+/** Firestore's ALREADY_EXISTS, as a numeric code or a string. */
+function isAlreadyExists(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return (
+    code === 6 || code === "already-exists" || code === "ALREADY_EXISTS"
+  );
+}
+
 /**
  * GET /api/profile
  *
@@ -103,11 +108,32 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 /**
  * POST /api/profile
  *
- * Creates (or merges) the signed-in user's profile. This route verifies the ID
- * token but does not require a verified email or an existing profile, because
- * it runs immediately after sign-up and during first-time profile repair.
+ * Creates the signed-in user's profile. This is the one authenticated write
+ * that runs before a profile exists and before the email is verified, so it
+ * cannot use the full account gate — but it still checks App Check, and it is
+ * create-only: an existing profile is answered with 409 and never rewritten.
+ * Updates go through PATCH, which runs the full gate.
+ *
+ * `create()` rather than `set(..., { merge: true })` does two things: it makes
+ * the create-only rule atomic against a concurrent request, and it stops the
+ * old code from rewriting `createdAt` on every merge.
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
+  const appCheck = await verifyAppCheckRequest(request);
+
+  if (appCheck === "missing" || appCheck === "invalid") {
+    recordAppCheckRejection(appCheck);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: "App verification failed. Reload the page and try again.",
+        code: "APP_CHECK_FAILED",
+      },
+      { status: 401, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
   const token = extractAuth(request);
 
   if (!token) return badRequest("Authentication required.");
@@ -126,20 +152,29 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const data = parseJsonBody(body, createProfileSchema);
 
-  await adminDb
-    .collection("users")
-    .doc(decoded.uid)
-    .set(
-      {
-        displayName: data.displayName,
-        email: decoded.email ?? data.email,
-        phone: data.phone,
-        photoURL: data.photoURL,
-        updatedAt: FieldValue.serverTimestamp(),
-        createdAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
+  try {
+    await adminDb.collection("users").doc(decoded.uid).create({
+      displayName: data.displayName,
+      email: decoded.email ?? "",
+      phone: data.phone,
+      photoURL: data.photoURL,
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    if (isAlreadyExists(error)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "A profile already exists. Use PATCH to update it.",
+          code: "PROFILE_EXISTS",
+        },
+        { status: 409, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    throw error;
+  }
 
   return NextResponse.json(
     { success: true },
@@ -152,6 +187,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
  *
  * Updates the signed-in user's display name, contact number, photo, or date
  * of birth (which drives the DPDP age gate and the parental-consent flow).
+ * Email is not writable here; the Auth token owns it.
  */
 export const PATCH = withErrorHandler(async (request: NextRequest) => {
   const auth = await requireAuthWithProfile(request);

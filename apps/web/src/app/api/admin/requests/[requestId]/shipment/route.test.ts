@@ -26,6 +26,7 @@ vi.mock("@/features/notifications/services/notificationService", () => ({
   sendNotification: mocks.sendNotification,
 }));
 
+import { createPublicTrackingUrl } from "@/lib/trackingToken";
 import { POST } from "./route";
 
 const body = {
@@ -49,11 +50,13 @@ beforeEach(() => {
     .mockResolvedValue({ exists: true, data: () => ({ status: "packed" }) });
   mocks.update.mockReset().mockResolvedValue(undefined);
   mocks.sendNotification.mockReset().mockResolvedValue(undefined);
+  vi.stubEnv("TRACKING_TOKEN_SECRET", "test-tracking-secret-0123456789");
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("POST /api/admin/requests/[requestId]/shipment", () => {
@@ -122,6 +125,7 @@ describe("POST /api/admin/requests/[requestId]/shipment", () => {
     await expect(response.json()).resolves.toEqual({
       success: true,
       trackingId: "SHP-2026-000001",
+      publicTrackingUrl: createPublicTrackingUrl("SHP-2026-000001"),
     });
   });
 
@@ -142,6 +146,9 @@ describe("POST /api/admin/requests/[requestId]/shipment", () => {
     const body = await response.json();
     expect(body.trackingId).toMatch(minted);
     expect(body.trackingId).not.toBe("SHP-2026-000001");
+    expect(body.publicTrackingUrl).toBe(
+      createPublicTrackingUrl(body.trackingId)
+    );
   });
 
   it("defaults optional tracking fields", async () => {
@@ -171,6 +178,11 @@ describe("POST /api/admin/requests/[requestId]/shipment", () => {
       expect.objectContaining({
         userId: "user-1",
         requestId: "req-1",
+        // The notification carries a signed public tracking link, so a legacy
+        // id can still be opened after bare sequential lookups are refused.
+        message: expect.stringContaining(
+          createPublicTrackingUrl("SHP-2026-000001")!
+        ),
         category: "shipment",
         channels: { inApp: true, email: true, whatsapp: true },
         whatsapp: expect.objectContaining({

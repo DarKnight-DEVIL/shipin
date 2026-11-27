@@ -19,6 +19,11 @@ vi.mock("@/lib/firebaseAdmin", () => ({
     collection: () => ({
       doc: () => ({ get: mocks.get, update: mocks.update }),
     }),
+    runTransaction: (callback: (tx: unknown) => unknown) =>
+      callback({
+        get: mocks.get,
+        update: (_ref: unknown, data: unknown) => mocks.update(data),
+      }),
   },
 }));
 
@@ -195,6 +200,35 @@ describe("POST /api/admin/requests/[requestId]/refund-offer", () => {
     });
   });
 
+  it("blocks a full offer while a partial offer is awaiting the customer", async () => {
+    respondWith({
+      ...purchased,
+      partialRefundOffer: { status: "offered", amount: 20 },
+    });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error:
+        "A partial refund is still pending for this request. Wait for it to complete before offering a full refund.",
+    });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("blocks a full offer while an accepted partial refund is being processed", async () => {
+    respondWith({
+      ...purchased,
+      partialRefundOffer: { status: "accepted", amount: 20 },
+    });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(400);
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
   it("requires a recorded payment", async () => {
     respondWith({ status: "purchased" });
 
@@ -217,6 +251,53 @@ describe("POST /api/admin/requests/[requestId]/refund-offer", () => {
       success: false,
       error: "Invalid payment amount.",
     });
+  });
+
+  it("offers only the amount still refundable after partial refunds", async () => {
+    respondWith({ ...purchased, totalRefundedAmount: 15 });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      requestId: "req-1",
+      status: "refund_offered",
+      refundOffer: { amount: 105, reason: "Damaged in transit" },
+    });
+    expect(mocks.update.mock.calls[0][0].refundOffer).toMatchObject({
+      offered: true,
+      amount: 105,
+    });
+    expect(mocks.recordAdminAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { amount: 105, reason: "Damaged in transit" } })
+    );
+  });
+
+  it("refuses to offer a refund when nothing remains refundable", async () => {
+    respondWith({ ...purchased, totalRefundedAmount: 120 });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "This request has already been refunded in full.",
+    });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses a corrupt existing refund total", async () => {
+    respondWith({ ...purchased, totalRefundedAmount: "oops" });
+
+    const response = await POST(request(), context());
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Invalid existing refund total.",
+    });
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 
   it("records the offer using the amount actually paid", async () => {

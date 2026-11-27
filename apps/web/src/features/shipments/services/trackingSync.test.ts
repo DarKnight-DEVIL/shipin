@@ -122,6 +122,35 @@ describe("resolveTracking", () => {
     expect(result?.events).toHaveLength(1);
   });
 
+  it("projects only the public stage timestamps out of statusHistory", async () => {
+    // The request document's history also records quote, payment, refund and
+    // warehouse transitions. They are not the parcel's public timeline, and
+    // the tracking endpoint used to return the whole object.
+    found(
+      shipped({
+        statusHistory: {
+          quote_accepted: "2026-04-20T00:00:00.000Z",
+          shipped: "2026-05-01T00:00:00.000Z",
+          out_for_delivery: "2026-05-03T00:00:00.000Z",
+          delivered: "2026-05-04T00:00:00.000Z",
+          refund_requested: "2026-05-02T00:00:00.000Z",
+          internalNote: "secret",
+        },
+      })
+    );
+
+    const result = await resolveTracking("SHP-2026-000001", {
+      provider: provider(),
+      now,
+    });
+
+    expect(result?.statusHistory).toEqual({
+      shipped: "2026-05-01T00:00:00.000Z",
+      out_for_delivery: "2026-05-03T00:00:00.000Z",
+      delivered: "2026-05-04T00:00:00.000Z",
+    });
+  });
+
   it("never polls a delivered shipment again", async () => {
     found(
       shipped({

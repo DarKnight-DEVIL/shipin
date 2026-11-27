@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { CustomerApiError, customerApi } from "@/lib/customerApiClient";
 
 /**
  * Data deletion request, in the customer's own hands.
@@ -37,30 +38,16 @@ export default function DataPrivacySection() {
         return;
       }
 
-      const token = await user.getIdToken();
-      const response = await fetch("/api/user/erase", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const payload = (await response.json().catch(() => null)) as {
-        success?: boolean;
-        error?: string;
-      } | null;
-
-      if (!response.ok || !payload?.success) {
-        setError(
-          payload?.error ??
-            "We could not complete the deletion. Email support@shipin.co and we will finish it for you."
-        );
-        return;
-      }
+      await customerApi("/api/user/erase", { method: "POST" });
 
       setMessage("Your account and personal data have been deleted.");
       await signOut(auth).catch(() => undefined);
       router.push("/");
-    } catch {
+    } catch (error) {
       setError(
-        "We could not reach the server. Try again, or email support@shipin.co."
+        error instanceof CustomerApiError
+          ? error.message
+          : "We could not reach the server. Try again, or email support@shipin.co."
       );
     } finally {
       setBusy(false);

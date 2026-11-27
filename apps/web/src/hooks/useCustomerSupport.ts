@@ -12,6 +12,7 @@ import { subscribeToRequests } from "@/features/requests/client/requests";
 
 import { SupportMessage, SupportTicket } from "@/types/support";
 import type { Request } from "@/types/request";
+import { customerApi } from "@/lib/customerApiClient";
 
 interface RefundOffer {
   offered: boolean;
@@ -176,26 +177,13 @@ export default function useCustomerSupport(customerId: string) {
       return;
     }
 
-    const response = await fetch(`/api/support/${ticketId}/message`, {
+    return await customerApi(`/api/support/${ticketId}/message`, {
       method: "POST",
-
-      headers: {
-        "Content-Type": "application/json",
-      },
-
-      body: JSON.stringify({
+      body: {
         sender: "customer",
         message: trimmedMessage,
-      }),
+      },
     });
-
-    const result = await response.json();
-
-    if (!response.ok || !result.success) {
-      throw new Error(result.error || "Unable to send support message.");
-    }
-
-    return result;
   }
 
   function selectTicket(ticket: SupportTicket) {

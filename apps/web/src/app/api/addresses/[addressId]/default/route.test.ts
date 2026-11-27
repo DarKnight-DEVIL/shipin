@@ -75,12 +75,14 @@ describe("POST /api/addresses/[addressId]/default", () => {
 
     const response = await call("addr-1");
 
-    expect(mocks.batchUpdate).toHaveBeenCalledWith("ref-1", {
-      isDefault: true,
-    });
-    expect(mocks.batchUpdate).toHaveBeenCalledWith("ref-2", {
-      isDefault: false,
-    });
+    expect(mocks.batchUpdate).toHaveBeenCalledWith(
+      "ref-1",
+      expect.objectContaining({ isDefault: true, updatedAt: expect.anything() })
+    );
+    expect(mocks.batchUpdate).toHaveBeenCalledWith(
+      "ref-2",
+      expect.objectContaining({ isDefault: false, updatedAt: expect.anything() })
+    );
     expect(mocks.batchCommit).toHaveBeenCalled();
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ success: true });

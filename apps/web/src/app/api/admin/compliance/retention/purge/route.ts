@@ -222,6 +222,7 @@ async function purgeExpiredWebhookEvents(now: Date): Promise<WebhookEventPurgeRe
   const snapshot = await adminDb
     .collection("paypalWebhookEvents")
     .where("claimedAt", "<", cutoff)
+    // firestore-list: internal — one purge page; every returned marker is deleted and a short page just means the backlog is drained.
     .limit(PAGE_SIZE)
     .get();
 

@@ -207,6 +207,22 @@ export const customerRefundBodySchema = z.object({
   reason: messageSchema.optional(),
 });
 
+/**
+ * POST /api/requests/[id]/refund (customer).
+ *
+ * The customer picks a destination; the amount always comes from the payment
+ * record on the server, never from the body.
+ */
+export const customerRefundRequestBodySchema = z.object({
+  preference: z.enum(["wallet", "original_payment", "original_sources"]),
+  initiatedBy: z.literal("customer").optional(),
+});
+
+/** POST /api/requests/[id]/partial-refund (customer accepts an offer). */
+export const customerPartialRefundBodySchema = z.object({
+  preference: z.enum(["wallet", "original_payment"]),
+});
+
 // ---------------------------------------------------------------------------
 // Quote workflow
 // ---------------------------------------------------------------------------
@@ -523,13 +539,22 @@ export const mfaSessionBodySchema = z.object({
   code: z.string().max(32).optional(),
 });
 
-/** POST /api/auth/password-leak-check — a k-anonymity hash prefix. */
+/**
+ * POST /api/auth/password-leak-check — the SHA-1 prefix and the caller's own
+ * suffix. The suffix lets the server answer with a boolean instead of relaying
+ * the whole HIBP range back through this endpoint.
+ */
 export const passwordLeakCheckBodySchema = z.object({
   prefix: z
     .string({ error: "Invalid prefix." })
     .trim()
     .transform((v) => v.toUpperCase())
     .refine((v) => /^[0-9A-F]{5}$/.test(v), "Invalid prefix."),
+  suffix: z
+    .string({ error: "Invalid suffix." })
+    .trim()
+    .transform((v) => v.toUpperCase())
+    .refine((v) => /^[0-9A-F]{35}$/.test(v), "Invalid suffix."),
 });
 
 /** POST /api/user/password — change or first-time set. */

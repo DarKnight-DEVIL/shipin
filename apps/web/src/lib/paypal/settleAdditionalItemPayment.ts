@@ -3,8 +3,10 @@
  *
  * The add-on is paid by recording three things together: the item's own status,
  * the request's item list and payment history, and the PayPal payment order.
- * They are written one after the other exactly as before — the amount checks run
- * first, so a mismatch cannot leave a half-settled request behind.
+ * They are written in one Firestore transaction, re-reading both documents
+ * inside it. A failure on the second write therefore cannot leave the item
+ * paid while the order stays `created` — the state that used to make every
+ * retry and every sweep run refuse the order forever.
  */
 
 import {
@@ -30,8 +32,6 @@ type AdditionalItemWrite = Omit<AdditionalItemRequest, "paidAt"> & {
 export interface AdditionalItemSettlementInput {
   requestRef: DocumentReference;
   paymentOrderRef: DocumentReference;
-  requestData: DocumentData;
-  paymentOrder: DocumentData;
   additionalItemRequestId: string;
   orderID: string;
   captureId: string;
@@ -42,99 +42,122 @@ export interface AdditionalItemSettlementInput {
 export async function settleAdditionalItemPayment({
   requestRef,
   paymentOrderRef,
-  requestData,
-  paymentOrder,
   additionalItemRequestId,
   orderID,
   captureId,
   capturedAmount,
   capturedCurrency,
 }: AdditionalItemSettlementInput): Promise<{ ok: true } | PaymentFailure> {
-  const additionalItems = (requestData.additionalItemRequests ??
-    []) as AdditionalItemWrite[];
+  return requestRef.firestore.runTransaction(async (transaction) => {
+    /* Firestore transactions require every read before the first write. */
+    const requestSnapshot = await transaction.get(requestRef);
+    const paymentOrderSnapshot = await transaction.get(paymentOrderRef);
 
-  const additionalItem = additionalItems.find(
-    (item) => item.id === additionalItemRequestId
-  );
+    if (!requestSnapshot.exists) {
+      return {
+        ok: false,
+        status: 404,
+        error: "Request could not be found.",
+      };
+    }
 
-  if (!additionalItem) {
-    return {
-      ok: false,
-      status: 404,
-      error: "Additional item request could not be found.",
+    if (!paymentOrderSnapshot.exists) {
+      return {
+        ok: false,
+        status: 404,
+        error: "Payment order could not be found.",
+      };
+    }
+
+    const requestData = requestSnapshot.data() as DocumentData;
+    const paymentOrder = paymentOrderSnapshot.data() as DocumentData;
+
+    const additionalItems = (requestData.additionalItemRequests ??
+      []) as AdditionalItemWrite[];
+
+    const additionalItem = additionalItems.find(
+      (item) => item.id === additionalItemRequestId
+    );
+
+    if (!additionalItem) {
+      return {
+        ok: false,
+        status: 404,
+        error: "Additional item request could not be found.",
+      };
+    }
+
+    if (additionalItem.status !== "awaiting_payment") {
+      return {
+        ok: false,
+        status: 400,
+        error: "This additional item is not awaiting payment.",
+      };
+    }
+
+    const storedBaseAmount = roundMoney(toNumber(paymentOrder.baseAmount));
+    const additionalItemTotal = roundMoney(toNumber(additionalItem.totalDue));
+
+    if (!sameCents(storedBaseAmount, additionalItemTotal)) {
+      console.error("Additional item base amount mismatch:", {
+        storedBaseAmount,
+        additionalItemTotal,
+        orderID,
+      });
+
+      return {
+        ok: false,
+        status: 400,
+        error: "The additional item payment amount could not be verified.",
+      };
+    }
+
+    const paidAt = new Date();
+
+    const paidItem: AdditionalItemWrite = {
+      ...additionalItem,
+      status: "paid",
+      amountPaid: capturedAmount,
+      paidAt,
     };
-  }
 
-  if (additionalItem.status !== "awaiting_payment") {
-    return {
-      ok: false,
-      status: 400,
-      error: "This additional item is not awaiting payment.",
-    };
-  }
+    transaction.update(requestRef, {
+      additionalItemRequests: additionalItems.map((item) =>
+        item.id === additionalItem.id ? paidItem : item
+      ),
 
-  const storedBaseAmount = roundMoney(toNumber(paymentOrder.baseAmount));
-  const additionalItemTotal = roundMoney(toNumber(additionalItem.totalDue));
+      items: FieldValue.arrayUnion({
+        name: additionalItem.item?.name,
+        url: additionalItem.item?.url || "",
+        quantity: additionalItem.item?.quantity,
+        unitPrice: additionalItem.unitPrice,
+        subtotal: additionalItem.subtotal,
+      }),
 
-  if (!sameCents(storedBaseAmount, additionalItemTotal)) {
-    console.error("Additional item base amount mismatch:", {
-      storedBaseAmount,
-      additionalItemTotal,
-      orderID,
+      additionalPayments: FieldValue.arrayUnion({
+        id: captureId,
+        additionalItemRequestId,
+        provider: "paypal",
+        paymentMethod: "paypal",
+        orderId: orderID,
+        captureId,
+        amount: capturedAmount,
+        currency: capturedCurrency,
+        status: "completed",
+        paidAt: paidAt.toISOString(),
+      }),
+
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
-    return {
-      ok: false,
-      status: 400,
-      error: "The additional item payment amount could not be verified.",
-    };
-  }
-
-  const paidAt = new Date();
-
-  const paidItem: AdditionalItemWrite = {
-    ...additionalItem,
-    status: "paid",
-    amountPaid: capturedAmount,
-    paidAt,
-  };
-
-  await requestRef.update({
-    additionalItemRequests: additionalItems.map((item) =>
-      item.id === additionalItem.id ? paidItem : item
-    ),
-
-    items: FieldValue.arrayUnion({
-      name: additionalItem.item?.name,
-      url: additionalItem.item?.url || "",
-      quantity: additionalItem.item?.quantity,
-      unitPrice: additionalItem.unitPrice,
-      subtotal: additionalItem.subtotal,
-    }),
-
-    additionalPayments: FieldValue.arrayUnion({
-      id: captureId,
-      additionalItemRequestId,
-      provider: "paypal",
-      paymentMethod: "paypal",
-      orderId: orderID,
-      captureId,
-      amount: capturedAmount,
-      currency: capturedCurrency,
+    transaction.update(paymentOrderRef, {
       status: "completed",
-      paidAt: paidAt.toISOString(),
-    }),
+      captureId,
+      capturedAmount,
+      capturedCurrency,
+      completedAt: FieldValue.serverTimestamp(),
+    });
 
-    updatedAt: FieldValue.serverTimestamp(),
+    return { ok: true };
   });
-
-  await paymentOrderRef.update({
-    status: "completed",
-    captureId,
-    capturedAmount,
-    capturedCurrency,
-    completedAt: FieldValue.serverTimestamp(),
-  });
-
-  return { ok: true };
 }

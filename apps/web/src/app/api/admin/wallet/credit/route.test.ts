@@ -69,17 +69,20 @@ const snapshots = (overrides: {
   customer?: Record<string, unknown> | undefined;
   wallet?: Record<string, unknown> | undefined;
   request?: Record<string, unknown> | undefined;
+  ledger?: Record<string, unknown> | undefined;
 }) => {
   const state = {
     customer,
     wallet: { balance: 10, currency: "EUR" },
     request: undefined,
+    ledger: undefined,
     ...overrides,
   };
 
   mocks.txGet.mockImplementation(async (ref: { __kind?: string }) => {
     if (ref.__kind === "user") return snap(state.customer);
     if (ref.__kind === "wallet") return snap(state.wallet);
+    if (ref.__kind === "wtx") return snap(state.ledger);
     return snap(state.request);
   });
 };
@@ -457,6 +460,36 @@ describe("POST /api/admin/wallet/credit", () => {
         }),
       }
     );
+  });
+
+  it("replays the stored response when a concurrent duplicate reaches the ledger", async () => {
+    mocks.readIdempotencyKey.mockReturnValue("retry-key-3");
+
+    const stored = {
+      success: true,
+      customerId: "customer-1",
+      previousBalance: 10,
+      creditAdded: 15.55,
+      newBalance: 25.55,
+      transactionId: "wtx-ledger",
+      type: "admin_credit",
+    };
+
+    snapshots({ ledger: { replayResponse: stored } });
+
+    const response = await POST(
+      request(
+        { customerId: "customer-1", amount: 15.55 },
+        { "idempotency-key": "retry-key-3" }
+      )
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(stored);
+    // The wallet and ledger were not written a second time.
+    expect(mocks.txSet).not.toHaveBeenCalled();
+    expect(mocks.txUpdate).not.toHaveBeenCalled();
+    expect(mocks.rememberIdempotentResponse).not.toHaveBeenCalled();
   });
 
   it("touches the idempotency store only when the caller sent a key", async () => {

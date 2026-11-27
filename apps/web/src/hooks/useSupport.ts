@@ -11,6 +11,7 @@ import {
 } from "@/features/support/client";
 
 import { SupportMessage, SupportTicket } from "@/types/support";
+import { customerApi } from "@/lib/customerApiClient";
 
 export default function useSupport(
   requestId: string,
@@ -91,26 +92,13 @@ export default function useSupport(
       sender: "customer" | "admin";
       message: string;
     }) => {
-      const response = await fetch(`/api/support/${data.ticketId}/message`, {
+      return await customerApi(`/api/support/${data.ticketId}/message`, {
         method: "POST",
-
-        headers: {
-          "Content-Type": "application/json",
-        },
-
-        body: JSON.stringify({
+        body: {
           sender: data.sender,
           message: data.message,
-        }),
+        },
       });
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Unable to send support message.");
-      }
-
-      return result;
     },
 
     resolveTicket: resolveSupportTicket,

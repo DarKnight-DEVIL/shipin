@@ -6,7 +6,9 @@ const mocks = vi.hoisted(() => ({
   verifyIdToken: vi.fn(),
   requireAuthAccount: vi.fn(),
   requireAuthWithProfile: vi.fn(),
-  set: vi.fn(),
+  verifyAppCheckRequest: vi.fn(),
+  recordAppCheckRejection: vi.fn(),
+  create: vi.fn(),
   update: vi.fn(),
 }));
 
@@ -16,11 +18,17 @@ vi.mock("@/lib/auth", () => ({
   requireAuthAccount: mocks.requireAuthAccount,
   requireAuthWithProfile: mocks.requireAuthWithProfile,
 }));
+vi.mock("@/lib/appCheck", () => ({
+  verifyAppCheckRequest: mocks.verifyAppCheckRequest,
+}));
+vi.mock("@/lib/appCheckMetrics", () => ({
+  recordAppCheckRejection: mocks.recordAppCheckRejection,
+}));
 vi.mock("@/lib/firebaseAdmin", () => ({
   adminDb: {
     collection: vi.fn(() => ({
       doc: vi.fn(() => ({
-        set: mocks.set,
+        create: mocks.create,
         update: mocks.update,
       })),
     })),
@@ -46,7 +54,9 @@ beforeEach(() => {
   mocks.requireAuthWithProfile
     .mockReset()
     .mockResolvedValue({ profile: { uid: "user-1" } });
-  mocks.set.mockReset().mockResolvedValue(undefined);
+  mocks.verifyAppCheckRequest.mockReset().mockResolvedValue("ok");
+  mocks.recordAppCheckRejection.mockReset();
+  mocks.create.mockReset().mockResolvedValue(undefined);
   mocks.update.mockReset().mockResolvedValue(undefined);
   mocks.requireAuthAccount.mockReset().mockResolvedValue({
     token: { uid: "user-1" },
@@ -158,44 +168,63 @@ describe("POST /api/profile", () => {
     });
   });
 
+  it("fails closed when App Check rejects the request", async () => {
+    mocks.verifyAppCheckRequest.mockResolvedValue("missing");
+
+    const response = await POST(request({ displayName: "Ada" }));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "APP_CHECK_FAILED",
+    });
+    expect(mocks.recordAppCheckRejection).toHaveBeenCalledWith("missing");
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
   it("rejects an unreadable body", async () => {
     const response = await POST(request("{broken"));
 
     expect(response.status).toBe(400);
-    expect(mocks.set).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 
   it("requires a display name", async () => {
     const response = await POST(request({ displayName: "   " }));
 
     expect(response.status).toBe(400);
-    expect(mocks.set).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 
-  it("rejects an invalid email", async () => {
-    const response = await POST(request({ displayName: "Ada", email: "nope" }));
-
-    expect(response.status).toBe(400);
-  });
-
-  it("merges the profile using the verified email", async () => {
+  it("creates the profile with the verified email and ignores a body email", async () => {
     const response = await POST(
-      request({ displayName: "Ada", email: "other@example.com", phone: "+44" })
+      request({
+        displayName: "Ada",
+        email: "attacker@example.com",
+        phone: "+44",
+      })
     );
 
-    expect(mocks.set).toHaveBeenCalledWith(
-      {
-        displayName: "Ada",
-        email: "ada@example.com",
-        phone: "+44",
-        photoURL: "",
-        updatedAt: "__SERVER_TS__",
-        createdAt: "__SERVER_TS__",
-      },
-      { merge: true }
-    );
+    expect(mocks.create).toHaveBeenCalledWith({
+      displayName: "Ada",
+      email: "ada@example.com",
+      phone: "+44",
+      photoURL: "",
+      updatedAt: "__SERVER_TS__",
+      createdAt: "__SERVER_TS__",
+    });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ success: true });
+  });
+
+  it("answers 409 instead of merging into an existing profile", async () => {
+    mocks.create.mockRejectedValue({ code: 6 });
+
+    const response = await POST(request({ displayName: "Ada" }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "PROFILE_EXISTS",
+    });
   });
 });
 
@@ -219,6 +248,15 @@ describe("PATCH /api/profile", () => {
 
   it("rejects an empty update", async () => {
     const response = await PATCH(request({}, "PATCH"));
+
+    expect(response.status).toBe(400);
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("does not let the client write email", async () => {
+    const response = await PATCH(
+      request({ email: "attacker@example.com" }, "PATCH")
+    );
 
     expect(response.status).toBe(400);
     expect(mocks.update).not.toHaveBeenCalled();

@@ -96,8 +96,9 @@ describe("getNotifications", () => {
     ]);
   });
 
-  it("applies a limit", async () => {
-    mocks.getDocs.mockResolvedValue(docs("n-1", "n-2", "n-3"));
+  it("bounds the query rather than slicing the downloaded history", async () => {
+    mocks.getDocs.mockResolvedValue(docs("n-1", "n-2"));
+    const firestore = await import("firebase/firestore");
 
     const result = await getNotifications("user-1", 2);
 
@@ -105,12 +106,16 @@ describe("getNotifications", () => {
       "n-1",
       "n-2",
     ]);
+    expect(firestore.limit).toHaveBeenCalledWith(2);
   });
 
-  it("treats a limit of zero as no limit", async () => {
-    mocks.getDocs.mockResolvedValue(docs("n-1", "n-2"));
+  it("caps a caller at the feed window", async () => {
+    mocks.getDocs.mockResolvedValue(docs("n-1"));
+    const firestore = await import("firebase/firestore");
 
-    await expect(getNotifications("user-1", 0)).resolves.toHaveLength(2);
+    await getNotifications("user-1", 10_000);
+
+    expect(firestore.limit).toHaveBeenCalledWith(NOTIFICATION_FEED_LIMIT);
   });
 
   it("wraps read failures", async () => {

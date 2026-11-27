@@ -156,6 +156,7 @@ describe("POST /api/support/[ticketId]/message", () => {
 
     expect(mocks.add).toHaveBeenCalledWith({
       ticketId: "ticket-1",
+      customerId: "user-1",
       sender: "customer",
       message: "Where is my parcel?",
       createdAt: "__SERVER_TS__",

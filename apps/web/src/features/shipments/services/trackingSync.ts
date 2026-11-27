@@ -10,8 +10,9 @@ import {
 /**
  * The tracking proxy.
  *
- * Customers are given a ShipIN number (`SHP-YYYY-NNNNNN`). That number is the
- * only thing they ever send us; the India Post consignment number stays in the
+ * Customers are given a ShipIN number (a random `SHP-…` id). That number, plus
+ * the signed lookup token when the id predates the random scheme, is the only
+ * thing they ever send us; the India Post consignment number stays in the
  * request document and is never exposed. Everything below is about pulling the
  * carrier feed efficiently:
  *
@@ -62,7 +63,12 @@ export interface PublicTracking {
   carrier: string | null;
   estimatedDelivery: string | null;
   createdAt: string | null;
-  statusHistory: Record<string, unknown>;
+  /**
+   * Only the three stages the public page renders. The request document's
+   * history also records internal workflow transitions (quote, payment,
+   * refund, warehouse), which are not the parcel's public timeline.
+   */
+  statusHistory: Record<string, string | null>;
   events: PublicTrackingEvent[];
   carrierStatus: string | null;
   lastSyncedAt: string | null;
@@ -232,6 +238,24 @@ async function findRequest(trackingId: string): Promise<FoundRequest | null> {
   };
 }
 
+/** The only status-history keys the public tracking page is allowed to see. */
+const PUBLIC_STATUS_HISTORY_FIELDS = [
+  "shipped",
+  "out_for_delivery",
+  "delivered",
+] as const;
+
+function publicStatusHistory(value: unknown): Record<string, string | null> {
+  const history = asRecord(value) ?? {};
+  const projected: Record<string, string | null> = {};
+
+  for (const field of PUBLIC_STATUS_HISTORY_FIELDS) {
+    projected[field] = toIso(history[field]);
+  }
+
+  return projected;
+}
+
 function project(
   id: string,
   data: Record<string, unknown>,
@@ -263,7 +287,7 @@ function project(
       (typeof data.estimatedDelivery === "string" && data.estimatedDelivery) ||
       null,
     createdAt: toIso(data.createdAt ?? tracking.createdAt),
-    statusHistory: asRecord(data.statusHistory) ?? {},
+    statusHistory: publicStatusHistory(data.statusHistory),
     events,
     carrierStatus:
       typeof tracking.carrierStatus === "string"

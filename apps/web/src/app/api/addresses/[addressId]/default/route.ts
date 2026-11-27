@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { FieldValue } from "firebase-admin/firestore";
 
 import { requireAuthWithProfile } from "@/lib/auth";
 import { adminDb } from "@/lib/firebaseAdmin";
@@ -34,7 +35,10 @@ export const POST = withErrorHandler(
     const batch = adminDb.batch();
 
     snapshot.docs.forEach((doc) => {
-      batch.update(doc.ref, { isDefault: doc.id === addressId });
+      batch.update(doc.ref, {
+        isDefault: doc.id === addressId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     });
 
     await batch.commit();

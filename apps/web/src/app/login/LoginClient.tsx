@@ -457,8 +457,10 @@ export default function LoginClient() {
     }
 
     // Have I Been Pwned leak check (registration only).
-    // Uses k-anonymity: we send only the first 5 hex chars of SHA-1(password).
-    // The server never sees the full password or full hash.
+    // Uses the k-anonymity range API: only the 5-char SHA-1 prefix goes to
+    // HIBP. The suffix is sent to our route so it can answer with a boolean
+    // instead of relaying the whole range; the password itself never leaves
+    // the browser.
     if (isRegister) {
       try {
         const hash = await crypto.subtle.digest(
@@ -475,12 +477,14 @@ export default function LoginClient() {
         const leakResponse = await fetch("/api/auth/password-leak-check", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prefix }),
+          body: JSON.stringify({ prefix, suffix }),
         });
 
         if (leakResponse.ok) {
-          const { suffixes } = await leakResponse.json();
-          if (Array.isArray(suffixes) && suffixes.includes(suffix)) {
+          const { leaked } = (await leakResponse.json()) as {
+            leaked?: boolean;
+          };
+          if (leaked === true) {
             fail(
               "This password has appeared in a data breach. Please choose a different one."
             );

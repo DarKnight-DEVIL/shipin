@@ -11,6 +11,8 @@ import type { NotificationCategory } from "@/features/notifications/services/not
 import { withErrorHandler } from "@/utils/errors";
 import { readAndValidateBody, shipmentBodySchema } from "@/lib/validation";
 import { generateTrackingId } from "@/lib/trackingId";
+import { createPublicTrackingUrl } from "@/lib/trackingToken";
+import { siteConfig } from "@/config/site";
 
 interface RouteContext {
   params: Promise<{
@@ -86,6 +88,17 @@ export const POST = withErrorHandler(
     // Keep the ID an edit already recorded; mint one only for a first shipment.
     const trackingId = internalTrackingId || (await generateTrackingId());
 
+    /*
+     * The public tracking link carries the signed token a legacy sequential id
+     * needs. Generating it here means the shipment notification (and the admin
+     * response) hand the customer a link that still works after old ids stop
+     * being readable on their own.
+     */
+    const publicTrackingUrl = createPublicTrackingUrl(trackingId);
+    const absoluteTrackingUrl = publicTrackingUrl
+      ? `${siteConfig.url.replace(/\/+$/, "")}${publicTrackingUrl}`
+      : null;
+
     await requestRef.update({
       tracking: {
         internalTrackingId: trackingId,
@@ -111,7 +124,9 @@ export const POST = withErrorHandler(
           userId,
           requestId,
           title: "Package Shipped",
-          message: `Your package has been shipped with ${carrier}. Tracking: ${trackingNumber}`,
+          message: absoluteTrackingUrl
+            ? `Your package has been shipped with ${carrier}. Track it: ${absoluteTrackingUrl}`
+            : `Your package has been shipped with ${carrier}. Tracking: ${trackingNumber}`,
           type: "shipped",
           category: "shipment" as NotificationCategory,
           channels: {
@@ -139,6 +154,10 @@ export const POST = withErrorHandler(
       }
     }
 
-    return NextResponse.json({ success: true, trackingId });
+    return NextResponse.json({
+      success: true,
+      trackingId,
+      publicTrackingUrl,
+    });
   }
 );

@@ -24,7 +24,12 @@ vi.mock("@/lib/firebaseAdmin", () => ({
     collection: (name: string) => ({
       doc: (id?: string) => {
         if (name === "requests")
-          return { id, get: mocks.requestGet, update: mocks.requestUpdate };
+          return {
+            id,
+            get: mocks.requestGet,
+            update: mocks.requestUpdate,
+            firestore: { runTransaction: mocks.runTransaction },
+          };
         if (name === "wallets") return { id, __kind: "wallet" };
         if (name === "walletTransactions") return { id, __kind: "wtx" };
         return {
@@ -32,6 +37,7 @@ vi.mock("@/lib/firebaseAdmin", () => ({
           __kind: "order",
           get: mocks.orderGet,
           update: mocks.orderUpdate,
+          firestore: { runTransaction: mocks.runTransaction },
         };
       },
     }),
@@ -807,6 +813,11 @@ describe("POST /api/paypal/capture-order", () => {
     beforeEach(() => {
       mocks.orderGet.mockResolvedValue(snap(itemOrder));
       mocks.requestGet.mockResolvedValue(snap(itemDoc));
+      // Settlement re-reads the request inside its transaction, so the
+      // in-transaction read has to follow the same per-test snapshot.
+      mocks.txGet.mockImplementation(async (ref: { __kind?: string }) =>
+        ref.__kind === "order" ? mocks.orderGet() : mocks.requestGet()
+      );
       mocks.fetch.mockResolvedValue({
         ok: true,
         status: 200,
@@ -826,7 +837,9 @@ describe("POST /api/paypal/capture-order", () => {
         amountPaid: 52.5,
         paymentMethod: "paypal",
       });
-      expect(mocks.requestUpdate).toHaveBeenCalledWith(
+      // Settlement writes both documents inside one transaction.
+      expect(mocks.txUpdate).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({
           additionalItemRequests: [
             expect.objectContaining({
@@ -843,7 +856,8 @@ describe("POST /api/paypal/capture-order", () => {
           }),
         })
       );
-      expect(mocks.orderUpdate).toHaveBeenCalledWith(
+      expect(mocks.txUpdate).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({ status: "completed", captureId: "cap-2" })
       );
     });

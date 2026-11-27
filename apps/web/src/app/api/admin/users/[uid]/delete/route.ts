@@ -17,14 +17,33 @@ import { userSecretsRef } from "@/lib/mfaSecrets";
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 /** Collections that make an account a customer rather than a scratch signup. */
+/*
+ * Each entry carries its query as a thunk with a literal field name, rather
+ * than a `{ collection, field }` pair applied in a loop: the coverage and
+ * index checkers read `where()` arguments statically, and a field reached
+ * through a variable is reported as an unreadable call on every run. Literal
+ * fields here keep both checkers silent — and honest — about this file.
+ */
 const HISTORY_CHECKS = [
-  { collection: "requests", field: "userId", label: "orders" },
   {
-    collection: "walletTransactions",
-    field: "userId",
-    label: "wallet history",
+    label: "orders",
+    query: async (uid: string) =>
+      adminDb.collection("requests").where("userId", "==", uid).limit(1).get(),
   },
-  { collection: "walletHolds", field: "userId", label: "wallet holds" },
+  {
+    label: "wallet history",
+    query: async (uid: string) =>
+      adminDb
+        .collection("walletTransactions")
+        .where("userId", "==", uid)
+        .limit(1)
+        .get(),
+  },
+  {
+    label: "wallet holds",
+    query: async (uid: string) =>
+      adminDb.collection("walletHolds").where("userId", "==", uid).limit(1).get(),
+  },
 ] as const;
 
 /**
@@ -150,11 +169,7 @@ export const POST = withErrorHandler(
       const history = new Set<string>();
 
       for (const check of HISTORY_CHECKS) {
-        const snap = await adminDb
-          .collection(check.collection)
-          .where(check.field, "==", uid)
-          .limit(1)
-          .get();
+        const snap = await check.query(uid);
 
         if (!snap.empty) history.add(check.label);
       }
@@ -203,17 +218,33 @@ export const POST = withErrorHandler(
       }
 
       const owned = [
-        { collection: "addresses", field: "userId" },
-        { collection: "notifications", field: "userId" },
-        { collection: "supportTickets", field: "customerId" },
-        { collection: "consentLogs", field: "userId" },
+        {
+          collection: "addresses",
+          query: async (uid: string) =>
+            adminDb.collection("addresses").where("userId", "==", uid).get(),
+        },
+        {
+          collection: "notifications",
+          query: async (uid: string) =>
+            adminDb.collection("notifications").where("userId", "==", uid).get(),
+        },
+        {
+          collection: "supportTickets",
+          query: async (uid: string) =>
+            adminDb
+              .collection("supportTickets")
+              .where("customerId", "==", uid)
+              .get(),
+        },
+        {
+          collection: "consentLogs",
+          query: async (uid: string) =>
+            adminDb.collection("consentLogs").where("userId", "==", uid).get(),
+        },
       ] as const;
 
       for (const check of owned) {
-        const snap = await adminDb
-          .collection(check.collection)
-          .where(check.field, "==", uid)
-          .get();
+        const snap = await check.query(uid);
         snap.docs.forEach((doc) =>
           operations.push({ type: "delete", ref: doc.ref })
         );

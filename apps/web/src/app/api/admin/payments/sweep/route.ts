@@ -190,8 +190,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       const settlement = await settleAdditionalItemPayment({
         requestRef: adminDb.collection("requests").doc(requestId),
         paymentOrderRef: paymentOrder.ref,
-        requestData,
-        paymentOrder: paymentOrder.data,
         additionalItemRequestId,
         orderID: String(paymentOrder.data.orderId ?? paymentOrder.id),
         captureId: capture.captureId,

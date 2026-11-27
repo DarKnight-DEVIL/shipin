@@ -87,7 +87,9 @@ describe("adminDb in emulator mode", () => {
       projectId: "shipin-e2e",
     });
     expect(mocks.cert).not.toHaveBeenCalled();
-  });
+    // Importing the Admin SDK can exceed the 5s default on a loaded CI worker;
+    // the timeout also used to abort the import and fail the next test.
+  }, 15_000);
 });
 
 describe("adminDb", () => {

@@ -231,7 +231,7 @@ function stubSubtleDigest() {
 
 /** Routes each fetch the registration path makes. */
 function mockRegistrationFetch(
-  leakResponse: { ok: boolean; status: number; suffixes?: string[] } | "throw"
+  leakResponse: { ok: boolean; status: number; leaked?: boolean } | "throw"
 ) {
   h.fetch.mockImplementation(async (input: unknown) => {
     const url = String(input);
@@ -243,7 +243,7 @@ function mockRegistrationFetch(
       return {
         ok: leakResponse.ok,
         status: leakResponse.status,
-        json: async () => ({ suffixes: leakResponse.suffixes ?? [] }),
+        json: async () => ({ leaked: leakResponse.leaked ?? false }),
       };
     }
 
@@ -338,12 +338,11 @@ describe("LoginClient: registration checks", () => {
 
   it("blocks a password found in a breach", async () => {
     stubSubtleDigest();
-    // The server returns suffixes after the 5-character prefix; a hit means the
-    // full hash is in the dump.
+    // The server compares our suffix in the range and answers with a boolean.
     mockRegistrationFetch({
       ok: true,
       status: 200,
-      suffixes: [DIGEST_HEX.slice(5)],
+      leaked: true,
     });
     render(<LoginClient />);
     fillRegisterForm("Str0ng!pass");
@@ -353,7 +352,7 @@ describe("LoginClient: registration checks", () => {
     expect(alert).toHaveTextContent("appeared in a data breach");
     expect(h.createUserWithEmailAndPassword).not.toHaveBeenCalled();
 
-    // Only the prefix leaves the browser: the full password never does.
+    // Only the hash prefix and suffix leave the browser: the password does not.
     const body = JSON.parse(
       (
         h.fetch.mock.calls.find(([url]) =>
@@ -361,7 +360,10 @@ describe("LoginClient: registration checks", () => {
         )?.[1] as { body: string }
       ).body
     );
-    expect(body).toEqual({ prefix: DIGEST_HEX.slice(0, 5) });
+    expect(body).toEqual({
+      prefix: DIGEST_HEX.slice(0, 5),
+      suffix: DIGEST_HEX.slice(5),
+    });
   });
 
   it("registers when the password is not in any breach", async () => {
@@ -369,7 +371,7 @@ describe("LoginClient: registration checks", () => {
     mockRegistrationFetch({
       ok: true,
       status: 200,
-      suffixes: ["FFFFFFFFFFFF"],
+      leaked: false,
     });
     h.createUserWithEmailAndPassword.mockResolvedValue({ user: profile() });
     render(<LoginClient />);

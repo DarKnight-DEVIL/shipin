@@ -105,23 +105,12 @@ service cloud.firestore {
     match /requests/{requestId} {
       allow read: if isAdmin() || isSelf(resource.data.userId);
 
-      // Filing a request is the one customer write that stays client-side
-      // (see POST /api/requests in the new-request flow). It must be born
-      // unpriced, unpaid and unshipped — every later transition runs through
-      // /api/requests/[requestId]/* with the Admin SDK.
-      allow create: if signedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.status == 'submitted'
-        && !request.resource.data.keys().hasAny([
-             'quote',
-             'payment',
-             'purchases',
-             'refundRequests',
-             'shipment',
-             'tracking',
-             'inspection',
-             'deliveredAt'
-           ]);
+      // Requests are created only by POST /api/requests through the Admin
+      // SDK. The browser used to be allowed to file one directly, which
+      // bypassed the server's SKU cap, address ownership, identity stamping
+      // and the DPDP age gate. The UI no longer writes here, so the
+      // permission was pure attack surface.
+      allow create: if false;
 
       // Customers cannot update a request from the browser at all: no status,
       // no quote, no payment record. Admin console writes keep working.
@@ -292,13 +281,21 @@ service cloud.firestore {
       );
 
       // The customer side of createSupportTicket sends customerId, category,
-      // subject, requestId, ticketNumber and the two timestamps. `status` is
-      // pinned to "open" (a ticket cannot be born resolved) and nothing else
-      // may ride along, so priority/assignment stay admin-owned.
+      // subject, requestId, ticketNumber, an optional firstMessage (the client
+      // spreads it into the ticket) and the two timestamps. `status` is pinned
+      // to "open" (a ticket cannot be born resolved) and nothing else may ride
+      // along, so priority/assignment stay admin-owned.
+      // subject and firstMessage are the two client-writable strings on the
+      // ticket itself; without a bound here a scripted customer could file a
+      // ticket carrying close to the 1 MiB document limit, which every admin
+      // opening the support console would then download. The message thread's
+      // own rule bounds messages at the same 5000 characters.
       allow create: if isSelf(request.resource.data.customerId)
         && request.resource.data.status == 'open'
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time
+        && request.resource.data.get('subject', '').size() <= 200
+        && request.resource.data.get('firstMessage', '').size() <= 5000
         && request.resource.data.category in [
              'Shipment',
              'Tracking',
@@ -315,6 +312,7 @@ service cloud.firestore {
              'customerId',
              'category',
              'subject',
+             'firstMessage',
              'status',
              'customerUnread',
              'adminUnread',
@@ -325,21 +323,22 @@ service cloud.firestore {
     }
 
     match /supportMessages/{messageId} {
-      // Messages do not carry customerId, so ownership comes from the parent
-      // ticket. Use `resource` here, not `request.resource`: on a read there is
-      // no proposed document, so `request.resource` is null and reading into it
-      // errors — which denies the request, and with it every customer read.
+      // New messages carry customerId, so a thread read authorises each
+      // document directly. Older messages predate the field; migration 007
+      // backfills them, and the get() fallback covers anything written before
+      // that migration ran.
+      // Use `resource` here, not `request.resource`: on a read there is no
+      // proposed document, so reading into `request.resource` errors and denies
+      // every customer read.
       allow read: if signedIn() && (
         isAdmin()
+        || resource.data.customerId == request.auth.uid
         || get(/databases/$(database)/documents/supportTickets/$(resource.data.ticketId)).data.customerId == request.auth.uid
       );
 
-      // Messages do not carry customerId on the client (features/support/
-      // services writes {ticketId, sender, message, createdAt}), so the old
-      // rule rejected every customer message, including the first one sent
-      // with a new ticket. Ownership is taken from the parent ticket instead:
-      // an admin may reply to any ticket, a customer only to their own, and
-      // only as the customer.
+      // A customer may only open a thread on their own ticket, and the message
+      // must name them as its owner so the read rule above can trust it. Admins
+      // write through the Admin SDK; the browser helper sends customerId.
       allow create: if signedIn()
         && request.resource.data.createdAt == request.time
         && request.resource.data.message is string
@@ -347,6 +346,7 @@ service cloud.firestore {
         && request.resource.data.message.size() <= 5000
         && request.resource.data.keys().hasOnly([
              'ticketId',
+             'customerId',
              'sender',
              'message',
              'createdAt'
@@ -355,6 +355,7 @@ service cloud.firestore {
           isAdmin()
           || (
             request.resource.data.sender == 'customer'
+            && request.resource.data.customerId == request.auth.uid
             && get(/databases/$(database)/documents/supportTickets/$(request.resource.data.ticketId)).data.customerId == request.auth.uid
           )
         );

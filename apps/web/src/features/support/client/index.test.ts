@@ -122,15 +122,20 @@ describe("createSupportTicket", () => {
 });
 
 describe("ticket mutations", () => {
-  it("appends a message", async () => {
-    const id = await addSupportMessage("t-1", {
-      sender: "admin",
-      message: "Looking into it",
-    } as never);
+  it("appends a message with its owner", async () => {
+    const id = await addSupportMessage(
+      "t-1",
+      {
+        sender: "admin",
+        message: "Looking into it",
+      } as never,
+      "c1"
+    );
 
     expect(id).toBe("new-id");
     expect(mocks.addDoc.mock.calls[0][1]).toMatchObject({
       ticketId: "t-1",
+      customerId: "c1",
       sender: "admin",
       createdAt: "__SERVER_TS__",
     });

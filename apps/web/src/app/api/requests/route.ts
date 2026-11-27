@@ -6,8 +6,8 @@ import { requireAuthWithProfile } from "@/lib/auth";
 import { createRequestBodySchema, readAndValidateBody } from "@/lib/validation";
 import { enforceAgeGate } from "@/lib/compliance/ageOps";
 import {
+  claimIdempotentRequest,
   readIdempotencyKey,
-  readIdempotentResponse,
   rememberIdempotentResponse,
 } from "@/lib/idempotency";
 import { withErrorHandler } from "@/utils/errors";
@@ -89,18 +89,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     scope: "request.create",
     key: idempotencyKey ?? "",
   };
-  if (idempotencyKey) {
-    const prior = await readIdempotentResponse(replayScope);
-    if (prior) return NextResponse.json(prior.body, { status: prior.status, headers: NO_STORE });
-  }
 
+  // Addresses live in the caller's own subcollection, so the path itself is the
+  // ownership check: an id from somebody else's book simply does not resolve.
   const addressSnapshot = await adminDb
+    .collection("users")
+    .doc(auth.profile.uid)
     .collection("addresses")
     .doc(addressId)
     .get();
 
-  // One 404 for "does not exist" and "not yours": an address id must not
-  // confirm existence to another customer.
   if (!addressSnapshot.exists) {
     return NextResponse.json(
       { success: false, error: "Address not found." },
@@ -110,13 +108,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const address = addressSnapshot.data() ?? {};
 
-  if (address.userId !== auth.profile.uid) {
-    return NextResponse.json(
-      { success: false, error: "Address not found." },
-      { status: 404, headers: NO_STORE }
-    );
-  }
-
   // The verified email is the identity of record; the profile's display name
   // is what admins see in the queue. Neither comes from the body.
   const profileSnapshot = await adminDb
@@ -125,6 +116,28 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     .get();
 
   const profile = profileSnapshot.data() ?? {};
+
+  // Claim only once the body and address are known good: a rejected submit
+  // must not hold the key, and a concurrent duplicate must not reach `add`.
+  if (idempotencyKey) {
+    const claim = await claimIdempotentRequest(replayScope);
+    if (claim.kind === "replay") {
+      return NextResponse.json(claim.response.body, {
+        status: claim.response.status,
+        headers: NO_STORE,
+      });
+    }
+    if (claim.kind === "in_progress") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "This request is already being placed. Retry shortly.",
+          code: "IDEMPOTENCY_IN_PROGRESS",
+        },
+        { status: 409, headers: { ...NO_STORE, "Retry-After": "1" } }
+      );
+    }
+  }
 
   const docRef = await adminDb.collection("requests").add({
     userId: auth.profile.uid,
