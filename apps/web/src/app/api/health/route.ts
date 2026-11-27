@@ -40,7 +40,11 @@ import { NextResponse } from "next/server";
 
 import { isProduction } from "@/config/env";
 import { getAppCheckStatus } from "@/lib/appCheck";
-import { readErrorCounts, resolveErrorAlertWebhook } from "@/lib/errorTracking";
+import {
+  readAlertDeliveryStatus,
+  readErrorCounts,
+  resolveErrorAlertWebhook,
+} from "@/lib/errorTracking";
 import { mfaDenylistStatus } from "@/lib/mfaDenylist";
 import {
   apiRateLimiter,
@@ -115,6 +119,7 @@ export async function GET() {
    * operator channel cannot be relied on.
    */
   const errorCounts = await readErrorCounts();
+  const alertDelivery = await readAlertDeliveryStatus();
   const alerted = reportAppCheckSpike(appCheckRejections);
   const outboundAlerted = reportOutboundSpike(outboundRejections);
 
@@ -238,7 +243,14 @@ export async function GET() {
       },
       ...(outboundAlerted ? { outboundSpikeAlerted: true } : {}),
       alerting: {
-        webhook: alertTarget.source,        ...(isProduction && !alertTarget.configured
+        webhook: alertTarget.source,
+        recentDeliveryFailures: alertDelivery.recentFailures,
+        ...(alertDelivery.recentFailures > 0
+          ? {
+              warning:
+                "Alert deliveries to the operator webhook failed recently — check the webhook URL and the sink's status; incidents in this window were logged but may not have paged anyone.",
+            }
+          : {}),        ...(isProduction && !alertTarget.configured
           ? {
               warning:
                 "No alert webhook is configured (APP_CHECK_ALERT_WEBHOOK_URL), so an App Check quota outage would be reported only by this probe. Set it to a Discord webhook URL or alert on status != healthy.",

@@ -39,6 +39,7 @@ import {
   fingerprintFor,
   normaliseMessage,
   readErrorCounts,
+  readAlertDeliveryStatus,
   redactMessageForAlert,
   resetErrorTrackingForTests,
   resolveErrorAlertWebhook,
@@ -190,6 +191,38 @@ describe("alerting", () => {
     await expect(
       captureServerError(new Error("boom"), { category: "unhandled" })
     ).resolves.toBeUndefined();
+  });
+
+  it("records a failed delivery so health can see a dead webhook", async () => {
+    setErrorAlertSenderForTests(async () => {
+      throw new Error("discord down");
+    });
+
+    await captureServerError(new Error("boom"), { category: "unhandled" });
+
+    await expect(readAlertDeliveryStatus()).resolves.toEqual({
+      webhookConfigured: true,
+      recentFailures: 1,
+    });
+  });
+
+  it("counts delivery failures across instances via the shared store", async () => {
+    state.redis = {
+      hincrby: vi.fn(async () => 1),
+      expire: vi.fn(async () => "OK"),
+      hgetall: vi.fn(async () => ({ "1000": "3" })),
+    };
+    setErrorAlertSenderForTests(async () => {
+      throw new Error("discord down");
+    });
+
+    await captureServerError(new Error("boom"), { category: "unhandled" });
+
+    expect(state.redis.hincrby).toHaveBeenCalledWith(
+      "shipin:errors:alertDeliveries",
+      expect.any(String),
+      1
+    );
   });
 
   it("does nothing but log when no webhook is configured", async () => {

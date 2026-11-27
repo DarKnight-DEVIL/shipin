@@ -68,6 +68,9 @@ const BUCKET_MS = 5 * 60 * 1000;
 const WINDOW_BUCKETS = 2;
 const COUNTER_HASH = "shipin:errors:counts";
 const COUNTER_TTL_SECONDS = 30 * 60;
+/** Failed alert deliveries, same bucketing as the error counts above. */
+const ALERT_FAILURE_HASH = "shipin:errors:alertDeliveries";
+const ALERT_FAILURE_TTL_SECONDS = 30 * 60;
 const ALERT_TIMEOUT_MS = 5000;
 /** Context is bounded: an alert carrying a megabyte is not an alert. */
 const MAX_CONTEXT_VALUE = 200;
@@ -314,11 +317,79 @@ export function setErrorAlertSenderForTests(
   sendAlert = sender;
 }
 
+/**
+ * Record a failed alert delivery.
+ *
+ * A webhook URL that stopped accepting posts is otherwise invisible: the
+ * alert path is fire-and-forget by design, the failure only reaches the logs,
+ * and health would keep reporting `healthy` while the paging channel is
+ * dead. The counter gives /api/health the same bucketed view the error
+ * counts get, so a dead or flapping webhook degrades the deployment like any
+ * other broken signal.
+ */
+export async function recordAlertDeliveryFailure(
+  now = Date.now()
+): Promise<void> {
+  const bucket = currentBucket(now);
+
+  localAlertFailures.set(bucket, 1 + (localAlertFailures.get(bucket) ?? 0));
+
+  const client = getSharedRedisClient();
+  if (!client) return;
+
+  try {
+    await client.hincrby(ALERT_FAILURE_HASH, String(bucket), 1);
+    await client.expire(ALERT_FAILURE_HASH, ALERT_FAILURE_TTL_SECONDS);
+  } catch (error) {
+    // Counting is best-effort; never mask the delivery failure itself.
+    logger.warn("Could not record an alert delivery failure", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export interface AlertDeliveryStatus {
+  webhookConfigured: boolean;
+  recentFailures: number;
+}
+
+/** Alert-delivery health for /api/health, over the same window as the counts. */
+export async function readAlertDeliveryStatus(
+  now = Date.now()
+): Promise<AlertDeliveryStatus> {
+  const oldest = currentBucket(now) - (WINDOW_BUCKETS - 1);
+  let recentFailures = 0;
+
+  const tally = (field: string, raw: unknown) => {
+    const bucket = Number(field);
+    if (Number.isNaN(bucket) || bucket < oldest) return;
+    recentFailures += Number(raw) || 0;
+  };
+
+  for (const [bucket, count] of localAlertFailures) tally(String(bucket), count);
+
+  const client = getSharedRedisClient();
+  if (client) {
+    try {
+      const stored = await client.hgetall(ALERT_FAILURE_HASH);
+      if (stored) for (const [field, raw] of Object.entries(stored)) tally(field, raw);
+    } catch (error) {
+      logger.warn("Could not read alert delivery failures", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return { webhookConfigured: resolveErrorAlertWebhook() !== null, recentFailures };
+}
+
 // --- counting --------------------------------------------------------------
 
 const localCounts = new Map<string, number>();
 /** Fingerprints already alerted on this instance, when there is no shared store. */
 const localAlerted = new Map<string, number>();
+/** Failed alert deliveries on this instance, when there is no shared store. */
+const localAlertFailures = new Map<number, number>();
 
 function currentBucket(now = Date.now()): number {
   return Math.floor(now / BUCKET_MS);
@@ -391,6 +462,7 @@ export async function readErrorCounts(now = Date.now()): Promise<ErrorCountStatu
 export function resetErrorTrackingForTests(): void {
   localCounts.clear();
   localAlerted.clear();
+  localAlertFailures.clear();
   sendAlert = async () => {};
 }
 
@@ -451,11 +523,14 @@ export async function captureServerError(
 
     if (!(await claimAlertSlot(event.fingerprint))) return;
 
-    void sendAlert(buildErrorAlertPayload(event), webhook).catch((sendError) => {
-      logger.warn("Could not deliver an error alert", {
-        error: sendError instanceof Error ? sendError.message : String(sendError),
+    void sendAlert(buildErrorAlertPayload(event), webhook)
+      .catch((sendError) => {
+        logger.warn("Could not deliver an error alert", {
+          error: sendError instanceof Error ? sendError.message : String(sendError),
+        });
+        // Best effort: the counter itself must not throw out of this path.
+        return recordAlertDeliveryFailure().catch(() => {});
       });
-    });
   } catch (captureError) {
     // Reporting must never be the thing that breaks a request.
     logger.warn("Error tracking itself failed", {

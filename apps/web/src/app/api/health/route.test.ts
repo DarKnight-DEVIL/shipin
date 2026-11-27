@@ -9,6 +9,11 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+import {
+  recordAlertDeliveryFailure,
+  resetErrorTrackingForTests,
+} from "@/lib/errorTracking";
+
 const state = vi.hoisted(() => ({
   isProduction: false,
   url: "",
@@ -353,7 +358,32 @@ describe("GET /api/health", () => {
 
     const body = await (await GET()).json();
 
-    expect(body.alerting).toEqual({ webhook: "dedicated" });
+    expect(body.alerting).toEqual({
+      webhook: "dedicated",
+      recentDeliveryFailures: 0,
+    });
+  });
+
+  it("warns when alert deliveries to the operator channel are failing", async () => {
+    state.isProduction = true;
+    state.url = "https://t.upstash.io";
+    state.token = "tok";
+    state.indiaPostUrl = "https://tracking.example";
+    state.indiaPostClientId = "client";
+    state.indiaPostClientSecret = "secret";
+    state.alertSource = "dedicated";
+
+    // The webhook rejects the post: the delivery failure is recorded so a
+    // monitor can see the paging channel is down even while the app serves.
+    await recordAlertDeliveryFailure();
+
+    const body = await (await GET()).json();
+
+    expect(body.status).toBe("healthy");
+    expect(body.alerting.recentDeliveryFailures).toBe(1);
+    expect(body.alerting.warning).toContain("webhook");
+
+    resetErrorTrackingForTests();
   });
 
   it("warns when production has no way to page anyone", async () => {
