@@ -26,3 +26,4 @@ that was accepted.
 | [0006](0006-nonce-csp-for-authenticated-tree.md) | A nonce CSP for the authenticated tree only | Rejected |
 | [0007](0007-trusted-types-report-only.md) | Trusted Types in report-only mode | Accepted |
 | [0008](0008-money-as-integer-minor-units.md) | Money at rest is integer minor units | Accepted |
+| [0009](0009-no-api-version-prefix.md) | No API version prefix until a second independent consumer | Accepted |
