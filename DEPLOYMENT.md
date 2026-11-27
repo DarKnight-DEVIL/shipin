@@ -549,19 +549,33 @@ docker run -p 3000:3000 \
 
 ### Updating Dependencies
 
+Every direct dependency is pinned to an **exact** version — no `^` or `~`. A
+range lets a registry publish change what CI builds without any commit doing
+it, which is the same moving-target problem `trufflehog@main` had, just slower.
+The versions worth watching (TypeScript, Next, React, Vitest, ESLint) are
+already on current majors, so the pin costs nothing today and buys
+reproducibility: `package-lock.json` and the manifests can no longer disagree
+about what "the same install" means.
+
+When an upgrade is wanted, it is a deliberate change, not a float:
+
 ```bash
-# Check for updates
+# Discover what is behind
 npm outdated
 
-# Update with audit
-npm audit fix
-
-# Full update (careful with major versions)
-npm update
-npm test
-npm run lint
-npm run build
+# Upgrade in a branch, one dependency at a time — never on main, never in bulk
+git checkout -b deps/<name>-<version>
+npm install <name>@<version>          # or npm install <name>@latest to preview
+npm test && npm run lint && npm run build
+npm run test:e2e:local                # for anything the runtime touches
 ```
+
+`npm audit fix` may still be run when a security advisory lands, but it gets
+the same branch-and-gate treatment: it edits the manifest, so it can change
+what CI builds. The overrides at the root of `package.json` (`@grpc/grpc-js`,
+`minimatch`, `jose`) exist to hold transitive dependencies at patched
+versions — when bumping one, bump it to the version you actually installed,
+and note the advisory in the commit message.
 
 ---
 
