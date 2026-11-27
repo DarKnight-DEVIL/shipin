@@ -8,10 +8,12 @@ import { deleteR2Objects } from "@/lib/r2Delete";
 import {
   PHOTO_RETENTION_MONTHS,
   SUPPORT_RETENTION_MONTHS,
+  WEBHOOK_EVENT_RETENTION_DAYS,
   collectPhotoKeys,
   isPastRetention,
   retentionCutoff,
 } from "@/lib/compliance/retention";
+import { releaseExpiredWalletHolds } from "@/lib/paypal/walletHolds";
 
 /**
  * POST /api/admin/compliance/retention/purge
@@ -27,6 +29,21 @@ import {
  * - orders, invoices and payment records, which §8 keeps for 8 years;
  * - anything with an unparseable timestamp, because guessing would delete live
  *   data on a parse failure.
+ *
+ * Retention of the operational collections this route does own:
+ * - `paypalWebhookEvents` — idempotency markers, deleted 30 days after the
+ *   event was claimed (WEBHOOK_EVENT_RETENTION_DAYS). A marker only has to
+ *   outlive PayPal's redelivery window (~3 days); without this purge the
+ *   collection grows by one document per webhook forever.
+ * - `walletHolds` — self-cleaning: a hold is deleted by the settlement
+ *   transaction that consumes it, and abandoned checkouts are released the
+ *   next time that customer checks out. This route additionally releases
+ *   anything still expired, so a customer who never returns does not leave a
+ *   hold behind forever.
+ * - `migrations` — one document per migration; bounded by the migration
+ *   count, so there is nothing to purge.
+ * - `adminAuditLog` — the audit trail; retained by design, the same way §8
+ *   keeps financial records.
  *
  * Paging: each run processes one bounded page and stores a cursor in
  * `system/retention`, so a scan that meets fifty photo-less requests does not get
@@ -177,6 +194,50 @@ async function purgeExpiredPhotos(
   return result;
 }
 
+interface WebhookEventPurgeResult {
+  scanned: number;
+  deleted: number;
+}
+
+/**
+ * Delete webhook idempotency markers past their retention.
+ *
+ * The marker's whole job is deduplication while PayPal might redeliver the
+ * event, and that window is about three days — so a marker older than
+ * WEBHOOK_EVENT_RETENTION_DAYS can never be consulted again.
+ *
+ * `claimedAt` is an epoch-millis number written before anything else, so every
+ * marker carries it. Firestore's type-aware comparison excludes documents
+ * whose `claimedAt` is missing or not a number, which is exactly the
+ * "unparseable timestamp" guard the docblock promises: an unreadable date is
+ * never matched, so it is never deleted on a guess.
+ */
+async function purgeExpiredWebhookEvents(now: Date): Promise<WebhookEventPurgeResult> {
+  const cutoff = now.getTime() - WEBHOOK_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+  // One inequality field, no ordering: uses the automatic single-field index,
+  // consistent with the project's measured rule in check-firestore-indexes.mjs.
+  // Bounded per run rather than cursored: every document returned is eligible
+  // for deletion, so a short page just means the backlog is drained.
+  const snapshot = await adminDb
+    .collection("paypalWebhookEvents")
+    .where("claimedAt", "<", cutoff)
+    .limit(PAGE_SIZE)
+    .get();
+
+  const result: WebhookEventPurgeResult = {
+    scanned: snapshot.size,
+    deleted: 0,
+  };
+
+  for (const doc of snapshot.docs) {
+    await doc.ref.delete();
+    result.deleted++;
+  }
+
+  return result;
+}
+
 async function purgeExpiredSupport(
   now: Date,
   cursor: unknown
@@ -252,6 +313,19 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const photos = await purgeExpiredPhotos(now, state.photosCursor);
   const support = await purgeExpiredSupport(now, state.supportCursor);
+  const webhookEvents = await purgeExpiredWebhookEvents(now);
+
+  // Abandoned checkouts whose customer never came back would otherwise hold
+  // their reservation until that customer's next checkout, which may be never.
+  // Best effort like the cleanup it wraps: a failure here must not fail the
+  // whole purge run.
+  let holdsReleased = 0;
+  let holdsFailed = false;
+  try {
+    holdsReleased = await releaseExpiredWalletHolds(now);
+  } catch {
+    holdsFailed = true;
+  }
 
   await adminDb
     .collection("system")
@@ -265,13 +339,21 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
           ? FieldValue.delete()
           : (support.nextCursor ?? null),
         lastRunAt: FieldValue.serverTimestamp(),
-        lastRun: { photos, support },
+        lastRun: { photos, support, webhookEvents, holdsReleased },
       },
       { merge: true }
     );
 
   return NextResponse.json(
-    { success: true, photos, support, timestamp: now.toISOString() },
+    {
+      success: true,
+      photos,
+      support,
+      webhookEvents,
+      holdsReleased,
+      ...(holdsFailed ? { warning: "The wallet-hold release sweep failed; expired holds remain reserved until the next run." } : {}),
+      timestamp: now.toISOString(),
+    },
     { status: 200, headers: NO_STORE }
   );
 });

@@ -14,6 +14,15 @@ export const PHOTO_RETENTION_MONTHS = 24;
 export const SUPPORT_RETENTION_MONTHS = 24;
 
 /**
+ * PayPal webhook idempotency markers (`paypalWebhookEvents/{eventId}`): 30 days.
+ *
+ * A marker only has to live as long as PayPal might redeliver the same event —
+ * its own retry window is about three days, so thirty is generous. Anything
+ * older can never be consulted again and is deleted by the daily purge.
+ */
+export const WEBHOOK_EVENT_RETENTION_DAYS = 30;
+
+/**
  * Orders, invoices and payment records: 8 years, for tax and accounting law.
  * Documented here for completeness; the purge deliberately never deletes these.
  */
