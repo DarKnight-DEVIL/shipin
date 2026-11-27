@@ -62,6 +62,16 @@ function isAuthEntryPath(pathname: string): boolean {
 
 /** Methods that can change server state, so a cross-site initiator is refused. */
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * The API body-size ceiling: 1 MB.
+ *
+ * 64× the largest body a route schema accepts, so no legitimate request is
+ * refused, and 1/4000th of the buffer an attacker could otherwise force the
+ * server to hold. `/api/webhook` is excluded from this matcher and enforces
+ * the same limit itself before reading its raw body.
+ */
+const MAX_API_BODY_BYTES = 1024 * 1024;
 export default async function proxy(request: NextRequest) {
   // Generate a correlation ID for this request and propagate it everywhere.
   // This enables distributed tracing across API routes, PayPal webhooks,
@@ -91,6 +101,28 @@ export default async function proxy(request: NextRequest) {
   }
 
   const isApi = pathname.startsWith("/api/");
+
+  // Body-size ceiling for the API. Every handler parses its request body into
+  // memory, and legitimate bodies are bounded far below this by the zod
+  // schemas (readAndValidateBody already rejects > 64 KB at the route layer).
+  // The ceiling exists so an oversized request is refused before the server
+  // buffers it at all. Chunked requests without a Content-Length bypass this
+  // header check; the platform's own body cap and the route schemas remain.
+  if (isApi) {
+    const declaredLength = Number(request.headers.get("content-length") ?? NaN);
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_API_BODY_BYTES) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Request body is too large.",
+          code: "REQUEST_BODY_TOO_LARGE",
+          requestId,
+        },
+        { status: 413 }
+      );
+    }
+  }
+
   const limiter = isApi
     ? apiRateLimiter
     : isAuthEntryPath(pathname)

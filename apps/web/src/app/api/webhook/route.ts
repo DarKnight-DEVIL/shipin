@@ -42,6 +42,9 @@ const webhookLogger = childLogger({ service: "paypal-webhook" });
 const CLAIM_STATUS_CLAIMED = "claimed";
 const CLAIM_STATUS_PROCESSED = "processed";
 
+/** Body-size ceiling for this route; see the check in the handler. */
+const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024;
+
 /**
  * How long a claim is believed before a retry may take it over.
  *
@@ -128,6 +131,22 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         code: "INVALID_SIGNATURE",
       },
       { status: 400 }
+    );
+  }
+
+  // The proxy never sees this route (raw-body signature verification), so the
+  // body-size ceiling the proxy applies to every other API route is enforced
+  // here instead, before a byte is read. PayPal webhooks are a few kilobytes;
+  // a 1 MB ceiling is generous.
+  const declaredLength = Number(request.headers.get("content-length") ?? NaN);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_WEBHOOK_BODY_BYTES) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Request body is too large.",
+        code: "REQUEST_BODY_TOO_LARGE",
+      },
+      { status: 413 }
     );
   }
 

@@ -233,6 +233,25 @@ describe("POST /api/webhook", () => {
     expect(mocks.verifyPayPalWebhook).not.toHaveBeenCalled();
   });
 
+  it("rejects an oversized body before reading it", async () => {
+    // This route is excluded from the proxy matcher, so it enforces the same
+    // 1 MB ceiling itself, before a byte is buffered for signature
+    // verification. The header is set explicitly: a locally constructed
+    // Request does not materialise content-length from its body.
+    const response = await POST(
+      new NextRequest("http://localhost/api/webhook", {
+        method: "POST",
+        headers: { ...PAYPAL_HEADERS, "content-length": String(1024 * 1024 + 1) },
+      })
+    );
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "REQUEST_BODY_TOO_LARGE",
+    });
+    expect(mocks.verifyPayPalWebhook).not.toHaveBeenCalled();
+  });
+
   it("rejects an invalid signature", async () => {
     mocks.verifyPayPalWebhook.mockResolvedValue(false);
 

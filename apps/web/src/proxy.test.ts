@@ -218,6 +218,31 @@ describe("proxy: infrastructure failures fall through", () => {
     expect(body.code).toBe("RATE_LIMIT_ERROR");
   });
 
+  it("refuses an API body over the size ceiling before reading it", async () => {
+    // 1 MB + 1: the ceiling is MAX_API_BODY_BYTES in proxy.ts. The point is
+    // not the exact number but that the request is refused before the limiter
+    // or any handler buffers the body. The header is set explicitly because a
+    // locally constructed Request does not materialise content-length from a
+    // body the way the HTTP layer does for a real request.
+    const response = await proxy(
+      new NextRequest("https://shipin.test/api/requests", {
+        method: "POST",
+        headers: { "content-length": String(1024 * 1024 + 1) },
+      })
+    );
+
+    expect(response.status).toBe(413);
+    const body = await response.json();
+    expect(body.code).toBe("REQUEST_BODY_TOO_LARGE");
+    expect(state.api.record).not.toHaveBeenCalled();
+  });
+
+  it("does not apply the size ceiling to requests without a body", async () => {
+    const response = await proxy(requestFor("/api/requests"));
+
+    expect(response.status).not.toBe(413);
+  });
+
   it("does not apply the page limiter to API routes", async () => {
     await proxy(requestFor("/api/requests"));
 
