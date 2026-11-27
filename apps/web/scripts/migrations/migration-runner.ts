@@ -105,6 +105,16 @@ async function listMigrations(): Promise<string[]> {
   return files;
 }
 
+/** Nama migrasi yang punya down() — untuk pesan error saat --down ditolak. */
+async function listMigrationsWithDown(): Promise<string[]> {
+  const withDown: string[] = [];
+  for (const name of await listMigrations()) {
+    const mod = await getMigrationModule(name);
+    if (typeof mod.down === "function") withDown.push(name);
+  }
+  return withDown;
+}
+
 async function isApplied(db: Firestore, name: string): Promise<boolean> {
   const snap = await db.collection("migrations").doc(name).get();
   if (!snap.exists) return false;
@@ -174,13 +184,19 @@ async function main() {
   const args = process.argv.slice(2);
   const migrationName = args[0];
   const dryRun = args.includes("--dry-run");
+  const down = args.includes("--down");
 
   if (!migrationName || migrationName === "--help" || migrationName === "-h") {
-    console.log("Usage: node migration-runner.ts <migration-name> [--dry-run]");
+    console.log("Usage: node migration-runner.ts <migration-name> [--dry-run] [--down]");
     console.log("\nAvailable migrations:");
     const migrations = await listMigrations();
     for (const m of migrations) console.log(`  - ${m}`);
     process.exit(migrationName ? 0 : 1);
+  }
+
+  if (dryRun && down) {
+    console.error("--dry-run and --down cannot be combined: down runs for real or not at all.");
+    process.exit(1);
   }
 
   if (migrationName === "list") {
@@ -215,6 +231,29 @@ async function main() {
     }
 
     const migration = await getMigrationModule(migrationName);
+
+    if (down) {
+      if (typeof migration.down !== "function") {
+        console.error(
+          `❌ ${migrationName} has no down() — rollback is deliberately unsupported for it.`
+        );
+        console.log(
+          "Migrations with down(): " +
+            (await listMigrationsWithDown()).join(", ") +
+            "\nAll others are forward-only by design (see each file's header)."
+        );
+        process.exit(1);
+      }
+      if (!dryRun && (await isApplied(db, migrationName))) {
+        // Rollback means the migration is no longer applied: drop the record so
+        // a later `up` can run again cleanly.
+        await db.collection("migrations").doc(migrationName).delete();
+      }
+      await migration.down(db);
+      console.log("\n✅ Rollback complete.");
+      return;
+    }
+
     await runMigration(migration, db, dryRun);
 
     if (dryRun) {
