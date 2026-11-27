@@ -92,7 +92,7 @@ Never commit `.env*` files that contain real credentials.
 | --- | --- |
 | `npm run dev` | Development server |
 | `npm run build` | Production build |
-| `npm start` | Serve the production build (traced standalone `server.js`, the same entrypoint the Docker image runs) |
+| `npm start` | Serve the production build (traced standalone `server.js`) |
 | `npm run lint` | ESLint |
 | `npm test` | Unit/route tests (Vitest) |
 | `npm run test:watch` | Vitest in watch mode |
@@ -164,4 +164,4 @@ Quality bar for changes: `npx tsc --noEmit`, `npm run lint` (0 errors), `npm tes
 Deployed on Vercel. Set every server variable above in the project environment (plus
 `UPSTASH_REDIS_REST_URL`/`TOKEN`, and `APP_CHECK_ALERT_WEBHOOK_URL` if the App Check
 spike alert should reach a Discord channel). Build with `npm run build`, then start with
-`npm start` — it runs the traced standalone server the Docker image also runs, and takes its port from `PORT`.
+`npm start` — it runs the traced standalone server, and takes its port from `PORT`.

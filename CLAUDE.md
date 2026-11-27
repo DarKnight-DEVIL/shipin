@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Tech Stack
 
 - **Framework**: Next.js 16.4.6 (App Router) with React 19.3.1
-- **Runtime**: Node 24 (`.nvmrc`, Docker image, CI `NODE_VERSION`); `engines` allows >=22.12 as the floor, and CI runs 24 only
+- **Runtime**: Node 24 (`.nvmrc`, CI `NODE_VERSION`); `engines` allows >=22.12 as the floor, and CI runs 24 only
 - **Language**: TypeScript with strict mode
 - **Styling**: Tailwind CSS v4
 - **Database**: Firebase (Firestore for data, Auth for authentication, Storage for files)
@@ -200,7 +200,7 @@ Critical env vars required:
   `npm run build` runs `scripts/prepare-standalone.mjs` after
   `next build`, so the traced `.next/standalone/apps/web/` tree already carries `public/`
   and `.next/static/` and boots when `server.js` is started directly. `npm start` runs the
-  same idempotent script again through `prestart`, exactly like the Dockerfile's `COPY`s.
+  same idempotent script again through `prestart`.
   That script also prunes what the tracer copies and must not ship — coverage, Playwright
   artefacts and the real `.env*` credentials (`STANDALONE_ARTEFACTS` / `STANDALONE_ENV_FILES`
   in `apps/web/standalone-output-excludes.mjs`, which `outputFileTracingExcludes` also asks

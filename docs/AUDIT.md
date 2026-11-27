@@ -5,7 +5,7 @@ read rather than trusted. Nothing below is copied from an earlier report, and ev
 finding is backed by the file/line that shows it or by a command whose output is quoted.
 
 Scope: `apps/web` (Next.js 16 app, 23k LOC, 76 API route files, 35 pages), `packages/*`,
-`scripts/`, `.github/workflows/`, `firestore.rules`, `firestore.indexes.json`, Docker and
+`scripts/`, `.github/workflows/`, `firestore.rules`, `firestore.indexes.json` and
 markdown docs.
 
 ---
@@ -51,7 +51,7 @@ GET /api/health  -> 500
 
 - `src/lib/redisRateLimiter.ts:283` — `if (isProduction)` → `throw`, and
   `isRateLimitStoreOptional()` is not imported anywhere in `src/lib`.
-- Consequence: `npm start`, the Docker image, `scripts/e2e-local.mjs` and any operator who
+- Consequence: `npm start`, `scripts/e2e-local.mjs` and any operator who
   follows `CLAUDE.md`'s "single documented opt-out" get a server that boots and then fails
   every page. `/api/health` fails too, so monitoring cannot tell "degraded" from "down".
 

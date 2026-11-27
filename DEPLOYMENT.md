@@ -252,8 +252,8 @@ is not covered by a hash — that last one is checked by re-reading the file, be
 gap there shows up as one blocked script on one page in one browser and nowhere else.
 
 Both copies of the HTML are instrumented: `.next/server/app` (what Vercel serves) and
-the traced standalone tree (what `npm start` and the Docker image serve). Measured:
-instrumenting only the first left the Docker path on the permissive policy.
+the traced standalone tree (what `npm start` serves). Measured: instrumenting only the
+first left the standalone path on the permissive policy.
 
 **Pages that load the PayPal SDK are the exception, and it is a real weakening.**
 `/payment/[id]`, `/requests/[id]` and `/requests/[id]/invoice`
@@ -392,8 +392,8 @@ for exactly this reason. Fix and redeploy:
 | Deployment | Set |
 | --- | --- |
 | Vercel | nothing (`VERCEL=1` is set by the platform) |
-| Docker/VM behind nginx, Caddy, ALB, or Cloudflare Tunnel | `TRUST_PROXY=1` |
-| Docker published directly, no proxy | leave both unset; keep the warning in mind and put a proxy in front before real traffic |
+| VM behind nginx, Caddy, ALB, or Cloudflare Tunnel | `TRUST_PROXY=1` |
+| Published directly, no proxy | leave both unset; keep the warning in mind and put a proxy in front before real traffic |
 
 Never set `TRUST_PROXY=1` when the app is directly reachable: the header then
 becomes client-supplied and a caller can mint a fresh rate-limit bucket per
@@ -526,20 +526,6 @@ safety net — alert on it.
 once, and call `/api/health`: the message should arrive within a second, with
 the rejection count, the environment and the `APP_CHECK_ENFORCEMENT=false`
 remediation. Then revert the threshold.
-
-### Docker Deployment
-
-Build and run locally:
-```bash
-# Build image
-docker build -t shipin .
-
-# Run container
-docker run -p 3000:3000 \
-  -e UPSTASH_REDIS_REST_URL=... \
-  -e UPSTASH_REDIS_REST_TOKEN=... \
-  shipin
-```
 
 ### Accessibility Audit
 

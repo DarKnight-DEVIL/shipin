@@ -2,10 +2,10 @@
  * The `standalone` contract shared by `next.config.ts`, `package.json` and
  * `scripts/prepare-standalone.mjs`.
  *
- * `output: "standalone"` is what the Docker image ships, so the traced tree is
+ * `output: "standalone"` is what `npm start` serves, so the traced tree is
  * the artefact that has to boot. `next start` reads `.next/` instead and warns
  * that it does not support standalone output, which made the documented
- * `npm start` exercise a different server than the image.
+ * `npm start` exercise a different server than the artefact.
  *
  * Plain JavaScript on purpose: `next.config.ts` (TypeScript) and the
  * `scripts/*.mjs` build helpers both import it, and only a `.mjs` module can be
@@ -53,11 +53,9 @@ export const STANDALONE_ARTEFACTS = [
  * Environment files the tracer copies because instrumentation's directory walk
  * reads the project root. They hold real credentials.
  *
- * The Docker build context already excludes them (`.dockerignore`), so they only
- * reach an image built straight from `.next/standalone` — but that is exactly
- * the directory `npm start` serves and the one a non-Docker deploy copies. The
- * start script passes them with `--env-file-if-exists` instead, so the server
- * still sees the same values without them being copied into the artefact.
+ * They must not reach the artefact a deployment copies: the start script passes
+ * them with `--env-file-if-exists` instead, so the server still sees the same
+ * values without them being copied into the artefact.
  *
  * @type {readonly string[]}
  */
