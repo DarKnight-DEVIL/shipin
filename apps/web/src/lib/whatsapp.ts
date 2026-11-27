@@ -6,6 +6,24 @@ import { childLogger } from "./logger";
 
 const whatsappLog = childLogger({ service: "whatsapp" });
 
+/**
+ * Status channel WhatsApp untuk /api/health.
+ *
+ * WhatsApp itu channel opt-in per customer (default preferences.channels.whatsapp
+ * = false), jadi tidak dikonfigurasi bukan kondisi degraded — tapi operator harus
+ * bisa LIHAT kalau channel yang mereka janjikan ke customer sebenarnya mati,
+ * karena kegagalan send-time ditelan oleh notification service.
+ */
+export function getWhatsAppStatus() {
+  const accessToken = serverEnv.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = serverEnv.WHATSAPP_PHONE_NUMBER_ID;
+  const missing = [
+    ...(accessToken ? [] : ["WHATSAPP_ACCESS_TOKEN"]),
+    ...(phoneNumberId ? [] : ["WHATSAPP_PHONE_NUMBER_ID"]),
+  ];
+  return { configured: missing.length === 0, missing };
+}
+
 /** One call plus two retries: enough to ride out a Graph API blip. */
 const WHATSAPP_MAX_ATTEMPTS = 3;
 const WHATSAPP_RETRY_DELAY_MS = 250;

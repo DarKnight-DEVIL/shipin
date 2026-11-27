@@ -27,7 +27,7 @@ vi.mock("@/lib/logger", () => ({
   }),
 }));
 
-import { sendWhatsAppTemplate } from "./whatsapp";
+import { sendWhatsAppTemplate, getWhatsAppStatus } from "./whatsapp";
 
 const baseParams = {
   to: "+91 98765 43210",
@@ -199,5 +199,26 @@ describe("sendWhatsAppTemplate retries", () => {
       status: 500,
       message: undefined,
     });
+  });
+});
+describe("getWhatsAppStatus", () => {
+  it("reports configured when both credentials exist", () => {
+    expect(getWhatsAppStatus()).toEqual({ configured: true, missing: [] });
+  });
+
+  it("lists exactly what is missing when unconfigured", () => {
+    delete mocks.serverEnv.WHATSAPP_ACCESS_TOKEN;
+    delete mocks.serverEnv.WHATSAPP_PHONE_NUMBER_ID;
+    expect(getWhatsAppStatus()).toEqual({
+      configured: false,
+      missing: ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"],
+    });
+  });
+
+  it("stays configured when only one of the two is set", () => {
+    delete mocks.serverEnv.WHATSAPP_PHONE_NUMBER_ID;
+    const status = getWhatsAppStatus();
+    expect(status.configured).toBe(false);
+    expect(status.missing).toEqual(["WHATSAPP_PHONE_NUMBER_ID"]);
   });
 });

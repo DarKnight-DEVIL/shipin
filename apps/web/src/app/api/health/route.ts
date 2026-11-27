@@ -57,6 +57,7 @@ import {
   RATE_LIMIT_ERROR_WINDOW_MS,
 } from "@/lib/redisRateLimiter";
 import { getIndiaPostStatus } from "@/features/shipments/carriers";
+import { getWhatsAppStatus } from "@/lib/whatsapp";
 import {
   getAppCheckAlertTarget,
   readAppCheckRejections,
@@ -138,6 +139,11 @@ export async function GET() {
   // discloses the placeholder) but mark the deployment degraded.
   const { configured: indiaPostConfigured, degraded: trackingPlaceholder } =
     getIndiaPostStatus();
+
+  // Channel WhatsApp: opt-in per customer, jadi tidak dikonfigurasi tidak
+  // menurunkan status deployment — tapi tetap dipublikasikan supaya operator
+  // bisa lihat kalau channel yang dijanjikan ke customer sebenarnya mati.
+  const whatsappStatus = getWhatsAppStatus();
 
   const limiters: Array<{ name: string; limiter: typeof webRateLimiter }> = [
     { name: "web", limiter: webRateLimiter },
@@ -280,6 +286,7 @@ export async function GET() {
             ? "placeholder"
             : "placeholder (development only)",
       },
+      whatsapp: whatsappStatus,
       ...(missingSharedStore
         ? {
             warning:

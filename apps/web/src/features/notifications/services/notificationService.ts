@@ -3,7 +3,7 @@ import "server-only";
 import { childLogger } from "../../../lib/logger";
 
 import { adminDb } from "@/lib/firebaseAdmin";
-import { sendWhatsAppTemplate } from "@/lib/whatsapp";
+import { sendWhatsAppTemplate, getWhatsAppStatus } from "@/lib/whatsapp";
 import { isKnownWhatsAppTemplate } from "@/features/notifications/templates";
 import { allowNotification } from "@/lib/notificationRateLimit";
 import { sendMail } from "@/lib/mailer";
@@ -212,7 +212,16 @@ export async function sendNotification({
   ) {
     const templateName = whatsapp.templateName;
 
-    if (!isKnownWhatsAppTemplate(templateName)) {
+    // Config check SEBELUM attempt: kalau deployment tidak punya kredensial
+    // WhatsApp, sendWhatsAppTemplate akan throw CONFIG_ERROR yang ditelan
+    // catch di bawah dengan pesan "check Meta approval" — misleading. Skip
+    // di sini dengan pesan yang menunjuk masalah yang benar.
+    if (!getWhatsAppStatus().configured) {
+      const missing = getWhatsAppStatus().missing.join(" + ");
+      console.error(
+        `WhatsApp notification skipped: ${missing} not configured on this deployment. Customer opted in (${preferences.whatsapp.phone}) but the channel is dead — set the variables or tell the customer email is the only channel.`
+      );
+    } else if (!isKnownWhatsAppTemplate(templateName)) {
       /*
        * An unregistered name means one of two things: a typo, or a template
        * that was never submitted for Meta approval. Either way Meta rejects

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   addNotification: vi.fn(),
   sendWhatsAppTemplate: vi.fn(),
+  getWhatsAppStatus: vi.fn(),
   sendMail: vi.fn(),
 }));
 
@@ -19,6 +20,7 @@ vi.mock("@/lib/firebaseAdmin", () => ({
 }));
 vi.mock("@/lib/whatsapp", () => ({
   sendWhatsAppTemplate: mocks.sendWhatsAppTemplate,
+  getWhatsAppStatus: mocks.getWhatsAppStatus,
 }));
 vi.mock("@/lib/mailer", () => ({ sendMail: mocks.sendMail }));
 
@@ -53,6 +55,7 @@ beforeEach(() => {
   mocks.getUser.mockReset().mockResolvedValue(user());
   mocks.addNotification.mockReset().mockResolvedValue({ id: "n-1" });
   mocks.sendWhatsAppTemplate.mockReset().mockResolvedValue(undefined);
+  mocks.getWhatsAppStatus.mockReset().mockReturnValue({ configured: true, missing: [] });
   mocks.sendMail.mockReset().mockResolvedValue(undefined);
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -255,6 +258,25 @@ describe("sendNotification — WhatsApp", () => {
       languageCode: "en_US",
       components: [],
     });
+  });
+
+  it("skips with a config-specific message when the deployment has no WhatsApp credentials", async () => {
+    // Dulu: send attempt tetap jalan, throw CONFIG_ERROR, dan catch-nya
+    // menyalahkan "Meta approval" — misleading untuk masalah konfigurasi.
+    mocks.getUser.mockResolvedValue(consented());
+    mocks.getWhatsAppStatus.mockReturnValue({
+      configured: false,
+      missing: ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"],
+    });
+
+    await sendNotification({ ...base, channels: { whatsapp: true }, whatsapp });
+
+    expect(mocks.sendWhatsAppTemplate).not.toHaveBeenCalled();
+    const logged = (console.error as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => String(c[0]))
+      .join("\n");
+    expect(logged).toContain("WHATSAPP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID not configured");
+    expect(logged).not.toContain("Meta approval");
   });
 
   it("passes language and components through", async () => {

@@ -208,6 +208,15 @@ describe("GET /api/health", () => {
     expect(body.mfaDenylist.degradedAccepts).toEqual(expect.any(Number));
   });
 
+  it("reports the WhatsApp channel configuration", async () => {
+    // Channel opt-in per customer: tidak menurunkan status, tapi keadaan
+    // "channel mati padahal customer opt-in" harus terbaca dari probe.
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.whatsapp).toMatchObject({ configured: expect.any(Boolean) });
+  });
+
   it("reports healthy with the in-memory fallback in development", async () => {
     const response = await GET();
     const body = await response.json();
