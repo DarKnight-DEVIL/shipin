@@ -63,6 +63,15 @@ const BUDGET_ENV = "WALLET_SWEEP_BUDGET_MS";
  * collection is far outside anything this app writes.
  */
 const MAX_DOCS_PER_COLLECTION = 200_000;
+const MAX_DOCS_ENV = "WALLET_SWEEP_MAX_DOCS";
+
+/** The cap, with the same env override pattern as the budget above. */
+function maxDocsPerCollection(): number {
+  const configured = Number(process.env[MAX_DOCS_ENV]);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : MAX_DOCS_PER_COLLECTION;
+}
 
 /** Mismatches stored in `system/walletInvariants` (the response carries all). */
 const MAX_STORED_DRIFT = 100;
@@ -118,11 +127,11 @@ async function scanCollection(
   let cursor: DocumentSnapshot | undefined;
 
   for (;;) {
-    if (docs.length >= MAX_DOCS_PER_COLLECTION) {
+    if (docs.length >= maxDocsPerCollection()) {
       return {
         docs,
         truncation: {
-          reason: `document cap (${MAX_DOCS_PER_COLLECTION}) reached`,
+          reason: `document cap (${maxDocsPerCollection()}) reached`,
           docsRead: docs.length,
         },
       };

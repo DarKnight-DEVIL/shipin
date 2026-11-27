@@ -79,6 +79,45 @@ describe("GET /api/admin/wallet/balance", () => {
     );
   });
 
+  it("reports a null updatedAt when the wallet has none", async () => {
+    // The optional chain has three ways out: no wallet, no updatedAt, an
+    // updatedAt without toMillis. Each must answer null rather than throw.
+    mocks.get.mockResolvedValue({
+      exists: true,
+      data: () => ({ wallet: { currentBalance: 5 } }),
+    });
+
+    const res = await GET(request(), context());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.balance).toBe(5);
+    expect(body.updatedAt).toBeNull();
+  });
+
+  it("reports a null updatedAt when the stamp cannot be read as millis", async () => {
+    mocks.get.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        wallet: { currentBalance: 5, updatedAt: { seconds: 1 } },
+      }),
+    });
+
+    const res = await GET(request(), context());
+    expect((await res.json()).updatedAt).toBeNull();
+  });
+
+  it("answers a zero balance for a user with no wallet document", async () => {
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({}) });
+
+    const res = await GET(request(), context());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.balance).toBe(0);
+    expect(body.updatedAt).toBeNull();
+  });
+
   it("rejects an unauthenticated caller", async () => {
     mocks.requireAdmin.mockRejectedValue(new Error("AUTHENTICATION_REQUIRED"));
     mocks.getAdminAuthError.mockReturnValue({

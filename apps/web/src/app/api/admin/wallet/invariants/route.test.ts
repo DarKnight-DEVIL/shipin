@@ -139,9 +139,10 @@ function hold(
   userId: string,
   amount: number,
   status = "reserved",
-  id = `hold-${mocks.state.holds.length + 1}`
+  id = `hold-${mocks.state.holds.length + 1}`,
+  fields: Record<string, unknown> = {}
 ) {
-  mocks.state.holds.push({ id, fields: { userId, amount, status } });
+  mocks.state.holds.push({ id, fields: { userId, amount, status, ...fields } });
 }
 
 function signedRequest(): NextRequest {
@@ -540,6 +541,65 @@ describe("POST /api/admin/wallet/invariants — verdict", () => {
     expect(mocks.state.system.walletInvariants.truncation).toMatchObject({
       wallets: expect.objectContaining({ docsRead: expect.any(Number) }),
     });
+  });
+
+  it("names the document cap when a collection reaches it", async () => {
+    // The cap is a runaway guard, tunable like the budget. A cap only fires
+    // when a FULL page lands exactly on it — a short page is the normal end
+    // of a collection — so the cap is one page (200) and one wallet past it.
+    vi.stubEnv("WALLET_SWEEP_MAX_DOCS", "200");
+    for (let index = 0; index < 201; index += 1) {
+      wallet({ balance: 0 }, `w-${String(index).padStart(5, "0")}`);
+    }
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("WALLET_SWEEP_TRUNCATED");
+    expect(body.truncated).toBe(true);
+    expect(body.truncation.wallets.reason).toContain("document cap (200)");
+    expect(body.checked.wallets).toBe(200);
+    expect(body.drift).toEqual([]);
+  });
+
+  it("flags a reserved hold that expired without being released", async () => {
+    // A stale reservation still balances against its hold — the reserved
+    // equality check cannot see it — so the hold itself is the drift.
+    wallet({ balance: 100, reserved: 25 });
+    ledgerEntry("w1", 100);
+    hold("w1", 25, "reserved", "hold-1", {
+      expiresAt: new Date(Date.now() - 1_000),
+    });
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(body.drift).toEqual([
+      expect.objectContaining({
+        kind: "wallet_hold_expired",
+        walletId: "w1",
+        detail: expect.stringContaining("hold-1"),
+      }),
+    ]);
+  });
+
+  it("leaves live and released holds alone", async () => {
+    // A hold still inside its window is a checkout in flight, and a released
+    // one is finished: neither is drift, whatever its expiry says.
+    wallet({ balance: 100, reserved: 25 });
+    ledgerEntry("w1", 100);
+    hold("w1", 25, "reserved", "hold-live", {
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    hold("w1", 25, "released", "hold-released", {
+      expiresAt: new Date(Date.now() - 60_000),
+    });
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(body.drift).toEqual([]);
   });
 
   it("compares the whole ledger, not just the first page", async () => {

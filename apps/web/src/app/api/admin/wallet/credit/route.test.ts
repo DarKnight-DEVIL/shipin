@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
   txSet: vi.fn(),
   txUpdate: vi.fn(),
   runTransaction: vi.fn(),
+  readIdempotencyKey: vi.fn(),
+  readIdempotentResponse: vi.fn(),
+  rememberIdempotentResponse: vi.fn(),
 }));
 
 vi.mock("@/lib/adminAuth", () => ({
@@ -31,11 +34,27 @@ vi.mock("firebase-admin/firestore", () => ({
   FieldValue: { serverTimestamp: () => "__SERVER_TS__" },
 }));
 
+/*
+ * The idempotency store is Redis-only, and these tests run without one: the
+ * real module would fail open and never replay. Mocked so the replay and
+ * remember branches are reachable; readIdempotencyKey mirrors the real
+ * header read (see lib/idempotency.ts).
+ */
+vi.mock("@/lib/idempotency", () => ({
+  readIdempotencyKey: mocks.readIdempotencyKey,
+  readIdempotentResponse: mocks.readIdempotentResponse,
+  rememberIdempotentResponse: mocks.rememberIdempotentResponse,
+}));
+
 import { POST } from "./route";
 
-const request = (body: unknown) =>
+const request = (
+  body: unknown,
+  headers: Record<string, string> = {}
+) =>
   new NextRequest("http://localhost/api/admin/wallet/credit", {
     method: "POST",
+    headers,
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 
@@ -75,6 +94,9 @@ beforeEach(() => {
   snapshots({});
   mocks.txSet.mockReset();
   mocks.txUpdate.mockReset();
+  mocks.readIdempotencyKey.mockReset().mockReturnValue(null);
+  mocks.readIdempotentResponse.mockReset().mockResolvedValue(null);
+  mocks.rememberIdempotentResponse.mockReset().mockResolvedValue(undefined);
   mocks.runTransaction
     .mockReset()
     .mockImplementation(async (cb: (tx: unknown) => unknown) =>
@@ -382,6 +404,69 @@ describe("POST /api/admin/wallet/credit", () => {
       })
     );
     expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
+  it("replays a stored result instead of crediting again", async () => {
+    // The caller retried with the same idempotency key: the first attempt's
+    // response comes back untouched, and no ledger row is written a second time.
+    mocks.readIdempotencyKey.mockReturnValue("retry-key-1");
+    mocks.readIdempotentResponse.mockResolvedValue({
+      status: 200,
+      body: { success: true, replayed: true },
+    });
+
+    const response = await POST(
+      request(
+        { customerId: "customer-1", amount: 15.55 },
+        { "idempotency-key": "retry-key-1" }
+      )
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      replayed: true,
+    });
+    expect(mocks.runTransaction).not.toHaveBeenCalled();
+    expect(mocks.rememberIdempotentResponse).not.toHaveBeenCalled();
+  });
+
+  it("records the result so a retried request can replay it", async () => {
+    mocks.readIdempotencyKey.mockReturnValue("retry-key-2");
+
+    const response = await POST(
+      request(
+        { customerId: "customer-1", amount: 15.55 },
+        { "idempotency-key": "retry-key-2" }
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.rememberIdempotentResponse).toHaveBeenCalledWith(
+      {
+        uid: "admin-1",
+        scope: "admin.wallet.credit",
+        key: "retry-key-2",
+      },
+      {
+        status: 200,
+        body: expect.objectContaining({
+          success: true,
+          customerId: "customer-1",
+          newBalance: 25.55,
+        }),
+      }
+    );
+  });
+
+  it("touches the idempotency store only when the caller sent a key", async () => {
+    const response = await POST(
+      request({ customerId: "customer-1", amount: 15.55 })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.readIdempotentResponse).not.toHaveBeenCalled();
+    expect(mocks.rememberIdempotentResponse).not.toHaveBeenCalled();
   });
 
   it("creates a wallet with the default currency when none exists", async () => {

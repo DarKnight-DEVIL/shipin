@@ -57,6 +57,9 @@ interface LocalBucket {
 /** Fallback buckets: `${channel}:${recipient}` -> token state. */
 const localBuckets = new Map<string, LocalBucket>();
 
+/** The fallback map is bounded; the shared store needs no bound. */
+const LOCAL_BUCKET_CAP = 5_000;
+
 /** One Ratelimit per channel, created once (see redisRateLimiter's note). */
 const ratelimitInstances = new Map<OutboundChannel, Ratelimit>();
 
@@ -168,22 +171,18 @@ export async function allowOutboundWhatsApp(
 }
 
 /**
- * Bound the fallback map without a timer: when it grows large, drop idle
- * (full) buckets first, then the oldest. Real traffic refreshes its own
- * entry, so the oldest entries are the ones nobody is writing to.
+ * Bound the fallback map without a timer: when it grows past the cap, drop
+ * the oldest entries. Map iteration is first-touch order rather than recent
+ * use, so this can evict a long-lived active bucket — acceptable in the
+ * development fallback whose bucket then merely refills from full; the
+ * shared Redis store is what production relies on.
  */
 function pruneLocal(): void {
-  if (localBuckets.size <= 5_000) return;
+  const excess = localBuckets.size - LOCAL_BUCKET_CAP;
+  if (excess <= 0) return;
 
-  for (const [key, bucket] of localBuckets) {
-    if (localBuckets.size <= 4_000) break;
-    if (bucket.tokens >= OUTBOUND_MAX_TOKENS) localBuckets.delete(key);
-  }
-
-  while (localBuckets.size > 4_000) {
-    const oldest = localBuckets.keys().next().value;
-    if (oldest === undefined) break;
-    localBuckets.delete(oldest);
+  for (const key of [...localBuckets.keys()].slice(0, excess)) {
+    localBuckets.delete(key);
   }
 }
 

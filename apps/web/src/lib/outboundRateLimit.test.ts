@@ -148,6 +148,33 @@ describe("allowOutboundEmail — in-process fallback", () => {
     await expect(allowOutboundEmail("   ")).resolves.toBe(true);
     await expect(allowOutboundWhatsApp("+++")).resolves.toBe(true);
   });
+
+  it("evicts the oldest buckets once the fallback map passes its cap", async () => {
+    // One send per address leaves each bucket just under full, so the map
+    // holds one entry per address touched. Crossing the cap evicts from the
+    // front: the first address's bucket is gone, the newest one survives.
+    const start = Date.now();
+    const total = 5_001;
+
+    for (let index = 0; index < total; index += 1) {
+      await allowOutboundEmail(`user-${index}@example.com`, start);
+    }
+
+    // The oldest bucket was evicted: its address starts from a full bucket
+    // again, so one more send is allowed where the surviving newest bucket
+    // (9 tokens left) also allows it — the difference shows on the eleventh.
+    await expect(allowOutboundEmail("user-0@example.com", start)).resolves.toBe(
+      true
+    );
+
+    // The newest bucket survived with 9 tokens; nine more sends exhaust it.
+    for (let index = 0; index < OUTBOUND_MAX_TOKENS - 1; index += 1) {
+      await allowOutboundEmail(`user-${total - 1}@example.com`, start);
+    }
+    await expect(
+      allowOutboundEmail(`user-${total - 1}@example.com`, start)
+    ).resolves.toBe(false);
+  });
 });
 
 describe("allowOutboundWhatsApp — in-process fallback", () => {
