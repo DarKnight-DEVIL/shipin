@@ -43,7 +43,25 @@ function startAppCheck(firebaseApp: FirebaseApp): void {
 
   const siteKey = clientEnv.NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY;
 
-  if (!siteKey) {
+  /*
+   * Two debug paths, both resolved before initializeAppCheck:
+   *
+   *   - the build flag set to "true" asks the SDK to generate a token and
+   *     print it, for a manual run against a project the developer can
+   *     register that token on;
+   *   - a test harness (CI) can inject a FIXED, already-registered token as
+   *     window.FIREBASE_APPCHECK_DEBUG_TOKEN before the app loads. That is
+   *     how the staging smoke passes App Check from a runner reCAPTCHA
+   *     Enterprise cannot attest. The token never lives in the deployment's
+   *     bundle — it arrives only in the harness's own browser session — and
+   *     it is revocable in the Firebase console.
+   */
+  const injectedDebugToken = (
+    window as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN?: unknown }
+  ).FIREBASE_APPCHECK_DEBUG_TOKEN;
+  const debugAuto = clientEnv.NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG === "true";
+
+  if (!siteKey && !debugAuto && typeof injectedDebugToken !== "string") {
     if (clientEnv.NODE_ENV === "production") {
       const fbcLogger = childLogger({ service: "app-check" });
       fbcLogger.warn(
@@ -58,7 +76,7 @@ function startAppCheck(firebaseApp: FirebaseApp): void {
     .then(({ initializeAppCheck, ReCaptchaEnterpriseProvider, getToken }) => {
       readAppCheckToken = getToken;
 
-      if (clientEnv.NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG === "true") {
+      if (debugAuto && typeof injectedDebugToken !== "string") {
         // Must be assigned before initializeAppCheck: the SDK then exchanges a
         // locally generated debug token instead of calling reCAPTCHA. The token
         // still has to be registered under App Check → Debug tokens.
@@ -72,7 +90,9 @@ function startAppCheck(firebaseApp: FirebaseApp): void {
         // Enterprise key, and the two are not interchangeable - a classic
         // provider exchanging an Enterprise key gets a 400 from the App Check
         // backend on every attempt, throttles, and blocks every enforced call.
-        provider: new ReCaptchaEnterpriseProvider(siteKey),
+        // With a debug token the SDK never calls the provider, so a
+        // deployment without a site key only needs a placeholder here.
+        provider: new ReCaptchaEnterpriseProvider(siteKey || "debug-token-only"),
         // Refresh in the background so a long-lived tab never sends a stale token.
         isTokenAutoRefreshEnabled: true,
       });

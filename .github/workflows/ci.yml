@@ -466,6 +466,12 @@ jobs:
         env:
           BASE_URL: ${{ env.E2E_STAGING_URL }}
           PLAYWRIGHT_MANAGE_WEBSERVER: "0"
+          # Staging enforces App Check, which a CI browser cannot attest. The
+          # debug token is registered once under App Check → Debug tokens and
+          # revocable there; unset, the specs run without it (local runs).
+          E2E_APPCHECK_DEBUG_TOKEN: ${{ secrets.E2E_FIREBASE_APPCHECK_DEBUG_TOKEN }}
+          E2E_FIREBASE_PROJECT_ID: ${{ secrets.E2E_FIREBASE_ADMIN_PROJECT_ID }}
+          E2E_FIREBASE_APP_ID: ${{ secrets.E2E_FIREBASE_APP_ID }}
 
       # Read-only counterpart to the refund smoke: signs in through the real
       # login page and checks the paths only a session can reach — the admin
@@ -478,6 +484,11 @@ jobs:
         env:
           BASE_URL: ${{ env.E2E_STAGING_URL }}
           PLAYWRIGHT_MANAGE_WEBSERVER: "0"
+          # See the refund step: the smoke cannot pass App Check attestation
+          # from a runner, so it exchanges a registered debug token instead.
+          E2E_APPCHECK_DEBUG_TOKEN: ${{ secrets.E2E_FIREBASE_APPCHECK_DEBUG_TOKEN }}
+          E2E_FIREBASE_PROJECT_ID: ${{ secrets.E2E_FIREBASE_ADMIN_PROJECT_ID }}
+          E2E_FIREBASE_APP_ID: ${{ secrets.E2E_FIREBASE_APP_ID }}
 
       # Sweeps fixtures left by this and earlier runs. `always()` so a failed
       # smoke run does not litter staging, and `--apply` because the script is

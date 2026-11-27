@@ -35,6 +35,8 @@
  */
 import { test, expect } from "@playwright/test";
 
+import { injectAppCheckDebugToken } from "../support/appCheckDebugToken";
+
 const env = process.env;
 const baseUrl = env.BASE_URL ?? "";
 const isRemoteTarget = !!baseUrl && !baseUrl.startsWith("http://localhost");
@@ -59,6 +61,12 @@ test.describe("Signed-in smoke", () => {
   test("an admin signs in, the dashboard reads Firestore, and the admin area renders", async ({
     page,
   }) => {
+    // A deployment that enforces App Check refuses every call from a browser
+    // that cannot attest (every CI runner); the debug token, registered in
+    // the Firebase console, is what lets this session through. No-op when
+    // unset (local emulator runs, enforcement off).
+    await injectAppCheckDebugToken(page);
+
     // Firestore traffic goes to the real host in staging and to the emulator
     // locally; either one proves a signed-in data path ran.
     const dataHosts = ["firestore.googleapis.com"];

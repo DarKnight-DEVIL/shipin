@@ -67,6 +67,8 @@ import {
 } from "@playwright/test";
 import { generateSync } from "otplib";
 
+import { appCheckHeader } from "../support/appCheckDebugToken";
+
 type RefundBody = {
   success?: boolean;
   error?: string;
@@ -171,8 +173,12 @@ async function signIn(request: APIRequestContext): Promise<string> {
   return body.idToken as string;
 }
 
-const adminHeaders = (idToken: string) => ({
+const adminHeaders = async (idToken: string) => ({
   Authorization: `Bearer ${idToken}`,
+  // Staging enforces App Check; the request fixture has no browser to run the
+  // SDK in, so the debug token is exchanged over the REST API instead. Empty
+  // when no debug token is configured (local emulator runs).
+  ...(await appCheckHeader()),
   ...mfaHeaders(),
 });
 
@@ -202,7 +208,7 @@ test.describe("Admin refund (staging)", () => {
 
     const initiated = await test.step("initiate the refund", async () => {
       const response = await request.post(`${requestPath}/refund`, {
-        headers: adminHeaders(idToken),
+        headers: await adminHeaders(idToken),
         data: {},
       });
       const body = await readJson(response);
@@ -231,7 +237,7 @@ test.describe("Admin refund (staging)", () => {
     if (initiated.paypalAmount > 0) {
       await test.step("the PayPal portion cannot be recorded twice over", async () => {
         const response = await request.post(`${requestPath}/refund/paypal`, {
-          headers: adminHeaders(idToken),
+          headers: await adminHeaders(idToken),
           data: {
             amount: round(initiated.paypalAmount + 10),
             transactionId: `SMOKE-OVER-${Date.now()}`,
@@ -248,7 +254,7 @@ test.describe("Admin refund (staging)", () => {
     if (initiated.walletAmount > 0) {
       await test.step("return the wallet portion", async () => {
         const response = await request.post("/api/admin/wallet/credit", {
-          headers: adminHeaders(idToken),
+          headers: await adminHeaders(idToken),
           data: {
             customerId: settings.customerId,
             amount: initiated.walletAmount,
@@ -275,7 +281,7 @@ test.describe("Admin refund (staging)", () => {
       await test.step("record the PayPal portion", async () => {
         const transactionId = `SMOKE-${Date.now()}`;
         const response = await request.post(`${requestPath}/refund/paypal`, {
-          headers: adminHeaders(idToken),
+          headers: await adminHeaders(idToken),
           data: { amount: initiated.paypalAmount, transactionId },
         });
         const body = await readJson(response);
@@ -293,7 +299,7 @@ test.describe("Admin refund (staging)", () => {
 
     await test.step("completing is a no-op once every portion is settled", async () => {
       const response = await request.post(`${requestPath}/refund/complete`, {
-        headers: adminHeaders(idToken),
+        headers: await adminHeaders(idToken),
       });
       const body = await readJson(response);
 
@@ -310,7 +316,7 @@ test.describe("Admin refund (staging)", () => {
 
     await test.step("the workflow cannot be started again", async () => {
       const response = await request.post(`${requestPath}/refund`, {
-        headers: adminHeaders(idToken),
+        headers: await adminHeaders(idToken),
         data: {},
       });
 
@@ -321,7 +327,7 @@ test.describe("Admin refund (staging)", () => {
 
     await test.step("a second PayPal record is refused", async () => {
       const response = await request.post(`${requestPath}/refund/paypal`, {
-        headers: adminHeaders(idToken),
+        headers: await adminHeaders(idToken),
         data: { amount: 1, transactionId: `SMOKE-DUP-${Date.now()}` },
       });
 
