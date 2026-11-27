@@ -175,6 +175,19 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Wallet holds record funds reserved for an in-flight PayPal checkout.
+    //
+    // This collection has no client-facing read or write path at all: the
+    // capture route, the sweeps and the invariants job all reach it through
+    // the Admin SDK, which bypasses these rules entirely. With no match block
+    // Firestore also denies everything, so `if false` changes no behaviour —
+    // it states the deny as policy instead of an accident of omission, and
+    // stops a permissive rule from arriving later by copy-paste.
+    match /walletHolds/{holdId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
     // Addresses subcollection under user document.
     //
     // The app reads this collection from the client (getAddresses) and writes
