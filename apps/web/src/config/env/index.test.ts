@@ -183,6 +183,35 @@ describe("validateProductionRequiredEnv", () => {
     expect(() => validateProductionRequiredEnv()).not.toThrow();
   });
 
+  it("throws when MFA_SESSION_SECRET is present but shorter than 32 chars", async () => {
+    // getSigningKey() refuses short secrets; the boot check must catch the
+    // same condition so a deployment never boots into a first-admin-action
+    // 500. Presence alone used to be the only thing validated here.
+    setEverythingButStore();
+    setStoreConfigured();
+    vi.stubEnv("MFA_SESSION_SECRET", "too-short");
+    const { validateProductionRequiredEnv } = await loadEnvModule();
+
+    let message = "";
+    try {
+      validateProductionRequiredEnv();
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).toContain("MFA_SESSION_SECRET");
+    expect(message).toContain("at least 32 characters (got 9)");
+  });
+
+  it("accepts an MFA_SESSION_SECRET of exactly 32 chars", async () => {
+    setEverythingButStore();
+    setStoreConfigured();
+    vi.stubEnv("MFA_SESSION_SECRET", "a".repeat(32));
+    const { validateProductionRequiredEnv } = await loadEnvModule();
+
+    expect(() => validateProductionRequiredEnv()).not.toThrow();
+  });
+
   it("still requires the store for other opt-out values, so a typo cannot disable it", async () => {
     setEverythingButStore();
     vi.stubEnv(OPT_OUT, "true");

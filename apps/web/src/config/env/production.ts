@@ -381,4 +381,15 @@ export function validateProductionRequiredEnv(): void {
         `These must be set for production deployment.${optOutHint}`
     );
   }
+
+  // Presence is not enough for the MFA session secret: getSigningKey() also
+  // refuses anything shorter than 32 characters. Without this check a short
+  // secret booted fine and the first admin MFA step 500-ed instead.
+  const mfaSecret = process.env.MFA_SESSION_SECRET ?? "";
+  if (mfaSecret.length < 32) {
+    throw new Error(
+      `[ShipIN] FATAL: MFA_SESSION_SECRET must be at least 32 characters (got ${mfaSecret.length}). ` +
+        "Admin MFA sessions cannot be signed with a shorter secret."
+    );
+  }
 }
