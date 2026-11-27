@@ -67,20 +67,21 @@ export function getAppCheckStatus(): AppCheckConfiguration {
 
 /**
  * Validate the App Check configuration at startup.
+ *
+ * Warn-only, in every environment: enforcement without a site key means every
+ * browser API request is rejected, which /api/health reports as `degraded`
+ * (it computes the status independently) and the App Check rejection-spike
+ * alert pages a human. Crashing the boot instead would leave the deployment
+ * in the worst state — Next logs the instrumentation error and keeps serving
+ * 500s — rather than either a clean refusal or a degraded but observable
+ * deployment.
  */
 export function reportAppCheckStatus(): AppCheckConfiguration {
   const configuration = getAppCheckStatus();
 
   if (configuration.status === "misconfigured") {
     // Enforcement without site key = total failure for browser clients.
-    if (process.env.NODE_ENV === "production") {
-      throw new Error(
-        "[AppCheck] APP_CHECK_ENFORCEMENT is on but NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY is empty. " +
-          "Clients cannot mint an App Check token, so every browser API request is rejected. " +
-          "Set the site key in production, or turn enforcement off."
-      );
-    }
-    appCheckLogger.warn(
+    appCheckLogger.error(
       "[AppCheck] APP_CHECK_ENFORCEMENT is on but NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY is empty. " +
         "Clients cannot mint an App Check token. Set the site key, or turn enforcement off."
     );

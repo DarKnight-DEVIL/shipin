@@ -366,23 +366,33 @@ describe("getAppCheckStatus", () => {
 });
 
 describe("reportAppCheckStatus", () => {
-  it("warns once at startup when enforcement has no site key", () => {
+  it("reports misconfigured enforcement at startup without throwing, in test and production", () => {
     env.enforcement = "true";
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const status = appCheck.reportAppCheckStatus();
+    // The production environment is the one that used to throw here, which
+    // left the boot half-failed instead of degraded-but-observable.
+    vi.stubEnv("NODE_ENV", "production");
+    let status: ReturnType<typeof appCheck.reportAppCheckStatus>;
+    expect(() => {
+      status = appCheck.reportAppCheckStatus();
+    }).not.toThrow();
 
-    expect(status.status).toBe("misconfigured");
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("[AppCheck]"));
+    expect(status!.status).toBe("misconfigured");
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[AppCheck]"));
     // The warning must name both ways out, or it is just noise in the logs.
-    expect(warnSpy).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY")
     );
   });
 
   it("never throws and stays silent for the other three states", () => {
+    // The misconfigured case above stubs production; this one asserts the
+    // quiet states, which must not warn outside production either.
+    vi.stubEnv("NODE_ENV", "test");
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     // disabled
     expect(appCheck.reportAppCheckStatus().status).toBe("disabled");
@@ -394,5 +404,6 @@ describe("reportAppCheckStatus", () => {
     expect(appCheck.reportAppCheckStatus().status).toBe("enforced");
 
     expect(warnSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 });
