@@ -61,9 +61,21 @@ beforeEach(() => {
   mocks.sendMail.mockReset().mockResolvedValue(undefined);
   mocks.profileGet.mockReset().mockResolvedValue(profile({}));
   mocks.profileSet.mockReset().mockResolvedValue(undefined);
+  /*
+   * The permanent link needs a signing secret from the environment, and this
+   * suite must not depend on the developer's shell having one: a machine with
+   * MFA_SESSION_SECRET set passed these tests while CI, with neither variable
+   * set, saw the Firebase fallback instead. Stubbed here; the fallback test
+   * below overrides it with an empty value.
+   */
+  vi.stubEnv(
+    "EMAIL_VERIFICATION_SECRET",
+    "test-email-verification-secret-0123456789abcdef"
+  );
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 

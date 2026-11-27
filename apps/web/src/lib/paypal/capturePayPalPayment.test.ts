@@ -100,6 +100,9 @@ describe("capturePayPalPayment", () => {
     // The regression: the capture host used to default to the sandbox host
     // regardless of PAYPAL_ENV, so a live deployment that set the env but
     // forgot the URL spent a live token against the sandbox API.
+    // PAYPAL_API_URL is emptied explicitly: the CI coverage job sets it to the
+    // sandbox host as build-env filler, and the host resolution prefers it.
+    vi.stubEnv("PAYPAL_API_URL", "");
     vi.stubEnv("PAYPAL_ENV", "live");
     mocks.fetchWithTimeout.mockResolvedValue(completed(validCapture));
 

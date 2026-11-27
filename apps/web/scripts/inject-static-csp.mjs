@@ -27,7 +27,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 /**
@@ -205,102 +205,118 @@ function instrument(file) {
   return hashes.length;
 }
 
-if (!existsSync(BUILD_DIR)) {
-  // A bare checkout with no build: nothing to instrument, and nothing to claim.
-  console.log("static CSP: no build output, skipping");
-  process.exit(0);
-}
+/*
+ * The injection runs only when this file is the entry point. The unit test
+ * imports `strictScriptSrc` (and reads this source as text); executing the
+ * walk on import would also hit the `process.exit(0)` below in a checkout
+ * with no build output, which vitest reports as a crashed suite, not a skip.
+ */
+const invokedAsScript =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
 
-const files = pages(BUILD_DIR);
-const byDirectory = new Map();
-for (const file of files) {
-  const dir = path.dirname(path.relative(BUILD_DIR, file)).split(path.sep)[0];
-  byDirectory.set(dir, (byDirectory.get(dir) ?? 0) + 1);
-}
-
-let instrumented = 0;
-let skipped = 0;
-let scriptCount = 0;
-let hashCount = 0;
-let paypalSkipped = 0;
-
-{
+function main() {
+  if (!existsSync(BUILD_DIR)) {
+    // A bare checkout with no build: nothing to instrument, and nothing to claim.
+    console.log("static CSP: no build output, skipping");
+    process.exit(0);
+  }
+  
+  const files = pages(BUILD_DIR);
+  const byDirectory = new Map();
   for (const file of files) {
-    // The SDK's inline bootstrap cannot be hashed, so this page keeps the floor.
-    if (PAYPAL_ROUTES.includes(routeFor(file))) {
-      paypalSkipped += 1;
-      writeFileSync(
-        file,
-        readFileSync(file, "utf8").replace(
-          new RegExp(`<meta ${MARKER} content="[^"]*">`, "g"),
-          ""
-        )
-      );
-      continue;
+    const dir = path.dirname(path.relative(BUILD_DIR, file)).split(path.sep)[0];
+    byDirectory.set(dir, (byDirectory.get(dir) ?? 0) + 1);
+  }
+  
+  let instrumented = 0;
+  let skipped = 0;
+  let scriptCount = 0;
+  let hashCount = 0;
+  let paypalSkipped = 0;
+  
+  {
+    for (const file of files) {
+      // The SDK's inline bootstrap cannot be hashed, so this page keeps the floor.
+      if (PAYPAL_ROUTES.includes(routeFor(file))) {
+        paypalSkipped += 1;
+        writeFileSync(
+          file,
+          readFileSync(file, "utf8").replace(
+            new RegExp(`<meta ${MARKER} content="[^"]*">`, "g"),
+            ""
+          )
+        );
+        continue;
+      }
+  
+      const hashes = instrument(file);
+      if (hashes === null) {
+        skipped += 1;
+        continue;
+      }
+  
+      const problem = verify(file);
+      if (problem) {
+        console.error(`static CSP: ${file} - ${problem}`);
+        process.exit(1);
+      }
+  
+      instrumented += 1;
+      hashCount += hashes;
+      scriptCount += inlineScriptBodies(readFileSync(file, "utf8")).length;
     }
-
-    const hashes = instrument(file);
-    if (hashes === null) {
-      skipped += 1;
-      continue;
-    }
-
-    const problem = verify(file);
-    if (problem) {
-      console.error(`static CSP: ${file} - ${problem}`);
-      process.exit(1);
-    }
-
-    instrumented += 1;
-    hashCount += hashes;
-    scriptCount += inlineScriptBodies(readFileSync(file, "utf8")).length;
+  }
+  
+  for (const [dir, count] of byDirectory) {
+    console.log(`static CSP: ${count} HTML file(s) under .next/${dir}`);
+  }
+  
+  /*
+   * No HTML in the build output means this step has nothing to harden: the deployment
+   * serves pages the build did not materialize, and the header policy applies. That is
+   * a downgrade from what this step is for, not a broken app - every page still works -
+   * so it is reported loudly and the build continues. Failing here blocked a
+   * deployment over a condition the script cannot fix.
+   */
+  if (files.length === 0) {
+    console.warn(
+      "static CSP: the build output contains no prerendered HTML, so no page got the strict meta. " +
+        "Pages are served under the header policy (which allows inline scripts)."
+    );
+    process.exit(0);
+  }
+  
+  if (instrumented === 0) {
+    console.error(
+      "static CSP: HTML exists but none was instrumented - the meta tag is not being written"
+    );
+    process.exit(1);
+  }
+  
+  if (skipped > 0) {
+    /*
+     * Not a failure: not every .html in the tree is a page. The build copies
+     * public/googled*.html, Google Search Console's verification file, which is served
+     * verbatim and has no <head> - a document written for that one path.
+     */
+    console.log(
+      `static CSP: ${skipped} HTML file(s) are not documents (no <head>) and were left alone`
+    );
+  }
+  
+  console.log(
+    `static CSP: ${instrumented} prerendered page(s) strict (${scriptCount} inline scripts, ${hashCount} hashes)`
+  );
+  
+  if (paypalSkipped > 0) {
+    // Stated, not silent: these pages keep 'unsafe-inline' for scripts.
+    console.log(
+      `static CSP: ${paypalSkipped} page(s) kept the permissive policy for the PayPal SDK inline bootstrap`
+    );
   }
 }
 
-for (const [dir, count] of byDirectory) {
-  console.log(`static CSP: ${count} HTML file(s) under .next/${dir}`);
-}
-
-/*
- * No HTML in the build output means this step has nothing to harden: the deployment
- * serves pages the build did not materialize, and the header policy applies. That is
- * a downgrade from what this step is for, not a broken app - every page still works -
- * so it is reported loudly and the build continues. Failing here blocked a
- * deployment over a condition the script cannot fix.
- */
-if (files.length === 0) {
-  console.warn(
-    "static CSP: the build output contains no prerendered HTML, so no page got the strict meta. " +
-      "Pages are served under the header policy (which allows inline scripts)."
-  );
-  process.exit(0);
-}
-
-if (instrumented === 0) {
-  console.error(
-    "static CSP: HTML exists but none was instrumented - the meta tag is not being written"
-  );
-  process.exit(1);
-}
-
-if (skipped > 0) {
-  /*
-   * Not a failure: not every .html in the tree is a page. The build copies
-   * public/googled*.html, Google Search Console's verification file, which is served
-   * verbatim and has no <head> - a document written for that one path.
-   */
-  console.log(
-    `static CSP: ${skipped} HTML file(s) are not documents (no <head>) and were left alone`
-  );
-}
-
-console.log(
-  `static CSP: ${instrumented} prerendered page(s) strict (${scriptCount} inline scripts, ${hashCount} hashes)`
-);
-
-if (paypalSkipped > 0) {
-  // Stated, not silent: these pages keep 'unsafe-inline' for scripts.
-  console.log(
-    `static CSP: ${paypalSkipped} page(s) kept the permissive policy for the PayPal SDK inline bootstrap`
-  );
+if (invokedAsScript) {
+  main();
 }

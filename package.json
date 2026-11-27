@@ -24,6 +24,7 @@
     "test:shuffle": "npm run test:shuffle --workspace=@shipin/web",
     "test:security": "npm run test:security --workspace=@shipin/web",
     "test:rules": "npm run test:rules --workspace=@shipin/web",
+    "test:admin": "npm run test:admin --workspace=@shipin/web",
     "emulators": "npx --yes firebase-tools@15.36.0 --config firebase.json emulators:exec --ui --only firestore,auth \"npm run dev\"",
     "test:e2e": "npm run test:e2e --workspace=@shipin/web",
     "test:e2e:local": "npm run test:e2e:local --workspace=@shipin/web --",
