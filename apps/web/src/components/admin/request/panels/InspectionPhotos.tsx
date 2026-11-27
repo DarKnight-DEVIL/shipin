@@ -5,7 +5,7 @@ import Section from "@/components/ui/Section";
 import ActionButton from "@/components/ui/ActionButton";
 import { toast } from "sonner";
 import { adminApi } from "@/lib/adminApiClient";
-import { auth } from "@/lib/firebase";
+import { auth, getAppCheckToken } from "@/lib/firebase";
 
 interface Props {
   requestId: string;
@@ -36,6 +36,8 @@ export default function InspectionPhotos({
 
       const idToken = await currentUser.getIdToken();
 
+      const appCheckToken = await getAppCheckToken();
+
       const objectKeys: string[] = [];
 
       for (const file of files) {
@@ -48,6 +50,11 @@ export default function InspectionPhotos({
           method: "POST",
           headers: {
             Authorization: `Bearer ${idToken}`,
+            // The route runs the shared auth gate, which verifies App Check
+            // when enforcement is on. Null (App Check unconfigured) sends none.
+            ...(appCheckToken
+              ? { "X-Firebase-AppCheck": appCheckToken }
+              : {}),
           },
           body: formData,
         });

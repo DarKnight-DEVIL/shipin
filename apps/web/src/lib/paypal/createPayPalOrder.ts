@@ -8,9 +8,8 @@
  * here rather than after the payment order has been stored.
  */
 
-import { serverEnv } from "@/config/env";
 import { fetchWithTimeout } from "@/lib/http";
-import { getPayPalAccessToken } from "@/lib/paypal";
+import { getPayPalAccessToken, getPayPalBaseUrl } from "@/lib/paypal";
 
 import type { PaymentFailure, PaymentType } from "./types";
 
@@ -65,8 +64,14 @@ export async function createPayPalOrder({
 }: CreatePayPalOrderInput): Promise<CreatePayPalOrderResult> {
   const accessToken = await getPayPalAccessToken();
 
-  const baseUrl =
-    serverEnv.PAYPAL_API_URL ?? "https://api-m.sandbox.paypal.com";
+  /*
+   * One source of truth for the host: getPayPalBaseUrl honours PAYPAL_API_URL
+   * and falls back by PAYPAL_ENV. Duplicating the fallback here defaulted to
+   * the sandbox host even when PAYPAL_ENV=live, so a deployment that set the
+   * env but forgot the URL sent a live token to the sandbox API and broke
+   * every checkout.
+   */
+  const baseUrl = getPayPalBaseUrl();
 
   // Generate deterministic idempotency key if not provided
   const requestIdempotencyKey =

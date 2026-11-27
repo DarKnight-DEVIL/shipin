@@ -41,8 +41,14 @@ export async function verifyCronRequest(
     return false;
   }
 
-  // The body is read once, here. Handlers must not read it again.
-  const body = await request.text();
+  /*
+   * The body is read from a clone so the original stream stays unread: a cron
+   * route that also parses the JSON body would otherwise find it consumed —
+   * an empty string, with no error — and the trap only fires when the second
+   * reader is added. Cloning tees the stream, so both reads see the same bytes
+   * the signature covered.
+   */
+  const body = await request.clone().text();
   const expected = crypto
     .createHmac("sha256", secret)
     .update(`${timestampHeader}|${body}`)

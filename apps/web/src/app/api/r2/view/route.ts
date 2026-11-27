@@ -7,7 +7,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import { getR2Client, getR2BucketName } from "@/lib/r2";
 
-import { adminAuth } from "@/lib/firebaseAdmin";
+import { requireAuthAccount } from "@/lib/auth";
 
 import { authorizeInspectionAccess, parseInspectionKey } from "@/lib/r2Access";
 import { purposeForKey, r2UrlTtlSeconds } from "@/lib/r2UrlPolicy";
@@ -18,43 +18,21 @@ export const runtime = "nodejs";
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
-  const authorization = request.headers.get("authorization");
-
-  if (!authorization?.startsWith("Bearer ")) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Unauthorized.",
-        code: "AUTHENTICATION_REQUIRED",
-      },
-      {
-        status: 401,
-        headers: NO_STORE,
-      }
-    );
+  /*
+   * The shared gate, not a hand-rolled token check: App Check (when
+   * enforced), a verified email and an account that has not been disabled,
+   * suspended, banned or deleted. A bare verifyIdToken kept serving a banned
+   * customer's inspection photos for up to an hour, because the token outlives
+   * the account state that the users/{uid} document carries.
+   */
+  const auth = await requireAuthAccount(request);
+  if (auth instanceof NextResponse) {
+    // Auth denials carry no body worth caching either.
+    auth.headers.set("Cache-Control", "no-store");
+    return auth;
   }
 
-  const idToken = authorization.slice(7);
-
-  let uid: string;
-
-  try {
-    const decoded = await adminAuth.verifyIdToken(idToken);
-
-    uid = decoded.uid;
-  } catch {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Invalid authentication token.",
-        code: "INVALID_AUTHENTICATION",
-      },
-      {
-        status: 401,
-        headers: NO_STORE,
-      }
-    );
-  }
+  const uid = auth.token.uid;
 
   const parsed = await readAndValidateBody(request, r2ViewBodySchema);
 

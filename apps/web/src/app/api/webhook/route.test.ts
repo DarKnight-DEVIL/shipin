@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   recordRateLimit: vi.fn(),
   sendNotification: vi.fn(),
   captureServerError: vi.fn(),
+  settleAdditionalItemPayment: vi.fn(),
   docs: {} as Record<string, Record<string, unknown> | undefined>,
   txOverrides: {} as Record<string, { exists: boolean; data?: () => unknown }>,
   txGet: vi.fn(),
@@ -27,6 +28,9 @@ vi.mock("@/lib/errorTracking", async (importOriginal) => {
 });
 vi.mock("@/lib/paypal", () => ({
   verifyPayPalWebhook: mocks.verifyPayPalWebhook,
+}));
+vi.mock("@/lib/paypal/settleAdditionalItemPayment", () => ({
+  settleAdditionalItemPayment: mocks.settleAdditionalItemPayment,
 }));
 vi.mock("@/lib/rateLimiter", () => ({
   apiRateLimiter: { record: mocks.recordRateLimit },
@@ -199,6 +203,9 @@ beforeEach(() => {
   });
   mocks.sendNotification.mockReset().mockResolvedValue(undefined);
   mocks.captureServerError.mockReset();
+  mocks.settleAdditionalItemPayment
+    .mockReset()
+    .mockResolvedValue({ ok: true });
   mocks.txGet.mockReset();
   mocks.txUpdate.mockReset();
   mocks.txSet.mockReset();
@@ -726,6 +733,97 @@ describe("POST /api/webhook", () => {
     await POST(request(captureEvent()));
 
     expect(mocks.txUpdate).not.toHaveBeenCalled();
+  });
+
+  it("settles an add-on order whose request is already paid", async () => {
+    // The add-on is bought after the main payment, so the request standing at
+    // "paid" is the normal case, not the already-settled one. The old main-path
+    // early return marked the order completed without recording the item, so
+    // the add-on stayed awaiting_payment and could be charged a second time.
+    seedOrder({
+      paymentType: "additional_item",
+      additionalItemRequestId: "item-1",
+      baseAmount: 50,
+      totalRequired: 52.5,
+      paypalAmount: 52.5,
+    });
+    seedRequest({
+      status: "paid",
+      payment: { status: "completed", orderId: "MAIN-ORDER" },
+    });
+
+    const response = await POST(
+      request(captureEvent({ amount: { value: "52.50", currency_code: "USD" } }))
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.settleAdditionalItemPayment).toHaveBeenCalledTimes(1);
+    expect(mocks.settleAdditionalItemPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        additionalItemRequestId: "item-1",
+        orderID: "ORDER-1",
+        captureId: "CAPTURE-1",
+        capturedAmount: 52.5,
+        capturedCurrency: "USD",
+      })
+    );
+    // The webhook itself must not have written the main payment block or the
+    // completed order — that is the settlement service's job.
+    const requestData = mocks.docs["requests/req-1"];
+    expect(requestData?.status).toBe("paid");
+    expect((requestData as { payment?: { orderId?: string } }).payment?.orderId)
+      .toBe("MAIN-ORDER");
+    expect(mocks.docs["paypalPaymentOrders/ORDER-1"]?.status).toBe("created");
+  });
+
+  it("is idempotent for an already completed add-on order", async () => {
+    seedOrder({
+      status: "completed",
+      paymentType: "additional_item",
+      additionalItemRequestId: "item-1",
+    });
+    seedRequest({ status: "paid" });
+
+    const response = await POST(request(captureEvent()));
+
+    expect(response.status).toBe(200);
+    expect(mocks.settleAdditionalItemPayment).not.toHaveBeenCalled();
+  });
+
+  it("returns 500 when the add-on settlement refuses, so PayPal retries", async () => {
+    seedOrder({
+      paymentType: "additional_item",
+      additionalItemRequestId: "item-1",
+      baseAmount: 50,
+      totalRequired: 52.5,
+      paypalAmount: 52.5,
+    });
+    seedRequest({ status: "paid" });
+    mocks.settleAdditionalItemPayment.mockResolvedValue({
+      ok: false,
+      status: 400,
+      error: "This additional item is not awaiting payment.",
+    });
+
+    const response = await POST(
+      request(captureEvent({ amount: { value: "52.50", currency_code: "USD" } }))
+    );
+
+    expect(response.status).toBe(500);
+    // The claim is released so the retry can process the event again.
+    expect(mocks.docs["paypalWebhookEvents/EV-DEFAULT"]).toBeUndefined();
+  });
+
+  it("returns 500 for an add-on order without an item reference so PayPal retries", async () => {
+    seedOrder({ paymentType: "additional_item" });
+    seedRequest({ status: "paid" });
+
+    const response = await POST(
+      request(captureEvent({ amount: { value: "52.50", currency_code: "USD" } }))
+    );
+
+    expect(response.status).toBe(500);
+    expect(mocks.settleAdditionalItemPayment).not.toHaveBeenCalled();
   });
 
   it("marks the payment order complete without moving money when the request is already paid", async () => {

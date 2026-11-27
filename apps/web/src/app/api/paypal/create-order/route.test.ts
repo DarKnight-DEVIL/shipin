@@ -49,6 +49,8 @@ vi.mock("@/features/finance/services/calculateProcessingFee", () => ({
 }));
 vi.mock("@/lib/paypal", () => ({
   getPayPalAccessToken: mocks.getPayPalAccessToken,
+  // The real createPayPalOrder resolves its host through this barrel.
+  getPayPalBaseUrl: () => "https://paypal.test",
 }));
 vi.mock("@/config/env", () => ({
   serverEnv: { PAYPAL_API_URL: "https://paypal.test" },

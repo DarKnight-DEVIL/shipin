@@ -5,8 +5,20 @@ const mocks = vi.hoisted(() => ({
   getPayPalAccessToken: vi.fn(),
 }));
 
+/*
+ * getPayPalBaseUrl is mirrored here rather than imported: with `isolate: false`
+ * the real @/lib/paypal module can arrive cached from another file's registry,
+ * bound to that file's env mock (the pitfall noted below). The real function
+ * keeps its own dedicated tests in paypal.test.ts; this mirror only has to
+ * resolve the two env vars the same way.
+ */
 vi.mock("@/lib/paypal", () => ({
   getPayPalAccessToken: mocks.getPayPalAccessToken,
+  getPayPalBaseUrl: () =>
+    process.env.PAYPAL_API_URL ||
+    (process.env.PAYPAL_ENV === "live"
+      ? "https://api-m.paypal.com"
+      : "https://api-m.sandbox.paypal.com"),
 }));
 
 import { capturePayPalPayment } from "./capturePayPalPayment";
@@ -80,6 +92,21 @@ describe("capturePayPalPayment", () => {
 
     expect(mocks.fetchWithTimeout).toHaveBeenCalledWith(
       "https://paypal.test/v2/checkout/orders/order-1/capture",
+      expect.anything()
+    );
+  });
+
+  it("uses the live host when PAYPAL_ENV is live and PAYPAL_API_URL is unset", async () => {
+    // The regression: the capture host used to default to the sandbox host
+    // regardless of PAYPAL_ENV, so a live deployment that set the env but
+    // forgot the URL spent a live token against the sandbox API.
+    vi.stubEnv("PAYPAL_ENV", "live");
+    mocks.fetchWithTimeout.mockResolvedValue(completed(validCapture));
+
+    await capturePayPalPayment(input);
+
+    expect(mocks.fetchWithTimeout).toHaveBeenCalledWith(
+      "https://api-m.paypal.com/v2/checkout/orders/order-1/capture",
       expect.anything()
     );
   });

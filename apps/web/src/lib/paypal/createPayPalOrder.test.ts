@@ -3,13 +3,26 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const mocks = vi.hoisted(() => ({
   env: { PAYPAL_API_URL: "https://paypal.test" } as {
     PAYPAL_API_URL?: string;
+    PAYPAL_ENV?: string;
   },
   fetchWithTimeout: vi.fn(),
   getPayPalAccessToken: vi.fn(),
 }));
 
+/*
+ * getPayPalBaseUrl is mirrored here rather than imported: with `isolate: false`
+ * the real @/lib/paypal module can arrive cached from another file's registry,
+ * bound to that file's env mock (the pitfall noted below). The real function
+ * keeps its own dedicated tests in paypal.test.ts; this mirror only has to
+ * resolve the two env vars the same way.
+ */
 vi.mock("@/lib/paypal", () => ({
   getPayPalAccessToken: mocks.getPayPalAccessToken,
+  getPayPalBaseUrl: () =>
+    mocks.env.PAYPAL_API_URL ??
+    (mocks.env.PAYPAL_ENV === "live"
+      ? "https://api-m.paypal.com"
+      : "https://api-m.sandbox.paypal.com"),
 }));
 vi.mock("@/config/env", () => ({ serverEnv: mocks.env }));
 
@@ -44,6 +57,7 @@ beforeEach(async () => {
   ({ createPayPalOrder } = await import("./createPayPalOrder"));
 
   mocks.env.PAYPAL_API_URL = "https://paypal.test";
+  mocks.env.PAYPAL_ENV = undefined;
   mocks.fetchWithTimeout.mockReset().mockResolvedValue({
     ok: true,
     status: 200,
@@ -172,6 +186,20 @@ describe("createPayPalOrder", () => {
 
     expect(mocks.fetchWithTimeout.mock.calls[0][0]).toBe(
       "https://api-m.sandbox.paypal.com/v2/checkout/orders"
+    );
+  });
+
+  it("uses the live host when PAYPAL_ENV is live and PAYPAL_API_URL is unset", async () => {
+    // The regression: the order host used to default to the sandbox host
+    // regardless of PAYPAL_ENV, so a live deployment that set the env but
+    // forgot the URL spent a live token against the sandbox API.
+    mocks.env.PAYPAL_API_URL = undefined;
+    mocks.env.PAYPAL_ENV = "live";
+
+    await createPayPalOrder(input);
+
+    expect(mocks.fetchWithTimeout.mock.calls[0][0]).toBe(
+      "https://api-m.paypal.com/v2/checkout/orders"
     );
   });
 });

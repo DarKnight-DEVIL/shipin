@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
-  verifyIdToken: vi.fn(),
+  requireAuthAccount: vi.fn(),
   getSignedUrl: vi.fn(),
   getR2Client: vi.fn(),
   getR2BucketName: vi.fn(),
@@ -26,8 +26,11 @@ vi.mock("@/lib/r2", () => ({
   getR2Client: mocks.getR2Client,
   getR2BucketName: mocks.getR2BucketName,
 }));
-vi.mock("@/lib/firebaseAdmin", () => ({
-  adminAuth: { verifyIdToken: mocks.verifyIdToken },
+
+// The shared gate (App Check, token, verified email, account block) is covered
+// in lib/auth's own tests; here only the wiring matters.
+vi.mock("@/lib/auth", () => ({
+  requireAuthAccount: mocks.requireAuthAccount,
 }));
 
 // The ownership rules themselves live in lib/r2Access.test.ts; here only the
@@ -38,6 +41,7 @@ vi.mock("@/lib/r2Access", async (importOriginal) => {
 });
 
 import { POST } from "./route";
+import { NextResponse } from "next/server";
 
 const request = (options: { token?: string; body?: unknown } = {}) =>
   new NextRequest("http://localhost/api/r2/view", {
@@ -50,7 +54,9 @@ const request = (options: { token?: string; body?: unknown } = {}) =>
   });
 
 beforeEach(() => {
-  mocks.verifyIdToken.mockReset().mockResolvedValue({ uid: "user-1" });
+  mocks.requireAuthAccount
+    .mockReset()
+    .mockResolvedValue({ token: { uid: "user-1" }, profile: null });
   mocks.getSignedUrl.mockReset().mockResolvedValue("https://r2.example/signed");
   mocks.getR2Client.mockReset().mockReturnValue({ client: true });
   mocks.getR2BucketName.mockReset().mockReturnValue("shipin-bucket");
@@ -64,17 +70,29 @@ afterEach(() => {
 
 describe("POST /api/r2/view", () => {
   it("requires a bearer token", async () => {
+    mocks.requireAuthAccount.mockResolvedValue(
+      NextResponse.json(
+        { success: false, error: "Authentication required.", code: "AUTHENTICATION_REQUIRED" },
+        { status: 401 }
+      )
+    );
+
     const response = await POST(request());
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       code: "AUTHENTICATION_REQUIRED",
     });
-    expect(mocks.verifyIdToken).not.toHaveBeenCalled();
+    expect(mocks.getSignedUrl).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid token", async () => {
-    mocks.verifyIdToken.mockRejectedValue(new Error("expired"));
+    mocks.requireAuthAccount.mockResolvedValue(
+      NextResponse.json(
+        { success: false, error: "Invalid authentication token.", code: "INVALID_AUTHENTICATION" },
+        { status: 401 }
+      )
+    );
 
     const response = await POST(request({ token: "bad" }));
 
@@ -82,6 +100,32 @@ describe("POST /api/r2/view", () => {
     await expect(response.json()).resolves.toMatchObject({
       code: "INVALID_AUTHENTICATION",
     });
+  });
+
+  it("refuses a banned or unverified account, and does not cache the refusal", async () => {
+    // The gate's account-state denial must pass through with the route's
+    // no-store discipline: a valid-but-stale token used to keep serving a
+    // banned customer's inspection photos for up to an hour.
+    mocks.requireAuthAccount.mockResolvedValue(
+      NextResponse.json(
+        {
+          success: false,
+          error: "This account has been banned.",
+          code: "ACCOUNT_BANNED",
+        },
+        { status: 403 }
+      )
+    );
+
+    const response = await POST(request({ token: "good" }));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "ACCOUNT_BANNED",
+    });
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(mocks.authorize).not.toHaveBeenCalled();
+    expect(mocks.getSignedUrl).not.toHaveBeenCalled();
   });
 
   it("requires an object key", async () => {

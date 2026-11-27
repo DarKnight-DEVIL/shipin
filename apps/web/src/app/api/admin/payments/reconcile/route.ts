@@ -441,8 +441,14 @@ async function inspectPaidRequest(
   const record = payment as Record<string, unknown>;
   const orderId = typeof record.orderId === "string" ? record.orderId : "";
 
-  // Fully wallet-funded: there is no PayPal order to compare against.
-  if (!orderId) return;
+  // Fully wallet-funded: there is no PayPal order to compare against. The
+  // wallet writer stores the sentinel `orderId: "wallet"` (truthy), so the
+  // provider check has to come first — an orderId-only guard would send every
+  // wallet payment into a lookup of paypalPaymentOrders/wallet and report it
+  // as request_paid_order_missing.
+  const isWalletPayment =
+    record.provider === "wallet" || record.paymentMethod === "wallet";
+  if (isWalletPayment || !orderId) return;
 
   const orderSnapshot = await adminDb
     .collection("paypalPaymentOrders")

@@ -17,6 +17,7 @@ import { sendNotification } from "@/features/notifications/services/notification
 import { buildPaymentReceivedNotification } from "@/lib/paypal/paymentReceivedNotification";
 import { roundMoney, sameCents, toNumber } from "@/lib/paypal/amounts";
 import { mainPaymentStatusError } from "@/lib/paypal/requestPaymentState";
+import { settleAdditionalItemPayment } from "@/lib/paypal/settlement";
 import {
   isMinor,
   minorFromStored,
@@ -431,6 +432,61 @@ async function handleCaptureCompleted(capture: PayPalCapture) {
   const requestId = paymentOrder.requestId as string;
   const userId = paymentOrder.userId as string;
   const requestRef = adminDb.collection("requests").doc(requestId);
+
+  /*
+   * An add-on order settles its own way, and it must branch BEFORE the main
+   * settlement below: the add-on is bought after the main payment, so the
+   * request is normally already "paid" here. The main path's already-paid
+   * early return would mark this order completed without recording the item
+   * as paid or writing an additionalPayments entry — the add-on would keep
+   * showing awaiting_payment (a second charge waiting to happen) and the
+   * daily reconciliation would report order_completed_addon_not_settled
+   * forever. Settle it exactly as the browser capture and the sweep do.
+   */
+  if (paymentOrder.paymentType === "additional_item") {
+    const additionalItemRequestId = paymentOrder.additionalItemRequestId;
+    if (typeof additionalItemRequestId !== "string" || !additionalItemRequestId) {
+      // Throw so PayPal retries: marking the order complete here would strand
+      // a captured charge with nothing settled and nothing reporting it.
+      throw new Error(
+        `Additional-item order ${orderId} has no additionalItemRequestId.`
+      );
+    }
+
+    const requestSnapshot = await requestRef.get();
+    const requestData = requestSnapshot.data();
+    if (!requestData) {
+      // Same answer as the main path: acknowledge rather than retry forever;
+      // reconciliation reports a completed order pointing at a missing request.
+      webhookLogger.warn("Request not found for additional-item order", {
+        orderId,
+        requestId,
+      });
+      return;
+    }
+
+    const settlement = await settleAdditionalItemPayment({
+      requestRef,
+      paymentOrderRef,
+      requestData,
+      paymentOrder,
+      additionalItemRequestId,
+      orderID: orderId,
+      captureId: captureId ?? "",
+      capturedAmount,
+      capturedCurrency,
+    });
+
+    if (!settlement.ok) {
+      // A refusal (item not awaiting payment, amount mismatch) throws so the
+      // delivery retries; a retry after a partial settlement sees the completed
+      // order at the top of this handler and no-ops.
+      throw new Error(settlement.error);
+    }
+
+    return;
+  }
+
   const walletRef = adminDb.collection("wallets").doc(userId);
   const holdRef =
     typeof paymentOrder.walletHoldId === "string" && paymentOrder.walletHoldId

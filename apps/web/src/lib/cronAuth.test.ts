@@ -56,6 +56,20 @@ describe("verifyCronRequest", () => {
     ).resolves.toBe(false);
   });
 
+  it("leaves the request body readable for the handler", async () => {
+    // verifyCronRequest reads the body to check the signature. Reading the
+    // original stream left every later `request.json()` in a cron route with
+    // an empty string and no error — a trap that only fires when the second
+    // reader is added. The verification reads a clone instead.
+    const timestamp = String(Date.now());
+    const body = '{"batch":3}';
+    const cronRequest = request(timestamp, sign(timestamp, body), body);
+
+    await expect(verifyCronRequest(cronRequest, SECRET)).resolves.toBe(true);
+
+    await expect(cronRequest.text()).resolves.toBe(body);
+  });
+
   it("rejects a signature made with a different secret", async () => {
     const timestamp = String(Date.now());
 

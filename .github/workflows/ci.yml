@@ -35,7 +35,11 @@ jobs:
           fetch-depth: 0
 
       - name: TruffleHog (verified secrets only)
-        uses: trufflesecurity/trufflehog@main
+        # Pinned to the v3.100.1 commit. @main is a moving target: a changed
+        # action could silence or alter what this security gate reports, and
+        # the job would stay green. Bump the SHA deliberately, with the diff
+        # between the two commits read first.
+        uses: trufflesecurity/trufflehog@4ef51f69ca6347aaa76a5e64a87eac9c0c909f71 # v3.100.1
         with:
           extra_args: --results=verified,unknown
 

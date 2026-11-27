@@ -29,7 +29,18 @@ const BUCKET = process.env.FIREBASE_STORAGE_BUCKET;
 const BACKUP_DIR = path.resolve("firestore-backups");
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").replace(/Z$/, "");
 
-if (!BUCKET) mkdirSync(BACKUP_DIR, { recursive: true });
+if (!BUCKET) {
+  mkdirSync(BACKUP_DIR, { recursive: true });
+  /*
+   * A local export dies with the machine: on Cloud Run, Vercel or any
+   * container the filesystem is ephemeral, so this "backup" survives only
+   * until the next restart. Warn loudly, before the work — a cron log reader
+   * should see why the export is not where a backup needs to be.
+   */
+  console.warn(
+    "WARNING: FIREBASE_STORAGE_BUCKET is not set; the export is written to local disk only and will be lost on restart."
+  );
+}
 
 const destination = BUCKET
   ? `gs://${BUCKET}/firestore-exports/${stamp}`

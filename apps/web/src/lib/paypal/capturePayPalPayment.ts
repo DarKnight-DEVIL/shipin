@@ -9,7 +9,7 @@
  */
 
 import { fetchWithTimeout } from "@/lib/http";
-import { getPayPalAccessToken } from "@/lib/paypal";
+import { getPayPalAccessToken, getPayPalBaseUrl } from "@/lib/paypal";
 
 import { sameCents } from "./amounts";
 import type { PaymentFailure } from "./types";
@@ -55,8 +55,8 @@ export async function capturePayPalPayment({
 }: CapturePayPalPaymentInput): Promise<CapturePayPalPaymentResult> {
   const accessToken = await getPayPalAccessToken();
 
-  const baseUrl =
-    process.env.PAYPAL_API_URL || "https://api-m.sandbox.paypal.com";
+  // Same host the access token came from — see getPayPalBaseUrl.
+  const baseUrl = getPayPalBaseUrl();
 
   const paypalResponse = await transport(
     `${baseUrl}/v2/checkout/orders/${orderID}/capture`,

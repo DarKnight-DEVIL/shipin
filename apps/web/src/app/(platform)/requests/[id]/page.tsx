@@ -18,7 +18,7 @@ const Lightbox = dynamic(() => import("yet-another-react-lightbox"), {
   ssr: false,
 });
 
-import { auth } from "@/lib/firebase";
+import { auth, getAppCheckToken } from "@/lib/firebase";
 import { customerApi } from "@/lib/customerApiClient";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -96,6 +96,8 @@ export default function RequestDetailsPage() {
 
         const token = await currentUser.getIdToken();
 
+        const appCheckToken = await getAppCheckToken();
+
         const urls = await Promise.all(
           request.warehouse.inspectionPhotos.map(async (key) => {
             const res = await fetch("/api/r2/view", {
@@ -103,6 +105,11 @@ export default function RequestDetailsPage() {
               headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${token}`,
+                // The route runs the shared auth gate, which verifies App
+                // Check when enforcement is on. Null sends none.
+                ...(appCheckToken
+                  ? { "X-Firebase-AppCheck": appCheckToken }
+                  : {}),
               },
               body: JSON.stringify({ key }),
             });

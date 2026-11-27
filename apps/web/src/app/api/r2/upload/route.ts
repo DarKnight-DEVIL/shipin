@@ -6,7 +6,7 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 
 import { getR2Client, getR2BucketName } from "@/lib/r2";
 
-import { adminAuth } from "@/lib/firebaseAdmin";
+import { requireAuthAccount } from "@/lib/auth";
 
 import { authorizeInspectionUpload } from "@/lib/r2Access";
 
@@ -30,39 +30,19 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
 export const POST = withErrorHandler(async (request: Request) => {
   try {
-    const authorization = request.headers.get("authorization");
-
-    if (!authorization?.startsWith("Bearer ")) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Unauthorized.",
-        },
-        {
-          status: 401,
-        }
-      );
+    /*
+     * The shared gate, not a hand-rolled token check: App Check (when
+     * enforced), a verified email and an account that has not been disabled,
+     * suspended, banned or deleted. A bare verifyIdToken kept working for up
+     * to an hour after a ban, because the token outlives the account state
+     * that the users/{uid} document carries.
+     */
+    const auth = await requireAuthAccount(request);
+    if (auth instanceof NextResponse) {
+      return auth;
     }
 
-    const idToken = authorization.slice(7);
-
-    let uid: string;
-
-    try {
-      const decoded = await adminAuth.verifyIdToken(idToken);
-
-      uid = decoded.uid;
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Invalid authentication token.",
-        },
-        {
-          status: 401,
-        }
-      );
-    }
+    const uid = auth.token.uid;
 
     const declaredLength = Number(request.headers.get("content-length"));
     if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {

@@ -1,5 +1,5 @@
 /**
- * `POST /api/cron/paypal-sweep` — settle payments PayPal captured but we did not.
+ * `POST /api/admin/payments/sweep` — settle payments PayPal captured but we did not.
  *
  * Why this exists: money reaches a request by two independent paths, the
  * browser's capture and the PayPal webhook. Both can fail for the same order —

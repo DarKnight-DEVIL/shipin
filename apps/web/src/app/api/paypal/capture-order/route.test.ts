@@ -40,6 +40,8 @@ vi.mock("@/lib/firebaseAdmin", () => ({
 }));
 vi.mock("@/lib/paypal", () => ({
   getPayPalAccessToken: mocks.getPayPalAccessToken,
+  // The real capturePayPalPayment resolves its host through this barrel.
+  getPayPalBaseUrl: () => "https://paypal.test",
 }));
 vi.mock("@/config/env", () => ({
   serverEnv: { PAYPAL_API_URL: "https://paypal.test" },

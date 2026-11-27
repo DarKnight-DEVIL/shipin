@@ -216,8 +216,14 @@ rendered at the top of the "Your data" settings section, wires the customer-faci
 returned `data: {}` with a comment saying the caller must implement it — had no importers
 and was deleted; the obligation is fulfilled by the export route itself.
 
-Still unreachable from any UI: `/api/user/age-verification` (a signup-time parental-consent
-flow with OTP email, not a Settings concern), plus the admin/internal endpoints
+~~Still unreachable from any UI: `/api/user/age-verification`~~ — **fixed, and a Settings
+concern after all**: `src/components/settings/AgeVerificationSection.tsx` is rendered on
+the settings page. It collects the date of birth, calls `GET/POST
+/api/user/age-verification`, and runs the parental-consent flow for under-18 accounts
+(OTP email, digital signature, video KYC, Aadhaar) per DPDP Act 2023 §9 — so the gate is
+no longer dormant.
+
+Still unreachable from any UI: the admin/internal endpoints
 `/api/compliance/dashboard`, `/api/admin/wallet/balance` and
 `/api/admin/shipments/[shipmentId]`.
 

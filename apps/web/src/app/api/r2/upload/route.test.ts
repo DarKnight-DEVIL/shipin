@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  verifyIdToken: vi.fn(),
+  requireAuthAccount: vi.fn(),
   send: vi.fn(),
   getR2Client: vi.fn(),
   getR2BucketName: vi.fn(),
@@ -9,9 +9,11 @@ const mocks = vi.hoisted(() => ({
   authorize: vi.fn(),
 }));
 
-vi.mock("@/lib/firebaseAdmin", () => ({
-  adminAuth: { verifyIdToken: mocks.verifyIdToken },
-  adminDb: {},
+// The shared gate (App Check, token, verified email, account block) is covered
+// in lib/auth's own tests; this file asserts the route runs it and honours its
+// denials before touching R2.
+vi.mock("@/lib/auth", () => ({
+  requireAuthAccount: mocks.requireAuthAccount,
 }));
 // Ownership rules are covered in lib/r2Access.test.ts; this file asserts the
 // route consults them before writing anything.
@@ -35,6 +37,7 @@ vi.mock("@aws-sdk/client-s3", () => ({
 }));
 
 import { POST } from "./route";
+import { NextResponse } from "next/server";
 
 function uploadRequest(
   options: {
@@ -69,7 +72,9 @@ function uploadRequest(
 }
 
 beforeEach(() => {
-  mocks.verifyIdToken.mockReset().mockResolvedValue({ uid: "admin-1" });
+  mocks.requireAuthAccount
+    .mockReset()
+    .mockResolvedValue({ token: { uid: "admin-1" }, profile: null });
   mocks.send.mockReset().mockResolvedValue({});
   mocks.getR2Client.mockReset().mockReturnValue({ send: mocks.send });
   mocks.getR2BucketName.mockReset().mockReturnValue("shipin-bucket");
@@ -85,6 +90,13 @@ afterEach(() => {
 
 describe("POST /api/r2/upload", () => {
   it("requires a bearer token", async () => {
+    mocks.requireAuthAccount.mockResolvedValue(
+      NextResponse.json(
+        { success: false, error: "Authentication required." },
+        { status: 401 }
+      )
+    );
+
     const response = await POST(uploadRequest());
 
     expect(response.status).toBe(401);
@@ -92,11 +104,41 @@ describe("POST /api/r2/upload", () => {
   });
 
   it("rejects an invalid token", async () => {
-    mocks.verifyIdToken.mockRejectedValue(new Error("expired"));
+    mocks.requireAuthAccount.mockResolvedValue(
+      NextResponse.json(
+        { success: false, error: "Invalid authentication token." },
+        { status: 401 }
+      )
+    );
 
     const response = await POST(uploadRequest({ token: "bad" }));
 
     expect(response.status).toBe(401);
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+
+  it("rejects a banned or unverified account before touching R2", async () => {
+    // The gate's account-state and email-verification denials must pass
+    // through unchanged: a valid-but-stale token used to slip past a bare
+    // verifyIdToken for up to an hour after a ban.
+    mocks.requireAuthAccount.mockResolvedValue(
+      NextResponse.json(
+        {
+          success: false,
+          error: "This account has been suspended.",
+          code: "ACCOUNT_SUSPENDED",
+        },
+        { status: 403 }
+      )
+    );
+
+    const response = await POST(uploadRequest({ token: "good" }));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "ACCOUNT_SUSPENDED",
+    });
+    expect(mocks.authorize).not.toHaveBeenCalled();
     expect(mocks.send).not.toHaveBeenCalled();
   });
 

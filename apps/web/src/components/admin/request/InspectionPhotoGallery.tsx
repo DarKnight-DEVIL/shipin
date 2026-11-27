@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { ImageOff } from "lucide-react";
 
-import { auth } from "@/lib/firebase";
+import { auth, getAppCheckToken } from "@/lib/firebase";
 import EmptyState from "@/components/ui/EmptyState";
 
 interface Props {
@@ -41,6 +41,8 @@ export default function InspectionPhotoGallery({ photos = [] }: Props) {
 
         const idToken = await currentUser.getIdToken();
 
+        const appCheckToken = await getAppCheckToken();
+
         const results = await Promise.all(
           photos.map(async (key) => {
             const response = await fetch("/api/r2/view", {
@@ -50,6 +52,11 @@ export default function InspectionPhotoGallery({ photos = [] }: Props) {
                 "Content-Type": "application/json",
 
                 Authorization: `Bearer ${idToken}`,
+                // The route runs the shared auth gate, which verifies App
+                // Check when enforcement is on. Null sends none.
+                ...(appCheckToken
+                  ? { "X-Firebase-AppCheck": appCheckToken }
+                  : {}),
               },
 
               body: JSON.stringify({

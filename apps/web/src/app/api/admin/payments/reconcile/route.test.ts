@@ -325,6 +325,9 @@ describe("POST /api/admin/payments/reconcile — agreement", () => {
   });
 
   it("ignores a wallet-only payment, which has no PayPal order", async () => {
+    // The payment block mirrors what processWalletPayment writes, including
+    // the sentinel orderId: "wallet" — truthy, so a guard on orderId alone
+    // would look up paypalPaymentOrders/wallet and report drift.
     mocks.state.requests.push({
       id: "req-wallet",
       fields: {
@@ -332,6 +335,28 @@ describe("POST /api/admin/payments/reconcile — agreement", () => {
         payment: {
           provider: "wallet",
           paymentMethod: "wallet",
+          orderId: "wallet",
+          captureId: null,
+          status: "completed",
+          paidAt: daysAgo(1),
+        },
+      },
+    });
+
+    const response = await POST(signedRequest());
+
+    expect(response.status).toBe(200);
+  });
+
+  it("ignores a wallet-only payment even when the provider field is missing", async () => {
+    // Legacy records may carry only paymentMethod; either field must suffice.
+    mocks.state.requests.push({
+      id: "req-wallet-legacy",
+      fields: {
+        status: "paid",
+        payment: {
+          paymentMethod: "wallet",
+          orderId: "wallet",
           status: "completed",
           paidAt: daysAgo(1),
         },
