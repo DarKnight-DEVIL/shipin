@@ -13,9 +13,23 @@ const ANALYZE = process.env.ANALYZE === "true";
 // /__/auth through this app makes the helper same-origin, which is Firebase's
 // documented fix for apps not served by Firebase Hosting:
 // https://firebase.google.com/docs/auth/web/redirect-best-practices (Option 3).
-const FIREBASE_PROJECT =
-  process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "shipin-9576a";
-const FIREBASE_AUTH_HELPER_ORIGIN = `https://${FIREBASE_PROJECT}.firebaseapp.com`;
+const FIREBASE_PROJECT = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+
+// A production build without the project id would silently proxy the auth
+// helper to a hardcoded project — sign-in would fail or, worse, complete
+// against the wrong Firebase project, with nothing visibly wrong until a
+// customer tried it. Fail the build instead. Every supported path sets the
+// variable: Vercel's project environment, CI's build step, and .env.local
+// locally (the template ships it).
+if (!FIREBASE_PROJECT && process.env.NODE_ENV === "production") {
+  throw new Error(
+    "NEXT_PUBLIC_FIREBASE_PROJECT_ID is required for a production build: the /__/auth rewrite targets <project>.firebaseapp.com."
+  );
+}
+
+// Development fallback only: `next dev` without .env.local still boots, and
+// the auth helper points at this repository's own project.
+const FIREBASE_AUTH_HELPER_ORIGIN = `https://${FIREBASE_PROJECT ?? "shipin-9576a"}.firebaseapp.com`;
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
