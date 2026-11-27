@@ -148,20 +148,29 @@ describe("compliance age ops route logic", () => {
     expect(await hasParentalConsent("true")).toBe(true);
   });
 
-  it("enforceAgeGate allows adults and users without a DOB", async () => {
+  it("enforceAgeGate blocks accounts with no DOB on file", async () => {
     const adultNoDob: Record<string, unknown> = {
       displayName: "Adult",
     };
+    const collection = fakeCollection([fakeDoc(adultNoDob)]);
+    mocks.adminDb.collection.mockImplementation(() => collection);
+
+    // A missing DOB is a refusal, not a pass: the gate can only judge an age
+    // it was told, and a child can simply never provide one.
+    expect(await enforceAgeGate("no-dob")).toEqual({
+      allowed: false,
+      reason: "dob_required",
+      error: "Add your date of birth to your profile before placing a request.",
+    });
+  });
+
+  it("enforceAgeGate allows adults with a DOB", async () => {
     const adultWithDob: Record<string, unknown> = {
       dateOfBirth: "2000-01-01",
     };
-    const collection = fakeCollection([
-      fakeDoc(adultNoDob),
-      fakeDoc(adultWithDob),
-    ]);
+    const collection = fakeCollection([fakeDoc(adultWithDob)]);
     mocks.adminDb.collection.mockImplementation(() => collection);
 
-    expect(await enforceAgeGate("no-dob")).toEqual({ allowed: true });
     expect(await enforceAgeGate("adult")).toEqual({ allowed: true });
   });
 
@@ -174,6 +183,8 @@ describe("compliance age ops route logic", () => {
 
     const result = await enforceAgeGate("child");
     expect(result.allowed).toBe(false);
+    if (result.allowed) throw new Error("expected a rejection");
+    expect(result.reason).toBe("parental_consent_required");
     expect(result.error).toContain("parental consent");
   });
 });
@@ -496,6 +507,7 @@ describe("compliance parental consent flow", () => {
 
     await expect(enforceAgeGate("missing")).resolves.toEqual({
       allowed: false,
+      reason: "dob_required",
       error: "User not found",
     });
   });

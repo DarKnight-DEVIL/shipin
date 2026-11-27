@@ -227,19 +227,48 @@ export async function getUserAge(userId: string): Promise<number | null> {
 }
 
 /**
- * Age gate middleware - reject requests from unverified children
+ * Why the gate refused a caller, when it does.
+ *
+ * - "dob_required": the profile carries no date of birth at all. The gate can
+ *   only protect children who told us their age, so a missing DOB is a
+ *   compliance gap, not a pass (a child can simply never provide one).
+ * - "parental_consent_required": the DOB says under 18 and no verified
+ *   parental consent is on file.
+ */
+export type AgeGateRejection =
+  | { allowed: false; reason: "dob_required"; error: string }
+  | { allowed: false; reason: "parental_consent_required"; error: string };
+
+export type AgeGateResult = { allowed: true } | AgeGateRejection;
+
+/**
+ * Age gate middleware - reject requests from unverified children and from
+ * accounts whose age is unknown.
  */
 export async function enforceAgeGate(
   userId: string
-): Promise<{ allowed: boolean; error?: string }> {
+): Promise<AgeGateResult> {
   const userDoc = await adminDb.collection("users").doc(userId).get();
-  if (!userDoc.exists) return { allowed: false, error: "User not found" };
+  if (!userDoc.exists) {
+    return {
+      allowed: false,
+      reason: "dob_required",
+      error: "User not found",
+    };
+  }
 
   const data = userDoc.data()!;
 
-  // If no DOB, allow but log warning
+  // No DOB on file: the gate cannot judge the age, so it refuses. The API
+  // surfaces this as its own code (DOB_REQUIRED) so the request form can ask
+  // for the date of birth inline instead of dead-ending in Settings.
   if (!data.dateOfBirth) {
-    return { allowed: true };
+    return {
+      allowed: false,
+      reason: "dob_required",
+      error:
+        "Add your date of birth to your profile before placing a request.",
+    };
   }
 
   const age = calculateAge(data.dateOfBirth);
@@ -249,6 +278,7 @@ export async function enforceAgeGate(
     if (!hasConsent) {
       return {
         allowed: false,
+        reason: "parental_consent_required",
         error:
           "Users under 18 require verified parental consent per DPDP Act 2023",
       };

@@ -85,7 +85,13 @@ beforeEach(() => {
   mocks.profileGet.mockReset();
   mocks.add.mockReset().mockResolvedValue({ id: "req-new" });
   addresses(address);
-  users({ displayName: "Test User", email: "profile@example.com" });
+  users({
+    displayName: "Test User",
+    email: "profile@example.com",
+    // The age gate refuses accounts with no DOB on file, so every
+    // success-path fixture is an adult.
+    dateOfBirth: "1990-01-01",
+  });
   requests();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -141,6 +147,19 @@ describe("POST /api/requests", () => {
     await expect(response.json()).resolves.toMatchObject({
       code: "AGE_GATE_BLOCKED",
       error: "Users under 18 require verified parental consent per DPDP Act 2023",
+    });
+    expect(mocks.add).not.toHaveBeenCalled();
+  });
+
+  it("blocks an account with no date of birth on file", async () => {
+    users({ displayName: "No Dob" });
+
+    const response = await POST(post());
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "DOB_REQUIRED",
+      error: "Add your date of birth to your profile before placing a request.",
     });
     expect(mocks.add).not.toHaveBeenCalled();
   });

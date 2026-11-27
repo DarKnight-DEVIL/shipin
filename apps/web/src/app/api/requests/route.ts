@@ -37,8 +37,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   if (auth instanceof NextResponse) return auth;
 
   // DPDP Act 2023 §9: an account under 18 without verified parental consent
-  // cannot place requests. Dormant until the profile carries a date of birth
-  // (the AgeVerificationSection collects it).
+  // cannot place requests, and neither can an account whose age is unknown —
+  // the gate can only judge an age it was told. A missing DOB gets its own
+  // code (DOB_REQUIRED) so the request form can collect it inline instead of
+  // sending the customer to Settings.
   const gate = await enforceAgeGate(auth.profile.uid);
 
   if (!gate.allowed) {
@@ -48,7 +50,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         error:
           gate.error ??
           "This account cannot place requests yet.",
-        code: "AGE_GATE_BLOCKED",
+        code: gate.reason === "dob_required" ? "DOB_REQUIRED" : "AGE_GATE_BLOCKED",
       },
       { status: 403, headers: NO_STORE }
     );

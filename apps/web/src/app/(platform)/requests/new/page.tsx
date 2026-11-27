@@ -69,6 +69,12 @@ export default function NewRequestPage() {
   >("approval");
   const [submitting, setSubmitting] = useState(false);
   const [loadingAddresses, setLoadingAddresses] = useState(true);
+  // The age gate refuses a submit when the profile has no date of birth
+  // (DOB_REQUIRED). Rather than dead-ending in Settings, the form collects it
+  // inline and resubmits.
+  const [needsDob, setNeedsDob] = useState(false);
+  const [dobValue, setDobValue] = useState("");
+  const [savingDob, setSavingDob] = useState(false);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
@@ -170,6 +176,11 @@ export default function NewRequestPage() {
       router.push("/requests");
     } catch (error) {
       console.error(error);
+      if (error instanceof CustomerApiError && error.code === "DOB_REQUIRED") {
+        setNeedsDob(true);
+        toast.error("Add your date of birth below to place this request.");
+        return;
+      }
       // The API's message is written for this form ("A request can include up
       // to 3 products.", "Address not found."); a network failure is not, so
       // only surface it when it is one of ours.
@@ -180,6 +191,37 @@ export default function NewRequestPage() {
       );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  /** The API refused the submit because the profile has no date of birth
+   * (DOB_REQUIRED): save it to the profile, then retry the same submit. If the
+   * date says under 18 without parental consent, the retry surfaces that
+   * message through the normal error path. */
+  const saveDobAndSubmit = async () => {
+    const value = dobValue.trim();
+    const today = new Date().toISOString().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value > today) {
+      toast.warning("Enter a valid date of birth in the past.");
+      return;
+    }
+
+    setSavingDob(true);
+    try {
+      await customerApi("/api/profile", {
+        method: "PATCH",
+        body: { dateOfBirth: value },
+      });
+      setNeedsDob(false);
+      await submitRequest();
+    } catch (error) {
+      toast.error(
+        error instanceof CustomerApiError
+          ? error.message
+          : "Could not save your date of birth."
+      );
+    } finally {
+      setSavingDob(false);
     }
   };
 
@@ -397,6 +439,56 @@ export default function NewRequestPage() {
             onInspectionChange={setInspection}
             onShippingChange={setShippingPreference}
           />
+
+          {/* Date of birth (compliance) — shown only when the API refused the
+              submit for a missing DOB. */}
+          {needsDob && (
+            <section className="app-panel app-panel-flush">
+              <div className="border-b border-[var(--border)] px-5 py-3.5">
+                <h2 className="app-section-title">Date of birth</h2>
+                <p className="mt-0.5 text-[12px] text-[var(--muted)]">
+                  Required before your first request (DPDP Act 2023). Saved to
+                  your profile; under-18 accounts need verified parental
+                  consent.
+                </p>
+              </div>
+              <div className="p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="flex-1">
+                    <label
+                      htmlFor="new-request-dob"
+                      className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400"
+                    >
+                      Date of birth
+                    </label>
+                    <input
+                      id="new-request-dob"
+                      type="date"
+                      max={new Date().toISOString().slice(0, 10)}
+                      value={dobValue}
+                      onChange={(e) => setDobValue(e.target.value)}
+                      className="app-input w-full"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={saveDobAndSubmit}
+                    disabled={savingDob || !dobValue}
+                    className="app-btn app-btn-primary shrink-0"
+                  >
+                    {savingDob ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      "Save and submit"
+                    )}
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* Notes */}
           <section className="app-panel app-panel-flush">
