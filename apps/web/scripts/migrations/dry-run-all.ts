@@ -61,6 +61,10 @@ for (const name of migrations) {
     cwd: MIGRATIONS_DIR,
     encoding: "utf8",
     stdio: "inherit",
+    // Deliberately no shell: with shell:true on Windows Node joins the argv
+    // array unquoted, and process.execPath (`C:\Program Files\nodejs\...`)
+    // is re-split at its first space. Spawning node directly needs none of
+    // that, and `firebase`-style .cmd shims are not involved here.
   });
 
   if (result.error || result.status !== 0) {

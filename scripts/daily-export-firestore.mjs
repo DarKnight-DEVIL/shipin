@@ -50,7 +50,19 @@ const result = spawnSync(
   "firebase",
   [
     "firestore:export",
-    destination,
+    /*
+     * shell is required on Windows: `firebase` is an .cmd shim, which
+     * spawnSync cannot execute directly. The cost of shell is that Node
+     * joins the argv array with spaces and no quoting, so an argument with
+     * spaces in it is re-split by cmd.exe — a repo checked out under a path
+     * like `C:\Users\My Name\shipin` would break the local destination. The
+     * destination is therefore quoted here, but only when a shell will see
+     * it: on POSIX the argv array goes through execve untouched, and quotes
+     * would become part of the argument.
+     */
+    (process.platform === "win32" ? "\"" : "") +
+      destination +
+      (process.platform === "win32" ? "\"" : ""),
     `--project=${PROJECT}`,
     ...(process.env.FIREBASE_TOKEN
       ? [`--token=${process.env.FIREBASE_TOKEN}`]
