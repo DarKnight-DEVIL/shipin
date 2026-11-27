@@ -1264,3 +1264,41 @@ describe("support", () => {
     await expectDenied(remove(customer(), "supportTickets/ticket-19"));
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Admin-SDK-only collections                                                 */
+/* -------------------------------------------------------------------------- */
+
+// These collections are read and written only through the Admin SDK, which
+// bypasses the rules entirely. The rules carry explicit `allow: if false`
+// blocks for them; this suite pins that no browser identity — customer,
+// admin-profile or anonymous — can ever reach one, so a future broad match
+// block cannot silently reopen them.
+describe("admin-SDK-only collections", () => {
+  const PATHS = [
+    "adminAuditLog/entry-1",
+    "consentLogs/entry-1",
+    "dataBreaches/breach-1",
+    "migrations/0001-example",
+    "parentalConsents/consent-1",
+    "paypalWebhookEvents/event-1",
+    "rightsEscalations/escalation-1",
+    "rightsRequests/request-1",
+    "system/retention",
+    "userConsents/consent-1",
+    "walletTopupOrders/order-1",
+  ];
+
+  for (const path of PATHS) {
+    it(`denies every browser identity on ${path}`, async () => {
+      const admin: Actor = { uid: ADMIN };
+
+      await expectDenied(read(customer(), path));
+      await expectDenied(read(admin, path));
+      await expectDenied(read(anonymous, path));
+      await expectDenied(create(customer(), path, { x: 1 }));
+      await expectDenied(create(admin, path, { x: 1 }));
+      await expectDenied(remove(customer(), path));
+    });
+  }
+});

@@ -360,5 +360,59 @@ service cloud.firestore {
         );
       allow update, delete: if false;
     }
+
+    // ------------------------------------------------------------------
+    // Admin-SDK-only collections, denied explicitly.
+    //
+    // Firestore refuses anything no match block covers, so these denies are
+    // documentation rather than new restrictions — the same interlock
+    // /walletHolds carries. Every collection here is read and written only
+    // by the Admin SDK (which bypasses these rules entirely); no browser
+    // path may ever touch them. Listing them means a future broad match
+    // block cannot silently reopen one, and the security surface stays
+    // visible in one place.
+    match /adminAuditLog/{docId} {
+      allow read, write: if false;
+    }
+
+    match /consentLogs/{docId} {
+      allow read, write: if false;
+    }
+
+    match /dataBreaches/{docId} {
+      allow read, write: if false;
+    }
+
+    match /migrations/{docId} {
+      allow read, write: if false;
+    }
+
+    match /parentalConsents/{docId} {
+      allow read, write: if false;
+    }
+
+    match /paypalWebhookEvents/{docId} {
+      allow read, write: if false;
+    }
+
+    match /rightsEscalations/{docId} {
+      allow read, write: if false;
+    }
+
+    match /rightsRequests/{docId} {
+      allow read, write: if false;
+    }
+
+    match /system/{docId} {
+      allow read, write: if false;
+    }
+
+    match /userConsents/{docId} {
+      allow read, write: if false;
+    }
+
+    match /walletTopupOrders/{docId} {
+      allow read, write: if false;
+    }
   }
 }

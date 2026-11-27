@@ -21,6 +21,9 @@ concurrency:
 env:
   NODE_VERSION: "24"
 
+permissions:
+  contents: read
+
 jobs:
   # ─── Secret scanning ────────────────────────────────────────────────────────
   # A committed FIREBASE_ADMIN_PRIVATE_KEY or PayPal secret is a full

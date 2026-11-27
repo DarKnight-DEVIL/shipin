@@ -7,6 +7,9 @@ on:
   # Allows manual trigger from the GitHub Actions tab for testing
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   trigger-expire-quotes:
     name: Trigger Quote Expiry Check
