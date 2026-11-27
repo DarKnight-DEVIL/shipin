@@ -78,6 +78,22 @@ does not hold. Run them before promoting a deploy.
    hourly quote-expiry run only writes a job summary. The workflow now also
    emits an `::error::` annotation in that case, so configure the repository
    secret if anyone is expected to react to a missed sweep.
+4. **Provider contract secrets.** `provider-contract-daily.yml` runs the suites
+   in `apps/web/tests/contract/` once a day against the real providers. Both
+   jobs *fail* rather than skip when their secrets are missing, because a green
+   daily run that verified nothing is the failure mode they exist to catch.
+
+   | Secret | What it is |
+   | --- | --- |
+   | `PAYPAL_CONTRACT_CLIENT_ID` / `PAYPAL_CONTRACT_CLIENT_SECRET` | A **sandbox** application, never live. Creating an order charges nothing and the suite only asserts PayPal's failure paths. |
+   | `R2_CONTRACT_ACCOUNT_ID` / `R2_CONTRACT_ACCESS_KEY_ID` / `R2_CONTRACT_SECRET_ACCESS_KEY` | An R2 token scoped to Object Read & Write on **one** bucket, not the production token. |
+   | `R2_CONTRACT_BUCKET` | A bucket for the daily write/delete under `contract/`; a dedicated bucket keeps the test object out of the real one. |
+
+   The Firebase side needs no secret: `npm run test:admin` drives the suite in
+   `apps/web/tests/admin-contract/` against the emulators (real Firestore and
+   Auth behaviour, no network), and `npm run test:rules` drives the security
+   rules. App Check verification is exercised by the signed-in staging E2E,
+   which exchanges a real debug token with the Firebase project.
 
 ### Domains and origins
 

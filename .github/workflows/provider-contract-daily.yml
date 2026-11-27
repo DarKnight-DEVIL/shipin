@@ -1,0 +1,209 @@
+name: Provider Contract Daily
+
+# `ci.yml` runs the sandbox and store contract suites on every push and PR. That
+# leaves the quiet case uncovered: PayPal or R2 changes something while nobody
+# is committing, the suite does not run, and the first anyone learns of it is
+# the next push. This runs both suites once a day against the real providers.
+#
+# Neither job can move money or touch customer data. The PayPal job creates an
+# order (charges nothing) and asserts PayPal's *failures* (ORDER_NOT_APPROVED,
+# INVALID_RESOURCE_ID) using its own sandbox application
+# (`PAYPAL_CONTRACT_CLIENT_ID` / `PAYPAL_CONTRACT_CLIENT_SECRET`), never the live
+# credentials. The R2 job writes and deletes one object under `contract/` in the
+# bucket named by `R2_CONTRACT_BUCKET`, and proves a presigned URL expires.
+on:
+  schedule:
+    # 05:10 UTC — after the nightly tests and the dependency gate, before the
+    # working day in Mumbai.
+    - cron: "10 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+
+concurrency:
+  group: provider-contract
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    name: PayPal sandbox contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PAYPAL_CONTRACT_CLIENT_ID: ${{ secrets.PAYPAL_CONTRACT_CLIENT_ID }}
+      PAYPAL_CONTRACT_CLIENT_SECRET: ${{ secrets.PAYPAL_CONTRACT_CLIENT_SECRET }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Enable corepack (respects packageManager field)
+        run: corepack enable
+
+      # The suite *skips* itself without credentials and still exits 0, which on
+      # a scheduled run would be indistinguishable from a passing contract: a
+      # deleted or renamed secret would leave this job green forever while
+      # proving nothing. On push that is a soft warning so forks stay green;
+      # here it is a failure.
+      - name: Verify the sandbox credentials exist
+        run: |
+          missing=""
+
+          if [ -z "${PAYPAL_CONTRACT_CLIENT_ID// /}" ]; then missing="$missing PAYPAL_CONTRACT_CLIENT_ID"; fi
+          if [ -z "${PAYPAL_CONTRACT_CLIENT_SECRET// /}" ]; then missing="$missing PAYPAL_CONTRACT_CLIENT_SECRET"; fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. The daily PayPal contract run would skip every test, so it cannot prove PayPal still accepts our requests. Configure a sandbox application's credentials (see DEPLOYMENT.md -> Cron alerting)."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the PayPal sandbox contract suite
+        run: |
+          set -euo pipefail
+          log="$(mktemp)"
+
+          set +e
+          npm run test:contract -- tests/contract/paypal.contract.test.ts 2>&1 | tee "$log"
+          status="${PIPESTATUS[0]}"
+          set -e
+
+          # Belt and braces for the secrets check above: a whitespace-only secret
+          # passes `-n` but leaves the suite skipped, and a green scheduled run
+          # that verified nothing is the failure mode this job exists to avoid.
+          if grep -qE "Tests +[0-9]+ skipped \(" "$log"; then
+            echo "::error::The contract suite skipped its tests. Nothing verified that PayPal still accepts the request bodies we send."
+            status=1
+          fi
+
+          exit "$status"
+
+      # A scheduled failure is attached to no commit anyone is watching, so
+      # mirror the other crons: a summary that says what broke and an optional
+      # webhook. Silence is the wrong default for a provider change.
+      - name: Report a failed run
+        if: failure()
+        run: |
+          {
+            echo "### PayPal sandbox contract failed"
+            echo ""
+            echo "The daily contract run did not pass. Either PayPal changed something"
+            echo "on their side (an endpoint, a required field, an error shape) or this"
+            echo "repository's sandbox credentials are no longer valid — the output above"
+            echo "says which. Nothing was pushed to trigger this: it is the daily check"
+            echo "against a quiet repository. Reproduce locally with:"
+            echo ""
+            echo '```'
+            echo "PAYPAL_CONTRACT_CLIENT_ID=… PAYPAL_CONTRACT_CLIENT_SECRET=… npm run test:contract"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "${{ secrets.ALERT_WEBHOOK_URL }}" ]; then
+            curl --fail-with-body -sS -X POST \
+              -H 'Content-Type: application/json' \
+              -d '{"text":"ShipIN: the daily PayPal sandbox contract run failed — PayPal may have changed its API, or the sandbox credentials are invalid."}' \
+              "${{ secrets.ALERT_WEBHOOK_URL }}" || true
+          else
+            echo "::error::ALERT_WEBHOOK_URL is not set, so this failure reached nobody. Configure the repository secret (see DEPLOYMENT.md -> Cron alerting)."
+          fi
+
+  r2:
+    name: R2 presigning contract
+    runs-on: ubuntu-latest
+    # The suite sleeps past a 1-second presigned URL so the expiry case is a
+    # real 403 from the store, not an assertion about a timestamp.
+    timeout-minutes: 10
+    env:
+      R2_CONTRACT_ACCOUNT_ID: ${{ secrets.R2_CONTRACT_ACCOUNT_ID }}
+      R2_CONTRACT_ACCESS_KEY_ID: ${{ secrets.R2_CONTRACT_ACCESS_KEY_ID }}
+      R2_CONTRACT_SECRET_ACCESS_KEY: ${{ secrets.R2_CONTRACT_SECRET_ACCESS_KEY }}
+      R2_CONTRACT_BUCKET: ${{ secrets.R2_CONTRACT_BUCKET }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Enable corepack (respects packageManager field)
+        run: corepack enable
+
+      # Same reasoning as the PayPal job: the suite skips itself without
+      # credentials and exits 0, so on a schedule a missing secret would leave
+      # this green forever while proving nothing about the presigning path every
+      # inspection photo depends on.
+      - name: Verify the R2 credentials exist
+        run: |
+          missing=""
+
+          if [ -z "${R2_CONTRACT_ACCOUNT_ID// /}" ]; then missing="$missing R2_CONTRACT_ACCOUNT_ID"; fi
+          if [ -z "${R2_CONTRACT_ACCESS_KEY_ID// /}" ]; then missing="$missing R2_CONTRACT_ACCESS_KEY_ID"; fi
+          if [ -z "${R2_CONTRACT_SECRET_ACCESS_KEY// /}" ]; then missing="$missing R2_CONTRACT_SECRET_ACCESS_KEY"; fi
+          if [ -z "${R2_CONTRACT_BUCKET// /}" ]; then missing="$missing R2_CONTRACT_BUCKET"; fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. The daily R2 contract run would skip every test, so it cannot prove the store still accepts the presigned URLs we hand browsers. Configure a scoped R2 token (Object Read & Write on one bucket) and see DEPLOYMENT.md -> Cron alerting."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the R2 presigning contract suite
+        run: |
+          set -euo pipefail
+          log="$(mktemp)"
+
+          set +e
+          npm run test:contract -- tests/contract/r2.contract.test.ts 2>&1 | tee "$log"
+          status="${PIPESTATUS[0]}"
+          set -e
+
+          if grep -qE "Tests +[0-9]+ skipped \\(" "$log"; then
+            echo "::error::The R2 contract suite skipped its tests. Nothing verified that the store still accepts our presigned URLs."
+            status=1
+          fi
+
+          exit "$status"
+
+      - name: Report a failed run
+        if: failure()
+        run: |
+          {
+            echo "### R2 presigning contract failed"
+            echo ""
+            echo "The daily R2 contract run did not pass. Either the store changed how"
+            echo "it signs, validates or expires a presigned URL, or this repository's"
+            echo "R2 contract token is no longer valid — the output above says which."
+            echo "Reproduce locally with:"
+            echo ""
+            echo '```'
+            echo "R2_CONTRACT_ACCOUNT_ID=… R2_CONTRACT_ACCESS_KEY_ID=… R2_CONTRACT_SECRET_ACCESS_KEY=… R2_CONTRACT_BUCKET=… npm run test:contract -- tests/contract/r2.contract.test.ts"
+            echo '```'
+            echo ""
+            echo "An expired presigned URL that still serves the object is a privacy"
+            echo "regression: the TTL in \`r2UrlPolicy\` is the only control on it."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "${{ secrets.ALERT_WEBHOOK_URL }}" ]; then
+            curl --fail-with-body -sS -X POST \
+              -H 'Content-Type: application/json' \
+              -d '{"text":"ShipIN: the daily R2 presigning contract run failed — the store may have changed how it signs or expires presigned URLs, or the contract token is invalid."}' \
+              "${{ secrets.ALERT_WEBHOOK_URL }}" || true
+          else
+            echo "::error::ALERT_WEBHOOK_URL is not set, so this failure reached nobody. Configure the repository secret (see DEPLOYMENT.md -> Cron alerting)."
+          fi

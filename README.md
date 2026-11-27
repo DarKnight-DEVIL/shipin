@@ -99,6 +99,8 @@ Never commit `.env*` files that contain real credentials.
 | `npm run test:coverage` | Vitest with per-file coverage thresholds |
 | `npm run test:security` | Focused suite: auth, MFA session, Firestore rules |
 | `npm run test:rules` | Firestore rules against the emulator (needs a JDK) |
+| `npm run test:admin` | Firebase Admin SDK contract suite against the Firestore/Auth emulators |
+| `npm run test:contract` | Provider contract suites: PayPal sandbox and R2 presigning (skipped without credentials) |
 | `npm run emulators` | Firestore + Auth emulators, the Emulator UI on `localhost:4000`, and the dev server |
 | `npm run test:e2e:local` | E2E against a production build + Firestore emulator (see `apps/web/playwright-test/README.md`) |
 | `npm run test:e2e:signed-in` | Same, plus the Auth emulator and a seeded admin, for the sign-in spec |
