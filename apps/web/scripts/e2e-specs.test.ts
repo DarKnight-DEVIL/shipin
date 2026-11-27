@@ -20,6 +20,10 @@ import { describe, expect, it } from "vitest";
 
 const SPEC_DIR = path.resolve(import.meta.dirname, "../playwright-test/tests");
 const RUNNER = path.resolve(import.meta.dirname, "e2e-local.mjs");
+const CI_WORKFLOW = path.resolve(
+  import.meta.dirname,
+  "../../../.github/workflows/ci.yml"
+);
 
 /** Suites that intentionally never run in CI, with the reason. */
 const EXCLUDED: Record<string, string> = {
@@ -36,10 +40,13 @@ describe("Playwright suite wiring", () => {
     expect(specs.length).toBeGreaterThan(5);
   });
 
-  it("names every spec in the CI runner or in the exclusion list", () => {
+  it("names every spec in the CI runner, in a workflow, or in the exclusion list", () => {
+    const workflow = readFileSync(CI_WORKFLOW, "utf8");
+
     const unreferenced = specs.filter(
       (file) =>
         !runner.includes(`tests/${file}`) &&
+        !workflow.includes(`tests/${file}`) &&
         !(file in EXCLUDED)
     );
 
