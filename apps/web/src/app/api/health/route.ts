@@ -58,6 +58,10 @@ import {
   readAppCheckRejections,
   reportAppCheckSpike,
 } from "@/lib/appCheckMetrics";
+import {
+  readOutboundRejections,
+  reportOutboundSpike,
+} from "@/lib/outboundMetrics";
 
 export async function GET() {
   // One derivation, shared with the limiter that enforces the limits. The
@@ -95,6 +99,16 @@ export async function GET() {
   const appCheckSpike = appCheckRejections.spike;
 
   /*
+   * A spike of OUTBOUND_RATE_LIMITED refusals means something is flooding one
+   * recipient — an abusive caller, a loop, a misconfigured flow. The recipient
+   * sees silence rather than an error, so this probe is the signal; the
+   * buckets refill on their own, so the fix is in the calling code, not a
+   * restart. One Discord alert per outage window, like the App Check spike.
+   */
+  const outboundRejections = await readOutboundRejections();
+  const outboundSpike = outboundRejections.spike;
+
+  /*
    * Tracked failures, by category, over the last ten minutes. This is what makes
    * the alerting legible to a monitor: a payment-drift or mfa-store event turns
    * up here even when no webhook is configured, which is the one state where an
@@ -102,6 +116,7 @@ export async function GET() {
    */
   const errorCounts = await readErrorCounts();
   const alerted = reportAppCheckSpike(appCheckRejections);
+  const outboundAlerted = reportOutboundSpike(outboundRejections);
 
   // Whether an outage could page anyone at all. This does not affect `status`
   // on its own — a deployment without a webhook is still serving correctly —
@@ -166,6 +181,7 @@ export async function GET() {
     appCheckBroken ||
     trackingPlaceholder ||
     appCheckSpike ||
+    outboundSpike ||
     mfaDenylist.degraded;
   const status = degraded ? "degraded" : "healthy";
 
@@ -209,6 +225,18 @@ export async function GET() {
           : {}),
       },
       ...(alerted ? { appCheckSpikeAlerted: true } : {}),
+      outbound: {
+        rejectionsLast10Min: outboundRejections.rejectionsLast10Min,
+        byChannel: outboundRejections.byChannel,
+        spike: outboundRejections.spike,
+        ...(outboundRejections.spike
+          ? {
+              warning:
+                "Outbound sends are being rate-limited faster than the buckets refill — a recipient is being flooded. Find the caller by its OUTBOUND_RATE_LIMITED errors; the buckets refill on their own.",
+            }
+          : {}),
+      },
+      ...(outboundAlerted ? { outboundSpikeAlerted: true } : {}),
       alerting: {
         webhook: alertTarget.source,        ...(isProduction && !alertTarget.configured
           ? {

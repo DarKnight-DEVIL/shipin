@@ -1,6 +1,7 @@
 import { serverEnv } from "@/config/env";
 import { createShipINError } from "@/utils/errors";
 import { fetchWithTimeout } from "@/lib/http";
+import { allowOutboundWhatsApp } from "@/lib/outboundRateLimit";
 import { childLogger } from "./logger";
 
 const whatsappLog = childLogger({ service: "whatsapp" });
@@ -69,6 +70,20 @@ export async function sendWhatsAppTemplate({
       "A valid WhatsApp recipient number is required.",
       "VALIDATION_ERROR",
       400
+    );
+  }
+
+  /*
+   * Per-recipient cap, the last gate before the Graph API: one token bucket
+   * per phone number shared by every caller, so no code path can point a
+   * burst at one handset (Meta quality ratings punish exactly that). A
+   * refusal throws rather than dropping silently.
+   */
+  if (!(await allowOutboundWhatsApp(recipient))) {
+    throw createShipINError(
+      "Too many messages to this recipient; try again later.",
+      "OUTBOUND_RATE_LIMITED",
+      429
     );
   }
 

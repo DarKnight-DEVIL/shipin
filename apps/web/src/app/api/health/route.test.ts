@@ -23,6 +23,9 @@ const state = vi.hoisted(() => ({
   appCheckSpike: false,
   alertSent: false,
   alertSource: "none" as "dedicated" | "breach" | "none",
+  outboundRejections: 0,
+  outboundSpike: false,
+  outboundAlerted: false,
   errors: { web: 0, api: 0, strict: 0, login: 0 } as Record<string, number>,
 }));
 
@@ -111,6 +114,18 @@ vi.mock("@/lib/appCheckMetrics", () => ({
   }),
 }));
 
+vi.mock("@/lib/outboundMetrics", () => ({
+  readOutboundRejections: async () => ({
+    rejectionsLast10Min: state.outboundRejections,
+    byChannel: { email: state.outboundRejections, whatsapp: 0 },
+    spike: state.outboundSpike,
+  }),
+  reportOutboundSpike: () => {
+    state.outboundAlerted = state.outboundSpike;
+    return state.outboundSpike;
+  },
+}));
+
 vi.mock("@/lib/rateLimiter", () => {
   const makeLimiter = (name: string) => ({
     record: vi.fn(),
@@ -164,6 +179,9 @@ beforeEach(() => {
   state.appCheckSpike = false;
   state.alertSent = false;
   state.alertSource = "none";
+  state.outboundRejections = 0;
+  state.outboundSpike = false;
+  state.outboundAlerted = false;
   state.errors = { web: 0, api: 0, strict: 0, login: 0 };
 });
 
@@ -274,6 +292,54 @@ describe("GET /api/health", () => {
     expect(body.appCheck.rejectionsInvalidToken).toBe(0);
     expect(body.appCheck.warning).toBeUndefined();
     expect(body.appCheckSpikeAlerted).toBeUndefined();
+  });
+
+  it("reports degraded and alerts once when outbound rejections spike", async () => {
+    // A flood against one recipient is invisible to the recipient — the
+    // messages just stop arriving — so the probe is the only signal.
+    state.isProduction = true;
+    state.url = "https://t.upstash.io";
+    state.token = "tok";
+    state.indiaPostUrl = "https://tracking.example";
+    state.indiaPostClientId = "client";
+    state.indiaPostClientSecret = "secret";
+    state.outboundRejections = 25;
+    state.outboundSpike = true;
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("degraded");
+    expect(body.outbound).toEqual({
+      rejectionsLast10Min: 25,
+      byChannel: { email: 25, whatsapp: 0 },
+      spike: true,
+      warning: expect.stringContaining("OUTBOUND_RATE_LIMITED"),
+    });
+    expect(body.outboundSpikeAlerted).toBe(true);
+  });
+
+  it("stays healthy when outbound rejections are ordinary background noise", async () => {
+    state.isProduction = true;
+    state.url = "https://t.upstash.io";
+    state.token = "tok";
+    state.indiaPostUrl = "https://tracking.example";
+    state.indiaPostClientId = "client";
+    state.indiaPostClientSecret = "secret";
+    state.outboundRejections = 1;
+    state.outboundSpike = false;
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.status).toBe("healthy");
+    expect(body.outbound).toEqual({
+      rejectionsLast10Min: 1,
+      byChannel: { email: 1, whatsapp: 0 },
+      spike: false,
+    });
+    expect(body.outboundSpikeAlerted).toBeUndefined();
   });
 
   it("publishes the alert channel a spike would use", async () => {

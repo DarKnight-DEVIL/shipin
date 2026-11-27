@@ -10,6 +10,8 @@ import {
   SMTP_SOCKET_TIMEOUT_MS,
 } from "@/config/constants";
 import { childLogger } from "@/lib/logger";
+import { allowOutboundEmail } from "@/lib/outboundRateLimit";
+import { createShipINError } from "@/utils/errors";
 
 const mailerLog = childLogger({ service: "mailer" });
 
@@ -88,6 +90,21 @@ export async function sendMail({
   // Validation: must have at least SMTP email or Resend key
   if (!smtpEmail) {
     throw new Error("SMTP_EMAIL is required for email sending");
+  }
+
+  /*
+   * Per-recipient cap, the last gate before the provider: every caller (the
+   * notification service, verification resends, the support email route,
+   * compliance mail) shares one token bucket per destination address, so no
+   * code path can point a burst at one inbox. A refusal throws rather than
+   * dropping silently — the caller has to know the mail did not go out.
+   */
+  if (!(await allowOutboundEmail(to))) {
+    throw createShipINError(
+      "Too many emails to this recipient; try again later.",
+      "OUTBOUND_RATE_LIMITED",
+      429
+    );
   }
 
   const fromAddress = from ?? `"ShipIN" <${smtpEmail}>`;
