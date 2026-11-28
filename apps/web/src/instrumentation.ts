@@ -6,6 +6,10 @@
  */
 
 import { childLogger } from "@/lib/logger";
+// Side-effect import: installs the request-scope storage and hands its readers
+// to the logger and to `withErrorHandler`. Server-only, which is why it lives
+// here rather than in either of those client-reachable modules.
+import "@/lib/requestContext";
 import { appCheckLogger } from "@/lib/appCheck";
 import { getAppCheckAlertTarget } from "@/lib/appCheckMetrics";
 import { setErrorReporter } from "@/lib/errorReporterHook";

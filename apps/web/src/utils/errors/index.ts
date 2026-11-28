@@ -6,8 +6,8 @@
  */
 
 import { NextResponse } from "next/server";
-
 import { reportHandledError } from "@/lib/errorReporterHook";
+import { runScoped } from "@/lib/requestScope";
 
 /**
  * Factory function to create a ShipINError with explicit code and status.
@@ -191,21 +191,47 @@ export function withErrorHandler<Args extends unknown[]>(
   handler: (...args: Args) => Promise<Response>
 ): (...args: Args) => Promise<Response> {
   return async (...args: Args): Promise<Response> => {
-    try {
-      return await handler(...args);
-    } catch (error) {
-      const err = toShipINError(error);
+    // Open the request scope here, at the one seam every API route passes
+    // through: the logger below reads the id from it, so a failure four call
+    // frames deep is still correlatable to the request that caused it. The
+    // header is the proxy's; the platform's own id is the fallback. The runner
+    // is injected (see `requestScope.ts`) so this file stays client-safe.
+    const requestId = requestIdOf(args[0]);
 
-      // One structured event per unhandled failure, deduplicated by fingerprint:
-      // the same broken route alerts once per window instead of once per request.
-      reportHandledError(error, {
-        category: "unhandled",
-        severity: err.status >= 500 ? "error" : "warning",
-        code: err.code,
-        context: { status: err.status },
-      });
+    return runScoped({ requestId }, async () => {
+      try {
+        return await handler(...args);
+      } catch (error) {
+        const err = toShipINError(error);
 
-      return NextResponse.json(serializeError(error), { status: err.status });
-    }
+        // One structured event per unhandled failure, deduplicated by fingerprint:
+        // the same broken route alerts once per window instead of once per request.
+        reportHandledError(error, {
+          category: "unhandled",
+          severity: err.status >= 500 ? "error" : "warning",
+          code: err.code,
+          context: { status: err.status },
+        });
+
+        return NextResponse.json(serializeError(error), { status: err.status });
+      }
+    });
   };
+}
+
+/**
+ * The request id a handler's first argument carries, if any.
+ *
+ * Handlers run with `()` in tests and with a `NextRequest` in production, so
+ * this stays defensive rather than assuming a Request.
+ */
+function requestIdOf(candidate: unknown): string | undefined {
+  if (!candidate || typeof candidate !== "object") return undefined;
+
+  const headers = (candidate as { headers?: { get?: (name: string) => string | null } })
+    .headers;
+
+  if (!headers || typeof headers.get !== "function") return undefined;
+
+  return headers.get("x-request-id")?.trim() || undefined;
 }

@@ -22,6 +22,24 @@
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 
+/**
+ * Fills the request id in from the server's request scope.
+ *
+ * Injected rather than imported: the logger is reachable from client modules
+ * (a page imports a component that imports a shared lib), and importing
+ * `node:async_hooks` here would drag a Node core module into the browser
+ * bundle - which Turbopack refuses to build. The server file that owns the
+ * scope registers the reader; in a browser bundle this stays undefined and
+ * nothing is added.
+ */
+let requestIdProvider: (() => string | undefined) | undefined;
+
+export function setRequestIdProvider(
+  provider: (() => string | undefined) | undefined
+): void {
+  requestIdProvider = provider;
+}
+
 interface LogEntry {
   timestamp: string;
   level: LogLevel;
@@ -112,18 +130,60 @@ function serialize(entry: LogEntry): string {
   }
 }
 
+const LEVEL_RANK: Record<LogLevel, number> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+};
+
+/**
+ * The lowest level that is written.
+ *
+ * The default keeps the previous behaviour (everything in development, debug
+ * suppressed in production) and `LOG_LEVEL` lets an operator raise the floor
+ * without a deploy - a noisy route can be quieted from the platform's env
+ * settings instead of by a code change. An unrecognised value is ignored rather
+ * than trusted: a typo must not silence every line, and `LOG_LEVEL=verbose`
+ * failing towards the default is the safe direction.
+ */
+function minimumLevel(): number {
+  const configured = process.env.LOG_LEVEL?.trim().toLowerCase();
+
+  if (configured && configured in LEVEL_RANK) {
+    return LEVEL_RANK[configured as LogLevel];
+  }
+
+  return process.env.NODE_ENV === "production"
+    ? LEVEL_RANK.info
+    : LEVEL_RANK.debug;
+}
+
 function emit(
   level: LogLevel,
   message: string,
   context?: Record<string, unknown>
 ): void {
-  const hasContext = context !== undefined && Object.keys(context).length > 0;
+  if (LEVEL_RANK[level] < minimumLevel()) return;
+
+  // The request id is filled in from the scope `withErrorHandler` opens, so a
+  // line logged several frames deep still says which request it belongs to.
+  // A caller that passes its own wins: it knows the request better than the
+  // ambient scope does.
+  const ambientRequestId = requestIdProvider?.();
+  const withRequestId =
+    ambientRequestId && !(context && "requestId" in context)
+      ? { requestId: ambientRequestId, ...context }
+      : context;
+
+  const hasContext =
+    withRequestId !== undefined && Object.keys(withRequestId).length > 0;
 
   const entry: LogEntry = {
     timestamp: new Date().toISOString(),
     level,
     message,
-    ...(hasContext ? { context } : {}),
+    ...(hasContext ? { context: withRequestId } : {}),
   };
 
   const line = serialize(entry);
@@ -140,10 +200,7 @@ function emit(
     return;
   }
   if (level === "debug") {
-    // Debug is suppressed in production.
-    if (process.env.NODE_ENV !== "production") {
-      console.log(line);
-    }
+    console.log(line);
     return;
   }
   console.log(line);

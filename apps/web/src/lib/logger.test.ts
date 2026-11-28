@@ -12,6 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { logger, childLogger } from "./logger";
+import { runWithRequestContext } from "./requestContext";
 
 let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
@@ -212,5 +213,89 @@ describe("redaction", () => {
       requestId: "req-1",
       self: "[circular]",
     });
+  });
+});
+
+describe("LOG_LEVEL", () => {
+  it("suppresses levels below the configured floor", () => {
+    vi.stubEnv("LOG_LEVEL", "warn");
+
+    logger.info("suppressed");
+    logger.debug("suppressed too");
+    logger.warn("written");
+
+    expect(consoleLogSpy).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("can raise the floor above warnings", () => {
+    vi.stubEnv("LOG_LEVEL", "error");
+
+    logger.warn("suppressed");
+
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
+  });
+
+  it("lets an operator enable debug output in production", () => {
+    vi.stubEnv("LOG_LEVEL", "debug");
+    vi.stubEnv("NODE_ENV", "production");
+
+    logger.debug("written");
+
+    expect(consoleLogSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps debug suppressed in production by default", () => {
+    vi.stubEnv("NODE_ENV", "production");
+
+    logger.debug("suppressed");
+
+    expect(consoleLogSpy).not.toHaveBeenCalled();
+  });
+
+  it("ignores an unrecognised value rather than silencing everything", () => {
+    vi.stubEnv("LOG_LEVEL", "verbose");
+
+    logger.info("written");
+
+    expect(consoleLogSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("request correlation", () => {
+  it("fills the request id from the ambient scope", () => {
+    runWithRequestContext({ requestId: "req-abc" }, () => {
+      logger.error("Failed", { status: 500 });
+    });
+
+    expect(recordOf(consoleErrorSpy).context).toEqual({
+      requestId: "req-abc",
+      status: 500,
+    });
+  });
+
+  it("reaches a logger many frames below the scope", async () => {
+    await runWithRequestContext({ requestId: "req-deep" }, async () => {
+      await Promise.resolve();
+      logger.info("deep");
+    });
+
+    expect(recordOf(consoleLogSpy).context).toEqual({ requestId: "req-deep" });
+  });
+
+  it("lets an explicit requestId win over the ambient one", () => {
+    runWithRequestContext({ requestId: "req-ambient" }, () => {
+      logger.info("explicit", { requestId: "req-explicit" });
+    });
+
+    expect(recordOf(consoleLogSpy).context).toEqual({
+      requestId: "req-explicit",
+    });
+  });
+
+  it("adds nothing outside a scope", () => {
+    logger.info("no scope");
+
+    expect(recordOf(consoleLogSpy).context ?? {}).toEqual({});
   });
 });

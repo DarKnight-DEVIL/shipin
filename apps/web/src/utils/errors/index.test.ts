@@ -7,6 +7,10 @@
  * reading a body that said `undefined` where it expected a rejection.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
+
+import { childLogger } from "@/lib/logger";
+import "@/lib/requestContext";
 
 import { createShipINError, serializeError, withErrorHandler } from "./index";
 
@@ -67,5 +71,46 @@ describe("withErrorHandler", () => {
       error: "Nope.",
       code: "BAD_REQUEST",
     });
+  });
+});
+
+describe("request correlation", () => {
+  it("opens a scope so handler logs carry the proxy's request id", async () => {
+    const lines: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((line: string) => {
+      lines.push(line);
+    });
+
+    const routeLogger = childLogger({ service: "route" });
+    const handler = withErrorHandler(async (_request: NextRequest) => {
+      routeLogger.error("Failed deep in the handler", { status: 500 });
+
+      return NextResponse.json({ success: true });
+    });
+
+    const request = new NextRequest("http://localhost:3000/api/test", {
+      headers: { "x-request-id": "req-from-proxy" },
+    });
+
+    await handler(request);
+
+    const entry = JSON.parse(lines[0]) as {
+      context: Record<string, unknown>;
+    };
+
+    expect(entry.context).toMatchObject({
+      service: "route",
+      requestId: "req-from-proxy",
+    });
+  });
+
+  it("still answers when the request carries no id", async () => {
+    const handler = withErrorHandler(async () =>
+      NextResponse.json({ success: true })
+    );
+
+    const response = await handler();
+
+    expect(response.status).toBe(200);
   });
 });
