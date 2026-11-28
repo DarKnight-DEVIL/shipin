@@ -1074,3 +1074,38 @@ describe("POST /api/admin/payments/reconcile — carried-case ageing", () => {
     });
   });
 });
+
+describe("POST /api/admin/payments/reconcile — an empty window", () => {
+  it("says the run proved nothing about money, instead of looking clean", async () => {
+    // The first production run returned 200 with driftCount 0 over a window
+    // that held no wallet payments at all. Without this flag that result is
+    // indistinguishable from "reconciliation passed".
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.drift).toEqual([]);
+    expect(body.checkedTotal).toBe(0);
+    expect(body.noActivity).toBe(true);
+  });
+
+  it("stores the same flags, so the verdict is readable without the logs", async () => {
+    await POST(signedRequest());
+
+    expect(mocks.state.system.paymentReconciliation).toMatchObject({
+      checkedTotal: 0,
+      noActivity: true,
+    });
+  });
+
+  it("marks a window that did check something as activity", async () => {
+    completedOrder();
+    paidRequest();
+
+    const response = await POST(signedRequest());
+    const body = await response.json();
+
+    expect(body.checkedTotal).toBe(2);
+    expect(body.noActivity).toBe(false);
+  });
+});

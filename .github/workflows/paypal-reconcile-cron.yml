@@ -111,6 +111,31 @@ jobs:
             exit "$status"
           fi
 
+      # A green run over a window with no wallet payments checks zero documents.
+      # That proves the pipeline, not the money - and it looked exactly like a
+      # real pass until the verdict started carrying `noActivity`.
+      - name: Note a window with no wallet activity
+        if: success()
+        run: |
+          response_file="${RECONCILE_RESPONSE_FILE:-}"
+          if [ -z "$response_file" ] || [ ! -f "$response_file" ]; then exit 0; fi
+
+          no_activity=$(jq -r '.noActivity // false' "$response_file" 2>/dev/null || echo false)
+          checked=$(jq -r '.checkedTotal // 0' "$response_file" 2>/dev/null || echo 0)
+
+          if [ "$no_activity" = "true" ]; then
+            echo "::warning::Reconciliation checked 0 items: the window held no wallet payments, so this run proves the pipeline, not the money."
+            {
+              echo "### Reconciliation checked nothing"
+              echo ""
+              echo "The window contained no completed orders, paid requests or wallet top-ups."
+              echo "A green run here proves the cron path works; it says nothing about whether"
+              echo "money and state agree. Re-run after the next wallet payment."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Reconciliation checked $checked item(s) and found no drift."
+          fi
+
       # A non-2xx answer is either drift (409) or the endpoint failing. Both are
       # worth a human: the first means money and state disagree somewhere.
       - name: Page on drift or failure

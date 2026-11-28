@@ -607,8 +607,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     completedTopups.truncated ||
     pendingTopups.truncated;
 
-  const statusRef = adminDb.collection("system").doc("paymentReconciliation");
-  const previousRun = await statusRef.get();
+  // Everything the window actually offered for inspection. Zero means the run
+  // proved the pipeline, not the money - see `noActivity` below.
+  const checkedTotal =
+    orders.rows.length +
+    paidRequests.rows.length +
+    completedTopups.rows.length +
+    pendingTopups.rows.length;
+
+  const statusRef = adminDb.collection("system").doc("paymentReconciliation");  const previousRun = await statusRef.get();
   // Validate before touching any field: a malformed entry used to be spread
   // and read first, so one null in the stored array made every run answer 500.
   const openCases = carriedDrift(
@@ -669,6 +676,12 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     },
     driftCount: driftNow.length,
     carriedForward,
+    // A run over a window with no wallet activity checks nothing and reports
+    // no drift, which is indistinguishable from "money verified" unless the
+    // verdict says so. The first manual run proved the pipeline exactly this
+    // way - 200, driftCount 0, checked counters all 0 - and read as a pass.
+    checkedTotal,
+    noActivity: checkedTotal === 0,
     // Only the stored copy is capped (the response carries all of them), but a
     // capped store means carried cases could rotate out on a later run, so the
     // flag has to travel with the verdict.
@@ -713,6 +726,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       completedTopups: completedTopups.rows.length,
       pendingTopups: pendingTopups.rows.length,
     },
+    checkedTotal,
+    noActivity: checkedTotal === 0,
     drift: driftNow,
     carriedForward,
     driftTruncated: driftNow.length > MAX_STORED_DRIFT,

@@ -812,10 +812,11 @@ The verdict is persisted, so it can be read after the fact without the logs:
 system/paymentReconciliation
   lastRunAt, windowDays, cutoff,
   checked:  { completedOrders, paypalPaidRequests, completedTopups, pendingTopups },
+  checkedTotal, noActivity,          # noActivity: the window held no wallet activity
   driftCount, carriedForward, driftTruncated, drift: []
 ```
 
-**Read the `checked` counters, not just the status.** A run over a window with
+**Read `noActivity` and the `checked` counters, not just the status.** A run over a window with
 no wallet activity reports `driftCount: 0` and checks 0 documents — the pipeline
 works, but nothing was proven about money. That is a smoke test; the real check
 is a green run whose window contains wallet payments.
