@@ -251,7 +251,16 @@ async function findRequest(trackingId: string): Promise<FoundRequest | null> {  
  * Per instance, not shared: a cache miss after a cold start is a read, not a
  * correctness problem, and a shared cache would need its own invalidation.
  */
-export const TRACKING_LOOKUP_CACHE_TTL_MS = 20_000;
+export const TRACKING_LOOKUP_CACHE_TTL_MS = (() => {
+  const configured = Number(process.env.TRACKING_LOOKUP_CACHE_TTL_MS);
+
+  // A malformed or negative value falls back to the default rather than
+  // disabling the cache by accident: "no cache" is a deliberate choice (0) and
+  // is what the load harness sets to measure the uncached path.
+  return Number.isFinite(configured) && configured >= 0
+    ? configured
+    : 20_000;
+})();
 
 /** Bounded so a long-lived instance cannot grow one entry per tracking id. */
 const MAX_TRACKING_LOOKUP_ENTRIES = 500;

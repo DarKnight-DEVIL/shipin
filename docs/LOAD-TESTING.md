@@ -54,6 +54,20 @@ Measured 2026-11-28, 20 concurrent, emulator on the same machine:
 | `/api/health` | 175 rps | 37ms | 65ms | 84ms | 0% |
 | aggregate | 523 rps | — | — | — | 0% |
 
+The same command runs a second phase with the lookup cache disabled
+(`TRACKING_LOOKUP_CACHE_TTL_MS=0`), so the cache can be priced rather than
+assumed:
+
+| Phase | Tracking rps | p50 | p95 | Errors |
+|---|---|---|---|---|
+| 20s lookup cache | **172.6** | **37.4ms** | 61.4ms | 0% |
+| cache disabled | 129.0 | 49.5ms | 76.6ms | 0% |
+
+So on this hardware the cache buys about **34% more throughput** and **25%
+lower p50** on the tracking route, for at most 20s of staleness. The TTL is
+tunable with `TRACKING_LOOKUP_CACHE_TTL_MS`; a malformed value falls back to
+the 20s default, and `0` disables it deliberately.
+
 Read that carefully: an in-process emulator is **faster than production
 Firestore** and answers a query without a network round trip, so 175 rps is an
 upper bound for this route, not a forecast. What the run does prove is the

@@ -3,6 +3,7 @@
   "globalEnv": [
     "NODE_ENV",
     "LOG_LEVEL",
+    "TRACKING_LOOKUP_CACHE_TTL_MS",
     "NEXT_PUBLIC_*",
     "APP_URL",
     "FIREBASE_ADMIN_*",

@@ -178,19 +178,76 @@ const endpoints = [
   "/", // static page, for comparison
 ].join(",");
 
-const code = await run([
-  "scripts/load/load.mjs",
-  "--url",
-  BASE,
-  "--endpoints",
-  endpoints,
-  "--concurrency",
-  CONCURRENCY,
-  "--duration",
-  DURATION,
-  "--warmup",
-  "3",
-]);
+function loadArgs() {
+  return [
+    "scripts/load/load.mjs",
+    "--url",
+    BASE,
+    "--endpoints",
+    endpoints,
+    "--concurrency",
+    CONCURRENCY,
+    "--duration",
+    DURATION,
+    "--warmup",
+    "3",
+  ];
+}
+
+console.log("\n=== phase 1/2: with the 20s lookup cache ===");
+let code = await run(loadArgs());
+
+if (code === 0) {
+  /*
+   * Same route, same data, cache off. The difference between the two phases is
+   * the cost of the Firestore read the cache exists to avoid - the number that
+   * decides whether the TTL is worth its staleness.
+   */
+  console.log("\n=== phase 2/2: cache disabled (TTL=0) ===");
+
+  shutdown();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  const uncached = spawn(
+    "node",
+    [
+      "--env-file-if-exists=.env",
+      "--env-file-if-exists=.env.local",
+      ".next/standalone/apps/web/server.js",
+    ],
+    {
+      env: {
+        ...process.env,
+        NODE_ENV: "development",
+        PORT: String(PORT),
+        RATE_LIMIT_DISABLED: "1",
+        E2E_RATE_LIMITS_DISABLED_ACK: "1",
+        EMULATOR_GUARD_OPTIONAL: "1",
+        ALERT_WEBHOOK_OPTIONAL: "1",
+        RATE_LIMIT_STORE_OPTIONAL: "1",
+        APP_URL_E2E_OPTIONAL: "1",
+        MFA_DENYLIST_OPTIONAL: "1",
+        APP_CHECK_ENFORCEMENT: "false",
+        FIREBASE_ADMIN_PROJECT_ID: PROJECT_ID,
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: PROJECT_ID,
+        APP_URL: BASE,
+        NEXT_PUBLIC_APP_URL: BASE,
+        TRACKING_LOOKUP_CACHE_TTL_MS: "0",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    }
+  );
+
+  uncached.stdout.on("data", () => {});
+  uncached.stderr.on("data", () => {});
+
+  try {
+    await waitForServer();
+    code = await run(loadArgs());
+  } finally {
+    uncached.kill("SIGTERM");
+  }
+}
 
 shutdown();
 
