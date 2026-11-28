@@ -50,9 +50,21 @@ export function currentRequestId(): string | undefined {
   return storage.getStore()?.requestId;
 }
 
+/**
+ * Register the storage's readers with the logger and `withErrorHandler`.
+ *
+ * Importing this module already does it, so tests and any server entry point
+ * that reaches it work. `instrumentation.ts` calls it explicitly at boot: a
+ * bare `import "@/lib/requestContext"` is invisible to `check:orphan-modules`,
+ * which would report this module as dead code (it did, in CI).
+ */
+export function installRequestContext(): void {
+  setRequestIdProvider(currentRequestId);
+  setRequestScopeRunner(runWithRequestContext);
+}
+
 // Two readers hang off this module, both injected rather than imported by the
 // client-reachable files: the logger fills `context.requestId` from the first,
 // and `utils/errors` runs each handler inside the scope through the second.
 // Both keep `node:async_hooks` out of the browser bundle.
-setRequestIdProvider(currentRequestId);
-setRequestScopeRunner(runWithRequestContext);
+installRequestContext();

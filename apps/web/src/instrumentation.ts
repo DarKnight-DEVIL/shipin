@@ -6,10 +6,7 @@
  */
 
 import { childLogger } from "@/lib/logger";
-// Side-effect import: installs the request-scope storage and hands its readers
-// to the logger and to `withErrorHandler`. Server-only, which is why it lives
-// here rather than in either of those client-reachable modules.
-import "@/lib/requestContext";
+import { installRequestContext } from "@/lib/requestContext";
 import { appCheckLogger } from "@/lib/appCheck";
 import { getAppCheckAlertTarget } from "@/lib/appCheckMetrics";
 import { setErrorReporter } from "@/lib/errorReporterHook";
@@ -61,6 +58,13 @@ let appCheckClient: ((app?: import("firebase-admin/app").App) => import("firebas
 export { appCheckClient };
 
 export async function register() {
+  // Hands the request-scope storage its readers: the logger fills
+  // `context.requestId` from it and `withErrorHandler` opens the scope. Called
+  // explicitly rather than imported for its side effect, because
+  // `check:orphan-modules` cannot see a bare import and reported the module as
+  // dead code.
+  installRequestContext();
+
   // Validate production-required env vars (PAYPAL_WEBHOOK_ID and the shared
   // rate-limit store).
   try {
