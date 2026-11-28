@@ -187,10 +187,13 @@ async function main() {
   const down = args.includes("--down");
 
   if (!migrationName || migrationName === "--help" || migrationName === "-h") {
-    console.log("Usage: node migration-runner.ts <migration-name> [--dry-run] [--down]");
+    console.log(
+      "Usage: node migration-runner.ts <migration-name|all> [--dry-run] [--down]"
+    );
     console.log("\nAvailable migrations:");
     const migrations = await listMigrations();
     for (const m of migrations) console.log(`  - ${m}`);
+    console.log("  - all (every migration, in order, skipping applied ones)");
     process.exit(migrationName ? 0 : 1);
   }
 
@@ -203,6 +206,61 @@ async function main() {
     const migrations = await listMigrations();
     for (const m of migrations) console.log(m);
     process.exit(0);
+  }
+
+  // `all` exists because the first production run had to be typed one
+  // migration at a time, and a skipped migration looks exactly like a run that
+  // failed quietly. Applied migrations are skipped, not re-run, and the first
+  // failure stops the sequence - a later migration must not build on one that
+  // did not finish.
+  if (migrationName === "all") {
+    if (down) {
+      console.error(
+        "--down needs a specific migration: rollbacks are per-migration and only some exist."
+      );
+      process.exit(1);
+    }
+
+    try {
+      const app = getAdminApp();
+      const db = getFirestore(app);
+      const available = (await listMigrations()).filter(
+        // `dry-run-all` is a helper script that appears in the list, not a
+        // migration with an `up()`.
+        (name) => name !== "dry-run-all"
+      );
+
+      const summary: string[] = [];
+
+      for (const name of available) {
+        if (!dryRun && (await isApplied(db, name))) {
+          console.log(`⏭  ${name}: already applied`);
+          summary.push(`${name}: skipped (applied)`);
+          continue;
+        }
+
+        console.log(`\n🚀 Running: ${name}`);
+        const migration = await getMigrationModule(name);
+
+        await runMigration(migration, db, dryRun);
+        summary.push(`${name}: ${dryRun ? "dry-run ok" : "applied"}`);
+      }
+
+      console.log("\n=== Summary ===");
+      for (const line of summary) console.log(`  ${line}`);
+      console.log(dryRun ? "\n🔍 Dry run complete. No changes persisted." : "\n✅ All migrations applied.");
+    } catch (error) {
+      console.error(
+        "\n❌ Migration sequence stopped:",
+        error instanceof Error ? error.message : error
+      );
+      process.exit(1);
+    } finally {
+      const apps = getApps();
+      await Promise.all(apps.map((a) => (a as any).delete()));
+    }
+
+    return;
   }
 
   try {

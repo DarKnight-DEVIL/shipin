@@ -50,18 +50,29 @@ for the old collection was removed.
 5. **Migrations are idempotent, resumable and dry-runnable.** Running one twice
    must not double-apply (e.g. `increment` guarded by a `migratedAt` marker).
 
-### Status: runner exists, documents are not yet versioned
+### Status: runner exists, migrations 001–007 applied
 
 The runner is `apps/web/scripts/migrations/migration-runner.ts`, wrapped by
 `npm run migrate`. It loads `NNN-<name>.ts` from that directory, records each
 applied migration in the `migrations` collection, and supports `--dry-run`.
-Today **no document carries `schemaVersion`**; a breaking shape change still
-needs the four-step procedure below.
+
+Applied against the production project on 2026-11-28 (dry run first, then the
+real run; the dry-run-all afterwards reports nothing left to write):
+
+- `001` wrote `schemaVersion` to 47 documents
+- `002`–`005` were already applied
+- `006` registered the refund transactions (`Processed: 26, Failed: 0`)
+- `007` backfilled `customerId` on 17 support messages
 
 ```bash
-npm run migrate -- 002-normalize-quote-expiry --dry-run   # report only
-npm run migrate -- 002-normalize-quote-expiry             # apply
+npm run migrate:all                                        # everything pending, in order
+npm run migrate -- 002-normalize-quote-expiry --dry-run    # report only
+npm run migrate -- 002-normalize-quote-expiry              # apply
 ```
+
+`migrate:all` skips applied migrations and prints a summary; it stops at the
+first failure, because a later migration must not build on one that did not
+finish. `--down` still needs a specific migration name (only `001` has one).
 
 **Required once for quote expiry.** `/api/admin/requests/quotes/expire` can
 only match rows that have `quote.expired == false` and a Timestamp

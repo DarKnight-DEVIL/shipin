@@ -10,6 +10,7 @@
     "dev": "next dev",
     "build": "next build && node scripts/generate-dynamic-routes.mjs && node scripts/prepare-standalone.mjs && node scripts/inject-static-csp.mjs",
     "migrate": "node --env-file-if-exists=.env.local scripts/migrations/migration-runner.ts",
+    "migrate:all": "node --env-file-if-exists=.env.local scripts/migrations/migration-runner.ts all",
     "migrate:dry-run": "node scripts/migrations/dry-run-all.ts",
     "prestart": "node scripts/prepare-standalone.mjs",
     "start": "node --experimental-strip-types --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/start-preflight.ts && node --env-file-if-exists=.env --env-file-if-exists=.env.local .next/standalone/apps/web/server.js",
