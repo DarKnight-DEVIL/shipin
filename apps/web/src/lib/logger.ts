@@ -30,14 +30,83 @@ interface LogEntry {
 }
 
 /** JSON that cannot fail: a circular context still produces one valid line. */
+
+/**
+ * Keys whose values are never written, whatever they hold.
+ *
+ * Redaction lives here rather than at each call site because the leak is the
+ * call site nobody thought about: a mailer error whose message echoes the
+ * recipient's address, a `shippingAddress` object passed for debugging. A
+ * logger that only promises "callers will be careful" is not a control.
+ *
+ * `uid` is deliberately absent: Firebase uids are opaque ids needed to trace a
+ * request, and redacting them would make the logs unable to answer "which
+ * account failed?".
+ */
+const SENSITIVE_KEY =
+  /(secret|token|password|passwd|authorization|cookie|apikey|api_key|private|credential|card|cvv|email|phone|address|firstname|lastname|fullname|passport|iban|ssn|dob|birthdate)/i;
+
+/**
+ * Emails are scrubbed by value as well as by key: the common leak is not a field
+ * called `email` but an error string or template that happens to contain one.
+ * Phone numbers are only caught by key on purpose - the numeric pattern that
+ * matches a phone number also matches an id or an amount, and mangling those
+ * would cost the debuggability this logger exists for.
+ */
+const EMAIL_PATTERN = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
+
+const MAX_REDACT_DEPTH = 6;
+
+function scrubText(value: string): string {
+  return value.replace(EMAIL_PATTERN, "[email]");
+}
+
+function redactValue(value: unknown, depth: number, seen: WeakSet<object>): unknown {
+  if (typeof value === "string") return scrubText(value);
+
+  // Booleans and numbers cannot be PII, and redacting them would turn
+  // `emailSent: true` into noise.
+  if (value === null || typeof value !== "object") return value;
+
+  if (depth >= MAX_REDACT_DEPTH) return "[depth]";
+  if (seen.has(value)) return "[circular]";
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactValue(item, depth + 1, seen));
+  }
+
+  const out: Record<string, unknown> = {};
+
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    const pii =
+      SENSITIVE_KEY.test(key) &&
+      item !== null &&
+      typeof item !== "boolean" &&
+      typeof item !== "number";
+
+    out[key] = pii ? "[redacted]" : redactValue(item, depth + 1, seen);
+  }
+
+  return out;
+}
+
 function serialize(entry: LogEntry): string {
+  const safe: LogEntry = {
+    ...entry,
+    message: scrubText(entry.message),
+    ...(entry.context
+      ? { context: redactValue(entry.context, 0, new WeakSet()) as Record<string, unknown> }
+      : {}),
+  };
+
   try {
-    return JSON.stringify(entry);
+    return JSON.stringify(safe);
   } catch {
     return JSON.stringify({
       timestamp: entry.timestamp,
       level: entry.level,
-      message: entry.message,
+      message: scrubText(entry.message),
       context: { serializeError: "context was not serialisable" },
     });
   }

@@ -53,10 +53,10 @@ describe("logger", () => {
     });
 
     it("survives a context that cannot be serialised", () => {
-      const circular: { a: number; self?: unknown } = { a: 1 };
-      circular.self = circular;
-
-      logger.error("Circular", circular);
+      // Circular references are handled now (see "redaction"), so this needs a
+      // value JSON cannot express at all. The fallback must stay reachable: a
+      // logger that throws on one bad field loses every line after it.
+      logger.error("BigInt", { total: BigInt(1) });
 
       // Still one parsable line, and it says what happened instead of throwing.
       expect(recordOf(consoleErrorSpy).context).toEqual({
@@ -135,6 +135,82 @@ describe("childLogger", () => {
     expect(recordOf(consoleLogSpy).context).toEqual({
       service: "checkout",
       attempt: 2,
+    });
+  });
+});
+
+describe("redaction", () => {
+  it("scrubs an email that reaches context as a value", () => {
+    logger.error("Mailer failed", {
+      requestId: "req-123",
+      error: "Resend rejected recipient parent@example.com",
+    });
+
+    expect(recordOf(consoleErrorSpy).context).toEqual({
+      requestId: "req-123",
+      error: "Resend rejected recipient [email]",
+    });
+  });
+
+  it("scrubs an email in a nested object and in an array", () => {
+    logger.info("Consent sent", {
+      parent: { deliverTo: "guardian@example.org" },
+      recipients: ["a@example.com", "b@example.net"],
+    });
+
+    expect(recordOf(consoleLogSpy).context).toEqual({
+      parent: { deliverTo: "[email]" },
+      recipients: ["[email]", "[email]"],
+    });
+  });
+
+  it("redacts sensitive keys whole, whatever they hold", () => {
+    logger.warn("Address saved", {
+      shippingAddress: { line1: "1 Main St", city: "Pune" },
+      password: "hunter2",
+      sessionToken: "abc",
+      firstName: "Asha",
+    });
+
+    expect(recordOf(consoleWarnSpy).context).toEqual({
+      shippingAddress: "[redacted]",
+      password: "[redacted]",
+      sessionToken: "[redacted]",
+      firstName: "[redacted]",
+    });
+  });
+
+  it("scrubs the message itself, not just the context", () => {
+    logger.error("Could not send to parent@example.com");
+
+    expect(recordOf(consoleErrorSpy).message).toBe("Could not send to [email]");
+  });
+
+  it("keeps non-PII scalars, ids and boolean flags intact", () => {
+    logger.info("Captured", {
+      requestId: "REQ-20261128-1234567",
+      amount: 429900,
+      emailSent: true,
+      uid: "abc123uid",
+    });
+
+    expect(recordOf(consoleLogSpy).context).toEqual({
+      requestId: "REQ-20261128-1234567",
+      amount: 429900,
+      emailSent: true,
+      uid: "abc123uid",
+    });
+  });
+
+  it("still emits one valid line for a circular context", () => {
+    const circular: Record<string, unknown> = { requestId: "req-1" };
+    circular.self = circular;
+
+    logger.info("loop", circular);
+
+    expect(recordOf(consoleLogSpy).context).toEqual({
+      requestId: "req-1",
+      self: "[circular]",
     });
   });
 });
