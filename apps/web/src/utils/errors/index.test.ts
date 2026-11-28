@@ -114,3 +114,49 @@ describe("request correlation", () => {
     expect(response.status).toBe(200);
   });
 });
+
+describe("request correlation: id validation", () => {
+  function loggedRequestId(xRequestId: string): unknown {
+    const lines: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((line: string) => {
+      lines.push(line);
+    });
+
+    const routeLogger = childLogger({ service: "route" });
+    const handler = withErrorHandler(async (_request: NextRequest) => {
+      routeLogger.error("Failed", { status: 500 });
+
+      return NextResponse.json({ success: true });
+    });
+
+    return handler(
+      new NextRequest("http://localhost:3000/api/test", {
+        headers: { "x-request-id": xRequestId },
+      })
+    ).then(() => {
+      const entry = JSON.parse(lines[0]) as {
+        context: Record<string, unknown>;
+      };
+
+      return entry.context.requestId;
+    });
+  }
+
+  it("accepts the uuid the proxy generates", async () => {
+    await expect(
+      loggedRequestId("3f6b1c8e-4d2a-4a91-9e5f-2b7c0d1e8a44")
+    ).resolves.toBe("3f6b1c8e-4d2a-4a91-9e5f-2b7c0d1e8a44");
+  });
+
+  it("ignores a value that is not an id shape", async () => {
+    // A caller-supplied value never reaches the handler through the proxy, but
+    // an unbounded string in a log field would be noise or forged correlation.
+    await expect(loggedRequestId("<script>alert(1)</script>")).resolves.toBe(
+      undefined
+    );
+  });
+
+  it("ignores an absurdly long value", async () => {
+    await expect(loggedRequestId("a".repeat(4000))).resolves.toBe(undefined);
+  });
+});

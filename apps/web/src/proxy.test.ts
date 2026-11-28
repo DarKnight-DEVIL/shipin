@@ -287,3 +287,34 @@ describe("proxy: unrelated behaviour still holds", () => {
     expect(response.headers.get("X-RateLimit-Limit")).toBe("100");
   });
 });
+
+describe("proxy: request id correlation", () => {
+  it("forwards the id it generated so handlers log what the response returns", async () => {
+    const response = await proxy(requestFor("/dashboard"));
+
+    const returnedId = response.headers.get("X-Request-Id");
+    // Next encodes request-header overrides as `x-middleware-request-<name>`,
+    // which is the only way a test can see what the handler will receive.
+    const forwardedId = response.headers.get(
+      "x-middleware-request-x-request-id"
+    );
+
+    expect(returnedId).toBeTruthy();
+    expect(forwardedId).toBe(returnedId);
+  });
+
+  it("overwrites a caller-supplied id instead of trusting it", async () => {
+    const request = new NextRequest("https://shipin.test/dashboard", {
+      headers: { "x-request-id": "attacker-chosen-value" },
+    });
+
+    const response = await proxy(request);
+
+    expect(response.headers.get("x-middleware-request-x-request-id")).not.toBe(
+      "attacker-chosen-value"
+    );
+    expect(response.headers.get("x-middleware-request-x-request-id")).toBe(
+      response.headers.get("X-Request-Id")
+    );
+  });
+});

@@ -296,12 +296,24 @@ export default async function proxy(request: NextRequest) {
    * Next reads the nonce from the request headers and stamps its own script tags
    * with it, which is what makes the policy satisfiable for a page it renders per
    * request.
+   *
+   * The generated id is forwarded on the request as well as the response, and it
+   * overwrites whatever the caller sent. Without that, the app logged the
+   * caller's value - or nothing at all, which is the usual case - while the
+   * response carried this one, so an operator holding an id from a failed
+   * response could not find the lines it belonged to. Overwriting also means a
+   * client cannot choose the value that lands in the logs.
    */
-  const response = nonce
-    ? NextResponse.next({
-        request: { headers: withNonceHeader(request.headers, nonce) },
-      })
-    : NextResponse.next();
+  const forwardedHeaders = new Headers(request.headers);
+  forwardedHeaders.set("x-request-id", requestId);
+
+  const response = NextResponse.next({
+    request: {
+      headers: nonce
+        ? withNonceHeader(forwardedHeaders, nonce)
+        : forwardedHeaders,
+    },
+  });
 
   addRateLimitHeaders(response.headers, limitResult);
   response.headers.set("Content-Security-Policy", csp);

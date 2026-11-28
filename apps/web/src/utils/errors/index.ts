@@ -220,6 +220,17 @@ export function withErrorHandler<Args extends unknown[]>(
 }
 
 /**
+ * A request id this app is willing to put in a log line.
+ *
+ * The proxy overwrites the header with its own `crypto.randomUUID()`, so a
+ * caller's value normally never reaches here. This is the second gate: the
+ * reader is called directly by tests and by any future entry point, and an
+ * unbounded, unvalidated string in a log field is both noise and a way to forge
+ * correlation.
+ */
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
+
+/**
  * The request id a handler's first argument carries, if any.
  *
  * Handlers run with `()` in tests and with a `NextRequest` in production, so
@@ -233,5 +244,7 @@ function requestIdOf(candidate: unknown): string | undefined {
 
   if (!headers || typeof headers.get !== "function") return undefined;
 
-  return headers.get("x-request-id")?.trim() || undefined;
+  const raw = headers.get("x-request-id")?.trim();
+
+  return raw && REQUEST_ID_PATTERN.test(raw) ? raw : undefined;
 }
