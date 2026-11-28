@@ -82,8 +82,23 @@ jobs:
           # Belt and braces for the secrets check above: a whitespace-only secret
           # passes `-n` but leaves the suite skipped, and a green scheduled run
           # that verified nothing is the failure mode this job exists to avoid.
-          if grep -qE "Tests +[0-9]+ skipped \(" "$log"; then
-            echo "::error::The contract suite skipped its tests. Nothing verified that PayPal still accepts the request bodies we send."
+          #
+          # Counted rather than pattern-matched against the whole summary line:
+          # vitest prints `Tests  3 passed | 2 skipped (5)` once some tests run
+          # and others skip, and the earlier "N skipped (" form only caught the
+          # all-skipped case. The passed count is asserted too, so a suite that
+          # is emptied - or whose describe block stops registering tests - cannot
+          # produce a green run that proved nothing.
+          passed="$(grep -oE '[0-9]+ passed' "$log" | head -1 | grep -oE '[0-9]+' || true)"
+          skipped="$(grep -oE '[0-9]+ skipped' "$log" | head -1 | grep -oE '[0-9]+' || true)"
+
+          if [ "${skipped:-0}" -gt 0 ]; then
+            echo "::error::The contract suite skipped ${skipped} test(s). Nothing verified that PayPal still accepts the request bodies we send."
+            status=1
+          fi
+
+          if [ -z "$passed" ] || [ "$passed" -lt 1 ]; then
+            echo "::error::No PayPal contract test passed, so this run proves nothing."
             status=1
           fi
 
@@ -173,8 +188,18 @@ jobs:
           status="${PIPESTATUS[0]}"
           set -e
 
-          if grep -qE "Tests +[0-9]+ skipped \\(" "$log"; then
-            echo "::error::The R2 contract suite skipped its tests. Nothing verified that the store still accepts our presigned URLs."
+          # Same counting rule as the PayPal job: catches a partially skipped
+          # suite, and refuses a green run in which nothing passed.
+          passed="$(grep -oE '[0-9]+ passed' "$log" | head -1 | grep -oE '[0-9]+' || true)"
+          skipped="$(grep -oE '[0-9]+ skipped' "$log" | head -1 | grep -oE '[0-9]+' || true)"
+
+          if [ "${skipped:-0}" -gt 0 ]; then
+            echo "::error::The R2 contract suite skipped ${skipped} test(s). Nothing verified that the store still accepts our presigned URLs."
+            status=1
+          fi
+
+          if [ -z "$passed" ] || [ "$passed" -lt 1 ]; then
+            echo "::error::No R2 contract test passed, so this run proves nothing."
             status=1
           fi
 
