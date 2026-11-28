@@ -28,8 +28,40 @@ at zero, so saturation degrades rather than breaks.
 
 These numbers cover paths that do not read Firestore. Anything that does —
 `/api/requests`, `/api/admin/*`, `/api/tracking/*` on a cache miss — is bound by
-Firestore latency and quota, not by this process, and needs a seeded dataset
-(plus staging credentials) to measure honestly. That test is not written yet.
+Firestore latency and quota, not by this process; the next section measures the
+tracking route against a seeded emulator.
+
+## Data-bound run (seeded emulator)
+
+```bash
+npm run build
+npm run test:load:data      # seeds the Firestore emulator, boots the server, measures
+```
+
+`scripts/load/data-load.mjs` is the command `emulators:exec` runs: it writes one
+shipped request with a modern tracking id, starts the standalone server on
+:3210 against the emulator, measures `/api/tracking/<id>` next to `/api/health`
+and `/`, then tears everything down. Nothing can reach a real project — the
+emulator host and project id are pinned, and the production guards that would
+refuse an emulator are waived explicitly, each with the same flag the E2E suite
+uses.
+
+Measured 2026-11-28, 20 concurrent, emulator on the same machine:
+
+| Endpoint | Throughput | p50 | p95 | p99 | Errors |
+|---|---|---|---|---|---|
+| `/api/tracking/<id>` | 175 rps | 36ms | 60ms | 75ms | 0% (all 200) |
+| `/api/health` | 175 rps | 37ms | 65ms | 84ms | 0% |
+| aggregate | 523 rps | — | — | — | 0% |
+
+Read that carefully: an in-process emulator is **faster than production
+Firestore** and answers a query without a network round trip, so 175 rps is an
+upper bound for this route, not a forecast. What the run does prove is the
+shape: with the 20-second lookup cache in place, repeat polls do not multiply
+into Firestore reads, and the route does not error under 20 concurrent clients.
+
+The first requests in a warmup take seconds each (emulator cold start); the
+warmup phase is discarded for exactly that reason.
 
 ## Rules
 

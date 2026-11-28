@@ -23,6 +23,7 @@
     "test:watch": "vitest",
     "test:contract": "vitest run --config vitest.contract.config.ts",
     "test:load": "node scripts/load/load.mjs",
+    "test:load:data": "npx --yes firebase-tools@15.36.0 --config ../../firebase.json emulators:exec --only firestore --project shipin-e2e \"node scripts/load/data-load.mjs\"",
     "test:coverage": "node scripts/run-coverage.mjs",
     "test:coverage:components": "vitest run --config vitest.components.config.ts",
     "test:shuffle": "vitest run --sequence.shuffle",

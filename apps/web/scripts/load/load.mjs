@@ -45,6 +45,15 @@ const ENDPOINTS = (arg("endpoints", "/,/robots.txt,/api/health") ?? "")
 
 const samples = new Map(ENDPOINTS.map((path) => [path, []]));
 const errors = new Map(ENDPOINTS.map((path) => [path, 0]));
+/** Status-code histogram per endpoint: an error rate says something broke, the
+ *  codes say whether it was the limiter, auth, or the handler. */
+const statuses = new Map(ENDPOINTS.map((path) => [path, new Map()]));
+
+function countStatus(path, code) {
+  const seen = statuses.get(path);
+
+  seen.set(code, (seen.get(code) ?? 0) + 1);
+}
 
 function percentile(sorted, p) {
   if (sorted.length === 0) return 0;
@@ -68,10 +77,13 @@ async function hit(path) {
     // Drain the body so the connection is reusable.
     await response.arrayBuffer();
 
+    countStatus(path, response.status);
+
     if (!response.ok && response.status >= 400) {
       errors.set(path, errors.get(path) + 1);
     }
   } catch {
+    countStatus(path, 0); // transport failure
     errors.set(path, errors.get(path) + 1);
   }
 
@@ -88,7 +100,13 @@ async function worker(deadline) {
 }
 
 async function run(label, durationMs) {
-  for (const path of ENDPOINTS) samples.set(path, []);
+  for (const path of ENDPOINTS) {
+    samples.set(path, []);
+    // Counters, not just samples: an accumulated error count from the previous
+    // phase produced error rates above 100% in the first version.
+    errors.set(path, 0);
+    statuses.set(path, new Map());
+  }
 
   const deadline = Date.now() + durationMs;
   const started = Date.now();
@@ -120,6 +138,10 @@ async function run(label, durationMs) {
         `p95 ${percentile(values, 95).toFixed(1).padStart(7)}ms`,
         `p99 ${percentile(values, 99).toFixed(1).padStart(7)}ms`,
         `errors ${((failed / Math.max(count, 1)) * 100).toFixed(1)}%`,
+        [...statuses.get(path)]
+          .sort((a, b) => b[1] - a[1])
+          .map(([code, n]) => `${code === 0 ? "ERR" : code}:${n}`)
+          .join(" "),
       ].join("  ")
     );
   }
