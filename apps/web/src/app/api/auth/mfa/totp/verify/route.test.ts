@@ -49,9 +49,15 @@ const profile = (totp: Record<string, unknown> = { enabled: false }) => ({
   ref: { update: mocks.refUpdate },
 });
 
-const secretRecord = (secret?: string) => ({
+const secretRecord = (
+  secret?: string,
+  totpOverrides?: Record<string, unknown>
+) => ({
   exists: secret !== undefined,
-  data: () => (secret ? { totp: { secret } } : undefined),
+  data: () =>
+    secret
+      ? { totp: { secret, ...totpOverrides } }
+      : undefined,
 });
 
 beforeEach(() => {
@@ -140,6 +146,71 @@ describe("POST /api/auth/mfa/totp/verify", () => {
       code: "INVALID_TOTP_CODE",
     });
     expect(mocks.refUpdate).not.toHaveBeenCalled();
+    // The failure is counted against the account, not just answered.
+    expect(mocks.secretSet).toHaveBeenCalledWith(
+      {
+        "totp.verifyAttempts": 1,
+        "totp.lastVerifyAttemptAt": expect.any(Number),
+        updatedAt: "__SERVER_TS__",
+      },
+      { merge: true }
+    );
+  });
+
+  it("locks verification after five failed attempts — even for a correct code", async () => {
+    mocks.secretsGet.mockResolvedValue(
+      secretRecord("SECRET", {
+        verifyAttempts: 5,
+        lastVerifyAttemptAt: Date.now() - 60_000,
+      })
+    );
+    // The attacker finally guesses right; the lockout does not care.
+    mocks.verifyTotp.mockReturnValue(true);
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "TOTP_VERIFY_LOCKED",
+    });
+    // Locked means locked: no factor activation, no backup codes.
+    expect(mocks.secretSet).not.toHaveBeenCalled();
+    expect(mocks.refUpdate).not.toHaveBeenCalled();
+  });
+
+  it("reopens verification once the lockout window has passed", async () => {
+    mocks.secretsGet.mockResolvedValue(
+      secretRecord("SECRET", {
+        verifyAttempts: 5,
+        lastVerifyAttemptAt: Date.now() - 16 * 60 * 1000,
+      })
+    );
+    mocks.verifyTotp.mockReturnValue(true);
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.secretSet).toHaveBeenCalledWith(
+      expect.objectContaining({ "totp.verifyAttempts": 0 }),
+      { merge: true }
+    );
+  });
+
+  it("counts each failure against the stored budget", async () => {
+    mocks.secretsGet.mockResolvedValue(
+      secretRecord("SECRET", {
+        verifyAttempts: 3,
+        lastVerifyAttemptAt: Date.now() - 60_000,
+      })
+    );
+    mocks.verifyTotp.mockReturnValue(false);
+
+    await POST(request());
+
+    expect(mocks.secretSet).toHaveBeenCalledWith(
+      expect.objectContaining({ "totp.verifyAttempts": 4 }),
+      { merge: true }
+    );
   });
 
   it("enables TOTP and issues fresh backup codes", async () => {
@@ -149,10 +220,10 @@ describe("POST /api/auth/mfa/totp/verify", () => {
     expect(mocks.generateBackupCodes).toHaveBeenCalledWith(10);
     expect(mocks.secretSet).toHaveBeenCalledWith(
       {
-        totp: {
-          secret: "SECRET",
-          backupCodes: ["hash:CODE-1", "hash:CODE-2"],
-        },
+        "totp.secret": "SECRET",
+        "totp.backupCodes": ["hash:CODE-1", "hash:CODE-2"],
+        // A successful enrollment resets the attempt counter.
+        "totp.verifyAttempts": 0,
         updatedAt: "__SERVER_TS__",
       },
       { merge: true }

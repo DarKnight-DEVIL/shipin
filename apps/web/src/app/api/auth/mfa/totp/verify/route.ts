@@ -12,6 +12,12 @@ const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 const BACKUP_CODE_COUNT = 10;
 
+/** Failed enrollment attempts before verification locks. */
+const MAX_VERIFY_ATTEMPTS = 5;
+
+/** How long verification stays locked after the attempt budget is spent. */
+const VERIFY_LOCKOUT_MS = 15 * 60 * 1000;
+
 /**
  * POST /api/auth/mfa/totp/verify
  *
@@ -76,8 +82,41 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
+  /*
+   * Enrollment codes are 6 digits with ±1 step of tolerance, so a hijacked
+   * session must not get unlimited guesses at one. Five failures lock
+   * verification for 15 minutes; the lockout is per account, and starting
+   * enrollment again (which mints a new secret and replaces this record)
+   * resets the count.
+   */
+  const attempts = secrets.verifyAttempts ?? 0;
+
+  if (
+    attempts >= MAX_VERIFY_ATTEMPTS &&
+    Date.now() - (secrets.lastVerifyAttemptAt ?? 0) < VERIFY_LOCKOUT_MS
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Too many failed attempts. Try again in 15 minutes, or start enrollment again.",
+        code: "TOTP_VERIFY_LOCKED",
+      },
+      { status: 429, headers: NO_STORE }
+    );
+  }
+
   // ±1 step (30s) tolerance covers clock drift between server and phone.
   if (!verifyTotp(secret, code, 1)) {
+    await userSecretsRef(auth.profile.uid).set(
+      {
+        "totp.verifyAttempts": attempts + 1,
+        "totp.lastVerifyAttemptAt": Date.now(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
     return NextResponse.json(
       {
         success: false,
@@ -91,9 +130,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const backupCodes = generateBackupCodes(BACKUP_CODE_COUNT);
 
+  // Dot paths, not a nested map: the record also carries replay markers the
+  // elevation route reads, and the write must reset the attempt counter
+  // without clobbering anything this route does not know about.
   await userSecretsRef(auth.profile.uid).set(
     {
-      totp: { secret, backupCodes: backupCodes.map(hashBackupCode) },
+      "totp.secret": secret,
+      "totp.backupCodes": backupCodes.map(hashBackupCode),
+      "totp.verifyAttempts": 0,
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true }

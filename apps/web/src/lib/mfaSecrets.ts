@@ -23,6 +23,10 @@ export interface TotpSecrets {
   lastTotpCodeHash?: string;
   lastTotpVerifiedAt?: number;
   lastBackupCodeUsedAt?: number;
+  /** Failed enrollment-verification attempts since the last success/reset. */
+  verifyAttempts?: number;
+  /** When the last failed attempt was seen; drives the enrollment lockout. */
+  lastVerifyAttemptAt?: number;
 }
 
 export function userSecretsRef(uid: string) {
@@ -53,6 +57,8 @@ export function parseTotpSecrets(value: unknown): TotpSecrets {
   const lastTotpCodeHash = nonEmptyString(record.lastTotpCodeHash);
   const lastTotpVerifiedAt = finiteNumber(record.lastTotpVerifiedAt);
   const lastBackupCodeUsedAt = finiteNumber(record.lastBackupCodeUsedAt);
+  const verifyAttempts = finiteNumber(record.verifyAttempts);
+  const lastVerifyAttemptAt = finiteNumber(record.lastVerifyAttemptAt);
 
   return {
     ...(secret ? { secret } : {}),
@@ -60,6 +66,8 @@ export function parseTotpSecrets(value: unknown): TotpSecrets {
     ...(lastTotpCodeHash ? { lastTotpCodeHash } : {}),
     ...(lastTotpVerifiedAt !== undefined ? { lastTotpVerifiedAt } : {}),
     ...(lastBackupCodeUsedAt !== undefined ? { lastBackupCodeUsedAt } : {}),
+    ...(verifyAttempts !== undefined ? { verifyAttempts } : {}),
+    ...(lastVerifyAttemptAt !== undefined ? { lastVerifyAttemptAt } : {}),
   };
 }
 
