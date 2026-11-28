@@ -36,6 +36,10 @@ export type ErrorCategory =
   | "payment-settlement"
   | "mfa-store"
   | "cron"
+  // A browser exception reported by /api/client-errors. Counted per fingerprint
+  // and escalated only on a spike, because one user's ad blocker is not an
+  // incident.
+  | "client-error"
   | "unhandled";
 
 export type ErrorSeverity = "critical" | "error" | "warning";
@@ -239,6 +243,7 @@ const CATEGORY_TITLE: Record<ErrorCategory, string> = {
   "payment-settlement": "A captured payment could not be settled",
   "mfa-store": "MFA revocation store failed",
   cron: "A scheduled job failed",
+  "client-error": "A browser error keeps happening",
   unhandled: "Unhandled server error",
 };
 

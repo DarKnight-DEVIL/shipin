@@ -52,7 +52,7 @@ clients branch on it rather than on the status alone.
 
 ## Routes
 
-80 route handlers:
+81 route handlers:
 
 | Route | Auth |
 | --- | --- |
@@ -98,6 +98,7 @@ clients branch on it rather than on the status alone.
 | `/api/auth/password-leak-check` | public |
 | `/api/auth/resend-verification` | customer |
 | `/api/auth/verify-email-link` | public |
+| `/api/client-errors` | public |
 | `/api/compliance/breach` | admin |
 | `/api/compliance/dashboard` | admin |
 | `/api/csp-report` | public |

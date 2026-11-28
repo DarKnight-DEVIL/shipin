@@ -29,6 +29,11 @@ export const ROUTE_AUTH_CLASSIFICATION: Record<string, RouteAuth> = {
   // endpoint is a bounded-body logger; classifying it "customer" made every
   // report a 401 and silently disabled CSP monitoring in production.
   "/api/csp-report": "public",
+  // Browser error reports. Anonymous for the same reason as the CSP report:
+  // the errors worth having happen before sign-in, and a 401 would silently
+  // disable client error tracking in production. Bounded body, strict rate
+  // limit, and always a 204.
+  "/api/client-errors": "public",
   // Sign-in entry points. These are pre-authentication by definition: the whole
   // point of login-intent is to meter anonymous attempts, and the password leak
   // check only ever sees a 5-char SHA-1 prefix. Classifying the /api/auth

@@ -50,6 +50,7 @@ export const API_ROUTE_PATHS: readonly string[] = [
   "/api/auth/password-leak-check",
   "/api/auth/resend-verification",
   "/api/auth/verify-email-link",
+  "/api/client-errors",
   "/api/compliance/breach",
   "/api/compliance/dashboard",
   "/api/csp-report",

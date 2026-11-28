@@ -1,0 +1,149 @@
+name: Firestore Backup
+
+# `docs/OPERATIONS.md` documents `gcloud firestore export` as the backup, but
+# nothing ran it: the procedure existed and the last export was whenever a human
+# remembered. This makes it daily, verifies the object actually landed, and keeps
+# a bounded retention window.
+#
+# Requires (repository secrets):
+#   GCP_BACKUP_SA_KEY     service-account JSON with datastore.importExportAdmin
+#                         on the project and objectAdmin on the bucket
+#   BACKUP_GCS_BUCKET     e.g. shipin-backups (Blaze plan is required)
+#   FIREBASE_ADMIN_PROJECT_ID is reused for the project id
+#
+# Without the secrets this job fails instead of silently skipping: a backup that
+# quietly does not happen is worse than one that is missing loudly.
+
+on:
+  schedule:
+    # 02:40 UTC — before the reconcile and retention crons, so a bad day is
+    # recoverable from the previous night's export.
+    - cron: "40 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  RETENTION_DAYS: "30"
+
+concurrency:
+  group: firestore-backup
+  cancel-in-progress: false
+
+jobs:
+  export:
+    name: Export Firestore
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Verify the backup configuration exists
+        env:
+          SA_KEY: ${{ secrets.GCP_BACKUP_SA_KEY }}
+          BUCKET: ${{ secrets.BACKUP_GCS_BUCKET }}
+          PROJECT: ${{ secrets.FIREBASE_ADMIN_PROJECT_ID }}
+        run: |
+          missing=""
+          if [ -z "${SA_KEY// /}" ]; then missing="$missing GCP_BACKUP_SA_KEY"; fi
+          if [ -z "${BUCKET// /}" ]; then missing="$missing BACKUP_GCS_BUCKET"; fi
+          if [ -z "${PROJECT// /}" ]; then missing="$missing FIREBASE_ADMIN_PROJECT_ID"; fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. Without them this job would export nothing and report success, which is the failure mode it exists to prevent. See docs/OPERATIONS.md -> Backups."
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_BACKUP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Export Firestore
+        env:
+          BUCKET: ${{ secrets.BACKUP_GCS_BUCKET }}
+          PROJECT: ${{ secrets.FIREBASE_ADMIN_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          prefix="gs://${BUCKET}/firestore/${stamp}"
+
+          echo "exporting ${PROJECT} to ${prefix}"
+          gcloud firestore export "$prefix" --project "$PROJECT" --async
+
+          echo "BACKUP_PREFIX=$prefix" >> "$GITHUB_ENV"
+          echo "BACKUP_STAMP=$stamp" >> "$GITHUB_ENV"
+
+      # `--async` returns as soon as the operation is queued. Waiting is the
+      # point: an export that failed must fail this job.
+      - name: Wait for the export to finish
+        env:
+          BUCKET: ${{ secrets.BACKUP_GCS_BUCKET }}
+          PROJECT: ${{ secrets.FIREBASE_ADMIN_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            if gcloud firestore operations list --project "$PROJECT" \
+                --limit 1 --format="value(metadata.commonMetadata.operationState)" \
+                | grep -q "SUCCESSFUL"; then
+              echo "export finished"
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "::error::The export did not report success within 10 minutes."
+          exit 1
+
+      - name: Verify the export object exists
+        env:
+          BUCKET: ${{ secrets.BACKUP_GCS_BUCKET }}
+        run: |
+          set -euo pipefail
+          files="$(gcloud storage ls -r "${BACKUP_PREFIX}/**" | head -5)"
+          if [ -z "$files" ]; then
+            echo "::error::No object was written under ${BACKUP_PREFIX}; the export reported success but the bucket is empty."
+            exit 1
+          fi
+          echo "$files"
+
+      # Bounded retention: an export a day for a year is storage nobody looks at.
+      - name: Prune exports older than the retention window
+        env:
+          BUCKET: ${{ secrets.BACKUP_GCS_BUCKET }}
+        run: |
+          set -euo pipefail
+          cutoff="$(date -u -d "${RETENTION_DAYS} days ago" +%Y%m%d)"
+          gcloud storage ls "gs://${BUCKET}/firestore/" | while read -r line; do
+            stamp="$(basename "$line" | cut -c1-8)"
+            case "$stamp" in
+              [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
+                if [ "$stamp" -lt "$cutoff" ]; then
+                  echo "pruning $line"
+                  gcloud storage rm -r "$line" || true
+                fi
+                ;;
+            esac
+          done
+
+      - name: Report a failed run
+        if: failure()
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          {
+            echo "### Firestore backup did not complete"
+            echo ""
+            echo "No verified export exists for today. Check the step that failed"
+            echo "above before assuming last night's backup is usable."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "${{ secrets.ALERT_WEBHOOK_URL }}" ]; then
+            curl --fail-with-body -sS -X POST \
+              -H 'Content-Type: application/json' \
+              -d '{"text":"ShipIN: the nightly Firestore backup failed or produced no verified export."}' \
+              "${{ secrets.ALERT_WEBHOOK_URL }}" || true
+          fi

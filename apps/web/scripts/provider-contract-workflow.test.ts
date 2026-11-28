@@ -59,3 +59,32 @@ describe("provider-contract-daily workflow", () => {
     expect(workflow).toContain('if [ -z "$passed" ] || [ "$passed" -lt 1 ]');
   });
 });
+
+describe("firestore-backup workflow", () => {
+  const backup = readFileSync(
+    path.resolve(import.meta.dirname, "../../../.github/workflows/firestore-backup.yml"),
+    "utf8"
+  );
+
+  it("fails when its configuration is missing instead of skipping", () => {
+    // A backup job that quietly does nothing is the worst of both worlds.
+    expect(backup).toContain("Missing repository secret(s)");
+    expect(backup).toContain("exit 1");
+  });
+
+  it("waits for the export and verifies the object exists", () => {
+    expect(backup).toContain("Wait for the export to finish");
+    expect(backup).toContain("Verify the export object exists");
+    expect(backup).toContain("the bucket is empty");
+  });
+
+  it("bounds retention so exports do not accumulate forever", () => {
+    expect(backup).toContain("RETENTION_DAYS");
+    expect(backup).toContain("gcloud storage rm -r");
+  });
+
+  it("pages the operator when the run fails", () => {
+    expect(backup).toContain("if: failure()");
+    expect(backup).toContain("ALERT_WEBHOOK_URL");
+  });
+});

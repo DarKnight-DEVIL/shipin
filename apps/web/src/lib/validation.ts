@@ -133,6 +133,17 @@ export const whatsappTemplateSchema = z.enum([
 // API request bodies
 // ---------------------------------------------------------------------------
 
+/** POST /api/client-errors — a bounded browser error report. */
+export const clientErrorBodySchema = z.object({
+  // The message is the only required field; everything else is best-effort.
+  message: z.string().trim().min(1).max(500),
+  // Path only: the reporter strips the query string before sending, and this
+  // bound keeps an oversized URL out of the logs.
+  path: z.string().trim().min(1).max(200).startsWith("/"),
+  digest: z.string().trim().max(64).optional(),
+  stack: z.string().max(2000).optional(),
+});
+
 /** POST /api/send-email and universal email wrapper. */
 export const sendEmailBodySchema = z.object({
   type: z
