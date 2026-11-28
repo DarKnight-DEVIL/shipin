@@ -129,9 +129,10 @@ export function useAdminWallet(): AdminWalletState & AdminWalletActions {
     setSuccessMessage("");
 
     try {
-      const response = await customerApi<{ success: boolean }>(
-        "/api/admin/wallet/credit",
-        {
+      const response = await customerApi<{
+        success: boolean;
+        warning?: string;
+      }>("/api/admin/wallet/credit", {
           method: "POST",
           body: {
             customerId: selectedCustomer.id,
@@ -160,6 +161,12 @@ export function useAdminWallet(): AdminWalletState & AdminWalletActions {
             ? `Refund of $${numericAmount.toFixed(2)} authorized.`
             : `$${numericAmount.toFixed(2)} credited to ${selectedCustomer.displayName}.`
         );
+        // The route warns when a manual credit lands while the customer still
+        // has a refund pending: the credit is unlinked, so completing that
+        // refund later would credit the wallet a second time.
+        if (response.warning) {
+          toast.warning(response.warning);
+        }
         setAmount("");
         setDescription("");
         // Refresh customer list to show updated balance

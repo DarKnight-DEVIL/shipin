@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   txSet: vi.fn(),
   txUpdate: vi.fn(),
   runTransaction: vi.fn(),
+  pendingRefundQuery: vi.fn(),
   readIdempotencyKey: vi.fn(),
   readIdempotentResponse: vi.fn(),
   rememberIdempotentResponse: vi.fn(),
@@ -26,6 +27,16 @@ vi.mock("@/lib/firebaseAdmin", () => ({
         if (name === "requests") return { id, __kind: "request" };
         return { id: id ?? "wtx-1", __kind: "wtx" };
       },
+      // The pending-refund advisory query on manual credits.
+      ...(name === "requests"
+        ? {
+            where: () => ({
+              where: () => ({
+                limit: () => ({ get: mocks.pendingRefundQuery }),
+              }),
+            }),
+          }
+        : {}),
     }),
     runTransaction: mocks.runTransaction,
   },
@@ -99,6 +110,7 @@ beforeEach(() => {
   mocks.txUpdate.mockReset();
   mocks.readIdempotencyKey.mockReset().mockReturnValue(null);
   mocks.readIdempotentResponse.mockReset().mockResolvedValue(null);
+  mocks.pendingRefundQuery.mockReset().mockResolvedValue({ empty: true });
   mocks.rememberIdempotentResponse.mockReset().mockResolvedValue(undefined);
   mocks.runTransaction
     .mockReset()
@@ -460,6 +472,59 @@ describe("POST /api/admin/wallet/credit", () => {
         }),
       }
     );
+  });
+
+  it("warns when a manual credit lands while a refund is pending", async () => {
+    mocks.pendingRefundQuery.mockResolvedValue({ empty: false });
+
+    const response = await POST(
+      request({ customerId: "customer-1", amount: 15.55 })
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.success).toBe(true);
+    expect(body.warning).toContain("pending refund request");
+    expect(body.warning).toContain("credit the wallet again");
+  });
+
+  it("does not warn when the customer has no pending refund", async () => {
+    const response = await POST(
+      request({ customerId: "customer-1", amount: 15.55 })
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.warning).toBeUndefined();
+  });
+
+  it("never warns on a refund credit — the refund path validates itself", async () => {
+    snapshots({
+      request: {
+        userId: "customer-1",
+        refundRequest: {
+          status: "requested",
+          walletStatus: "pending",
+          walletAmount: 15.55,
+        },
+      },
+    });
+
+    const response = await POST(
+      request({
+        customerId: "customer-1",
+        amount: 15.55,
+        type: "refund",
+        requestId: "req-1",
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.type).toBe("refund");
+    expect(body.warning).toBeUndefined();
+    // The advisory query only runs for manual credits.
+    expect(mocks.pendingRefundQuery).not.toHaveBeenCalled();
   });
 
   it("replays the stored response when a concurrent duplicate reaches the ledger", async () => {

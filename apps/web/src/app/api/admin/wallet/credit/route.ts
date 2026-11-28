@@ -27,6 +27,8 @@ interface CreditResponse {
   newBalance: number;
   transactionId: string;
   type: "refund" | "admin_credit";
+  /** Set on a manual credit when the customer has a refund still pending. */
+  warning?: string;
 }
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
@@ -68,6 +70,32 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     if (idempotencyKey) {
       const prior = await readIdempotentResponse(replayScope);
       if (prior) return NextResponse.json(prior.body, { status: prior.status });
+    }
+
+    /*
+     * A manual credit is not linked to any refundRequest. If the customer has
+     * one pending, say so on the response: an admin who meant to process that
+     * refund has just issued an unlinked credit, and completing the refund
+     * later would credit the wallet a second time. Advisory only — a goodwill
+     * credit while a refund is pending is legitimate, so this warns rather
+     * than refuses; the reconciliation job remains the backstop.
+     */
+    let pendingRefundWarning: string | undefined;
+    if (!isRefund) {
+      const pendingRefund = await adminDb
+        .collection("requests")
+        .where("userId", "==", customerId)
+        .where("refundRequest.status", "==", "requested")
+        // firestore-list: internal — existence check; one document decides the warning.
+        .limit(1)
+        .get();
+
+      if (!pendingRefund.empty) {
+        pendingRefundWarning =
+          "This customer has a pending refund request. This credit is not " +
+          "linked to it — completing the refund later will credit the wallet " +
+          "again.";
+      }
     }
 
     /*
@@ -340,6 +368,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         newBalance,
         transactionId: transactionRef.id,
         type: isRefund ? "refund" : "admin_credit",
+        ...(pendingRefundWarning ? { warning: pendingRefundWarning } : {}),
       };
 
       transaction.set(transactionRef, {

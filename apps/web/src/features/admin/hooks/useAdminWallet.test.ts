@@ -157,6 +157,30 @@ describe("useAdminWallet — crediting", () => {
     );
   });
 
+  it("toasts the route's pending-refund warning on a manual credit", async () => {
+    mocks.customerApi.mockResolvedValue({
+      success: true,
+      warning:
+        "This customer has a pending refund request. This credit is not linked to it.",
+    });
+    const { result } = await mount();
+
+    await act(async () => {
+      result.current.setSelectedCustomer(customers[0]);
+      result.current.setAmount("12.5");
+    });
+    await act(async () => {
+      await result.current.handleAddCredits();
+    });
+
+    expect(result.current.successMessage).toBe(
+      "$12.50 credited to Ada Lovelace."
+    );
+    expect(mocks.toast.warning).toHaveBeenCalledWith(
+      "This customer has a pending refund request. This credit is not linked to it."
+    );
+  });
+
   it("reports an unsuccessful response", async () => {
     mocks.customerApi.mockResolvedValue({ success: false });
     const { result } = await mount();
