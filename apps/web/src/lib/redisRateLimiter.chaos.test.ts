@@ -93,9 +93,11 @@ vi.mock("@/config/env", () => ({
     NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: "",
     NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST: "",
   },
-  isProduction: false,
   isDevelopment: true,
   isTest: true,
+  get isProduction() {
+    return state.isProduction;
+  },
 }));
 
 // Mock React context providers
@@ -155,6 +157,8 @@ beforeAll(() => {
 
 let createSharedRateLimiter: typeof import("./redisRateLimiter").createSharedRateLimiter;
 let resetSharedRedisClientForTests: typeof import("./redisRateLimiter").resetSharedRedisClientForTests;
+let setStoreOutageAlertSenderForTests: typeof import("./redisRateLimiter").setStoreOutageAlertSenderForTests;
+let resetStoreOutageAlertForTests: typeof import("./redisRateLimiter").resetStoreOutageAlertForTests;
 
 beforeEach(async () => {
   vi.resetModules();
@@ -169,6 +173,8 @@ beforeEach(async () => {
   ({
     createSharedRateLimiter,
     resetSharedRedisClientForTests,
+    setStoreOutageAlertSenderForTests,
+    resetStoreOutageAlertForTests,
   } = await import("./redisRateLimiter"));
   // The client and the Ratelimit instances are module singletons shared by every
   // file in this vitest worker; inheriting whichever fake store ran last makes
@@ -179,6 +185,8 @@ beforeEach(async () => {
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+  resetStoreOutageAlertForTests();
+  state.isProduction = false;
 });
 
 const fallbackResult = {
@@ -312,5 +320,99 @@ describe("rate limiter through an outage and recovery", () => {
     // instance must read clean without anyone clearing it.
     const later = Date.now() + 5 * 60 * 1000 + 1;
     expect(await limiter.getErrorCounts(later)).toEqual([]);
+  });
+});
+
+describe("store-outage escalation", () => {
+  /** The webhook URL is read from process.env, so stub it per test. */
+  const ALERT_URL = "https://alerts.example.com/hook";
+
+  it("escalates a sustained outage to the operator webhook once, then stays quiet", async () => {
+    state.isProduction = true;
+    vi.stubEnv("ERROR_ALERT_WEBHOOK_URL", ALERT_URL);
+
+    const sent: unknown[] = [];
+    setStoreOutageAlertSenderForTests((payload) => {
+      sent.push(payload);
+    });
+
+    state.limit.mockRejectedValue(new Error("redis down"));
+    const limiter = createSharedRateLimiter("strict", 10, 60_000, fallback());
+
+    // Cross the threshold, then keep failing: one alert, not one per failure.
+    for (let i = 0; i < 12; i++) {
+      await limiter.record(requestFrom("198.51.100.7"));
+    }
+    expect(sent).toHaveLength(1);
+
+    const payload = sent[0] as {
+      content: string;
+      embeds: Array<{ fields: Array<{ name: string; value: string }> }>;
+    };
+    expect(payload.content).toContain("Rate-limit store outage");
+    const limiterField = payload.embeds[0].fields.find(
+      (field) => field.name === "Limiter"
+    );
+    expect(limiterField?.value).toBe("strict");
+
+    // Inside the dedupe window the outage keeps failing without re-paging.
+    for (let i = 0; i < 5; i++) {
+      await limiter.record(requestFrom("198.51.100.7"));
+    }
+    expect(sent).toHaveLength(1);
+  });
+
+  it("stays quiet while the outage is below the threshold", async () => {
+    state.isProduction = true;
+    vi.stubEnv("ERROR_ALERT_WEBHOOK_URL", ALERT_URL);
+
+    const sent: unknown[] = [];
+    setStoreOutageAlertSenderForTests((payload) => {
+      sent.push(payload);
+    });
+
+    state.limit.mockRejectedValue(new Error("redis down"));
+    const limiter = createSharedRateLimiter("strict", 10, 60_000, fallback());
+
+    for (let i = 0; i < 5; i++) {
+      await limiter.record(requestFrom("198.51.100.7"));
+    }
+    expect(sent).toHaveLength(0);
+  });
+
+  it("does not alert outside production", async () => {
+    state.isProduction = false;
+    vi.stubEnv("ERROR_ALERT_WEBHOOK_URL", ALERT_URL);
+
+    const sent: unknown[] = [];
+    setStoreOutageAlertSenderForTests((payload) => {
+      sent.push(payload);
+    });
+
+    state.limit.mockRejectedValue(new Error("redis down"));
+    const limiter = createSharedRateLimiter("strict", 10, 60_000, fallback());
+
+    for (let i = 0; i < 15; i++) {
+      await limiter.record(requestFrom("198.51.100.7"));
+    }
+    expect(sent).toHaveLength(0);
+  });
+
+  it("does not alert when no operator webhook is configured", async () => {
+    state.isProduction = true;
+    // No ERROR_ALERT_WEBHOOK_URL and no ALERT_WEBHOOK_URL: the escalation
+    // gate closes and the sender is never reached.
+    const sent: unknown[] = [];
+    setStoreOutageAlertSenderForTests((payload) => {
+      sent.push(payload);
+    });
+
+    state.limit.mockRejectedValue(new Error("redis down"));
+    const limiter = createSharedRateLimiter("strict", 10, 60_000, fallback());
+
+    for (let i = 0; i < 15; i++) {
+      await limiter.record(requestFrom("198.51.100.7"));
+    }
+    expect(sent).toHaveLength(0);
   });
 });

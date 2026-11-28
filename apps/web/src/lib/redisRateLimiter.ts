@@ -127,6 +127,185 @@ function reportRedisError(limiterName: string, clientIp: string): void {
   }
 }
 
+/* ============================================================
+ * Store-outage escalation.
+ *
+ * The proxy fails open on `unavailable` on purpose (the chaos suite pins
+ * that), but fail-open must not mean fail-silent: the error counters and
+ * /api/health's `degraded` are pull signals someone has to poll. Once a
+ * limiter accumulates enough store failures inside the error window, this
+ * pushes ONE deduplicated message to the operator webhook, so a human finds
+ * out about an unmetered API without polling anything.
+ * ============================================================ */
+
+/** Store failures inside the error window before the outage is worth paging. */
+const STORE_OUTAGE_ALERT_THRESHOLD = 10;
+
+/** Minimum spacing between outage alerts for one limiter. */
+const STORE_OUTAGE_ALERT_DEDUPE_MS = 30 * 60 * 1000;
+
+const STORE_OUTAGE_ALERT_TIMEOUT_MS = 5_000;
+
+/** Per limiter: failures seen, the window they count within, last alert sent. */
+const outageTracker = new Map<
+  string,
+  { errors: number; windowStart: number; lastAlertAt: number }
+>();
+
+/**
+ * The dedicated channel first, then the generic operator webhook — the same
+ * dedicated-then-fallback order the App Check and breach alerts use.
+ */
+function resolveStoreOutageAlertUrl(): string | null {
+  const dedicated = process.env.ERROR_ALERT_WEBHOOK_URL?.trim();
+  if (dedicated) return dedicated;
+  return process.env.ALERT_WEBHOOK_URL?.trim() || null;
+}
+
+function deploymentEnvironment(): string {
+  return process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown";
+}
+
+export interface StoreOutageAlertPayload {
+  content: string;
+  embeds: Array<{
+    title: string;
+    description: string;
+    color: number;
+    fields: Array<{ name: string; value: string; inline?: boolean }>;
+    timestamp: string;
+  }>;
+}
+
+export function buildStoreOutageAlertPayload(
+  limiterName: string,
+  errors: number,
+  now = Date.now()
+): StoreOutageAlertPayload {
+  return {
+    content: `🚨 **Rate-limit store outage** — ${errors} store failures in the last 5 minutes (${deploymentEnvironment()})`,
+    embeds: [
+      {
+        title: "Rate-limit store outage",
+        description:
+          "The shared rate-limit store (Upstash Redis) is failing: every API " +
+          "limit is currently unenforced and the proxy is serving requests " +
+          "fail-open. Auth and App Check still gate the routes, but abuse " +
+          "metering is off until the store answers again.",
+        color: 0xed4245,
+        fields: [
+          { name: "Limiter", value: limiterName, inline: true },
+          { name: "Failures (5 min)", value: String(errors), inline: true },
+          { name: "Environment", value: deploymentEnvironment(), inline: true },
+          {
+            name: "Remediation",
+            value:
+              "Check the Upstash dashboard (status, quota, credentials). " +
+              "/api/health reports `degraded` until the store recovers; " +
+              "limits resume automatically on recovery — no restart needed.",
+          },
+        ],
+        timestamp: new Date(now).toISOString(),
+      },
+    ],
+  };
+}
+
+/**
+ * POST the payload to the configured webhook.
+ *
+ * Never throws and is never awaited on the request path: a slow or broken
+ * webhook must not add latency to a request that is already being served
+ * without a limit. The 5s timeout bounds a hanging Discord request.
+ */
+export async function dispatchStoreOutageAlert(
+  payload: StoreOutageAlertPayload
+): Promise<void> {
+  const url = resolveStoreOutageAlertUrl();
+  if (!url) return;
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(STORE_OUTAGE_ALERT_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      // Status only: the URL is a credential, so it never reaches the logs.
+      console.warn("Store-outage alert webhook rejected the payload", {
+        status: response.status,
+      });
+    }
+  } catch (error) {
+    console.warn("Store-outage alert webhook could not be reached", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+const defaultOutageAlertSender: (payload: StoreOutageAlertPayload) => void = (
+  payload
+) => {
+  void dispatchStoreOutageAlert(payload);
+};
+
+let sendOutageAlert: (payload: StoreOutageAlertPayload) => void =
+  defaultOutageAlertSender;
+
+/** Test hook: replace the alert sender (reset by resetStoreOutageAlertForTests). */
+export function setStoreOutageAlertSenderForTests(
+  sender: (payload: StoreOutageAlertPayload) => void
+): void {
+  sendOutageAlert = sender;
+}
+
+export function resetStoreOutageAlertForTests(): void {
+  sendOutageAlert = defaultOutageAlertSender;
+  outageTracker.clear();
+}
+
+/**
+ * Count one more store failure for this limiter and escalate when the window
+ * crosses the threshold. Synchronous and never throwing: this runs inside the
+ * limiter's error path, which must stay as cheap as serving the request.
+ */
+function maybeEscalateStoreOutage(limiterName: string, now = Date.now()): void {
+  if (!isProduction) return;
+  if (!resolveStoreOutageAlertUrl()) return;
+
+  const entry =
+    outageTracker.get(limiterName) ?? {
+      errors: 0,
+      windowStart: now,
+      lastAlertAt: 0,
+    };
+
+  if (now - entry.windowStart > RATE_LIMIT_ERROR_WINDOW_MS) {
+    entry.errors = 0;
+    entry.windowStart = now;
+  }
+
+  entry.errors += 1;
+
+  if (entry.errors < STORE_OUTAGE_ALERT_THRESHOLD) {
+    outageTracker.set(limiterName, entry);
+    return;
+  }
+
+  if (now - entry.lastAlertAt < STORE_OUTAGE_ALERT_DEDUPE_MS) {
+    outageTracker.set(limiterName, entry);
+    return;
+  }
+
+  entry.lastAlertAt = now;
+  entry.errors = 0;
+  entry.windowStart = now;
+  outageTracker.set(limiterName, entry);
+
+  sendOutageAlert(buildStoreOutageAlertPayload(limiterName, STORE_OUTAGE_ALERT_THRESHOLD, now));
+}
+
 function isValidRedisUrl(url: string | undefined): url is string {
   if (!url) return false;
   try {
@@ -276,6 +455,9 @@ export function createSharedRateLimiter(
     const next = { errors: prev.errors + 1, lastErrorAt: now };
     errorCounters.set(key, next);
     reportRedisError(name, key);
+    // The push side of the same signal: counters and /api/health are pull
+    // signals; this pages an operator once the outage is sustained.
+    maybeEscalateStoreOutage(name);
 
     const client = getRedis();
     if (client) {
