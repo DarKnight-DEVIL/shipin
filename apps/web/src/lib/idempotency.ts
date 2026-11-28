@@ -80,6 +80,14 @@ export function readIdempotencyKey(request: Request): string | null {
   const raw = request.headers.get(IDEMPOTENCY_HEADER)?.trim();
 
   if (!raw) return null;
+  /*
+   * The character set is deliberately permissive (`_` included) and must not
+   * be tightened: the key is an input to `documentId()` below, which hashes
+   * it to SHA-256 hex before it ever reaches Redis or a Firestore document
+   * ID, so the charset has no downstream effect — while narrowing it would
+   * reclassify previously-accepted keys as malformed, which here means
+   * silently dropping their replay protection.
+   */
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(raw)) return null;
 
   return raw;
