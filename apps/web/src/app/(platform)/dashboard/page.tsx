@@ -54,6 +54,7 @@ const ShipmentCard = dynamic(
 );
 
 import { SHORTCUTS } from "@/components/dashboard/helpers";
+import GettingStarted from "@/components/dashboard/GettingStarted";
 import { useDashboardOverview } from "@/features/users/hooks/useDashboardOverview";
 
 export default function DashboardPage() {
@@ -195,6 +196,12 @@ export default function DashboardPage() {
           />
         ))}
       </div>
+
+      {/* Shown only while something is left to do; hides itself when the
+          account is verified and has a request. */}
+      {!loading && (
+        <GettingStarted hasRequests={requests.length > 0} />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <section
