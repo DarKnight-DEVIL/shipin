@@ -15,9 +15,21 @@ import "lenis/dist/lenis.css";
 import "../landing.css";
 import dynamic from "next/dynamic";
 
+/*
+ * three.js is a deliberate dependency: this 1,200-line interactive globe is
+ * the landing hero's centerpiece and has no lighter equivalent that keeps the
+ * click-to-select markers. It ships as a lazy, client-only chunk (bundle
+ * budgets gate it), and the loading fallback below keeps the hero panel from
+ * reading as broken while that chunk and its textures arrive. If the globe is
+ * ever redesigned, an SVG/canvas replacement is the path to dropping the
+ * dependency — until then it stays.
+ */
 const GlobeDashboard = dynamic(
   () => import("@/components/globe-dashboard/GlobeDashboard"),
-  { ssr: false }
+  {
+    ssr: false,
+    loading: () => <div className="globe-panel__loading" aria-hidden="true" />,
+  }
 );
 
 const display = Bricolage_Grotesque({

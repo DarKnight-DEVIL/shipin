@@ -611,6 +611,18 @@ h3 {
   position: absolute;
   inset: 0;
   background: var(--surface);
+  /* A quiet pulse: the panel is loading the globe chunk, not broken. */
+  animation: globe-loading-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes globe-loading-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
 }
 
 .globe-panel__foot {
