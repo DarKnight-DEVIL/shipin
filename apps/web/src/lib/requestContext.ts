@@ -40,11 +40,6 @@ export function runWithRequestContext<T>(context: RequestContext, fn: () => T): 
   return storage.run({ ...existing, ...context }, fn);
 }
 
-/** The current request's context, or undefined outside a scoped call. */
-export function getRequestContext(): RequestContext | undefined {
-  return storage.getStore();
-}
-
 /** The current request's id, if a scope was opened for it. */
 export function currentRequestId(): string | undefined {
   return storage.getStore()?.requestId;
