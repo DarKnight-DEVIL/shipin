@@ -790,3 +790,44 @@ with no date is reported as unrecorded and does not fail the job; only a listed
 | R2_SECRET_ACCESS_KEY | R2 uploads and presigned reads | 90 days | Not recorded | — |
 | CRON_SECRET | Cron workflows (quote expiry, PayPal reconcile, sweeps, retention purge) | 90 days | 2026-11-14 | 2027-02-12 |
 | FIREBASE_ADMIN_PRIVATE_KEY | Firebase Admin SDK and staging E2E | 90 days | Not recorded | — |
+
+## Payment reconciliation — running it by hand
+
+The nightly cron (`paypal-reconcile-cron.yml`, 03:10 UTC) is the normal path.
+To run it on demand, from a machine with `gh` logged in:
+
+```bash
+gh workflow run paypal-reconcile-cron.yml
+gh run list --workflow=paypal-reconcile-cron.yml --limit 1
+gh run view <run-id>            # green = HTTP 200 = no drift
+```
+
+The workflow signs the request with `secrets.CRON_SECRET`; nothing needs to be
+pasted anywhere. A red run is either **drift** (HTTP 409, body lists the
+entries — the job also pages `ALERT_WEBHOOK_URL`) or the endpoint failing.
+
+The verdict is persisted, so it can be read after the fact without the logs:
+
+```
+system/paymentReconciliation
+  lastRunAt, windowDays, cutoff,
+  checked:  { completedOrders, paypalPaidRequests, completedTopups, pendingTopups },
+  driftCount, carriedForward, driftTruncated, drift: []
+```
+
+**Read the `checked` counters, not just the status.** A run over a window with
+no wallet activity reports `driftCount: 0` and checks 0 documents — the pipeline
+works, but nothing was proven about money. That is a smoke test; the real check
+is a green run whose window contains wallet payments.
+
+Locally, the same call needs a real `CRON_SECRET` (the value in `.env.local`
+is empty on purpose — the deployment's is a repository secret):
+
+```
+POST /api/admin/payments/reconcile?days=30
+x-cron-timestamp: <epoch ms>
+x-cron-signature: HMAC-SHA256(secret, "<timestamp>|")   # body is empty
+```
+
+An unset secret answers `500 CONFIG_ERROR`, a wrong one `401 UNAUTHORIZED` —
+both fail closed.
