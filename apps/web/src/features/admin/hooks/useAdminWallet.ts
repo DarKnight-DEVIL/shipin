@@ -11,7 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
-import { customerApi } from "@/lib/customerApiClient";
+import { CustomerApiError, customerApi } from "@/lib/customerApiClient";
 import {
   getCustomersWithWallets,
   getRefundRequestDetails,
@@ -138,6 +138,18 @@ export function useAdminWallet(): AdminWalletState & AdminWalletActions {
             amount: numericAmount,
             description:
               description.trim() || (refundMode ? "Refund" : "Admin credit"),
+            /*
+             * Refund mode must travel the route's refund path, not the manual
+             * credit one: without `type: "refund"` + `requestId` the credit
+             * bypassed every refund guard — no amount match against the
+             * recorded wallet portion, no double-refund refusal, and the
+             * refundRequest was left pending so the same refund could be
+             * processed twice. The route completes the refund state in the
+             * same transaction when these two fields are present.
+             */
+            ...(refundMode && refundRequestId
+              ? { type: "refund" as const, requestId: refundRequestId }
+              : {}),
           },
         }
       );
@@ -161,7 +173,14 @@ export function useAdminWallet(): AdminWalletState & AdminWalletActions {
       }
     } catch (error) {
       console.error("[AdminWallet] Failed to add credits:", error);
-      setErrorMessage("Could not complete the transaction.");
+      // Surface the route's own validation message (e.g. the refund amount not
+      // matching the recorded wallet portion) instead of a generic failure —
+      // but only for typed API errors; anything else stays generic.
+      setErrorMessage(
+        error instanceof CustomerApiError && error.message
+          ? error.message
+          : "Could not complete the transaction."
+      );
     } finally {
       setAdding(false);
     }

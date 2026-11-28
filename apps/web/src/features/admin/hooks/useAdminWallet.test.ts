@@ -9,6 +9,14 @@ const mocks = vi.hoisted(() => ({
   customerApi: vi.fn(),
   getCustomersWithWallets: vi.fn(),
   getRefundRequestDetails: vi.fn(),
+  /** Class-shaped so `instanceof CustomerApiError` works in the hook. */
+  CustomerApiError: class CustomerApiError extends Error {
+    code?: string;
+    constructor(message: string, options?: { code?: string }) {
+      super(message);
+      this.code = options?.code;
+    }
+  },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -16,7 +24,12 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => ({ get: () => mocks.searchRef.value }),
 }));
 vi.mock("sonner", () => ({ toast: mocks.toast }));
-vi.mock("@/lib/customerApiClient", () => ({ customerApi: mocks.customerApi }));
+vi.mock("@/lib/customerApiClient", () => ({
+  customerApi: mocks.customerApi,
+  // A class, so `instanceof CustomerApiError` in the hook behaves like the
+  // real client: typed API errors carry the route's validation message.
+  CustomerApiError: mocks.CustomerApiError,
+}));
 vi.mock("@/features/admin/client/customersClient", () => ({
   getCustomersWithWallets: mocks.getCustomersWithWallets,
   getRefundRequestDetails: mocks.getRefundRequestDetails,
@@ -161,6 +174,27 @@ describe("useAdminWallet — crediting", () => {
     );
   });
 
+  it("surfaces a typed API validation message", async () => {
+    const { result } = await mount();
+
+    await act(async () => {
+      result.current.setSelectedCustomer(customers[0]);
+      result.current.setAmount("12.5");
+    });
+    mocks.customerApi.mockRejectedValueOnce(
+      new mocks.CustomerApiError(
+        "The wallet credit must equal the recorded wallet portion of this refund."
+      )
+    );
+    await act(async () => {
+      await result.current.handleAddCredits();
+    });
+
+    expect(result.current.errorMessage).toBe(
+      "The wallet credit must equal the recorded wallet portion of this refund."
+    );
+  });
+
   it("reports a request failure", async () => {
     mocks.customerApi.mockRejectedValue(new Error("network"));
     const { result } = await mount();
@@ -224,6 +258,40 @@ describe("useAdminWallet — refund mode", () => {
 
     expect(result.current.successMessage).toBe("Refund of $25.50 authorized.");
     expect(mocks.replace).toHaveBeenCalledWith("/admin/wallet");
+    // Refund mode must travel the route's refund path: the type and request id
+    // are what trigger the amount-match validation and the in-transaction
+    // completion of the refundRequest state.
+    expect(mocks.customerApi).toHaveBeenCalledWith("/api/admin/wallet/credit", {
+      method: "POST",
+      body: {
+        customerId: "c1",
+        amount: 25.5,
+        description: "Refund",
+        type: "refund",
+        requestId: "req-9",
+      },
+    });
+  });
+
+  it("posts a plain manual credit outside refund mode", async () => {
+    const { result } = await mount();
+
+    await act(async () => {
+      result.current.setSelectedCustomer(customers[0]);
+      result.current.setAmount("12.5");
+    });
+    await act(async () => {
+      await result.current.handleAddCredits();
+    });
+
+    expect(mocks.customerApi).toHaveBeenCalledWith("/api/admin/wallet/credit", {
+      method: "POST",
+      body: {
+        customerId: "c1",
+        amount: 12.5,
+        description: "Admin credit",
+      },
+    });
   });
 
   it("reports a refund load failure", async () => {
