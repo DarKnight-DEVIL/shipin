@@ -165,6 +165,19 @@ export async function verifyPayPalWebhook(
   rawBody: string,
   webhookId?: string
 ): Promise<boolean> {
+  // An unparseable body cannot carry a valid PayPal signature — PayPal signs
+  // its own JSON. Fail closed with `false` instead of letting JSON.parse
+  // throw out of this function: the caller answers 4xx, not 500, and no
+  // OAuth token or verification round trip is spent on a body that can
+  // never be genuine.
+  let webhookEvent: unknown;
+  try {
+    webhookEvent = JSON.parse(rawBody);
+  } catch {
+    paypalLog.warn("Webhook body is not JSON; skipping signature verification");
+    return false;
+  }
+
   const token = await getPayPalAccessToken();
   const baseUrl = getPayPalBaseUrl();
   const id = webhookId ?? serverEnv.PAYPAL_WEBHOOK_ID;
@@ -216,7 +229,7 @@ export async function verifyPayPalWebhook(
         transmission_sig: headers.get("paypal-transmission-sig"),
         transmission_time: headers.get("paypal-transmission-time"),
         webhook_id: id,
-        webhook_event: JSON.parse(rawBody),
+        webhook_event: webhookEvent,
       }),
     }
   );

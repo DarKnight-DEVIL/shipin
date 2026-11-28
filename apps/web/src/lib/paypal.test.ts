@@ -99,6 +99,20 @@ describe("verifyPayPalWebhook", () => {
     expect(result).toBe(false);
   });
 
+  it("returns false for a body that is not JSON, without contacting PayPal", async () => {
+    // PayPal signs its own JSON, so an unparseable body can never be genuine.
+    // The helper must answer false rather than letting JSON.parse throw a 500
+    // out of the webhook route — and must not spend an OAuth token or a
+    // verification round trip discovering that.
+    const result = await verifyPayPalWebhook(mockHeaders, "{not json");
+
+    expect(result).toBe(false);
+    const verifyCalls = mockAccessTokenFetch.mock.calls.filter(([url]) =>
+      String(url).includes("verify-webhook-signature")
+    );
+    expect(verifyCalls).toHaveLength(0);
+  });
+
   it("returns false when the verification endpoint returns non-OK (fail closed)", async () => {
     mockAccessTokenFetch
       .mockResolvedValueOnce({

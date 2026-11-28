@@ -271,6 +271,10 @@ describe("POST /api/webhook", () => {
     await expect(response.json()).resolves.toMatchObject({
       code: "INVALID_JSON",
     });
+    // Garbage is refused before the signature check: the real verification
+    // helper cannot succeed on an unparseable body, so calling it would only
+    // spend an OAuth token discovering that.
+    expect(mocks.verifyPayPalWebhook).not.toHaveBeenCalled();
   });
 
   it("refuses a signed event that carries no id", async () => {

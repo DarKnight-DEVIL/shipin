@@ -153,6 +153,23 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   // Get raw body for signature verification
   const rawBody = await request.text();
 
+  /*
+   * Parse before verifying. An unparseable body can never carry a valid
+   * PayPal signature, so rejecting it here answers 400 without spending an
+   * OAuth token or a verification round trip on it — and without letting the
+   * JSON.parse inside the verification helper turn garbage into a 500. The
+   * parsed event is only used after the signature gate below passes.
+   */
+  let event: Record<string, unknown>;
+  try {
+    event = JSON.parse(rawBody) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Invalid JSON.", code: "INVALID_JSON" },
+      { status: 400 }
+    );
+  }
+
   // Verify the webhook signature (using request.headers directly as Headers object)
   const valid = await verifyPayPalWebhook(
     request.headers,
@@ -168,16 +185,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         error: "Invalid webhook signature.",
         code: "INVALID_SIGNATURE",
       },
-      { status: 400 }
-    );
-  }
-
-  let event: Record<string, unknown>;
-  try {
-    event = JSON.parse(rawBody) as Record<string, unknown>;
-  } catch {
-    return NextResponse.json(
-      { success: false, error: "Invalid JSON.", code: "INVALID_JSON" },
       { status: 400 }
     );
   }
