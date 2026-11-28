@@ -12,7 +12,9 @@ const NO_STORE = { "Cache-Control": "no-store" } as const;
 /**
  * POST /api/send-email
  * Sends only server-defined ShipIN templates and is restricted to admins.
- * The rate limiter is process-local; use a shared store/WAF for global limits.
+ * Metered by the shared Redis-backed strict limiter (global across
+ * instances); the in-memory path is the documented store-outage fallback,
+ * not the primary budget.
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
   // Email delivery is privileged: authenticated customers must not be able
