@@ -22,6 +22,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:contract": "vitest run --config vitest.contract.config.ts",
+    "test:load": "node scripts/load/load.mjs",
     "test:coverage": "node scripts/run-coverage.mjs",
     "test:coverage:components": "vitest run --config vitest.components.config.ts",
     "test:shuffle": "vitest run --sequence.shuffle",

@@ -24,6 +24,8 @@ import {
   resolveTracking,
   MAX_STORED_EVENTS,
   TRACKING_CACHE_TTL_MS,
+  TRACKING_LOOKUP_CACHE_TTL_MS,
+  clearTrackingLookupCacheForTests,
   type PublicTrackingEvent,
 } from "./trackingSync";
 import type { TrackingProvider } from "@/features/shipments/carriers";
@@ -72,6 +74,8 @@ const shipped = (overrides: Record<string, unknown> = {}) => ({
 });
 
 beforeEach(() => {
+  // The lookup cache is process-wide, so one case must not serve another's doc.
+  clearTrackingLookupCacheForTests();
   mocks.whereGet.mockReset();
   mocks.docGet.mockReset().mockResolvedValue({ exists: false });
   mocks.update.mockReset().mockResolvedValue(undefined);
@@ -637,5 +641,64 @@ describe("forced refresh (admin)", () => {
     expect(mocks.update.mock.calls[0][0].status).toBeUndefined();
     expect(result?.status).toBe("refunded");
     expect(result?.syncPaused).toBe(true);
+  });
+});
+
+
+describe("tracking lookup cache", () => {
+  it("serves a second poll from memory instead of re-reading the request", async () => {
+    found(shipped());
+    const p = provider();
+
+    await resolveTracking("SHP-2026-000001", { provider: p, now });
+    await resolveTracking("SHP-2026-000001", { provider: p, now });
+
+    expect(mocks.whereGet).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-reads once the entry is older than the TTL", async () => {
+    found(shipped());
+    const p = provider();
+
+    await resolveTracking("SHP-2026-000001", { provider: p, now });
+
+    // The cache is aged by wall-clock time, not by the `now` the caller passes
+    // into the projection, so the test advances Date.now.
+    const clock = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.now() + TRACKING_LOOKUP_CACHE_TTL_MS + 1);
+
+    try {
+      await resolveTracking("SHP-2026-000001", { provider: p, now });
+    } finally {
+      clock.mockRestore();
+    }
+
+    expect(mocks.whereGet).toHaveBeenCalledTimes(2);
+  });
+
+  it("never caches a miss, so a brand-new shipment resolves immediately", async () => {
+    mocks.whereGet.mockResolvedValue({ empty: true, docs: [] });
+    const p = provider();
+
+    await expect(
+      resolveTracking("SHP-NEW", { provider: p, now })
+    ).resolves.toBeNull();
+
+    found(shipped());
+
+    await expect(
+      resolveTracking("SHP-NEW", { provider: p, now })
+    ).resolves.toMatchObject({ trackingId: "SHP-2026-000001" });
+  });
+
+  it("bypasses the cache when force asks for the source of truth", async () => {
+    found(shipped());
+    const p = provider();
+
+    await resolveTracking("SHP-2026-000001", { provider: p, now });
+    await resolveTracking("SHP-2026-000001", { provider: p, now, force: true });
+
+    expect(mocks.whereGet).toHaveBeenCalledTimes(2);
   });
 });

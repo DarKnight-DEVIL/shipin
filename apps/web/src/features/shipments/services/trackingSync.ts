@@ -212,8 +212,7 @@ interface FoundRequest {
  * document-id lookup is kept so links minted before the proxy existed still
  * work.
  */
-async function findRequest(trackingId: string): Promise<FoundRequest | null> {
-  const byInternalId = await adminDb
+async function findRequest(trackingId: string): Promise<FoundRequest | null> {  const byInternalId = await adminDb
     .collection("requests")
     .where("tracking.internalTrackingId", "==", trackingId)
     // firestore-list: internal — uniqueness probe, not a list.
@@ -236,6 +235,70 @@ async function findRequest(trackingId: string): Promise<FoundRequest | null> {
     id: direct.id,
     data: (direct.data() ?? {}) as Record<string, unknown>,
   };
+}
+
+/**
+ * How long an anonymous tracking lookup may reuse the request document.
+ *
+ * The public tracking page is the one endpoint an unauthenticated visitor can
+ * poll, and every poll used to cost one query plus (for a legacy id) one
+ * document read. The carrier sync behind it is already throttled to one
+ * upstream call per shipment per `TRACKING_CACHE_TTL_MS`, so the document is
+ * the only remaining per-poll cost. Twenty seconds keeps a refresh honest -
+ * a status change appears on the next sync cycle, minutes away - while a
+ * popular link or a retrying client collapses onto a single read.
+ *
+ * Per instance, not shared: a cache miss after a cold start is a read, not a
+ * correctness problem, and a shared cache would need its own invalidation.
+ */
+export const TRACKING_LOOKUP_CACHE_TTL_MS = 20_000;
+
+/** Bounded so a long-lived instance cannot grow one entry per tracking id. */
+const MAX_TRACKING_LOOKUP_ENTRIES = 500;
+
+const trackingLookupCache = new Map<
+  string,
+  { at: number; value: FoundRequest }
+>();
+
+/** Test hook: the cache is process-wide, so a test clears it between cases. */
+export function clearTrackingLookupCacheForTests(): void {
+  trackingLookupCache.clear();
+}
+
+async function findRequestCached(
+  trackingId: string
+): Promise<FoundRequest | null> {
+  const now = Date.now();
+  const hit = trackingLookupCache.get(trackingId);
+
+  if (hit && now - hit.at < TRACKING_LOOKUP_CACHE_TTL_MS) {
+    // Re-insert so the oldest key is the least recently used one.
+    trackingLookupCache.delete(trackingId);
+    trackingLookupCache.set(trackingId, hit);
+
+    return hit.value;
+  }
+
+  const value = await findRequest(trackingId);
+
+  // Misses are never cached: a shipment created a second ago must appear on
+  // the first link opened, not fifteen seconds later.
+  if (!value) {
+    trackingLookupCache.delete(trackingId);
+
+    return null;
+  }
+
+  if (trackingLookupCache.size >= MAX_TRACKING_LOOKUP_ENTRIES) {
+    const oldest = trackingLookupCache.keys().next().value;
+
+    if (oldest !== undefined) trackingLookupCache.delete(oldest);
+  }
+
+  trackingLookupCache.set(trackingId, { at: now, value });
+
+  return value;
 }
 
 /** The only status-history keys the public tracking page is allowed to see. */
@@ -314,7 +377,13 @@ export async function resolveTracking(
   const trackingId = rawTrackingId.trim();
   if (!trackingId) return null;
 
-  const found = await findRequest(trackingId);
+  // `force` also bypasses the lookup cache: it already means "do not trust
+  // stored state, go to the source".
+  const force = options.force === true;
+
+  const found = force
+    ? await findRequest(trackingId)
+    : await findRequestCached(trackingId);
   if (!found) return null;
 
   const { id, data } = found;
@@ -326,8 +395,6 @@ export async function resolveTracking(
   const terminalStatus = TERMINAL_REQUEST_STATUSES.has(requestStatus);
   const alreadyDelivered =
     tracking.syncPaused === true || Boolean(tracking.deliveredAt);
-
-  const force = options.force === true;
 
   if (!force && (terminalStatus || alreadyDelivered)) {
     return project(id, data, storedEvents, "cache", {
