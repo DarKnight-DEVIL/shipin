@@ -73,3 +73,15 @@ describe("Playwright suite wiring", () => {
     );
   });
 });
+
+describe("rate-limit disable switch is E2E-scoped", () => {
+  it("sets the acknowledgement the production build requires", () => {
+    // The local suite runs a production build, so RATE_LIMIT_DISABLED alone is
+    // no longer honoured there - the ack variable is what keeps a deployment
+    // that copied this environment from switching its own limits off.
+    const runner = readFileSync(RUNNER, "utf8");
+
+    expect(runner).toContain('RATE_LIMIT_DISABLED: "1"');
+    expect(runner).toContain('E2E_RATE_LIMITS_DISABLED_ACK: "1"');
+  });
+});

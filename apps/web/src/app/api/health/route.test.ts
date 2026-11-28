@@ -32,6 +32,7 @@ const state = vi.hoisted(() => ({
   outboundSpike: false,
   outboundAlerted: false,
   errors: { web: 0, api: 0, strict: 0, login: 0 } as Record<string, number>,
+  rateLimitDisabled: false,
 }));
 
 vi.mock("@/config/env", () => ({
@@ -165,6 +166,12 @@ vi.mock("@/lib/redisRateLimiter", () => ({
     const configured = /^https:\/\/\S+$/.test(state.url) && Boolean(state.token);
     return { configured, degraded: state.isProduction && !configured };
   },
+  /**
+   * The E2E disable switch. Its presence on a production deployment means no
+   * limit is enforced anywhere, so the probe has to say so rather than answer
+   * `healthy` while every request is free.
+   */
+  isRateLimitingDisabled: () => state.isProduction && state.rateLimitDisabled,
 }));
 
 import { GET } from "./route";
@@ -188,6 +195,7 @@ beforeEach(() => {
   state.outboundSpike = false;
   state.outboundAlerted = false;
   state.errors = { web: 0, api: 0, strict: 0, login: 0 };
+  state.rateLimitDisabled = false;
 });
 
 describe("GET /api/health", () => {
@@ -258,6 +266,26 @@ describe("GET /api/health", () => {
     expect(body.status).toBe("healthy");
     expect(body.redis.status).toBe("connected");
     expect(body.tracking).toEqual({ configured: true, status: "india-post" });
+  });
+
+  it("reports degraded when the E2E limiter switch is left on in production", async () => {
+    // A deployment that copied the E2E environment enforces nothing. Saying
+    // "healthy" there would hide the one state the probe exists to surface.
+    state.isProduction = true;
+    state.url = "https://t.upstash.io";
+    state.token = "tok";
+    state.indiaPostUrl = "https://tracking.example";
+    state.indiaPostClientId = "client";
+    state.indiaPostClientSecret = "secret";
+    state.rateLimitDisabled = true;
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("degraded");
+    expect(body.rateLimits.disabled).toBe(true);
+    expect(body.rateLimits.warning).toContain("RATE_LIMIT_DISABLED");
   });
 
   it("reports degraded and alerts once when App Check rejections spike", async () => {

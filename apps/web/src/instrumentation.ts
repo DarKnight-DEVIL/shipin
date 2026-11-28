@@ -13,7 +13,10 @@ import { setErrorReporter } from "@/lib/errorReporterHook";
 import { isProduction, validateProductionRequiredEnv } from "@/config/env";
 import { reportAppCheckStatus } from "@/lib/appCheck";
 import { reportClientIpTrust } from "@/lib/clientIp";
-import { reportRateLimitStoreStatus } from "@/lib/redisRateLimiter";
+import {
+  isRateLimitingDisabled,
+  reportRateLimitStoreStatus,
+} from "@/lib/redisRateLimiter";
 
 /**
  * Register is called once when the Next.js server starts.
@@ -68,6 +71,16 @@ export async function register() {
   // would deny service over a variable a human can fix live, and it made a
   // production build impossible to run without a real Upstash database.
   reportRateLimitStoreStatus();
+
+  // A production deployment with the E2E disable switch left in its
+  // environment enforces no limit at all — silently, until an incident. Say it
+  // once at boot and let /api/health carry it as `degraded`, so the loud path
+  // and the quiet path agree about the state.
+  if (isProduction && isRateLimitingDisabled()) {
+    childLogger({ service: "rate-limiter" }).error(
+      "[RateLimiter] RATE_LIMIT_DISABLED=1 is set on a production deployment: no rate limit is enforced. This is the E2E-only switch; unset it and E2E_RATE_LIMITS_DISABLED_ACK. /api/health reports this as degraded."
+    );
+  }
 
   // Same pattern for the trust boundary that decides whose budget a request
   // spends. Without it every caller shares one bucket, which on a self-hosted

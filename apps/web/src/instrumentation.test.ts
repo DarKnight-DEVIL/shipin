@@ -28,6 +28,8 @@ vi.mock("@/config/env", () => ({
 
 vi.mock("@/lib/redisRateLimiter", () => ({
   reportRateLimitStoreStatus: hooks.reportRateLimit,
+  /** The E2E disable switch; these tests exercise the other boot reports. */
+  isRateLimitingDisabled: () => false,
   createSharedRateLimiter: vi.fn(() => ({
     record: vi.fn().mockResolvedValue({
       ok: true,

@@ -142,9 +142,11 @@ const env = {
   ALERT_WEBHOOK_OPTIONAL: "1",
   // Blanking the store still left the in-memory limiter, which is what kept
   // answering 429: 100 page requests per IP per minute is less than one suite.
-  // This switches the limiter off for this run only (honoured because the
-  // opt-out above is set). Never set it on a deployment.
+  // This switches the limiter off for this run only. In a production build it
+  // needs the acknowledgement below, which is what keeps a deployment that
+  // copied this environment from switching its own limits off by accident.
   RATE_LIMIT_DISABLED: "1",
+  E2E_RATE_LIMITS_DISABLED_ACK: "1",
   // The startup check refuses to boot a production build with emulator
   // variables set - exactly what this suite does on purpose.
   EMULATOR_GUARD_OPTIONAL: "1",

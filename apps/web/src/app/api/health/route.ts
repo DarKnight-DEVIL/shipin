@@ -54,6 +54,7 @@ import {
 } from "@/lib/rateLimiter";
 import {
   getRateLimitStoreStatus,
+  isRateLimitingDisabled,
   RATE_LIMIT_ERROR_WINDOW_MS,
 } from "@/lib/redisRateLimiter";
 import { getIndiaPostStatus } from "@/features/shipments/carriers";
@@ -193,6 +194,7 @@ export async function GET() {
     trackingPlaceholder ||
     appCheckSpike ||
     outboundSpike ||
+    (isProduction && isRateLimitingDisabled()) ||
     mfaDenylist.degraded;
   const status = degraded ? "degraded" : "healthy";
 
@@ -270,6 +272,13 @@ export async function GET() {
           (sum, e) => sum + e.recentErrors,
           0
         ),
+        ...(isProduction && isRateLimitingDisabled()
+          ? {
+              disabled: true,
+              warning:
+                "RATE_LIMIT_DISABLED=1 is set on a production deployment, so no rate limit is enforced anywhere. This is the E2E switch; unset it (and E2E_RATE_LIMITS_DISABLED_ACK).",
+            }
+          : {}),
         ...(isProduction && hasRecentErrors
           ? {
               warning:

@@ -396,10 +396,10 @@ describe("reportRateLimitStoreStatus", () => {
 
 describe("the E2E no-op switch", () => {
   it("serves every request without touching the store", async () => {
-    // The local E2E suite is a production build carrying the documented
-    // RATE_LIMIT_STORE_OPTIONAL opt-out; one browser from 127.0.0.1 spends the
-    // whole web budget in a single window and the proxy then 429s mid-suite.
+    // The local E2E suite is a production build, so the disable switch needs its
+    // own acknowledgement on top of RATE_LIMIT_DISABLED.
     vi.stubEnv("RATE_LIMIT_DISABLED", "1");
+    vi.stubEnv("E2E_RATE_LIMITS_DISABLED_ACK", "1");
     vi.stubEnv("NODE_ENV", "production");
     state.isProduction = true;
     state.storeOptional = true;
@@ -427,7 +427,7 @@ describe("the E2E no-op switch", () => {
     expect(fallback.record).not.toHaveBeenCalled();
   });
 
-  it("is ignored on a production deployment without the E2E opt-out", async () => {
+  it("ignored on a production deployment without the E2E opt-out", () => {
     vi.stubEnv("RATE_LIMIT_DISABLED", "1");
     vi.stubEnv("NODE_ENV", "production");
     state.isProduction = true;
@@ -435,9 +435,39 @@ describe("the E2E no-op switch", () => {
 
     // A real deployment that picks the variable up by accident keeps its
     // limits: the missing store is still a hard failure there.
-    await expect(limiter.record(requestWith())).rejects.toThrow(
+    return expect(limiter.record(requestWith())).rejects.toThrow(
       "not configured in production"
     );
+  });
+
+  it("does not let the store-check waiver double as the disable switch", async () => {
+    // The finding this guards: copy the E2E environment (RATE_LIMIT_DISABLED +
+    // RATE_LIMIT_STORE_OPTIONAL) into a production deployment and one waiver
+    // used to switch enforcement off entirely. Waiving the boot check must not
+    // grant that, so the ack variable is required on its own.
+    vi.stubEnv("RATE_LIMIT_DISABLED", "1");
+    vi.stubEnv("NODE_ENV", "production");
+    state.isProduction = true;
+    state.storeOptional = true;
+    configureRedis();
+    state.limit.mockResolvedValue({
+      success: true,
+      limit: 30,
+      remaining: 29,
+      reset: Date.now() + 60_000,
+    });
+    const fallback = makeFallback();
+    const limiter = createSharedRateLimiter(
+      "api-waiver",
+      30,
+      60_000,
+      fallback
+    );
+
+    await limiter.record(requestWith());
+
+    expect(state.limit).toHaveBeenCalledTimes(1);
+    expect(fallback.record).not.toHaveBeenCalled();
   });
 
   it('stays off unless the variable is exactly "1"', async () => {

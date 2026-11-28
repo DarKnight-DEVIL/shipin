@@ -88,17 +88,23 @@ export const RATE_LIMIT_ERROR_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
  * mid-suite. CI failed that way intermittently — the run either finished
  * inside the window or did not.
  *
- * Only `scripts/e2e-local.mjs` sets this. It is honoured for a non-production
- * build, or for a production build that already carries the documented
- * `RATE_LIMIT_STORE_OPTIONAL=1` E2E opt-out, so a real deployment that picks
- * up the variable by accident keeps enforcing its limits.
+ * Only `scripts/e2e-local.mjs` sets this. A production build needs a second,
+ * self-describing acknowledgement (`E2E_RATE_LIMITS_DISABLED_ACK=1`) on top of
+ * the variable: a deployment that copied the suite's environment - including
+ * the `RATE_LIMIT_STORE_OPTIONAL` boot-check waiver - used to disable its own
+ * rate limiting as a side effect, because one waiver quietly served as two
+ * switches. The ack keeps the two meanings apart, and /api/health reports the
+ * disabled state so even a deliberate use is visible.
  */
 export const RATE_LIMIT_DISABLED_ENV = "RATE_LIMIT_DISABLED";
+export const RATE_LIMIT_DISABLED_ACK_ENV = "E2E_RATE_LIMITS_DISABLED_ACK";
 
 export function isRateLimitingDisabled(): boolean {
   if (process.env[RATE_LIMIT_DISABLED_ENV] !== "1") return false;
 
-  return process.env.NODE_ENV !== "production" || isRateLimitStoreOptional();
+  if (process.env.NODE_ENV !== "production") return true;
+
+  return process.env[RATE_LIMIT_DISABLED_ACK_ENV] === "1";
 }
 
 /** Redis hash holding per-IP error counters, one per limiter. */

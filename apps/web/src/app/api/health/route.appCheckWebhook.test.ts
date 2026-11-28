@@ -56,6 +56,8 @@ vi.mock("@/lib/rateLimiter", () => {
 vi.mock("@/lib/redisRateLimiter", () => ({
   RATE_LIMIT_ERROR_WINDOW_MS: 5 * 60 * 1000,
   getRateLimitStoreStatus: () => ({ configured: true, degraded: false }),
+  /** The E2E switch is off; these tests are about the App Check channel. */
+  isRateLimitingDisabled: () => false,
   /** No store here, so the tracker uses its in-memory counters: no network. */
   getSharedRedisClient: () => null,
 }));
